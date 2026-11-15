@@ -1,0 +1,6 @@
+// WHY: one unknown arm must keep the whole callback unresolved.
+// CLAIM(resolved-effects); catches: accepting a switch if only one arm is known.
+void run(bool choose, void Function() unknown) {
+  final action = switch (choose) { true => () {}, false => unknown };
+  action();
+}

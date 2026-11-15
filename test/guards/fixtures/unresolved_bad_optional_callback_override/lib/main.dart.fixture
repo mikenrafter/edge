@@ -1,0 +1,7 @@
+// WHY: an optional null default must not bless an explicit unknown callback.
+// CLAIM(resolved-effects); catches: exempting all optional callback parameters.
+class Button {
+  Button({this.action}); final void Function()? action;
+  void tap() { action?.call(); }
+}
+void run(void Function() unknown) { Button(action: unknown).tap(); }

@@ -1,0 +1,11 @@
+// WHY: omitted optional nullable callbacks cannot dispatch unknown work.
+// CLAIM(resolved-effects); catches: treating the implicit null as unknown input.
+class Button {
+  Button({this.action}); final void Function()? action;
+  void tap() { action?.call(); }
+}
+class ExplicitButton {
+  ExplicitButton({this.action = null}); final void Function()? action;
+  void tap() { action?.call(); }
+}
+void run() { Button().tap(); ExplicitButton().tap(); }

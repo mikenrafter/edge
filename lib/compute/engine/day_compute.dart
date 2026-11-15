@@ -311,7 +311,9 @@ extension _EngineDayCompute on DerivationEngine {
     var blankSource = producedNothing && noInputJob != null && !unappliedEdit
         ? null
         : await _userBlankedNight(day.date, scMap);
-    if (producedNothing && blankSource == null && fence != null &&
+    // Prove an unchanged manual assertion before the no-input blanking policy
+    // runs. Recalculate must preserve its measured window too (R3-1).
+    if (producedNothing && fence != null &&
         await SleepEditStore.reuseMeasuredNightIfCurrent(day.date, fence, algoVersion: kAlgoVersion)) {
       _declineReasons[day.date] = 'measured_window_matches_assertion';
       return DayDerive.reused;

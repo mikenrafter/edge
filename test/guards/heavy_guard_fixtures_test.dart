@@ -381,6 +381,14 @@ final Map<String, Expect> kExpectations = {
 
   'unresolved_ok_concrete_local_closure': const Expect.clean(),
   'unresolved_ok_effect_contract': const Expect.clean(),
+  'unresolved_ok_null_callback_defaults': const Expect.clean(),
+  'unresolved_ok_switch_callback': const Expect.clean(),
+  'unresolved_bad_switch_callback': const Expect(
+    {HeavyRule.unresolvedInvocation},
+    symbols: {HeavyRule.unresolvedInvocation: {'run'}}),
+  'unresolved_bad_optional_callback_override': const Expect(
+    {HeavyRule.unresolvedInvocation},
+    symbols: {HeavyRule.unresolvedInvocation: {'Button.tap'}}),
   'unresolved_bad_effect_heavy_closure': const Expect(
     {HeavyRule.heavyOriginOutsideHeavy}, subset: true),
   'unresolved_bad_effect_unknown_input': const Expect(

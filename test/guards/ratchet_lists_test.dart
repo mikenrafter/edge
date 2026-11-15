@@ -28,6 +28,32 @@ import 'support/ratchets.dart';
 const _snapshotPath = 'test/guards/ratchet_counts.json';
 
 void main() {
+  // WHY: the target's terminal guard has no allowlist declaration at all.
+  // Its count is zero, not a reason to skip growth checks or accept a broken
+  // HEAD declaration. CLAIM(ratchet-absent-target).
+  test('an absent target declaration counts zero while HEAD stays strict', () async {
+    const list = RatchetList('terminal', 'guard.dart', RatchetKind.dartLiteral,
+        symbol: '_allowed');
+    Future<String?> absent(String _) async => 'const other = <String>{};';
+    Map<String, Map<String, int>> base = {};
+    Object? failure;
+    try {
+      base = await countRatchets(absent, lists: [list], missingIsError: false);
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure, isNull, reason: 'the absent target list has a count of zero');
+    expect(base, {'terminal': {'entries': 0}});
+    final head = {'terminal': {'entries': 1}};
+    expect(ratchetGrowth(base: base, head: head).single,
+        contains('grew from 0 to 1'));
+    await expectLater(countRatchets(absent, lists: [list]), throwsStateError);
+    for (final source in ['const _allowed = unknown;', 'void f() { _allowed.clear(); }']) {
+      await expectLater(countRatchets((_) async => source,
+          lists: [list], missingIsError: false), throwsStateError);
+    }
+  });
+
   group('counting each kind', () {
     test('heavyBaselineJson: entries and total occurrences', () {
       const list = RatchetList(

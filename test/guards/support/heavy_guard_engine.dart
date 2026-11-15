@@ -832,7 +832,14 @@ class _CallbackSources extends RecursiveAstVisitor<void> {
     if (!seen.add(k)) return false;
     final values = sources[k] ?? const <Expression>[];
     final links = aliases[k] ?? const <Element>[];
-    if (values.isEmpty && links.isEmpty) return false;
+    if (values.isEmpty && links.isEmpty) {
+      // An omitted optional callback is its null default, not an unknown
+      // callable. Explicit arguments still go through every source below.
+      // CLAIM(resolved-effects) [unresolved_ok_null_callback_defaults,
+      // unresolved_bad_optional_callback_override].
+      return k is FormalParameterElement && k.isOptional &&
+          (k.defaultValueCode == null || k.defaultValueCode == 'null');
+    }
     return values.every((v) => expression(v, {...seen})) &&
         links.every((v) => source(v, {...seen}));
   }
@@ -842,6 +849,10 @@ class _CallbackSources extends RecursiveAstVisitor<void> {
     if (e is PostfixExpression && e.operator.lexeme == '!') return expression(e.operand, seen);
     if (e is NullLiteral) return true; // nullable callbacks cannot execute null
     if (e is ConditionalExpression) return expression(e.thenExpression, {...seen}) && expression(e.elseExpression, {...seen});
+    if (e is SwitchExpression) {
+      return e.cases.isNotEmpty &&
+          e.cases.every((branch) => expression(branch.expression, {...seen}));
+    }
     if (e is BinaryExpression && e.operator.lexeme == '??') return expression(e.leftOperand, {...seen}) && expression(e.rightOperand, {...seen});
     if (e is MethodInvocation) return source(e.methodName.element, seen);
     final el = element(e);

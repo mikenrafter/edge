@@ -1,0 +1,6 @@
+// WHY: every switch arm has known provenance; null never invokes work.
+// CLAIM(resolved-effects); catches: losing known callbacks selected by switch.
+void run(bool choose) {
+  final action = switch (choose) { true => () {}, false => null };
+  action?.call();
+}

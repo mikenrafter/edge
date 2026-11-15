@@ -212,6 +212,47 @@ void main() {
     },
   );
 
+  // WHY: Recalculate also changes no assertion on a manually corrected night.
+  // The exact measured bounds prove reuse, even though the manual blanking
+  // policy normally takes precedence for a newly changed unsupported window.
+  // CLAIM(sleep-edit-r3); catches: running manual blanking before reuse proof.
+  test(
+    'R3-1 recalculating a pruned manual night reuses its unchanged window',
+    () async {
+      await raw(b);
+      await stored(old);
+      await edit(old);
+      await finish((await SleepEditStore.pending()).single);
+      final assertion = (await LocalDb.getSleepOverride(old))!;
+      await (await LocalDb.instance).rawUpdate(
+        'UPDATE day_result SET window_json = ? WHERE day_id = ?',
+        [
+          jsonEncode({
+            'value': {
+              'onset_ms': (assertion['onset_ts'] as int) * 1000,
+              'offset_ms': (assertion['offset_ts'] as int) * 1000,
+            },
+          }),
+          old,
+        ],
+      );
+      await SleepEditStore.recalculate(old);
+      final app = AppState.forTesting();
+      try {
+        await app.sleepEditRunner.start().timeout(const Duration(seconds: 120));
+        await expectStored(old);
+        final job = (await SleepEditStore.status(old))!;
+        expect(job['phase'], 'done');
+        expect(job['revision'], 2);
+        expect(job['applied_revision'], 2);
+        expect(job['error'], isNull);
+        expect(await SleepEditStore.pending(retryFailed: true), isEmpty);
+      } finally {
+        app.dispose();
+      }
+    },
+  );
+
   // WHY: callers need an explicit complete outcome for settled dependent days,
   // not merely an applied own-night marker (R3-2).
   test('R3-2 engine reports complete when a later day declines', () async {

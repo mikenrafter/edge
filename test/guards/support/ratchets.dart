@@ -451,7 +451,8 @@ Map<String, int> countRatchet(RatchetList list, String source) {
 /// Counts every list in [lists] through [read]. A list whose file is missing is
 /// omitted when [missingIsError] is false (it was introduced after that
 /// snapshot) and throws a [StateError] naming the list when true (HEAD must
-/// have every registered file).
+/// have every registered file). An absent named declaration in an existing
+/// target file counts as zero; a malformed or referenced symbol still fails.
 Future<Map<String, Map<String, int>>> countRatchets(
   SourceReader read, {
   Iterable<RatchetList> lists = kRatchets,
@@ -464,6 +465,20 @@ Future<Map<String, Map<String, int>>> countRatchets(
       if (missingIsError) {
         throw StateError('${list.id}: ${list.file} does not exist');
       }
+      continue;
+    }
+    // A terminal list may disappear from an older target's existing file.
+    // Its absence means zero, never permission to grow; HEAD still requires a
+    // declaration, and a referenced/malformed symbol still fails below.
+    // CLAIM(ratchet-absent-target) [ratchet_lists_test].
+    if (!missingIsError && list.symbol != null &&
+        !RegExp(r'\b' + RegExp.escape(list.symbol!) + r'\b')
+            .hasMatch(_prepare(text).masked)) {
+      out[list.id] = {
+        'entries': 0,
+        if (list.kind == RatchetKind.dartLiteralNested) 'leaves': 0,
+        if (list.sumField != null) 'sum': 0,
+      };
       continue;
     }
     out[list.id] = countRatchet(list, text);
