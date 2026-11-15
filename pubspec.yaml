@@ -630,7 +630,7 @@ dependencies:
       # staging_effective_method, staging_fallback and staging_fallback_sec;
       # staging_method stays the requested method. sleep.stage group counter
       # 3 -> 4. Cardio output is unchanged (kAlgoVersion 119).
-      ref: 3a5d91123747e77b31d11ce21241bae6c5f63933
+      ref: 6d479fc0a4724ca764895a82f7e89175995eb1c2
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8

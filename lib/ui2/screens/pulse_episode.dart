@@ -117,6 +117,13 @@ class _PulseEpisodeScreenState extends State<PulseEpisodeScreen> {
     return d == null ? '—' : '${d >= 0 ? '+' : ''}${d.round()} $_unit';
   }
 
+  String _extreme(Map<String, dynamic> beat) =>
+      '${_value(beat['raw'] as num?)}${beat['corrected'] == true
+          ? ' · corrected'
+          : beat['dropped'] == true
+          ? ' · dropped'
+          : ''}';
+
   void _select(Map<String, dynamic> beat) => setState(() {
     _focus = beat;
     _zoom = _clamp((beat['time'] as num).toDouble() - 15000);
@@ -147,7 +154,7 @@ class _PulseEpisodeScreenState extends State<PulseEpisodeScreen> {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c), e = _episode;
-    if (e == null)
+    if (e == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Irregular pulse pattern')),
         body: Center(
@@ -165,6 +172,7 @@ class _PulseEpisodeScreenState extends State<PulseEpisodeScreen> {
               : const Text('Loading recording…'),
         ),
       );
+    }
     final doc = e.evidence;
     final beats = e.beats;
     final overview = (doc?['overview'] as List? ?? [])
@@ -467,9 +475,9 @@ class _PulseEpisodeScreenState extends State<PulseEpisodeScreen> {
                     height: 190,
                     yAxis: axis,
                     xLabels: [
-                      axis.format(axis.min),
-                      axis.format((axis.min + axis.max) / 2),
-                      axis.format(axis.max),
+                      axis.min.round().toString(),
+                      ((axis.min + axis.max) / 2).round().toString(),
+                      axis.max.round().toString(),
                     ],
                     child: graph('poincare', height: 190),
                   ),
@@ -562,11 +570,15 @@ class _PulseEpisodeScreenState extends State<PulseEpisodeScreen> {
                   if (doc['extremes'] is Map) ...[
                     why(
                       'Shortest interval',
-                      _value(doc['extremes']['shortest']['raw'] as num),
+                      _extreme(
+                        doc['extremes']['shortest'] as Map<String, dynamic>,
+                      ),
                     ),
                     why(
                       'Longest interval',
-                      _value(doc['extremes']['longest']['raw'] as num),
+                      _extreme(
+                        doc['extremes']['longest'] as Map<String, dynamic>,
+                      ),
                     ),
                   ],
                 ],
@@ -688,8 +700,9 @@ class PulseEpisodePainter extends CustomPainter {
             Rect.fromLTRB(left, 0, right, s.height),
             Paint()..color = C.purple.withValues(alpha: .16),
           );
-          if (kind == 'zoom')
+          if (kind == 'zoom') {
             text('Recording gap', Offset(left + 2, s.height / 2), ink);
+          }
         }
       }
     }
@@ -766,12 +779,13 @@ class PulseEpisodePainter extends CustomPainter {
       final median = values.isEmpty
           ? null
           : values[((values.length - 1) * .5).floor()];
-      if (median != null)
+      if (median != null) {
         lineTo(
           Offset(0, y(median)),
           Offset(s.width, y(median)),
           ink.withValues(alpha: .4),
         );
+      }
       for (final b in visible) {
         final px = ((b['time'] as num) - zoomMs) / 30000 * s.width,
             py = y(b['raw'] as num);
@@ -785,18 +799,19 @@ class PulseEpisodePainter extends CustomPainter {
           lineTo(Offset(px - 3, py - 3), Offset(px + 3, py + 3), C.purple);
           lineTo(Offset(px + 3, py - 3), Offset(px - 3, py + 3), C.purple);
         } else {
-          if (median != null)
+          if (median != null) {
             lineTo(
               Offset(px, y(median)),
               Offset(px, py),
               color.withValues(alpha: .6),
             );
+          }
           c.drawCircle(
             Offset(px, py),
             b['id'] == focusId ? 4.5 : 2.5,
             Paint()..color = color,
           );
-          if (b['corrected'] == true && b['value'] is num)
+          if (b['corrected'] == true && b['value'] is num) {
             c.drawCircle(
               Offset(px, y(b['value'] as num)),
               4,
@@ -805,19 +820,22 @@ class PulseEpisodePainter extends CustomPainter {
                 ..style = PaintingStyle.stroke
                 ..strokeWidth = 1.5,
             );
+          }
         }
-        if (labels.contains('suddenLong') || labels.contains('suddenShort'))
+        if (labels.contains('suddenLong') || labels.contains('suddenShort')) {
           text(
             '${pulseValue(b['raw'] as num, units)?.round() ?? '—'}',
             Offset(px - 9, py + (median != null && py < y(median) ? -12 : 5)),
             ink,
           );
-        if (b['id'] == focusId)
+        }
+        if (b['id'] == focusId) {
           lineTo(
             Offset(px, 0),
             Offset(px, s.height),
             C.blue.withValues(alpha: .5),
           );
+        }
       }
     } else if (kind == 'poincare') {
       lineTo(Offset(0, s.height), Offset(s.width, 0), line);
@@ -828,11 +846,13 @@ class PulseEpisodePainter extends CustomPainter {
           if (v['adjacent'] != true ||
               previous == null ||
               v['value'] == null ||
-              previous['value'] == null)
+              previous['value'] == null) {
             continue;
+          }
           final time = v['time'] as num;
-          if (!calm && (time < episode.startMs || time >= episode.endMs))
+          if (!calm && (time < episode.startMs || time >= episode.endMs)) {
             continue;
+          }
           final px =
                   axis.t(pulseValue(previous['value'] as num, units)!) *
                   s.width,
@@ -874,8 +894,9 @@ class PulseEpisodePainter extends CustomPainter {
       final min = v.reduce(math.min) - 5, max = v.reduce(math.max) + 5;
       double ny(num n) => s.height * (1 - (n - min) / (max - min));
       for (var i = 1; i < hr.length; i++) {
-        if ((hr[i]['time'] as num) - (hr[i - 1]['time'] as num) > 60000)
+        if ((hr[i]['time'] as num) - (hr[i - 1]['time'] as num) > 60000) {
           continue;
+        }
         lineTo(
           Offset(nx(hr[i - 1]['time'] as num), ny(hr[i - 1]['bpm'] as num)),
           Offset(nx(hr[i]['time'] as num), ny(hr[i]['bpm'] as num)),

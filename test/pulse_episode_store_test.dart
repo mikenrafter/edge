@@ -4,7 +4,6 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
-import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/pulse_episode_store.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -64,6 +63,16 @@ void main() {
       expect(await db.query('pulse_episode_outbox'), isEmpty);
     },
   );
+  // WHY/CLAIM(pulse-atomic): a concurrent raw replacement invalidates the prepared
+  // recording before any episode or intent can commit.
+  test('changed input revision refuses the complete reconciliation', () async {
+    await db.execute('CREATE TABLE input_rev (bucket INTEGER PRIMARY KEY,rev INTEGER)');
+    await db.insert('input_rev',{'bucket':0,'rev':2});
+    await expectLater(store.reconcile(detection(),origin:'sync',nowMs:1,
+      inputStamp:const PulseInputStamp(0,0,1)),throwsStateError);
+    expect(await db.query('pulse_episode'),isEmpty);
+    expect(await db.query('pulse_episode_outbox'),isEmpty);
+  });
   // WHY/CLAIM(pulse-claim): a crashed handoff is unknown and never resent, even after reopen.
   test(
     'concurrent claims have one owner; abandoned claim becomes unknown',
@@ -79,6 +88,38 @@ void main() {
       expect(await store.claim(['strap:0'], token: 'c', nowMs: 4), isEmpty);
     },
   );
+  // WHY/CLAIM(pulse-lineage): a split must use the old bounds for every child,
+  // even after the seed-containing child shrank the parent's stored bounds.
+  test('split children inherit a consumed parent claim', () async {
+    final a=detection(),b=detection(offset:900000);
+    final first=a.episodes.single.windows.take(2).toList();
+    final second=b.episodes.single.windows.take(2).toList();
+    final joined=ana.PulseEpisode('strap',[...first,a.episodes.single.windows.last,...second],ongoing:false);
+    await store.reconcile(ana.PulseDetection(joined.windows,[joined]),origin:'sync',nowMs:1);
+    final ids=await store.claim([joined.id],token:'sent',nowMs:2);
+    await store.finish(ids,token:'sent',state:'sent',nowMs:3);
+    final children=[ana.PulseEpisode('strap',first,ongoing:false),ana.PulseEpisode('strap',second,ongoing:false)];
+    await store.reconcile(ana.PulseDetection([...first,...second],children),origin:'bulk',nowMs:4);
+    expect((await store.get('strap:0'))!.alertState,'sent');
+    expect((await store.get('strap:900000'))!.alertState,'sent');
+    expect(await store.owed(),isEmpty);
+  });
+  // WHY/CLAIM(pulse-lineage): merging into an unconsumed earliest seed cannot
+  // forget that a later contributing episode already alerted.
+  test('merge consumes earliest root if a later root already alerted', () async {
+    final a=detection(),b=detection(offset:900000);
+    final first=a.episodes.single.windows.take(2).toList();
+    final second=b.episodes.single.windows.take(2).toList();
+    final children=[ana.PulseEpisode('strap',first,ongoing:false),ana.PulseEpisode('strap',second,ongoing:false)];
+    await store.reconcile(ana.PulseDetection([...first,...second],children),origin:'bulk',nowMs:1);
+    final ids=await store.claim(['strap:900000'],token:'sent',nowMs:2);
+    await store.finish(ids,token:'sent',state:'sent',nowMs:3);
+    final joined=ana.PulseEpisode('strap',[...first,a.episodes.single.windows.last,...second],ongoing:false);
+    await store.reconcile(ana.PulseDetection(joined.windows,[joined]),origin:'bulk',nowMs:4);
+    expect((await store.get('strap:0'))!.alertState,'sent');
+    expect((await store.get('strap:900000'))!.id,'strap:0');
+    expect(await store.owed(),isEmpty);
+  });
   // WHY/CLAIM(pulse-evidence): a trace survives raw removal and repeated derive without duplicate intent.
   test('retained evidence, stable identity and explicit expiry', () async {
     await store.reconcile(detection(), origin: 'sync', nowMs: 1);

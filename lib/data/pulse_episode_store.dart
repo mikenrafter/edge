@@ -8,6 +8,7 @@ import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'package:sqflite/sqflite.dart';
 import '../util/heavy.dart';
 import '../util/worker_init.dart';
+import '../util/worker_audit.dart';
 import 'day_label.dart';
 
 const pulseEpisodeTables = [
@@ -17,6 +18,7 @@ const pulseEpisodeTables = [
   'pulse_episode_outbox',
   'pulse_episode_alias',
   'pulse_input_arrival',
+  'pulse_source_complete',
 ];
 const pulseEvidenceBudget = 128 * 1024 * 1024;
 const pulseEvidenceDays = 365;
@@ -75,6 +77,7 @@ class PulseEpisodeStore {
         source TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
         digest TEXT NOT NULL, origin TEXT NOT NULL, admitted_ms INTEGER NOT NULL,
         PRIMARY KEY(source,start_ms,end_ms,digest))''',
+      '''CREATE TABLE IF NOT EXISTS pulse_source_complete (source TEXT PRIMARY KEY,through_ms INTEGER NOT NULL)''',
       'CREATE INDEX IF NOT EXISTS pulse_episode_time ON pulse_episode(start_ms,id)',
       'CREATE INDEX IF NOT EXISTS pulse_evidence_age ON pulse_evidence_chunk(created_ms)',
     ]) {
@@ -82,6 +85,25 @@ class PulseEpisodeStore {
     }
   }
 
+  /// Only HISTORY_COMPLETE with a durable tail certifies a band's closed history.
+  /// A HISTORY_END transport chunk never advances this marker.
+  Future<void> certifyCurrentSource(String source) => db.transaction((
+    txn,
+  ) async {
+    final rows = await txn.rawQuery(
+      'SELECT MAX(rec_ts)*1000 AS t FROM decoded_rr WHERE device_id=?',
+      [source],
+    );
+    final through = rows.first['t'] as int?;
+    if (through == null) return;
+    await txn.rawInsert(
+      'INSERT OR REPLACE INTO pulse_source_complete(source,through_ms) VALUES (?, MAX(?,COALESCE((SELECT through_ms FROM pulse_source_complete WHERE source=?),0)))',
+      [source, through, source],
+    );
+  });
+
+  // Completeness certificates are separate from delivery ancestry and are
+  // safe to reconstruct from a later completed sync after restore.
   /// CLAIM(pulse-atomic): evidence and intent commit together [pulse_episode_store_test].
   /// Preparation throws before writes; any SQLite failure rolls back the whole reconciliation.
   Future<void> reconcile(
@@ -89,45 +111,43 @@ class PulseEpisodeStore {
     required String origin,
     required int nowMs,
     List<Map<String, dynamic>> heartRate = const [],
+    PulseInputStamp? inputStamp,
   }) async {
-    final prepared = <String, Map<String, dynamic>>{};
-    for (final episode in detection.episodes) {
-      final input = episode.toJson();
-      final comparison = detection.windows
-          .where(
-            (w) =>
-                w.source == episode.source &&
-                !w.pending &&
-                !w.qualified &&
-                w.reasons.isEmpty &&
-                w.endMs <= episode.startMs &&
-                w.endMs >= episode.startMs - 600000,
-          )
-          .toList();
-      input['comparison'] = comparison.isEmpty
-          ? <dynamic>[]
-          : [for (final b in comparison.last.beats) b.toJson()];
-      input['context'] = [
-        for (final w in detection.windows)
-          if (w.source == episode.source &&
-              w.endMs > episode.startMs - 600000 &&
-              w.startMs < episode.endMs + 600000)
-            for (final b in w.beats) b.toJson(),
-      ];
-      input['heartRate'] = heartRate;
-      prepared[episode.id] = await Isolate.run(
-        () => encodePulseEvidenceHeavy(input),
-      );
-    }
+    final input = PulsePreparationInput(detection, heartRate);
+    final preparation = await Isolate.run(
+      () => preparePulseEvidenceHeavy(input),
+    );
+    final prepared = preparation.episodes;
     await db.transaction((txn) async {
+      if (inputStamp != null) {
+        final rev = await txn.rawQuery(
+          'SELECT COALESCE(SUM(rev),0) AS rev FROM input_rev WHERE bucket BETWEEN ? AND ?',
+          [inputStamp.startBucket, inputStamp.endBucket],
+        );
+        if (rev.first['rev'] != inputStamp.revision) {
+          throw StateError('Pulse input changed; retry before pruning');
+        }
+      }
+      final previousEpisodes = await txn.query('pulse_episode');
       for (final episode in detection.episodes) {
         final encoded = prepared[episode.id]!;
-        final overlaps = await txn.query(
-          'pulse_episode',
-          where: 'source = ? AND start_ms < ? AND end_ms > ?',
-          whereArgs: [episode.source, episode.endMs, episode.startMs],
-          orderBy: 'seed_ms,id',
-        );
+        final overlaps =
+            previousEpisodes
+                .where(
+                  (old) =>
+                      old['source'] == episode.source &&
+                      (old['start_ms'] as int) < episode.endMs &&
+                      (old['end_ms'] as int) > episode.startMs,
+                )
+                .toList()
+              ..sort((a, b) {
+                final seed = (a['seed_ms'] as int).compareTo(
+                  b['seed_ms'] as int,
+                );
+                return seed != 0
+                    ? seed
+                    : (a['id'] as String).compareTo(b['id'] as String);
+              });
         var id = episode.id;
         for (final old in overlaps) {
           final seed = old['seed_ms'] as int;
@@ -222,6 +242,20 @@ class PulseEpisodeStore {
           'token': inherited?['token'],
           'summary_key': inherited?['summary_key'],
         }, conflictAlgorithm: ConflictAlgorithm.ignore);
+        if (inherited != null) {
+          await txn.update(
+            'pulse_episode_outbox',
+            {
+              'state': inherited['state'],
+              'reason': inherited['reason'],
+              'at_ms': inherited['at_ms'],
+              'token': inherited['token'],
+              'summary_key': inherited['summary_key'],
+            },
+            where: "episode_id=? AND state IN ('owed','not_sent')",
+            whereArgs: [id],
+          );
+        }
         for (final old in overlaps) {
           final oldId = old['id'] as String;
           final seed = old['seed_ms'] as int;
@@ -264,8 +298,9 @@ class PulseEpisodeStore {
               e.source == old['source'] &&
               e.startMs < (old['end_ms'] as int) &&
               e.endMs > (old['start_ms'] as int),
-        ))
+        )) {
           continue;
+        }
         final covered = detection.windows
             .where(
               (w) =>
@@ -277,8 +312,9 @@ class PulseEpisodeStore {
             )
             .toList();
         if (covered.length * ana.pulseWindowMs <
-            (old['end_ms'] as int) - (old['start_ms'] as int))
+            (old['end_ms'] as int) - (old['start_ms'] as int)) {
           continue;
+        }
         await txn.update(
           'pulse_episode',
           {'status': 'retracted'},
@@ -320,11 +356,12 @@ class PulseEpisodeStore {
     Map<String, dynamic>? decoded;
     if (evidence.isNotEmpty) {
       final payload = evidence.first['payload'];
-      if (payload is! List<int> ||
-          sha256.convert(payload).toString() != rows.first['revision']) {
-        throw StateError('Pulse recording checksum mismatch');
-      }
-      decoded = await Isolate.run(() => decodePulseEvidenceHeavy(payload));
+      if (payload is! List<int>) throw StateError('Pulse recording is corrupt');
+      final List<int> bytes = payload;
+      final expected = rows.first['revision'] as String;
+      decoded = (await Isolate.run(
+        () => decodePulseEvidenceHeavy(bytes, expected),
+      )).document;
     }
     return PulseEpisodeSnapshot(rows.first, decoded);
   }
@@ -334,12 +371,19 @@ class PulseEpisodeStore {
     int? beforeMs,
     String beforeId = '',
   }) async {
-    final rows=await db.rawQuery("SELECT e.*,a.state AS alert_state,a.reason AS alert_reason,a.at_ms AS alert_at_ms "
+    final rows = await db.rawQuery(
+      "SELECT e.*,a.state AS alert_state,a.reason AS alert_reason,a.at_ms AS alert_at_ms "
       "FROM pulse_episode e LEFT JOIN pulse_episode_outbox a ON a.episode_id=e.id "
-      "WHERE e.status='active' ${beforeMs==null?'': 'AND (e.start_ms < ? OR (e.start_ms = ? AND e.id < ?))'} "
-      "ORDER BY e.start_ms DESC,e.id DESC LIMIT ?",[if(beforeMs!=null)...[beforeMs,beforeMs,beforeId],limit]);
-    return [for(final r in rows)PulseEpisodeSnapshot(r,null)];
+      "WHERE e.status='active' ${beforeMs == null ? '' : 'AND (e.start_ms < ? OR (e.start_ms = ? AND e.id < ?))'} "
+      "ORDER BY e.start_ms DESC,e.id DESC LIMIT ?",
+      [
+        if (beforeMs != null) ...[beforeMs, beforeMs, beforeId],
+        limit,
+      ],
+    );
+    return [for (final r in rows) PulseEpisodeSnapshot(r, null)];
   }
+
   Future<List<Map<String, Object?>>> owed() =>
       db.rawQuery('''SELECT a.*, e.start_ms,e.end_ms,e.day,e.offset_min
     FROM pulse_episode_outbox a JOIN pulse_episode e ON e.id=a.episode_id
@@ -415,8 +459,9 @@ class PulseEpisodeStore {
     var bytes = rows.fold<int>(0, (s, r) => s + (r['byte_count'] as int));
     for (final r in rows) {
       if ((r['created_ms'] as int) >= nowMs - pulseEvidenceDays * 86400000 &&
-          bytes <= budgetBytes)
+          bytes <= budgetBytes) {
         continue;
+      }
       final pending = await txn.query(
         'pulse_episode_outbox',
         where: "episode_id=? AND revision=? AND state='pending'",
@@ -460,6 +505,7 @@ Map<String, dynamic> encodePulseEvidenceHeavy(Map<String, dynamic> input) {
           .where(
             (b) =>
                 b['change'] != null &&
+                b['adjacent'] == true &&
                 (b['time'] as int) >= input['start'] &&
                 (b['time'] as int) < input['end'] &&
                 ((b['labels'] as List).contains('suddenLong') ||
@@ -503,8 +549,9 @@ Map<String, dynamic> encodePulseEvidenceHeavy(Map<String, dynamic> input) {
   for (final b in unique) {
     if (b['plausible'] != true ||
         b['corrected'] == true ||
-        b['dropped'] == true)
+        b['dropped'] == true) {
       continue;
+    }
     (bins[(b['time'] as int) ~/ 30000 * 30000] ??= []).add(
       (b['raw'] as num).toDouble(),
     );
@@ -574,8 +621,9 @@ Map<String, dynamic> encodePulseEvidenceHeavy(Map<String, dynamic> input) {
     kept = kept.take(kept.length ~/ 2).toList();
     payload = gzip.encode(utf8.encode(jsonEncode(document())));
   }
-  if (payload.length > 1024 * 1024)
+  if (payload.length > 1024 * 1024) {
     throw StateError('Pulse evidence exceeds byte cap');
+  }
   return {
     'payload': payload,
     'checksum': sha256.convert(payload).toString(),
@@ -584,12 +632,99 @@ Map<String, dynamic> encodePulseEvidenceHeavy(Map<String, dynamic> input) {
   };
 }
 
+@SendableShape(
+  'Immutable analytics evidence and primitive HR maps; sendable_preparePulseEvidenceHeavy_test',
+)
+class PulsePreparationInput {
+  final ana.PulseDetection detection;
+  final List<Map<String, dynamic>> heartRate;
+  const PulsePreparationInput(this.detection, this.heartRate);
+}
+
+@SendableShape(
+  'Bounded compressed byte arrays and primitive summary maps; sendable_preparePulseEvidenceHeavy_test',
+)
+class PulsePreparedEvidence {
+  final Map<String, Map<String, dynamic>> episodes;
+  const PulsePreparedEvidence(this.episodes);
+}
+
+@sendable
+class PulseInputStamp {
+  final int startBucket, endBucket, revision;
+  const PulseInputStamp(this.startBucket, this.endBucket, this.revision);
+}
+
 @heavy
-Map<String, dynamic> decodePulseEvidenceHeavy(List<int> payload) {
+PulsePreparedEvidence preparePulseEvidenceHeavy(PulsePreparationInput request) {
   WorkerInit.ensure(
     const WorkerInputs(nowEpochMs: 0, zoneId: 'UTC', localeTag: 'en'),
   );
   assertWorker();
-  return (jsonDecode(utf8.decode(gzip.decode(payload))) as Map)
-      .cast<String, dynamic>();
+  WorkerAudit.entered('preparePulseEvidenceHeavy');
+  final detection = request.detection, heartRate = request.heartRate;
+  final prepared = <String, Map<String, dynamic>>{};
+  for (final episode in detection.episodes) {
+    final input = episode.toJson();
+    final comparison = detection.windows
+        .where(
+          (w) =>
+              w.source == episode.source &&
+              !w.pending &&
+              !w.qualified &&
+              w.reasons.isEmpty &&
+              w.endMs <= episode.startMs &&
+              w.endMs >= episode.startMs - 600000,
+        )
+        .toList();
+    input['comparison'] = comparison.isEmpty
+        ? <dynamic>[]
+        : [for (final b in comparison.last.beats) b.toJson()];
+    input['context'] = [
+      for (final w in detection.windows)
+        if (w.source == episode.source &&
+            w.endMs > episode.startMs - 600000 &&
+            w.startMs < episode.endMs + 600000)
+          for (final b in w.beats) b.toJson(),
+    ];
+    input['heartRate'] = heartRate
+        .where(
+          (r) =>
+              r['source'] == episode.source &&
+              (r['time'] as num) >= episode.startMs - 8 * 3600000 &&
+              (r['time'] as num) < episode.startMs + 8 * 3600000,
+        )
+        .take(960)
+        .toList();
+    prepared[episode.id] = encodePulseEvidenceHeavy(input);
+  }
+
+  return PulsePreparedEvidence(prepared);
+}
+
+@SendableShape(
+  'Decoded bounded JSON recording; sendable_decodePulseEvidenceHeavy_test',
+)
+class PulseEvidenceDocument {
+  final Map<String, dynamic> document;
+  const PulseEvidenceDocument(this.document);
+}
+
+@heavy
+PulseEvidenceDocument decodePulseEvidenceHeavy(
+  List<int> payload,
+  String expected,
+) {
+  WorkerInit.ensure(
+    const WorkerInputs(nowEpochMs: 0, zoneId: 'UTC', localeTag: 'en'),
+  );
+  assertWorker();
+  WorkerAudit.entered('decodePulseEvidenceHeavy');
+  if (sha256.convert(payload).toString() != expected) {
+    throw StateError('Pulse recording checksum mismatch');
+  }
+  return PulseEvidenceDocument(
+    (jsonDecode(utf8.decode(gzip.decode(payload))) as Map)
+        .cast<String, dynamic>(),
+  );
 }

@@ -11,7 +11,6 @@ import 'package:openstrap_edge/notify/notification_center.dart';
 import 'package:openstrap_edge/notify/notification_event.dart';
 import 'package:openstrap_edge/notify/notification_ids.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'backup/backup_support.dart';
 import 'pulse_episode_store_test.dart' show detection;
 
@@ -176,7 +175,35 @@ void main() {
           'rr_ms': rr.round(),
         });
       }
+      batch.insert('decoded_onehz', {
+        'device_id': 'strap',
+        'ts_ms': start,
+        'rec_ts': start ~/ 1000,
+        'counter': 1,
+        'hr': 60,
+      });
+      batch.insert('decoded_onehz', {
+        'device_id': 'other',
+        'ts_ms': start,
+        'rec_ts': start ~/ 1000,
+        'counter': 2,
+        'hr': 180,
+      });
       await batch.commit(noResult: true);
+      await PulseEpisodeWorker.run(
+        ['2026-11-12'],
+        processingContext: const ProcessingContext(
+          ProcessingOrigin.recentSync,
+          {'2026-11-12': 1},
+        ),
+      );
+      expect(
+        shown,
+        isEmpty,
+        reason: 'a committed transport chunk is not complete history',
+      );
+      expect(await PulseEpisodeStore(db).list(), isEmpty);
+      await PulseEpisodeStore(db).certifyCurrentSource('strap');
       await PulseEpisodeWorker.run(
         ['2026-11-12'],
         processingContext: ProcessingContext(ProcessingOrigin.recentSync, {
@@ -186,6 +213,13 @@ void main() {
       final episodes = await PulseEpisodeStore(db).list();
       expect(episodes, hasLength(1));
       expect(episodes.single.alertState, 'sent');
+      final recording = (await PulseEpisodeStore(db).get(episodes.single.id))!;
+      expect(
+        (recording.evidence!['heartRate'] as List).single['bpm'],
+        60,
+        reason:
+            'episode HR context belongs to its own sensor, never an average across devices',
+      );
       expect(shown, hasLength(1));
       expect(shown.single.body, contains('2026'));
       await PulseEpisodeWorker.run([

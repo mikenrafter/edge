@@ -35,6 +35,7 @@
 // fires a debounced `onDataStored` callback after records are persisted (coalescing
 // bursts), so the compute trigger survives the move to continuous listening.
 
+import '../data/pulse_episode_store.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -7706,6 +7707,13 @@ class BleEngine implements AlarmBandWriter {
           lastError: 'durable_commit_failed',
           metaPatch: {'records_seen': d.records},
         ));
+      }
+      if (tailDurable && _offloadActive) {
+        // Pulse windows close only after the complete history, not at chunk ACK.
+        await _bestEffortLedgerWrite(() async {
+          await PulseEpisodeStore(await LocalDb.instance)
+              .certifyCurrentSource(LocalDb.kPrimaryDeviceId);
+        });
       }
       d.onComplete();
       // Our task is over: a re-offered marker from here is not ours to
