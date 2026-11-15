@@ -357,6 +357,8 @@ void main() {
       second.value = false;
       await t.pump();
       await t.pump();
+      stage.run.observe(stage.routes.page!, _en);
+      await t.pump();
       expect(stage.run.currentStep?.id, 'one');
       for (var i = 0; i < 60; i++) {
         await finger.moveBy(const Offset(0, -2));
@@ -552,6 +554,9 @@ void main() {
     final indicatorBoundary = find.ancestor(of: indicator, matching: find.byType(RepaintBoundary)).first;
     expect(find.descendant(of: indicatorBoundary, matching: find.byKey(GuideStepCard.cardKey)), findsNothing);
     expect(find.descendant(of: indicatorBoundary, matching: find.byKey(LiveGuideOverlay.skeletonKey)), findsNothing);
+    final chevronBoundary = find.ancestor(of: find.byKey(_chevronKey), matching: find.byType(RepaintBoundary)).first;
+    expect(find.descendant(of: chevronBoundary, matching: find.text(_en.guideScrollMarker)), findsNothing,
+      reason: 'the chevron tick must not repaint its static label or hand');
   });
 
   // WHY: P1 / CLAIM(hand-clock-rest): two 200 ms nudge peaks, then 800 ms of
@@ -586,9 +591,9 @@ void main() {
     const size = Size(60, 22);
 
     // WHY: item 4: the label is ABOVE its target; no more "beside, on the left".
-    test('R4-4a: above whenever it fits, even with room on the left and text above', () {
+    test('R4-4a: above whenever it fits, even with room on the left', () {
       const outline = Rect.fromLTWH(150, 300, 100, 30);
-      final pill = const GuidePillLayout(outline, bounds, [Rect.fromLTWH(160, 290, 60, 14)]).place(size);
+      final pill = const GuidePillLayout(outline, bounds).place(size);
       expect(pill.bottom, closeTo(outline.top + 2, .01), reason: 'astride the top edge, above');
       expect(pill.right, lessThanOrEqualTo(outline.right));
     });
@@ -609,12 +614,12 @@ void main() {
       const roomy = Rect.fromLTWH(150, 140, 100, 30); // fits by 20 px
       const tight = Rect.fromLTWH(150, 118, 100, 30); // short by 2 px
       expect(const GuidePillLayout(barely, bounds).place(size).bottom, closeTo(124, .01), reason: 'fresh: above when it fits');
-      expect(const GuidePillLayout(barely, bounds, [], GuidePillSide.below).place(size).top, closeTo(150, .01),
+      expect(const GuidePillLayout(barely, bounds, GuidePillSide.below).place(size).top, closeTo(150, .01),
           reason: 'coming from below, 2 px of room is not enough to flip back');
-      expect(const GuidePillLayout(roomy, bounds, [], GuidePillSide.below).place(size).bottom, closeTo(142, .01),
+      expect(const GuidePillLayout(roomy, bounds, GuidePillSide.below).place(size).bottom, closeTo(142, .01),
           reason: 'coming from below, 20 px of room flips back');
-      expect(const GuidePillLayout(barely, bounds, [], GuidePillSide.above).place(size).bottom, closeTo(124, .01));
-      expect(const GuidePillLayout(tight, bounds, [], GuidePillSide.above).place(size).top, closeTo(146, .01),
+      expect(const GuidePillLayout(barely, bounds, GuidePillSide.above).place(size).bottom, closeTo(124, .01));
+      expect(const GuidePillLayout(tight, bounds, GuidePillSide.above).place(size).top, closeTo(146, .01),
           reason: 'above no longer fits: below');
     });
 

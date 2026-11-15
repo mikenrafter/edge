@@ -339,6 +339,11 @@ class RevealGlide {
   bool _cancelled = false;
 
   bool get isCancelled => _cancelled;
+  bool _probing = false;
+
+  /// A touch owns the page only once discovery probes or a glide can move it.
+  bool get canMove => !_cancelled && (_probing || _moving.isNotEmpty);
+  bool get isMoving => !_cancelled && _moving.isNotEmpty;
 
   /// Stops every scroll of this glide where it stands and keeps it from starting more (the
   /// user touched the screen).
@@ -382,10 +387,11 @@ class RevealGlide {
 class _RootGate implements RevealGate {
   final Element root;
   final RevealGate? outer;
-  const _RootGate(this.root, this.outer);
+  final RevealGlide? glide;
+  const _RootGate(this.root, this.outer, this.glide);
 
   @override
-  bool get isOpen => root.mounted && (outer?.isOpen ?? true);
+  bool get isOpen => root.mounted && (outer?.isOpen ?? true) && !(glide?.isCancelled ?? false);
 }
 
 /// Bounded scroll discovery: resolves [target]; while it is [TargetNotBuilt],
@@ -406,6 +412,8 @@ class _RootGate implements RevealGate {
 /// work when the user navigates or ends the guide. With a [glide], the final scroll to a
 /// target that is off screen is animated (see [RevealGlide]) and the future completes when
 /// it ends or is cancelled; without one it jumps and centres, as before.
+/// CLAIM(reveal-touch-cancel): cancellation also stops discovery, without restoring
+/// search origins [guide_r4_test R4-fix-C1].
 Future<TargetResolution> revealTarget(
   Element root,
   GuideTarget target,
@@ -414,7 +422,7 @@ Future<TargetResolution> revealTarget(
   RevealGate? isCurrent,
   RevealGlide? glide,
 }) async {
-  final gate = _RootGate(root, isCurrent);
+  final gate = _RootGate(root, isCurrent, glide);
   bool active() => gate.isOpen;
   if (!active()) return TargetNotBuilt(target, 'page is no longer active');
   if (glide != null) {
@@ -430,7 +438,13 @@ Future<TargetResolution> revealTarget(
   final searched = now is TargetNotBuilt;
   if (now is TargetNotBuilt) {
     final search = _Search(root, target, l, maxViewports, gate);
-    final found = await search.runAll();
+    bool found;
+    if (glide != null) glide._probing = true;
+    try {
+      found = await search.runAll();
+    } finally {
+      if (glide != null) glide._probing = false;
+    }
     if (!active()) return TargetNotBuilt(target, 'page is no longer active');
     if (!found) {
       await _nextLayout();

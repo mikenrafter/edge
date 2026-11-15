@@ -104,15 +104,6 @@ void main() {
       expect(pill, Rect.fromLTWH(120 - 40 - S.x2, 33, 40, 20)); // 35 - 2
     });
 
-    test('legible text above the target does not move the pill', () {
-      // why: one place, every step, every frame. (The old rule skipped any position that
-      // touched text, which made the label jump between steps.)
-      const outline = Rect.fromLTWH(20, 300, 100, 30);
-      const textAbove = Rect.fromLTWH(30, 285, 80, 14); // inside the above box
-      final pill = const GuidePillLayout(outline, bounds, [textAbove]).place(size);
-      expect(pill, Rect.fromLTWH(120 - 40 - S.x2, 282, 40, 20));
-    });
-
     test('with neither side in the frame it is above, pushed inside, never off-screen', () {
       // why: never off-screen, deterministic. A frame shorter than outline + pill.
       const tight = Rect.fromLTWH(0, 0, 300, 30);

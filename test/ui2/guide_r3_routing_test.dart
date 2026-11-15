@@ -75,17 +75,20 @@ void main() {
       expect(handFinder, findsOneWidget);
       final boundaries = find.ancestor(of: handFinder, matching: find.byType(RepaintBoundary));
       expect(boundaries, findsWidgets, reason: 'the animated hand owns a repaint boundary');
+      expect(find.descendant(of: boundaries.first, matching: find.byKey(LiveGuideOverlay.tapPillKey)), findsNothing,
+        reason: 'the boundary isolates the hand even from its own static pill');
       final boundary = t.renderObject<RenderRepaintBoundary>(boundaries.first);
       final hand = t.widget<GuideTapHand>(handFinder);
       for (var i = 0; i < 120 && (hand.clock.value < .02 || hand.clock.value > .3); i++) {
         await t.pump(const Duration(milliseconds: 16));
       }
       final paints = <RenderObject>[];
-      var overlayBuilds = 0;
+      var overlayBuilds = 0, builds = 0;
       final oldPaint = debugOnProfilePaint;
       final oldBuild = debugOnRebuildDirtyWidget;
       debugOnProfilePaint = paints.add;
       debugOnRebuildDirtyWidget = (element, builtOnce) {
+        builds++;
         if (element.widget is LiveGuideOverlay) overlayBuilds++;
       };
       addTearDown(() { debugOnProfilePaint = oldPaint; debugOnRebuildDirtyWidget = oldBuild; });
@@ -99,11 +102,21 @@ void main() {
       debugOnRebuildDirtyWidget = oldBuild;
       expect(phases.length, greaterThan(1), reason: 'positive control: the off-path hand animates');
       expect(paints, isNotEmpty, reason: 'positive control: the hand painted');
-      for (final object in paints) {
+      expect(builds, 0, reason: 'render transforms must not rebuild widgets');
+      expect(overlayBuilds, 0, reason: 'hand ticks never rebuild the overlay');
+      bool under(RenderObject object, RenderObject root) {
         RenderObject? ancestor = object;
-        while (ancestor != null && !identical(ancestor, boundary)) { ancestor = ancestor.parent; }
-        expect(ancestor, same(boundary), reason: 'a tick painted outside the hand boundary: $object');
+        while (ancestor != null && !identical(ancestor, root)) { ancestor = ancestor.parent; }
+        return ancestor != null;
       }
+      final overlayRoot = t.renderObject(find.byType(LiveGuideOverlay));
+      final pageRoot = app.runner.routes.page!.renderObject!;
+      // paintChild reports cached layer composition too. Count actual content paints,
+      // excluding repaint-boundary nodes whose existing layer is merely composited.
+      final outside = paints.where((object) =>
+        !object.isRepaintBoundary &&
+        (under(object, overlayRoot) || under(object, pageRoot)) && !under(object, boundary)).toList();
+      expect(outside, isEmpty, reason: 'a hand tick repainted screen content: ${outside.take(6).map((o) => o.debugCreator).join("; ")}');
       expect(overlayBuilds, 0);
       expect(_overlay(t).signatureChecks, signatures, reason: 'hand ticks never walk the page');
       // WHY: owner review R4: off path the cards next to the route-back control stay lit,

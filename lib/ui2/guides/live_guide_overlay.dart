@@ -20,11 +20,14 @@
 // the visible area) and keeps its side (hysteresis; reset on each step); a pointing hand
 // beside it nudges toward the target. The mid-screen scroll indicator replaces the old
 // side marker. The hand and the chevron follow the shared 1.6 s overlay clock, which runs
-// only while one of them, a placeholder or the card's own motion is on screen.
+// only while one of them, a placeholder or the card's own motion needs it. A hand
+// alone sleeps through the still half; the route-back hand nudges off path too.
 //
 // Input: lit and dimmed units pass the original tap to the real control once.
 // Placeholder units absorb activation and hand vertical drags to the page; the card's buttons work; Android system Back and the
-// NavBar arrow work. Accepted limitation (S6): on step pages the shield absorbs
+// NavBar arrow work. CLAIM(glide-tap-stops): Flutter absorbs the first tap on a
+// moving scrollable to stop it; it activates nothing. A second tap works
+// [guide_r4_test R4-fix-D1]. Accepted limitation (S6): on step pages the shield absorbs
 // the iOS edge-swipe Back gesture. Use the NavBar arrow to leave those pages.
 // While a dialog / sheet / picker is on top the overlay is inert and draws nothing, so
 // the app's own dialog is fully usable.
@@ -122,7 +125,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   final _pillSide = _PillSide();
   /// The reveal's glide while a step is arriving; any pointer-down cancels it.
   RevealGlide? _glide;
-  /// The user touched the screen while this step's reveal was under way: no re-reveal.
+  /// A touch interrupted a probe/glide, or a step returned during the user's scroll:
+  /// no re-reveal.
   bool _touched = false;
   /// The card's motion time: the frame clock, so the clock controller may stop and start
   /// between motions without moving it.
@@ -131,36 +135,78 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
 
   /// True while the page shows at least one placeholder: the only time the pulse has
   /// anything to draw. Off path, on the Done card and on screens whose cards all sit in
-  /// the lit/dim window there are none, and the guide then asks for no frames at all.
+  /// the lit/dim window there are none. A visible hand can still need the clock.
   bool _hasPlaceholders = false;
 
   @visibleForTesting
   bool get hasPlaceholders => _hasPlaceholders && !_yieldNow;
 
   /// True while the overlay clock runs. The clock drives the placeholder pulse and the
-  /// card's move-then-restore motion; it runs only while one of them needs it.
+  /// card's move-then-restore motion and markers; it runs only while one needs it.
   @visibleForTesting
   bool get isPulsing => _pulse.isAnimating;
 
   bool get _wantsPulse => hasPlaceholders && Motion.enabled(context);
 
-  /// True while the "tap" hand or the scroll chevron is on screen (set by build): the other
-  /// reason for the clock to run.
-  bool _markersTick = false;
+  Timer? _handRest;
+  bool _handOnly = false;
 
-  /// Starts or stops the clock to match what needs it. CLAIM(clock-only-when-needed): it runs
-  /// only while a placeholder pulses, the card moves, or the tap hand / scroll chevron is
-  /// on screen, and never under reduced motion [guide_r3_pulse_test,
-  /// live_guide_overlay_test 'an idle guide schedules no frames', guide_r4_test R4-3c].
+  /// CLAIM(clock-only-when-needed): the hand keeps the same 1.6 s phase, sleeping
+  /// through its still half. Placeholders, card motion and the chevron need the
+  /// full cycle [guide_r4_test R4-fix-P1b]. Marker visibility is read after layout,
+  /// never written by build.
   void _syncClock() {
     if (!mounted) return;
-    final wanted = _wantsPulse || _cardMotion.isAnimating || (_markersTick && Motion.enabled(context));
-    if (wanted && !_pulse.isAnimating) {
+    final layer = _layerKey.currentContext?.findRenderObject();
+    final markers = layer is RenderBox && layer.hasSize ? _markersFor(layer.size) : null;
+    final enabled = Motion.enabled(context);
+    final continuous = enabled && (_wantsPulse || _cardMotion.isAnimating || (markers?.hidden ?? false));
+    final hand = enabled && ((markers?.marked ?? false) || (markers?.routeMarked ?? false));
+    if (continuous) {
+      _handRest?.cancel();
+      _handRest = null;
+      if (_handOnly) _pulse.stop();
+      _handOnly = false;
       Motion.configureGuidePulse(_pulse, enabled: true);
-    } else if (!wanted && _pulse.isAnimating) {
+    } else if (hand) {
+      if (!_handOnly) _pulse.stop();
+      _handOnly = true;
+      if (_pulse.value >= .5) {
+        _pulse.stop();
+        _handRest ??= Timer(kGuidePulseDuration * (1 - _pulse.value), _resumeHand);
+      } else if (!_pulse.isAnimating) {
+        unawaited(_pulse.animateTo(.5, duration: kGuidePulseDuration * (.5 - _pulse.value), curve: Curves.linear));
+      }
+    } else {
+      _handRest?.cancel();
+      _handRest = null;
+      _handOnly = false;
       _pulse.stop();
     }
     if (!_wantsPulse) _dim?.setPulse(1);
+  }
+
+  void _resumeHand() {
+    _handRest = null;
+    if (!mounted) return;
+    _pulse.value = 0;
+    _syncClock();
+  }
+
+  _GuideMarkers _markersFor(Size size) {
+    final show = !_yieldNow && !widget.run.isExited;
+    final step = widget.run.currentStep;
+    final target = _liveTarget;
+    final screen = Offset.zero & size;
+    final outline = target?.inflate(kGuideOutlineGap).intersect(screen);
+    final marked = show && target != null && step != null && revealProgress == 1 &&
+        outline != null && !outline.isEmpty;
+    final routeOutline = target == null && show ? _route?.inflate(kGuideOutlineGap).intersect(screen) : null;
+    final routeMarked = routeOutline != null && !routeOutline.isEmpty;
+    final hidden = show && step != null && !(_glide?.isMoving ?? false) &&
+        (target == null ? _lazyTarget : _outOfView(target, screen));
+    return _GuideMarkers(target, outline, routeOutline, marked, routeMarked, hidden,
+        target != null && target.center.dy < screen.center.dy);
   }
 
   void _pulsed() {
@@ -236,6 +282,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     if (last == null) return false;
     final others = SchedulerBinding.instance.transientCallbackCount - 1 - (_reveal.isAnimating ? 1 : 0);
     if (others > 0) return false; // another animation moves the page: read it as before
+    if (!_wantsPulse && !_cardMotion.isAnimating) return true;
     return SchedulerBinding.instance.currentFrameTimeStamp - last < Motion.guidePulsePlanInterval;
   }
 
@@ -401,6 +448,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   void _routeChanged() {
     if (!mounted) return;
     _markDirty();
+    if (!identical(widget.routes.page, _searchingPage)) _glide?.cancel();
     _publish();
     _scrolled();
   }
@@ -470,8 +518,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     _markDirty();
     // The page is the user's from the first touch: a glide stops where it is.
     if (event is PointerDownEvent && _glide != null) {
+      if (_glide!.canMove) _touched = true; // late content must not take the page back
       _glide!.cancel();
-      _touched = true; // and the late-content re-reveal must not take the page back
     }
     final layer = _layerKey.currentContext?.findRenderObject();
     if (layer is! RenderBox || !layer.hasSize || !layer.attached || _yieldNow) return;
@@ -836,7 +884,13 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     if (page == null || !identical(page, _searchingPage)) widget.run.observe(page, l);
     final step = widget.run.currentStep;
     final newStep = _revealedPage != page || _revealedStep != step;
-    if (_revealedStep != step) { _cardMotion.reset(); _pillSide.reset(); _touched = false; }
+    if (_step != step) {
+      _cardMotion.reset();
+      _pillSide.reset();
+      // CLAIM(reveal-touch-scope): matching another step on the same page while
+      // the user scrolls is discovery, not a new arrival [guide_r4_test R4-fix-C6b].
+      _touched = identical(page, _page) && _scrolling && !(_glide?.isMoving ?? false);
+    }
     if (page != null && step == null) {
       _revealedPage = null;
       _revealedStep = null;
@@ -1083,6 +1137,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_pointer);
     widget.run.removeListener(_changed);
     _reveal.dispose();
+    _handRest?.cancel();
     _pulse.dispose();
     _glide?.abandon();
     _cardOpacity.dispose();
@@ -1112,18 +1167,10 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     return DefaultTextStyle(
         style: Theme.of(context).textTheme.bodyMedium ?? const TextStyle(),
         child: SizedBox.expand(key: _layerKey, child: LayoutBuilder(builder: (context, constraints) {
-      final target = _liveTarget; // laid out after the page below: a scroll shows in this frame
+      final markers = _markersFor(constraints.biggest);
+      final target = markers.target, outline = markers.outline, routeOutline = markers.routeOutline;
+      final marked = markers.marked, routeMarked = markers.routeMarked, hidden = markers.hidden, up = markers.up;
       final screen = Offset.zero & constraints.biggest;
-      final outline = target?.inflate(kGuideOutlineGap).intersect(screen);
-      final marked = show && target != null && step != null && revealProgress == 1 &&
-          outline != null && !outline.isEmpty;
-      final routeOutline = target == null && show ? _route?.inflate(kGuideOutlineGap).intersect(screen) : null;
-      final routeMarked = routeOutline != null && !routeOutline.isEmpty;
-      // The target is out of view: not built yet (the way to it lies below), or not fully on
-      // screen. A page still sliding in is not shown at all ([show]), so this never flashes.
-      final hidden = show && step != null && (target == null ? _lazyTarget : _outOfView(target, screen));
-      final up = target != null && target.center.dy < screen.center.dy;
-      _markersTick = show && (marked || routeMarked || hidden);
       final bounds = _boundsOf(screen.size, MediaQuery.paddingOf(context), MediaQuery.viewInsetsOf(context).bottom, _chrome);
       return Stack(children: [
         // CLAIM(lazy-skeleton-input): a published P6 plan needs input even before
@@ -1149,9 +1196,9 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
           key: LiveGuideOverlay.outlineKey,
           decoration: BoxDecoration(border: Border.all(color: kGuideMarkerColor, width: 2.5), borderRadius: R.rMd),
         )))),
-        if (marked) Positioned.fromRect(rect: target, child: Semantics(
+        if (marked) Positioned.fromRect(rect: target!, child: Semantics(
           key: LiveGuideOverlay.targetProxyKey, container: true, button: true,
-          label: l.guideTargetProxy(step.caption.of(l).replaceAll('**', '')), onTap: _activateTarget,
+          label: l.guideTargetProxy(step!.caption.of(l).replaceAll('**', '')), onTap: _activateTarget,
           child: const SizedBox.expand(),
         )),
         if (routeMarked && _routeInfo != null) Positioned.fromRect(rect: _route!, child: Semantics(
@@ -1168,16 +1215,23 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
             LayoutId(id: 'card', child: ValueListenableBuilder<double>(valueListenable: _cardOpacity, builder: (_, value, child) => Opacity(opacity: value, child: child), child: _cardMover(GuideStepCard(model: model, onExit: widget.onExit,
               onBackToGuide: state is GuideOffPath && state.lastIndex != null ? widget.onBackToGuide : null), l))),
             if (target != null || routeMarked) LayoutId(id: 'pill', child: ExcludeSemantics(child: IgnorePointer(
-              child: Opacity(opacity: marked || routeMarked ? 1 : 0, child: GuideMarkerPill(l.guideTapMarker,
+              child: RepaintBoundary(child: Opacity(opacity: marked || routeMarked ? 1 : 0, child: GuideMarkerPill(l.guideTapMarker,
                 key: marked || routeMarked ? LiveGuideOverlay.tapPillKey : null,
-                leading: GuideTapHand(clock: _pulse, side: _pillSide)))))),
+                leading: RepaintBoundary(child: GuideTapHand(clock: _pulse, side: _pillSide)))))))),
             if (hidden) LayoutId(id: 'indicator', child: ExcludeSemantics(child: IgnorePointer(
-              child: GuideScrollIndicator(key: LiveGuideOverlay.scrollMarkerKey, text: l.guideScrollMarker, clock: _pulse, up: up)))),
+              child: RepaintBoundary(child: GuideScrollIndicator(key: LiveGuideOverlay.scrollMarkerKey, text: l.guideScrollMarker, clock: _pulse, up: up))))),
           ],
         )),
       ]);
     })));
   }
+}
+
+/// One geometry snapshot shared by build and the post-layout clock decision.
+class _GuideMarkers {
+  final Rect? target, outline, routeOutline;
+  final bool marked, routeMarked, hidden, up;
+  const _GuideMarkers(this.target, this.outline, this.routeOutline, this.marked, this.routeMarked, this.hidden, this.up);
 }
 
 /// The area the card, the pill and the auto-scroll may use: the screen between the top chrome
@@ -1301,7 +1355,7 @@ class _GuideLayout extends MultiChildLayoutDelegate {
     Rect? pill;
     if (hasChild('pill')) {
       final pillSize = layoutChild('pill', BoxConstraints.loose(bounds.size));
-      final layout = GuidePillLayout(target!, bounds, avoid, pillVisible ? pillSide.remembered : null);
+      final layout = GuidePillLayout(target!, bounds, pillVisible ? pillSide.remembered : null);
       pill = layout.place(pillSize);
       positionChild('pill', pill.topLeft);
       pillSide.afterLayout(pillVisible ? layout.sideFor(pillSize) : null);
