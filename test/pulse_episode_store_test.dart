@@ -69,7 +69,7 @@ void main() {
     await db.execute('CREATE TABLE input_rev (bucket INTEGER PRIMARY KEY,rev INTEGER)');
     await db.insert('input_rev',{'bucket':0,'rev':2});
     await expectLater(store.reconcile(detection(),origin:'sync',nowMs:1,
-      inputStamp:const PulseInputStamp(0,0,1)),throwsStateError);
+      inputStamp:const PulseInputStamp(0,0,1)),throwsA(isA<PulseInputChanged>()));
     expect(await db.query('pulse_episode'),isEmpty);
     expect(await db.query('pulse_episode_outbox'),isEmpty);
   });

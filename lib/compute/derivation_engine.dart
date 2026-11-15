@@ -2891,7 +2891,7 @@ class DerivationEngine {
         final rescored = noData
             ? 0
             : await _quietLevelRepass(profile, dataNowSec, scope.rawDays);
-        if (!noData) await PulseEpisodeWorker.run(scope.rawDays, processingContext: processingContext);
+        final earlyPulse = noData ? PulseRunResult.clean : await _runPulseEpisodes(scope.rawDays, processingContext);
         if (rescored > 0) {
           await _refreshBaselines();
           await _runCrossDay(profile);
@@ -2908,7 +2908,7 @@ class DerivationEngine {
         }
         onScope?.call(0);
         onScopeDays?.call(const []);
-        if (!noData) await _pruneOldDecoded(scope.rawDays, dataNowSec);
+        if (!noData) await _pruneOldDecoded(scope.rawDays, dataNowSec, earlyPulse.unevaluatedDays);
         return rescored;
       }
       final previousPulseResults = <String, ({int version, bool imported})>{};
@@ -3082,7 +3082,7 @@ class DerivationEngine {
       _diag['stage'] = 'quiet_repass';
       done += await _quietLevelRepass(profile, dataNowSec, scope.rawDays);
 
-      if (!noData) await PulseEpisodeWorker.run(scope.rawDays, processingContext: pulseContext);
+      final pulse = noData ? PulseRunResult.clean : await _runPulseEpisodes(scope.rawDays, pulseContext);
       // 4. Cross-day rollup + notifications (best-effort).
       if (done > 0) {
         onCrossDay?.call(true);
@@ -3108,7 +3108,7 @@ class DerivationEngine {
       // so it is safe to run this often.
       _diag['stage'] = 'prune';
       _calcStage('Tidying up');
-      if (!noData) await _pruneOldDecoded(scope.rawDays, dataNowSec);
+      if (!noData) await _pruneOldDecoded(scope.rawDays, dataNowSec, pulse.unevaluatedDays);
       // The timezone hold is a FULL-RESTAGE concept — only a restage actually
       // re-derives every held day — so clearing it stays behind fullHistory.
       if (scope.fullHistory && !noData) {

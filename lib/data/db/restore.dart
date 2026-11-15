@@ -1729,6 +1729,10 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                   continue;
                 }
 
+                // First-arrival provenance says how THIS install's band delivered a
+                // day; a backup's days reach the user in one summary, never one by one.
+                if (t == 'pulse_input_arrival' && row['source'] == 'arrival') row['origin'] = 'restored';
+
                 if (t == 'sleep_nap' || t == 'sessions' || t == 'moment_label') {
                   var keepLocalDecision = false;
                   final link = t == 'sleep_nap'

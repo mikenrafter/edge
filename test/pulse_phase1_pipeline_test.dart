@@ -14,6 +14,7 @@ import 'package:openstrap_edge/ble/adapters/host.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/processing_context.dart';
 import 'package:openstrap_edge/compute/profile.dart';
+import 'package:openstrap_edge/compute/pulse_episode_worker.dart';
 import 'package:openstrap_edge/compute/pulse_alert_record.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
@@ -24,6 +25,7 @@ import 'package:openstrap_edge/notify/notification_ids.dart';
 import 'package:openstrap_edge/notify/notification_prefs.dart';
 import 'package:openstrap_edge/state/derive_coordinator.dart';
 import 'package:path/path.dart' as p;
+import 'pulse_band_fixture.dart' show ProbeFn;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -237,6 +239,26 @@ void main() {
     await bandCommit(eveningOf(day).add(const Duration(hours: 1)), 60);
     await drainScheduler();
     expect(shown, hasLength(1));
+  });
+
+  // why: review r1 finding 1. The pulse episode worker runs inside the derive
+  // pass; whatever it throws must not take the cross-day rollup, the
+  // notifications (phase 1 alerts included) or the prune with it.
+  // proves: CLAIM(pulse-contain); catches: a call site without containment.
+  test('a failing pulse episode worker does not stop the phase 1 summary',
+      () async {
+    PulseEpisodeWorker.probe = ProbeFn((_) async => throw StateError('boom'));
+    addTearDown(() => PulseEpisodeWorker.probe = null);
+    await historicalCommit(yesterdayEvening(), 720);
+    await LocalDb.enqueueDeriveJob(
+      type: 'derive_heavy',
+      reason: 'capture_settled',
+    );
+    await drainScheduler();
+    expect(await LocalDb.metricValueOn(yesterday, _flag), 1.0);
+    expect(shown, hasLength(1));
+    expect(isSummary(shown.single), isTrue);
+    expect(await alertState(yesterday), PulseAlertState.summary);
   });
 
   // why: rule 2. A writer that never opted in (backfill, history) and the

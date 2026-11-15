@@ -48,6 +48,26 @@ class PulseEpisodeSnapshot {
   };
 }
 
+/// The input moved between the worker's read and the commit (a late or live
+/// record landed). Nothing was written; the day is read again on the next pass.
+class PulseInputChanged implements Exception {
+  const PulseInputChanged();
+  @override
+  String toString() => 'Pulse input changed; retry before pruning';
+}
+
+/// A row of `pulse_episode_outbox` that a delivery consumed or may have
+/// consumed. A `summary` that only records a merge ("joined episode") never
+/// reached the user, and neither did a retraction or a replaced episode.
+bool pulseOutboxConsumed(Map<String, Object?> outbox) =>
+    switch (outbox['state']) {
+      'sent' || 'pending' || 'unknown' => true,
+      'summary' => outbox['reason'] != 'joined episode',
+      _ => false,
+    };
+
+const _retiredReasons = ['decision changed', 'joined episode', 'superseded episode'];
+
 class PulseEpisodeStore {
   final Database db;
   const PulseEpisodeStore(this.db);
@@ -85,6 +105,20 @@ class PulseEpisodeStore {
     }
   }
 
+  /// An episode alerts by itself when the band synced the day it started on
+  /// ([syncDays]); every other path, or no knowledge, takes [origin].
+  static String _originOf(
+    ana.PulseEpisode episode,
+    String origin,
+    Set<String>? syncDays,
+  ) => syncDays == null
+      ? origin
+      : syncDays.contains(
+          dayLabelOf(DateTime.fromMillisecondsSinceEpoch(episode.startMs)),
+        )
+      ? 'sync'
+      : 'bulk';
+
   /// Only HISTORY_COMPLETE with a durable tail certifies a band's closed history.
   /// A HISTORY_END transport chunk never advances this marker.
   Future<void> certifyCurrentSource(String source) => db.transaction((
@@ -112,6 +146,7 @@ class PulseEpisodeStore {
     required int nowMs,
     List<Map<String, dynamic>> heartRate = const [],
     PulseInputStamp? inputStamp,
+    Set<String>? syncDays,
   }) async {
     final input = PulsePreparationInput(detection, heartRate);
     final preparation = await Isolate.run(
@@ -125,10 +160,11 @@ class PulseEpisodeStore {
           [inputStamp.startBucket, inputStamp.endBucket],
         );
         if (rev.first['rev'] != inputStamp.revision) {
-          throw StateError('Pulse input changed; retry before pruning');
+          throw const PulseInputChanged();
         }
       }
       final previousEpisodes = await txn.query('pulse_episode');
+      final finalIds = <String>[];
       for (final episode in detection.episodes) {
         final encoded = prepared[episode.id]!;
         final overlaps =
@@ -151,7 +187,10 @@ class PulseEpisodeStore {
         var id = episode.id;
         for (final old in overlaps) {
           final seed = old['seed_ms'] as int;
-          if (episode.startMs <= seed && seed < episode.endMs) {
+          // Only a live row hands over its identity; a retired one stays retired.
+          if (old['status'] == 'active' &&
+              episode.startMs <= seed &&
+              seed < episode.endMs) {
             id = old['id'] as String;
             break;
           }
@@ -161,6 +200,9 @@ class PulseEpisodeStore {
           where: 'id = ?',
           whereArgs: [id],
         );
+        final reactivated =
+            existing.isNotEmpty && existing.first['status'] != 'active';
+        finalIds.add(id);
         final local = DateTime.fromMillisecondsSinceEpoch(episode.startMs);
         final revision = encoded['checksum'] as String;
         await txn.insert('pulse_episode', {
@@ -187,9 +229,13 @@ class PulseEpisodeStore {
               : existing.first['first_seen_ms'],
           'updated_ms': nowMs,
           'revision': revision,
-          'origin': existing.isEmpty ? origin : existing.first['origin'],
+          'origin': existing.isEmpty
+              ? _originOf(episode, origin, syncDays)
+              : existing.first['origin'],
           'status': 'active',
         }, conflictAlgorithm: ConflictAlgorithm.replace);
+        // The id is live again: an old merge alias must not redirect it.
+        await txn.delete('pulse_episode_alias', where: 'alias = ?', whereArgs: [id]);
         await txn.insert('pulse_episode_revision', {
           'episode_id': id,
           'revision': revision,
@@ -216,13 +262,7 @@ class PulseEpisodeStore {
             where: 'episode_id = ?',
             whereArgs: [old['id']],
           );
-          if (alerts.isNotEmpty &&
-              [
-                'sent',
-                'summary',
-                'pending',
-                'unknown',
-              ].contains(alerts.first['state'])) {
+          if (alerts.isNotEmpty && pulseOutboxConsumed(alerts.first)) {
             inherited = alerts.first;
             break;
           }
@@ -238,7 +278,7 @@ class PulseEpisodeStore {
               inherited?['reason'] ??
               (episode.alertEligible ? null : 'recording quality'),
           'at_ms': inherited?['at_ms'] ?? nowMs,
-          'origin': origin,
+          'origin': _originOf(episode, origin, syncDays),
           'token': inherited?['token'],
           'summary_key': inherited?['summary_key'],
         }, conflictAlgorithm: ConflictAlgorithm.ignore);
@@ -252,31 +292,27 @@ class PulseEpisodeStore {
               'token': inherited['token'],
               'summary_key': inherited['summary_key'],
             },
-            where: "episode_id=? AND state IN ('owed','not_sent')",
+            where:
+                "episode_id=? AND (state IN ('owed','not_sent') OR (state='summary' AND reason='joined episode'))",
             whereArgs: [id],
           );
-        }
-        for (final old in overlaps) {
-          final oldId = old['id'] as String;
-          final seed = old['seed_ms'] as int;
-          if (oldId != id && episode.startMs <= seed && seed < episode.endMs) {
-            await txn.insert('pulse_episode_alias', {
-              'alias': oldId,
-              'episode_id': id,
-            }, conflictAlgorithm: ConflictAlgorithm.replace);
-            await txn.update(
-              'pulse_episode',
-              {'status': 'merged'},
-              where: 'id = ?',
-              whereArgs: [oldId],
-            );
-            await txn.update(
-              'pulse_episode_outbox',
-              {'state': 'summary', 'reason': 'joined episode'},
-              where: "episode_id = ? AND state IN ('owed','not_sent')",
-              whereArgs: [oldId],
-            );
-          }
+        } else if (reactivated) {
+          // A retracted, merged or replaced episode that qualifies again is a
+          // live stretch nobody was told about: its terminal "decision
+          // changed / joined / replaced" record is not a delivery.
+          await txn.rawUpdate(
+            "UPDATE pulse_episode_outbox SET state=?,reason=?,revision=?,at_ms=? "
+            "WHERE episode_id=? AND state IN ('not_sent','summary') "
+            "AND reason IN (${_retiredReasons.map((_) => '?').join(',')})",
+            [
+              episode.alertEligible ? 'owed' : 'not_sent',
+              episode.alertEligible ? null : 'recording quality',
+              revision,
+              nowMs,
+              id,
+              ..._retiredReasons,
+            ],
+          );
         }
         // At most current + handed-off revision. Delivery tombstones are never pruned.
         await txn.rawDelete(
@@ -284,6 +320,47 @@ class PulseEpisodeStore {
           AND revision != ? AND revision NOT IN
           (SELECT revision FROM pulse_episode_outbox WHERE episode_id = ?)''',
           [id, revision, id],
+        );
+      }
+      // A live row that no new episode took over, yet overlaps one, describes
+      // a stretch another row now owns: retire it into that row (an alias) so
+      // a stretch is one active row, and its unsent alert is owed once, by the
+      // survivor. Consumed records stay as they are; the survivor inherited them.
+      for (final old in previousEpisodes) {
+        final oldId = old['id'] as String;
+        if (old['status'] != 'active' || finalIds.contains(oldId)) continue;
+        final over = [
+          for (var i = 0; i < detection.episodes.length; i++)
+            if (detection.episodes[i].source == old['source'] &&
+                detection.episodes[i].startMs < (old['end_ms'] as int) &&
+                detection.episodes[i].endMs > (old['start_ms'] as int))
+              i,
+        ];
+        if (over.isEmpty) continue;
+        final seed = old['seed_ms'] as int;
+        final holder = over.where(
+          (i) =>
+              detection.episodes[i].startMs <= seed &&
+              seed < detection.episodes[i].endMs,
+        );
+        final joined = holder.isNotEmpty;
+        await txn.insert('pulse_episode_alias', {
+          'alias': oldId,
+          'episode_id': finalIds[joined ? holder.first : over.first],
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        await txn.update(
+          'pulse_episode',
+          {'status': joined ? 'merged' : 'superseded'},
+          where: 'id = ?',
+          whereArgs: [oldId],
+        );
+        await txn.update(
+          'pulse_episode_outbox',
+          joined
+              ? {'state': 'summary', 'reason': 'joined episode'}
+              : {'state': 'not_sent', 'reason': 'superseded episode'},
+          where: "episode_id = ? AND state IN ('owed','not_sent')",
+          whereArgs: [oldId],
         );
       }
       // A quality refusal retains prior evidence. Only fully evaluated, good
@@ -452,8 +529,10 @@ class PulseEpisodeStore {
     required int nowMs,
     int budgetBytes = pulseEvidenceBudget,
   }) => db.transaction((txn) async {
+    // Sizes and dates only: the payloads can be megabytes each (rule B8).
     final rows = await txn.query(
       'pulse_evidence_chunk',
+      columns: ['episode_id', 'revision', 'byte_count', 'created_ms'],
       orderBy: 'created_ms ASC,episode_id,revision',
     );
     var bytes = rows.fold<int>(0, (s, r) => s + (r['byte_count'] as int));

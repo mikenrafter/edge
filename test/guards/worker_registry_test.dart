@@ -13,6 +13,10 @@ import 'package:openstrap_edge/util/worker_entries.dart';
 
 /// Substring of `Symbol.toString()` -> expected dispatcher.
 const kExpected = <String, Dispatcher>{
+  // Irregular pulse episodes (compute/pulse_episode_worker.dart, data/pulse_episode_store.dart).
+  'detectPulseEpisodesHeavy': Dispatcher.run,
+  'preparePulseEvidenceHeavy': Dispatcher.run,
+  'decodePulseEvidenceHeavy': Dispatcher.run,
   'trackLearningHeavy': Dispatcher.run,
   'typicalCaffeineHeavy': Dispatcher.run,
   'legacyWakeHeavy': Dispatcher.run,
