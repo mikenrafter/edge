@@ -33,6 +33,9 @@ class InlineLoading extends StatelessWidget {
   /// would be taller than the line it stands in for.
   final bool compact;
 
+  /// RED-PHASE STUB: not read yet.
+  final bool announce;
+
   const InlineLoading({
     super.key,
     required this.status,
@@ -40,6 +43,7 @@ class InlineLoading extends StatelessWidget {
     this.height,
     this.reserveDetail = false,
     this.compact = false,
+    this.announce = false,
   });
 
   @override
