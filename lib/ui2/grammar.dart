@@ -2296,17 +2296,17 @@ class _Cta extends StatelessWidget {
   final bool arrow;
   const _Cta(this.label, this.color, {this.arrow = true});
 
+  Widget _text() => Text(label,
+      style: F.cap.copyWith(color: color, fontWeight: FontWeight.w600));
+
   @override
   Widget build(BuildContext c) => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
       Flexible(
-        child: PendingStatic(
-          child: Text(
-            label,
-            style: F.cap.copyWith(color: color, fontWeight: FontWeight.w600),
-          ),
-        ),
+        // Advice can contain read-dependent counts; only an actual action
+        // label is chrome that stays readable through a day switch.
+        child: arrow ? PendingStatic(child: _text()) : _text(),
       ),
       if (arrow) ...[
         const SizedBox(width: S.x1),
