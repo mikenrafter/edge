@@ -3961,5 +3961,7 @@
   "pulseAlertNotPermitted": "未提醒：未允许通知",
   "pulseAlertUnknown": "提醒可能已发送 {when}",
   "pulseAlertQuiet": "未提醒：因免打扰时段而暂缓",
-  "pulseAlertEarlier": "已由应用的早期版本提醒 {when}"
+  "pulseAlertEarlier": "已由应用的早期版本提醒 {when}",
+  "observationsLoading": "正在加载观察记录",
+  "observationsPulsePattern": "不规则脉搏模式"
 }

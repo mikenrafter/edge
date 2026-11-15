@@ -1,3 +1,4 @@
+import 'dart:async';
 import '../profile/profile.dart' show SettingsAccordion;
 import '../../l10n/display_text.dart';
 // HEALTH — observation-oriented. "What is happening, what is changing, is
@@ -37,6 +38,7 @@ import 'investigate.dart' show Investigate;
 import 'advanced.dart';
 import 'ecg.dart' show EcgEntryCard;
 import 'findings_log.dart';
+import '../observation_history.dart';
 import 'home_screen.dart';
 import 'beats.dart';
 import 'metric_catalogue.dart';
@@ -98,9 +100,8 @@ class HealthData {
   final int? napCount;
   final String napDay;
 
-  /// EVERYTHING THE APP HAS EVER NOTICED, newest first — see findings.dart.
-  /// Recomputed from the rollup on every load rather than logged, so the
-  /// history is there from the first run instead of starting empty today.
+  /// Stored daily findings, newest first, excluding pulse flags represented by
+  /// [pulseEpisodes]. Recomputed from the rollup; no detector runs on read.
   final List<Finding> findings;
   final List<PulseEpisodeSnapshot> pulseEpisodes;
   final bool pulseReadFailed;
@@ -200,10 +201,22 @@ class HealthData {
         failed: true,
       ),
     );
-    final today = await repo.getTodayStored();
-    final cd = await repo.getInsights();
-    final profile = await repo.getProfile();
-    final days = await repo.availableDays();
+    const chartKeys = [
+      'resting_hr', 'hrv', 'sleep', 'stress', 'resp_rate',
+      'recovery', 'irregular_rhythm_flag',
+    ];
+    // CLAIM(health-parallel-reads): independent stored reads start before the
+    // primary resolves [observations_pilot_feedback_test].
+    final (today, cd, profile, days, chartReads) = await (
+      repo.getTodayStored(),
+      repo.getInsights(),
+      repo.getProfile(),
+      repo.availableDays(),
+      Future.wait([for (final key in chartKeys) repo.getChart(key)]),
+    ).wait;
+    final storedCharts = {
+      for (var i = 0; i < chartKeys.length; i++) chartKeys[i]: chartReads[i],
+    };
 
     final charts = <String, List<ChartPoint>>{};
     DateTime? chartsAt;
@@ -215,7 +228,7 @@ class HealthData {
       'stress',
       'resp_rate',
     ]) {
-      final chart = await repo.getChart(k);
+      final chart = storedCharts[k]!;
       charts[k] = pointsOf(chart);
       final at = computedAtOf(chart['computed_at']);
       if (at != null && (chartsAt == null || at.isAfter(chartsAt))) {
@@ -270,11 +283,11 @@ class HealthData {
     String labelAt(int t) =>
         dayLabelOf(DateTime.fromMillisecondsSinceEpoch(t * 1000));
     final ready = {
-      for (final p in pointsOf(await repo.getChart('recovery')))
+      for (final p in pointsOf(storedCharts['recovery']!))
         labelAt(p.t): p.v,
     };
     final irregular = {
-      for (final p in pointsOf(await repo.getChart('irregular_rhythm_flag')))
+      for (final p in pointsOf(storedCharts['irregular_rhythm_flag']!))
         if (p.v == 1) labelAt(p.t),
     };
 
@@ -287,9 +300,9 @@ class HealthData {
     final wearable = await wearableRead;
 
     final pulse = await episodesRead;
-    for(final e in pulse.episodes) {
-      irregular.removeWhere((day)=>day.compareTo(e.row['day'] as String)>=0 && day.compareTo(e.row['end_day'] as String)<=0);
-    }
+    final observations = observationHistory(findingsHistory(
+      cd, readiness: ready, irregularDays: irregular, alerts: await alertsRead,
+    ), pulse.episodes);
     return HealthData(
       pulseEpisodes:pulse.episodes,
       pulseReadFailed:pulse.failed,
@@ -306,12 +319,10 @@ class HealthData {
       napMin: (naps['nap_min'] as num?)?.round(),
       napCount: (naps['naps'] as List?)?.length,
       napDay: napDay,
-      findings: findingsHistory(
-        cd,
-        readiness: ready,
-        irregularDays: irregular,
-        alerts: await alertsRead,
-      ),
+      findings: [
+        for (final entry in observations)
+          if (entry case DailyObservation(:final finding)) finding,
+      ],
       baselines: heart['baselines'] is Map
           ? (heart['baselines'] as Map).cast<String, dynamic>()
           : null,
@@ -974,15 +985,33 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
     final illnessDay = illness is Map ? illness['date']?.toString() : null;
     final illnessBehind = _behind(illnessDay, widget.now);
 
+    final currentIllness = state != null && state != 'green' &&
+        illnessDay != null && isRecentFindingDate(illnessDay, today: todayLabel(widget.now));
+    // Today's illness payload can be newer than a withheld cross-day rollup.
+    final observations = observationHistory([
+      ...d.findings,
+      if (currentIllness) Finding(FindingKind.illness, illnessDay),
+    ], d.pulseEpisodes);
+    final newest = observations.firstOrNull;
+    final newestFinding = newest is DailyObservation ? newest.finding : null;
+    final newestEpisode = newest is PulseObservation ? newest.episode : null;
+    void openObservations() {
+      final repo = repoOf(c);
+      go(c, FindingsLog(
+        [for (final entry in observations)
+          if (entry case DailyObservation(:final finding)) finding], rhr: d.points('resting_hr'), episodes: d.pulseEpisodes,
+        loadEpisodes: d.pulseReadFailed && repo != null ? repo.getPulseEpisodes : null,
+      ));
+    }
+
     // Hoisted out of the tree so the section that now wraps it does not push
     // its copy two levels deeper. The card itself is untouched.
     // Same freshness rule as the push and Home: only today's or yesterday's
     // night, judged by the WALL CLOCK at build time — a payload loaded
     // yesterday and rebuilt today with no new sync has aged a day all the same.
-    final illnessCard = state == null ||
-            state == 'green' ||
-            illnessDay == null ||
-            !isRecentFindingDate(illnessDay, today: todayLabel(widget.now))
+    final illnessCard = !currentIllness ||
+            newestFinding?.kind != FindingKind.illness ||
+            newestFinding?.date != illnessDay
         ? null
         : Observation(
             state == 'red'
@@ -1052,33 +1081,19 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
           day: status is Map ? status['overnight_day']?.toString() : null,
           computedAt: computedAtOf(
               status is Map ? status['overnight_computed_at'] : null)),
-      // OBSERVATIONS — the illness watch, wrapped, plus a door to the other
-      // three detectors.
-      //
-      // The illness card is unchanged and stays first: it is the one finding
-      // with copy specific enough to be worth a card of its own. What it gains
-      // is a title over it and a way through to the anomaly, skin temperature
-      // and resting-HR findings, which fired for months and reached no screen
-      // at all. NOT a feed — see findings_log.dart. Nothing here is unread,
-      // badged or dismissible, and it does not appear on Home.
-      //
-      // ALWAYS PRESENT. With nothing to say it is a one-line empty state in the
-      // same card, not an absent section: first launch and loaded show the same
-      // cards. It used to be skipped while today's figures were building, but
-      // the rows above no longer change shape when they land, so there is
-      // nothing left for it to move.
+      // One newest observation across daily detectors and timed recordings.
       const SizedBox(height: S.x4),
       Section(
         key: const ValueKey('card:observations'),
         l?.healthObservationsTitle ?? 'Observations',
-        illnessCard ?? (d.pulseReadFailed ? const Surface(child:Text('Pulse recordings could not be loaded. Open Observations to retry.')) : null) ?? (d.pulseEpisodes.isNotEmpty ? Surface(child:PulseEpisodeRow(d.pulseEpisodes.first)) : null) ??
+        illnessCard ?? (d.pulseReadFailed ? const Surface(child:Text('Pulse recordings could not be loaded. Open Observations to retry.')) : null) ?? (newestEpisode != null ? Surface(child:PulseEpisodeRow(newestEpisode)) : null) ??
             // No live illness, but the log is not empty: the newest entry in
             // place and the rest one tap away. ONE row — a wall of findings
             // on the tab you land on is the feed this is not.
-            (d.findings.isNotEmpty
+            (newestFinding != null
                 ? Surface(
-                    onTap: () => go(c, FindingsLog(d.findings, rhr: d.points('resting_hr'))),
-                    child: FindingRow(d.findings.first),
+                    onTap: openObservations,
+                    child: FindingRow(newestFinding),
                   )
                 : Surface(
                     // Two lines tall in both states: the "not yet" sentence is
@@ -1110,7 +1125,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
                   )),
         action: l?.healthSeeAll ?? 'See all',
         onAction:
-            () => go(c, FindingsLog(d.findings, rhr: d.points('resting_hr'))),
+            openObservations,
       ),
 
       // Naps moved to the Sleep tab, beside the night (the Naps door there).

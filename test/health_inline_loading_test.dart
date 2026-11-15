@@ -8,9 +8,8 @@
 // `Center(child: CircularProgressIndicator())`, the pattern removed from
 // every calculation screen but did not list health_screen.dart.
 //
-// ASSUMED: while a sub-tab's own read is pending, what shows is InlineLoading (a
-// ProgressIndicator inside a Surface card); the title, sub-tabs and whatever was
-// already read stay on screen.
+// WHY/CLAIM(health-pending-structure): pending sub-tabs retain the real layout
+// and its controls, using the app's pending paint rather than spinners.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,8 +22,10 @@ import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
-final _bars = find.byWidgetPredicate((w) => w is ProgressIndicator,
-    description: 'a ProgressIndicator');
+final _pending = find.byWidgetPredicate(
+  (w) => w is PendingContent && w.pending,
+  description: 'pending content',
+);
 
 Future<void> _pump(WidgetTester t, int tab) async {
   t.view.physicalSize = const Size(390, 3000);
@@ -32,24 +33,31 @@ Future<void> _pump(WidgetTester t, int tab) async {
   addTearDown(t.view.reset);
   final app = AppState.forTesting();
   addTearDown(app.dispose);
-  await t.pumpWidget(MultiProvider(
-    providers: [
-      ChangeNotifierProvider<AppState>.value(value: app),
-      ChangeNotifierProvider(
-          create: (_) => UnitsController.seed(UnitSystem.metric)),
-      ChangeNotifierProvider(
+  await t.pumpWidget(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider<AppState>.value(value: app),
+        ChangeNotifierProvider(
+          create: (_) => UnitsController.seed(UnitSystem.metric),
+        ),
+        ChangeNotifierProvider(
           create: (_) =>
-              ThemeController.seed(AppThemeChoice.light, Brightness.light)),
-      ChangeNotifierProvider(create: (_) => LocaleController.seed(null)),
-      Provider<Capabilities>.value(
-          value: Capabilities(const CapabilityInputs())),
-    ],
-    child: MaterialApp(
-      theme: buildTheme(Brightness.light),
-      // Only the main read is handed over: the sub-tab's own read is pending.
-      home: Scaffold(body: HealthScreen(data: const HealthData(), tab: tab)),
+              ThemeController.seed(AppThemeChoice.light, Brightness.light),
+        ),
+        ChangeNotifierProvider(create: (_) => LocaleController.seed(null)),
+        Provider<Capabilities>.value(
+          value: Capabilities(const CapabilityInputs()),
+        ),
+      ],
+      child: MaterialApp(
+        theme: buildTheme(Brightness.light),
+        // Only the main read is handed over: the sub-tab's own read is pending.
+        home: Scaffold(
+          body: HealthScreen(data: const HealthData(), tab: tab),
+        ),
+      ),
     ),
-  ));
+  );
   // The first frame only: the sub-tab's own read has been asked for and has
   // not landed (a second pump would let it fail against the missing store).
 }
@@ -62,19 +70,25 @@ void main() {
         'title and tabs stay', (t) async {
       await _pump(t, tab);
       expect(find.text('Health'), findsWidgets);
-      expect(_bars, findsWidgets, reason: '$name is waiting on a read');
-      for (final e in _bars.evaluate()) {
-        final inCard = find
-            .ancestor(
-                of: find.byElementPredicate((x) => identical(x, e)),
-                matching: find.byType(Surface))
-            .evaluate()
-            .isNotEmpty;
-        expect(inCard, isTrue,
-            reason: '$name: a spinner outside a Surface card is the bare '
-                'page spinner');
+      expect(_pending, findsWidgets, reason: '$name is waiting on a read');
+      expect(
+        find.byWidgetPredicate((w) => w is ProgressIndicator),
+        findsNothing,
+      );
+      for (final entry in _pending.evaluate()) {
+        expect(
+          find.ancestor(
+            of: find.byElementPredicate((e) => identical(e, entry)),
+            matching: find.byType(Surface),
+          ),
+          findsWidgets,
+          reason: '$name keeps its pending content inside the card',
+        );
       }
       expect(find.byType(InlineLoading), findsOneWidget);
+      for (final label in ['Overview', 'Explore', 'Trends', 'Vitals', 'Labs']) {
+        expect(find.text(label), findsWidgets);
+      }
     });
   }
 }

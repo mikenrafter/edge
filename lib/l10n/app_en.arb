@@ -19560,5 +19560,7 @@
         "example": "Thu, Nov 12 08:14"
       }
     }
-  }
+  },
+  "observationsLoading": "Loading observations",
+  "observationsPulsePattern": "Irregular pulse pattern"
 }

@@ -172,6 +172,13 @@ in the same change that introduces it (AGENTS.md §6).
   Schema 87 also carries legacy medical claims for already flagged pulse days
   into their dedicated daily delivery keys.
 
+## Observations
+
+An observation entry is a stored daily detector finding or a pulse episode, shown
+by `ui2/observation_history.dart`. An episode replaces daily irregular-pulse flags
+on its covered dates. Other finding kinds remain separate. Health shows the
+newest entry; the Observations screen shows the entries for the selected day.
+
 ## Pulse episodes
 
 A pulse episode is at least two consecutive closed UTC five-minute windows meeting the experimental irregular timing and recording quality rules. Its bounds describe qualifying windows, not proven rhythm onset or offset. Its seed is the first qualifying window; the source and seed identify it across extensions and algorithm revisions. Beat evidence preserves original intervals, cleaning hypotheses and valid adjacency. A delivery claim is a durable per-episode record consumed before OS handoff; ambiguous delivery remains unknown and is never retried. A partial trace explicitly lists omitted recording ranges. Motion and wear remain unknown when no reliable measurement exists.

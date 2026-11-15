@@ -39,16 +39,17 @@ class _Repo extends LocalRepository {
   Completer<void>? hold;
 
   @override
-  Future<Map<String, dynamic>> getToday() async => const {
-        'status': {'today_day': _day}
-      };
+  Future<Map<String, dynamic>> getTodayStored() async => const {
+    'status': {'today_day': _day},
+  };
 
   @override
   Future<List<String>> availableDays() async => const [_day];
 
   @override
-  Future<Map<String, dynamic>> getDayTimeline(String date) async =>
-      {'date': date};
+  Future<Map<String, dynamic>> getDayTimeline(String date) async => {
+    'date': date,
+  };
 
   @override
   Future<Map<String, dynamic>> getDayLungs(String date) async {
@@ -61,7 +62,7 @@ class _Repo extends LocalRepository {
       await h.future;
     }
     return {
-      'resp': {'value': v}
+      'resp': {'value': v},
     };
   }
 
@@ -79,8 +80,9 @@ Future<void> _settle(WidgetTester t) async {
 }
 
 void main() {
-  testWidgets('a read in flight when the revision lands does not win',
-      (t) async {
+  testWidgets('a read in flight when the revision lands does not win', (
+    t,
+  ) async {
     // Wide enough that all five sub-tab chips are on screen to be tapped.
     t.view.physicalSize = const Size(800 * 3, 2400 * 3);
     t.view.devicePixelRatio = 3;
@@ -91,13 +93,15 @@ void main() {
     final repo = _Repo();
     app.repo = repo;
 
-    await t.pumpWidget(MaterialApp(
-      theme: buildTheme(Brightness.light),
-      home: ChangeNotifierProvider<AppState>.value(
-        value: app,
-        child: const Scaffold(body: HealthScreen()),
+    await t.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(Brightness.light),
+        home: ChangeNotifierProvider<AppState>.value(
+          value: app,
+          child: const Scaffold(body: HealthScreen()),
+        ),
       ),
-    ));
+    );
     await _settle(t);
 
     // The user opens Vitals for the first time. Its read parks mid-flight.
@@ -105,8 +109,12 @@ void main() {
     repo.hold = parked;
     await t.tap(find.text('Vitals'));
     await _settle(t);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget,
-        reason: 'the sub-tab should still be loading — nothing to race yet');
+    expect(
+      find.byWidgetPredicate((w) => w is PendingContent && w.pending),
+      findsWidgets,
+      reason: 'the sub-tab must still be waiting for its read',
+    );
+    expect(repo.hold, isNull, reason: 'the gated lungs read actually started');
 
     final before = t.state(find.byType(HealthScreen));
 
@@ -119,11 +127,20 @@ void main() {
     parked.complete();
     await _settle(t);
 
-    expect(find.text('17.0'), findsOneWidget,
-        reason: 'the post-revision read must be what is on screen');
-    expect(find.text('11.0'), findsNothing,
-        reason: 'a read that started before the revision committed after it');
-    expect(identical(t.state(find.byType(HealthScreen)), before), isTrue,
-        reason: 'the screen was remounted — that is the workaround, not the fix');
+    expect(
+      find.text('17.0'),
+      findsOneWidget,
+      reason: 'the post-revision read must be what is on screen',
+    );
+    expect(
+      find.text('11.0'),
+      findsNothing,
+      reason: 'a read that started before the revision committed after it',
+    );
+    expect(
+      identical(t.state(find.byType(HealthScreen)), before),
+      isTrue,
+      reason: 'the screen was remounted — that is the workaround, not the fix',
+    );
   });
 }

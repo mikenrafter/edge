@@ -3979,5 +3979,7 @@
   "pulseAlertNotPermitted": "Sin aviso: las notificaciones no estaban permitidas",
   "pulseAlertUnknown": "Es posible que el aviso se enviara {when}",
   "pulseAlertQuiet": "Sin aviso: retenido por las horas de silencio",
-  "pulseAlertEarlier": "Avisado por una versión anterior de la app {when}"
+  "pulseAlertEarlier": "Avisado por una versión anterior de la app {when}",
+  "observationsLoading": "Cargando observaciones",
+  "observationsPulsePattern": "Patrón de pulso irregular"
 }

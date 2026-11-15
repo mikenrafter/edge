@@ -1,5 +1,5 @@
 // CLAIM obs-timeline: explore dated findings without changing their wording or
-// losing the latest-week summary. These are interaction/design checks, no pixels.
+// adding a duplicate latest-week summary. These are interaction/design checks, no pixels.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/findings.dart';
@@ -15,71 +15,51 @@ const events = [
   Finding(FindingKind.rhrShift, '2026-11-05', risen: true),
 ];
 void main() {
-  testWidgets(
-    'latest summary stays above the graph while earlier weeks change focus',
-    (t) async {
-      skTallView(t);
-      await t.pumpWidget(
-        skHost(const FindingsLog(events, today: '2026-11-15')),
-      );
-      final summary = find.byKey(const ValueKey('observations-latest-week'));
-      expect(find.byType(ChartFrame), findsOneWidget);
-      expect(
-        t.getTopLeft(summary).dy,
-        lessThan(t.getTopLeft(find.byType(ChartFrame)).dy),
-      );
-      final original = t
-          .widgetList<Text>(
-            find.descendant(of: summary, matching: find.byType(Text)),
-          )
-          .map((w) => w.data)
-          .toList();
-      expect(
-        find.byKey(
-          const ValueKey('home-why:finding:irregularRhythm:2026-11-14'),
-        ),
-        findsOneWidget,
-      );
-      final l = lookupAppLocalizations(const Locale('en'));
-      final row = t.widget<WhyRow>(find.byType(WhyRow).first);
-      expect(
-        row.body,
-        findingDetail(l, events.first),
-        reason: 'the pulse wording stays owned by findings.dart',
-      );
-      expect(row.fullText, isTrue);
-      expect(
-        row.title,
-        contains('14 November'),
-        reason: 'each historical row keeps its own date',
-      );
-      await t.tap(find.byTooltip('Earlier week'));
-      await t.pump();
-      expect(
-        find.byKey(const ValueKey('home-why:finding:rhrShift:2026-11-05')),
-        findsOneWidget,
-      );
-      expect(
-        t
-            .widgetList<Text>(
-              find.descendant(of: summary, matching: find.byType(Text)),
-            )
-            .map((w) => w.data),
-        original,
-      );
-      await t.tap(find.byTooltip('Later week'));
-      await t.pump();
-      final plot = t.getRect(find.byType(ChartScrub));
-      await t.dragFrom(
-        Offset(plot.center.dx, plot.center.dy),
-        Offset(plot.width * .47, 0),
-      );
-      await t.pump();
-      expect(find.text('Nothing flagged on this day.'), findsOneWidget);
-      expect(find.byType(WhyRow), findsNothing);
-      expect(t.takeException(), isNull);
-    },
-  );
+  testWidgets('day detail stays navigable without a latest-week summary', (
+    t,
+  ) async {
+    skTallView(t);
+    await t.pumpWidget(skHost(const FindingsLog(events, today: '2026-11-15')));
+    expect(
+      find.byKey(const ValueKey('observations-latest-week')),
+      findsNothing,
+    );
+    expect(find.byType(ChartFrame), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('home-why:finding:irregularRhythm:2026-11-14')),
+      findsOneWidget,
+    );
+    final l = lookupAppLocalizations(const Locale('en'));
+    final row = t.widget<WhyRow>(find.byType(WhyRow).first);
+    expect(
+      row.body,
+      findingDetail(l, events.first),
+      reason: 'the pulse wording stays owned by findings.dart',
+    );
+    expect(row.fullText, isTrue);
+    expect(
+      row.title,
+      contains('14 November'),
+      reason: 'each historical row keeps its own date',
+    );
+    await t.tap(find.byTooltip('Earlier week'));
+    await t.pump();
+    expect(
+      find.byKey(const ValueKey('home-why:finding:rhrShift:2026-11-05')),
+      findsOneWidget,
+    );
+    await t.tap(find.byTooltip('Later week'));
+    await t.pump();
+    final plot = t.getRect(find.byType(ChartScrub));
+    await t.dragFrom(
+      Offset(plot.center.dx, plot.center.dy),
+      Offset(plot.width * .47, 0),
+    );
+    await t.pump();
+    expect(find.text('Nothing flagged on this day.'), findsOneWidget);
+    expect(find.byType(WhyRow), findsNothing);
+    expect(t.takeException(), isNull);
+  });
   testWidgets(
     'types have distinct inks and focused counts describe the stacked events',
     (t) async {
@@ -107,7 +87,7 @@ void main() {
         skHost(
           FindingsLog([
             for (var i = 0; i < count; i++)
-              const Finding(FindingKind.illness, '2026-11-14'),
+              Finding(FindingKind.values[i], '2026-11-14'),
           ], today: '2026-11-15'),
         ),
       );
@@ -132,7 +112,7 @@ void main() {
     skTallView(t);
     await t.pumpWidget(skHost(const FindingsLog([], today: '2026-11-15')));
     expect(find.byType(ChartFrame), findsOneWidget);
-    expect(find.text('Nothing flagged this week.'), findsOneWidget);
+    expect(find.text('Nothing flagged on this day.'), findsOneWidget);
     expect(
       t
           .widget<IconButton>(

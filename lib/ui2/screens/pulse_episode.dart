@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' show DateFormat;
+import '../../compute/findings.dart';
+import '../../l10n/app_localizations.dart';
+import '../finding_presentation.dart';
 import '../../data/db.dart';
 import '../../data/pulse_episode_store.dart';
 import '../../util/log_file.dart';
@@ -982,17 +985,29 @@ class PulseEpisodeRow extends StatelessWidget {
   final PulseEpisodeSnapshot episode;
   const PulseEpisodeRow(this.episode, {super.key});
   @override
-  Widget build(BuildContext c) => ListTile(
-    leading: const Icon(Icons.monitor_heart_outlined),
-    title: Text('Irregular pulse pattern · ${episode.row['day']}'),
-    subtitle: Text(
-      '${((episode.endMs - episode.startMs) / 60000).round()} min · ${episode.alertNote}',
-    ),
-    trailing: const Icon(Icons.chevron_right),
-    onTap: () => Navigator.of(c).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PulseEpisodeScreen(episodeId: episode.id),
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final l =
+        AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));
+    return ListTile(
+      leading: Icon(
+        findingIcon(const Finding(FindingKind.irregularRhythm, '')),
+        color: P.of(c).on(findingColor(FindingKind.irregularRhythm)),
       ),
-    ),
-  );
+      title: Text(
+        '${l.observationsPulsePattern} · ${episode.row['day']}',
+        style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text(
+        '${((episode.endMs - episode.startMs) / 60000).round()} min · ${episode.alertNote}',
+        style: F.cap.copyWith(color: p.ink2),
+      ),
+      trailing: Icon(Icons.chevron_right, color: p.ink3),
+      onTap: () => Navigator.of(c).push(
+        MaterialPageRoute<void>(
+          builder: (_) => PulseEpisodeScreen(episodeId: episode.id),
+        ),
+      ),
+    );
+  }
 }
