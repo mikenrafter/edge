@@ -974,6 +974,42 @@ class SleepCoordinator extends ChangeNotifier {
       metricsAvailable: metrics['duration_min'] != null,
     );
   });
+  /// [mutate], acknowledged at the durable write (pilot day-timeline; the
+  /// structural version is responsiveness stage 2). [written] completes when
+  /// [write] has committed (or fails with its error); [done] after [days]
+  /// are re-derived, in order. Still queued: an edit before this one is
+  /// written and derived first, so a late write never lands over this one.
+  ({Future<void> written, Future<SleepOperationResult> done}) mutateWritten(
+    List<String> days,
+    Future<void> Function() write,
+  ) {
+    final written = Completer<void>();
+    final done = _queue(() async {
+      try {
+        await write();
+      } catch (e, s) {
+        if (!written.isCompleted) written.completeError(e, s);
+        rethrow;
+      }
+      if (!written.isCompleted) written.complete();
+      Map<String, Object?> metrics = const {};
+      for (final d in days) {
+        metrics = await derive(d);
+      }
+      return SleepOperationResult(
+        success: true,
+        metricsAvailable: metrics['duration_min'] != null,
+      );
+    });
+    // Closed or timed out before the write ran: the write did not happen.
+    unawaited(done.then((r) {
+      if (!written.isCompleted) {
+        written.completeError(StateError(r.error ?? 'Not saved.'));
+      }
+    }));
+    return (written: written.future, done: done);
+  }
+
   Future<SleepOperationResult> recalculate(String day) => _queue(() async {
     final metrics = await derive(day);
     return SleepOperationResult(

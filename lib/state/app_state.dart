@@ -126,6 +126,7 @@ import '../ui2/profile/devices.dart' show HealthSource, liveSources, rankSources
 import '../ui2/sources/source_views.dart' show SourceViews;
 import '../data/db/input_revision_store.dart' show bumpInputRev;
 import '../data/db.dart';
+import '../data/sleep_edit_write.dart';
 import '../ecg/ble_ecg_transport.dart';
 import '../ecg/ecg_controller.dart';
 import '../ecg/ecg_cues.dart' show kEcgCueRule;
@@ -3987,6 +3988,14 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   }
 
   Future<SleepOperationResult> recalculateSleep(String day) => sleepOperations.recalculate(day);
+
+  /// The sleep timeline editor's Save (pilot day-timeline): [plan] written in
+  /// one transaction ([written] completes at the durable write), then each
+  /// changed night re-derived in the background ([done]).
+  ({Future<void> written, Future<SleepOperationResult> done}) saveSleepEdit(
+          SleepEditPlan plan) =>
+      sleepOperations.mutateWritten([plan.day, ...plan.days.where((d) => d != plan.day)],
+          () async => writeSleepEdit(await LocalDb.instance, plan));
 
   Future<SleepOperationResult> setSleepOverride(String date, DateTime onset, DateTime offset,
       {String source = 'manual', bool useSchedule = false}) {
