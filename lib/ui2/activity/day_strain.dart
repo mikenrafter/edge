@@ -210,8 +210,9 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
     }
     try {
       final wear = await repo.getDayWear(todayLabel());
-      if (mounted)
+      if (mounted) {
         setState(() => _hasWear = (wear['worn_min'] as num? ?? 0) > 0);
+      }
       final d = await DayStrainData.load(repo);
       if (mounted) setState(() => (_d = d, _loading = false));
     } catch (_) {

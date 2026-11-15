@@ -101,7 +101,7 @@ class ShiftProbe {
             if (key is ValueKey<String> &&
                 !key.value.startsWith('chart-panel') &&
                 !key.value.startsWith('chart-key')) {
-              id = '${key.value}/$id';
+              id = '$id@${key.value}';
               break;
             }
           }

@@ -117,12 +117,7 @@ class _TypicalDayScreenState extends State<TypicalDayScreen> {
                     Text(
                       '${l?.typicalSleep ?? 'Expected sleep'}: ${_window(d.sleep)}',
                     ),
-                    if (d.circadian.chronotypeLabel.isNotEmpty)
-                      Text(d.circadian.chronotypeLabel),
-                    if (d.circadian.alertness.value != null && d.circadian.cosinorV['acrophase_hours'] == null)
-            Text(l?.circadianDetailAssumedPhaseNote ?? 'Your own clock peak is not worked out yet, so this uses an average one.'),
-          if (d.circadian.alertness.value == null)
-            Text(l?.typicalNoCurve ?? 'Not enough recent sleep data for a curve.'),
+
                   ],
                 ),
               ),
@@ -149,6 +144,14 @@ class _TypicalDayScreenState extends State<TypicalDayScreen> {
               ),
               const SizedBox(height: S.x3),
               _caffeine(context, d.caffeine),
+        // Unknown forecast prose belongs after the known plots and controls;
+        // it must not move the meal editor while the artifact is being read.
+                    if (d.circadian.chronotypeLabel.isNotEmpty)
+                      Text(d.circadian.chronotypeLabel),
+                    if (d.circadian.alertness.value != null && d.circadian.cosinorV['acrophase_hours'] == null)
+            Text(l?.circadianDetailAssumedPhaseNote ?? 'Your own clock peak is not worked out yet, so this uses an average one.'),
+          if (d.circadian.alertness.value == null)
+            Text(l?.typicalNoCurve ?? 'Not enough recent sleep data for a curve.'),
             ],
           ].indexed
           .map(

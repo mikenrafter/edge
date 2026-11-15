@@ -55,8 +55,9 @@ class LoadEstimate {
       estimate.add(sample.toDouble());
     }
     final average = value['average'];
-    if (average is num && average.isFinite && average >= 0)
+    if (average is num && average.isFinite && average >= 0) {
       estimate._average = average.toDouble();
+    }
     return estimate;
   }
 }
@@ -81,8 +82,9 @@ class LoadMemory {
       final decoded = jsonDecode(encoded);
       if (decoded is Map) {
         for (final e in decoded.entries.take(limit)) {
-          if (e.key is String && e.value is Map)
+          if (e.key is String && e.value is Map) {
             _entries[e.key as String] = LoadEstimate.fromJson(e.value as Map);
+          }
         }
       }
     } catch (_) {
@@ -202,8 +204,9 @@ class _SizeMemory extends RenderProxyBox implements PendingFillRender {
     super.performLayout();
     final actual = size;
     if (config.pending) {
-      if (config.height case final height?)
+      if (config.height case final height?) {
         size = constraints.constrain(Size(size.width, height));
+      }
     } else if (_last != actual || _lastId != config.id) {
       _last = actual;
       _lastId = config.id;

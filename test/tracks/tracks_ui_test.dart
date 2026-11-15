@@ -15,12 +15,12 @@ import '../support/bundled_fonts.dart';
 import 'ui_support.dart';
 
 Future<void> _expand(WidgetTester t, String label) async {
-  final accordion = find.byWidgetPredicate((w) => w is SettingsAccordion && w.title == label);
+  final accordion = find.byWidgetPredicate((w) => w is SettingsAccordion && w.title == label || w is ExpansionTile && w.title is Text && (w.title as Text).data == label);
   await t.scrollUntilVisible(accordion, 300, scrollable: find.byType(Scrollable).first);
   final header = find.descendant(of: accordion, matching: find.text(label)).first;
   await t.ensureVisible(header);
   await t.pumpAndSettle();
-  if (find.descendant(of: accordion, matching: find.byType(Divider)).evaluate().isEmpty) {
+  if (t.widget(accordion) is ExpansionTile || find.descendant(of: accordion, matching: find.byType(Divider)).evaluate().isEmpty) {
     await t.tap(header);
     await t.pumpAndSettle();
   }
