@@ -1,3 +1,4 @@
+import '../profile/profile.dart' show SettingsAccordion;
 import '../../l10n/display_text.dart';
 // Wellness — softer than Health, same system.
 //
@@ -24,6 +25,8 @@ import 'package:openstrap_analytics/onehz.dart' show journalFieldLagDays;
 import 'package:provider/provider.dart';
 
 import '../../data/db.dart';
+import '../../compute/findings.dart';
+import '../../data/local_repository.dart';
 import '../../data/read_paused.dart';
 import '../../data/day_label.dart';
 import '../../data/journal_fields.dart';
@@ -100,6 +103,7 @@ class _WellnessScreenState extends State<WellnessScreen>
   /// midnight and habit ticks would land on yesterday's date.
   String get _date => todayLabel();
   bool _loading = true;
+  bool _planFailed = false;
   bool _paused = false;
 
   /// One journal write at a time. `putJournalMetrics` deletes the day and
@@ -179,18 +183,68 @@ class _WellnessScreenState extends State<WellnessScreen>
   }
 
   Future<void> _load() async {
+    if (widget.sleepPlanOnly && _planFailed && mounted) {
+      setState(() { _planFailed = false; _loading = true; });
+    }
     try {
       await _loadToday();
     } on ReadPaused {
       // An import has the database: today is not readable yet, and not wrong.
       if (mounted) setState(() => (_loading = false, _paused = true));
+    } catch (_) {
+      if (!widget.sleepPlanOnly) rethrow;
+      if (mounted) setState(() { _loading = false; _planFailed = true; });
     }
+  }
+
+  Future<List<DriverFacts>> _readDrivers(LocalRepository repo,
+      Map<String, dynamic> insights, String day) async {
+      // `readiness_glassbox.breakdown`, NOT `.drivers` — drivers is already
+      // filtered to the inputs that cleared the smallest-worthwhile-change
+      // gate, so an input that sat inside its usual spread was never in it and
+      // the screen could not say "and this one did nothing". Same array
+      // ReadinessDetail renders, so the two agree by construction.
+      final gb = envValue(insights['readiness_glassbox']);
+      final bd = gb?['breakdown'];
+      // The baselines block: centre, spread, delta and MDC per input. Written
+      // on every derive since long before anything read it.
+      final heart = await repo.getDayHeart(day);
+      final charts = <String, Object?>{};
+      for (final k in driverChartKeys) {
+        charts[k] = await repo.getChart(k);
+      }
+      return driverFacts(
+        breakdown: [
+          for (final r in (bd is List ? bd : const []))
+            if (r is Map) r.cast<String, dynamic>(),
+        ],
+        baselines: heart['baselines'] is Map
+            ? (heart['baselines'] as Map).cast<String, dynamic>()
+            : null,
+        charts: charts,
+        annotations: rhrChangeAnnotations(findingsHistory(insights)),
+      );
   }
 
   Future<void> _loadToday() async {
     final t = beginRead(#wellness);
     final app = context.read<AppState>();
     final repo = app.repo;
+    if (widget.sleepPlanOnly) {
+      // The Sleep tab has no medication or journal dependency. Publish its
+      // own reads without waiting for unrelated tables or phone operations.
+      final day = _date;
+      final stress = await repo?.getDayStress(day) ?? <String, dynamic>{};
+      final insights = await repo?.getInsights() ?? <String, dynamic>{};
+      final drivers = repo == null ? const <DriverFacts>[]
+          : await _readDrivers(repo, insights, day);
+      if (!stillNewest(#wellness, t)) return;
+      setState(() {
+        _stress = stress; _insights = insights; _drivers = drivers;
+        _loading = false; _paused = false; _planFailed = false;
+      });
+      return;
+    }
     final db = await LocalDb.instance;
 
     final meds = await MedDb.defs(db);
@@ -206,30 +260,7 @@ class _WellnessScreenState extends State<WellnessScreen>
     if (repo != null) {
       stress = await repo.getDayStress(_date);
       insights = await repo.getInsights();
-      // `readiness_glassbox.breakdown`, NOT `.drivers` — drivers is already
-      // filtered to the inputs that cleared the smallest-worthwhile-change
-      // gate, so an input that sat inside its usual spread was never in it and
-      // the screen could not say "and this one did nothing". Same array
-      // ReadinessDetail renders, so the two agree by construction.
-      final gb = envValue(insights['readiness_glassbox']);
-      final bd = gb?['breakdown'];
-      // The baselines block: centre, spread, delta and MDC per input. Written
-      // on every derive since long before anything read it.
-      final heart = await repo.getDayHeart(_date);
-      final charts = <String, Object?>{};
-      for (final k in driverChartKeys) {
-        charts[k] = await repo.getChart(k);
-      }
-      driverRows = driverFacts(
-        breakdown: [
-          for (final r in (bd is List ? bd : const []))
-            if (r is Map) r.cast<String, dynamic>(),
-        ],
-        baselines: heart['baselines'] is Map
-            ? (heart['baselines'] as Map).cast<String, dynamic>()
-            : null,
-        charts: charts,
-      );
+      driverRows = await _readDrivers(repo, insights, _date);
       fields = await repo.getJournalMetrics(_date);
       specs = await repo.getJournalFields();
     }
@@ -269,13 +300,14 @@ class _WellnessScreenState extends State<WellnessScreen>
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c);
     if (widget.sleepPlanOnly) {
-      return _paused
-          ? const PausedToday()
-          : _loading
-          ? InlineLoading(
-              status: l?.loadingWellness ??
-                  "Reading today's journal and medications")
-          : _recovery(c);
+      // Known metric rows form the pending layout. Variable advice and
+      // driver histories follow at the end of the section.
+      return _paused ? const PausedToday() : _planFailed
+        ? StatusCard(l?.healthReadFailedBody ?? 'Could not load your data. Nothing was deleted.', '',
+            fix: l?.homeTryAgain ?? 'Try again', onFix: _load)
+        : PendingContent(
+              memoryKey: 'sleep-plan:body',
+              pending: _loading, child: _recovery(c));
     }
     final last = _breathing.isEmpty ? null : _breathing.first;
     // `select`, not `watch`: AppState ticks at ~1 Hz during a live session and
@@ -519,9 +551,7 @@ class _WellnessScreenState extends State<WellnessScreen>
     final strainMin = _reading(coachMap?['strain_bonus_min']);
     final debtH = _nested(_insights, 'sleep_debt', 'debt_hours');
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+    final parts = <Widget>[
         // The one recommendation on this screen, and only when all three of
         // its inputs are real: a measured debt worth acting on, a learned need,
         // and a target bedtime to name. No debt, no card — the widget does not
@@ -559,7 +589,19 @@ class _WellnessScreenState extends State<WellnessScreen>
         ),
         Section(
           l?.wellnessSleepNeedTonight ?? 'Sleep need tonight',
-          needSec == null
+          widget.sleepPlanOnly ? Column(children: [Surface(key: const ValueKey('sleep-plan-metrics'), child: Column(children: [
+            MetricRow(LucideIcons.bedDouble, C.blue, l?.wellnessTonightsNeed ?? "Tonight's need", needSec == null ? '—' : _hm(needSec / 60)),
+            MetricRow(LucideIcons.trendingDown, C.orange, l?.wellnessSleepDebt ?? 'Sleep debt', debtH == null ? '—' : _hm(debtH * 60)),
+            MetricRow(LucideIcons.flame, C.purple, l?.wellnessAddedForStrain ?? 'Added for strain', strainMin == null ? '—' : '${strainMin.round()}', unit: 'min'),
+            MetricRow(LucideIcons.sun, C.yellow, l?.wellnessCreditedFromNaps ?? 'Credited from naps', napMin == null ? '—' : '${napMin.round()}', unit: 'min'),
+            MetricRow(LucideIcons.moon, C.indigo, l?.wellnessTargetBedtime ?? 'Target bedtime', bedMin == null ? '—' : formatMinuteOfDay(bedMin.round())),
+            MetricRow(LucideIcons.sunrise, C.orange, l?.wellnessTargetWake ?? 'Target wake', wakeMin == null ? '—' : formatMinuteOfDay(wakeMin.round())),
+          ])),
+            if (needSec == null && !_loading) StatusCard(
+              l?.wellnessNoSleepNeedTitle ?? 'No sleep need yet',
+              whyFromNote(_noteOf(coachMap?['need'])) ?? (l?.wellnessNoSleepNeedBody ?? 'No reading.'),
+              icon: LucideIcons.bedDouble),
+          ]) : needSec == null
               // The coach's own reason for the absent need — it names the
               // input that is actually missing. "Not enough of them yet" named
               // nothing, and was printed for every cause the estimator has.
@@ -621,8 +663,9 @@ class _WellnessScreenState extends State<WellnessScreen>
                   ),
                 ),
         ),
-      ],
-    );
+      ];
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: widget.sleepPlanOnly ? [parts.last, ...parts.take(parts.length - 1)] : parts);
   }
 
   // ── CYCLE ────────────────────────────────────────────────────────────────
@@ -1725,46 +1768,33 @@ class _JournalFindingsState extends State<JournalFindings> {
     ];
     return detailScaffold(c, title, [
       const SizedBox(height: S.x2),
+      SettingsAccordion('Your log patterns', id: 'journal_comparisons',
+        key: const ValueKey('journal-comparisons'), initiallyExpanded: true,
+        children: [
+        PendingContent(
+            memoryKey: 'journal-findings:rows',
+            pending: !_rowsReady, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (_rows.isEmpty)
+              StatusCard(l?.wellnessNothingSeparatedTitle ?? 'Nothing separated itself yet',
+                l?.wellnessNothingSeparatedBody ?? 'No clear links found yet.', icon: LucideIcons.scatterChart)
+            else ...[
+              if (habits.isNotEmpty) Section(l?.wellnessTheDaysYouDidIt ?? 'The days you did it', _list(c, habits)),
+              if (doses.isNotEmpty) Section(l?.wellnessHowMuchAndWhatFollowed ?? 'How much, and what followed', _list(c, doses)),
+              Text(l?.wellnessLinkNeverCause ?? 'A link in your own days, not proof of a cause.',
+                style: F.over.copyWith(color: p.ink3, height: 1.5)),
+            ],
+          ]))]),
+      SettingsAccordion(
+        l?.wellnessWhichDayOfWeek ?? 'Which day of the week',
+        id: 'journal_weekday', initiallyExpanded: true, children: [
+        KeyedSubtree(key: const ValueKey('journal-weekday'), child: PendingContent(
+              memoryKey: 'journal-findings:weekday',
+              pending: !_weekdayReady, child: _weekdayCard(c))),
+      ]),
       if (_cachedAt case final at?)
         Padding(
             padding: const EdgeInsets.only(bottom: S.x2),
             child: AsOfLabel(at: at)),
-      if (!_rowsReady)
-        InlineLoading(
-            status: l?.loadingJournalComparison ??
-                'Comparing 90 days of journal entries')
-      else if (_rows.isEmpty)
-        StatusCard(
-          l?.wellnessNothingSeparatedTitle ?? 'Nothing separated itself yet',
-          l?.wellnessNothingSeparatedBody ?? 'No clear links found yet.',
-          icon: LucideIcons.scatterChart,
-        )
-      else ...[
-        if (habits.isNotEmpty)
-          Section(
-            l?.wellnessTheDaysYouDidIt ?? 'The days you did it',
-            _list(c, habits),
-          ),
-        if (doses.isNotEmpty)
-          Section(
-            l?.wellnessHowMuchAndWhatFollowed ?? 'How much, and what followed',
-            _list(c, doses),
-          ),
-        const SizedBox(height: S.x2),
-        Text(
-          l?.wellnessLinkNeverCause ??
-              'A link in your own days, not proof of a cause.',
-          style: F.over.copyWith(color: p.ink3, height: 1.5),
-        ),
-      ],
-      Section(
-        l?.wellnessWhichDayOfWeek ?? 'Which day of the week',
-        _weekdayReady
-            ? _weekdayCard(c)
-            : InlineLoading(
-                status: l?.loadingWeekdays ??
-                    'Comparing your days of the week'),
-      ),
     ]);
   }
 

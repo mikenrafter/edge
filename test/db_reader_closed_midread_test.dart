@@ -73,7 +73,7 @@ void main() {
   });
 
   test('every screen read goes through readerRun', () {
-    final bare = RegExp(r'\bawait\s+(LocalDb\.)?reader\b(?!; // reader-acquire)');
+    final bare = RegExp(r'\b(?:LocalDb\.reader|await\s+reader)\b(?!Run)(?!; // reader-acquire)');
     final offenders = <String>[];
     for (final f in Directory('lib').listSync(recursive: true)) {
       if (f is! File || !f.path.endsWith('.dart')) continue;

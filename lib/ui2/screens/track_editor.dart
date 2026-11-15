@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../data/day_label.dart';
 import '../../data/tracks_store.dart';
 import '../ui2.dart';
+import '../profile/profile.dart' show SettingsAccordion;
 import 'track_editor_fields.dart';
 import 'tracks_text.dart';
 
@@ -38,6 +39,7 @@ class _TrackEditorState extends State<TrackEditor> {
       _prescribed = _initial.prescribed;
   List<TrackRangeDraft>? _history;
   final _customSystem = TextEditingController();
+  final _formScroll = ScrollController();
   bool _failed = false, _saving = false;
   String? _error;
   @override
@@ -49,6 +51,7 @@ class _TrackEditorState extends State<TrackEditor> {
   @override
   void dispose() {
     _customSystem.dispose();
+    _formScroll.dispose();
     super.dispose();
   }
 
@@ -97,7 +100,7 @@ class _TrackEditorState extends State<TrackEditor> {
         throw const FormatException('definition');
       }
     } on FormatException {
-      setState(() => _error = 'Invalid');
+      _showError('Invalid');
       return;
     }
     setState(() {
@@ -111,12 +114,20 @@ class _TrackEditorState extends State<TrackEditor> {
       );
       if (mounted) Navigator.of(context).pop(definition);
     } on ArgumentError {
-      if (mounted) setState(() => _error = 'Invalid');
+      _showError('Invalid');
     } catch (_) {
-      if (mounted) setState(() => _error = 'Failed');
+      _showError('Failed');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  void _showError(String key) {
+    if (!mounted) return;
+    // Expanded forms can be long: a rejected Save must reveal its reason.
+    FocusScope.of(context).unfocus();
+    setState(() => _error = key);
+    if (_formScroll.hasClients) _formScroll.jumpTo(_formScroll.position.minScrollExtent);
   }
 
   void _addRange({bool daily = false}) {
@@ -158,7 +169,9 @@ class _TrackEditorState extends State<TrackEditor> {
         ],
       ),
       body: _history == null
-          ? Center(
+          ? Padding(
+              padding: const EdgeInsets.all(S.x4),
+              child: Align(alignment: Alignment.topCenter,
               child: _failed
                   ? Column(
                       mainAxisSize: MainAxisSize.min,
@@ -170,9 +183,10 @@ class _TrackEditorState extends State<TrackEditor> {
                         ),
                       ],
                     )
-                  : const CircularProgressIndicator(),
+                  : const PendingContent(pending: true, child: Surface(child: PendingRows(count: 5)))),
             )
           : ListView(
+              controller: _formScroll,
               padding: const EdgeInsets.all(S.x4),
               children: [
                 if (_error != null)
@@ -234,12 +248,12 @@ class _TrackEditorState extends State<TrackEditor> {
                       ? null
                       : (value) => setState(() => _prescribed = value == true),
                 ),
-                _section(text('Kinetics'), [
+                _section('Kinetics', [
                   Text(text('KineticsNote'), style: F.cap),
                   const SizedBox(height: S.x3),
                   TrackKineticsFields(draft: _kinetics),
                 ], open: true),
-                _section(text('Roles'), [
+                _section('Roles', [
                   for (final role in {...trackRoles, ..._roles})
                     CheckboxListTile(
                       contentPadding: EdgeInsets.zero,
@@ -254,7 +268,7 @@ class _TrackEditorState extends State<TrackEditor> {
                       }),
                     ),
                 ]),
-                _section(text('Systems'), [
+                _section('Systems', [
                   for (final system in {...trackSystems, ..._systems})
                     CheckboxListTile(
                       contentPadding: EdgeInsets.zero,
@@ -295,13 +309,17 @@ class _TrackEditorState extends State<TrackEditor> {
                     ],
                   ),
                 ]),
-                _section(text('Subactivities'), [
+                _section('Subactivities', [
+                  // Owner 2026-10-26: subactivities are temporary disclosures,
+                  // collapsed without a persistent identity.
                   for (final sub in _sub)
                     ExpansionTile(
-                      key: ValueKey('sub-${sub.id}'),
                       title: Text(
                         sub.name.isEmpty ? text('Subactivity') : sub.name,
                       ),
+                      initiallyExpanded: false,
+                      childrenPadding: const EdgeInsets.all(S.x3),
+                      key: ValueKey('sub-${sub.id}'),
                       children: [
                         TextFormField(
                           key: ValueKey('sub-${sub.id}-name'),
@@ -336,7 +354,7 @@ class _TrackEditorState extends State<TrackEditor> {
                     child: Text(text('AddSubactivity')),
                   ),
                 ]),
-                _section(text('Bounds'), [
+                _section('Bounds', [
                   Text(text('BoundsNote'), style: F.cap),
                   Row(
                     children: [
@@ -362,7 +380,7 @@ class _TrackEditorState extends State<TrackEditor> {
                     ],
                   ),
                 ]),
-                _section(text('History'), [
+                _section('History', [
                   SwitchListTile(
                     key: const ValueKey('track-no-clean'),
                     contentPadding: EdgeInsets.zero,
@@ -389,7 +407,7 @@ class _TrackEditorState extends State<TrackEditor> {
                   ),
                 ]),
                 if (_initial.sources.isNotEmpty)
-                  _section(text('Sources'), [
+                  _section('Sources', [
                     for (final source in _initial.sources)
                       Padding(
                         padding: const EdgeInsets.only(bottom: S.x3),
@@ -402,13 +420,6 @@ class _TrackEditorState extends State<TrackEditor> {
     );
   }
 
-  Widget _section(String title, List<Widget> children, {bool open = false}) =>
-      ExpansionTile(
-        key: ValueKey('track-section-$title'),
-        tilePadding: EdgeInsets.zero,
-        initiallyExpanded: open,
-        title: Text(title, style: F.head),
-        childrenPadding: const EdgeInsets.only(bottom: S.x3),
-        children: children,
-      );
+  Widget _section(String id, List<Widget> children, {bool open = true}) =>
+      SettingsAccordion(tracksText(context, id), id: 'track-editor:$id', children: children);
 }

@@ -38,6 +38,7 @@ import '../../models/metric.dart' show whyFromNote;
 import '../activity/catalogue.dart' show activityByName;
 import '../profile/devices.dart' show bandLabelFor;
 import '../ui2.dart';
+import 'rhr_annotations.dart';
 import 'investigate.dart' show Investigate;
 import 'home_screen.dart' show clockOfTs, go, prettyDay, repoOf, thousands;
 import 'metric_detail.dart'
@@ -67,6 +68,7 @@ class DayStepSpan {
 class DayStepsData {
   const DayStepsData({
     this.day,
+    this.rhrMarks = const [],
     this.days = const [],
     this.spans = const [],
     this.total = 0,
@@ -86,6 +88,7 @@ class DayStepsData {
   /// The day these spans belong to, and every derived day this install has —
   /// newest first, which is what [DayNav] steers over.
   final String? day;
+  final List<ChartAnnotation> rhrMarks;
   final List<String> days;
 
   final List<DayStepSpan> spans;
@@ -114,10 +117,12 @@ class DayStepsData {
     String bandLabel = _defaultBand,
     String? want,
   }) async {
+    final flagsRead = loadRhrAnnotations(repo);
     final days = await repo.availableDays();
     final day = pickDay(days, want, todayLabel()) ?? todayLabel();
     final d = await repo.getDaySteps(day);
     return DayStepsData(
+      rhrMarks: await flagsRead,
       day: day,
       days: days,
       spans: [
@@ -304,11 +309,12 @@ class _DayStepsDetailState extends State<DayStepsDetail> implements NerdStatsLis
     // Same rule as Sleep: the stepper names the day, so the nav bar only does
     // when there is no stepper.
     return detailScaffold(c, l?.dayStepsTitle ?? 'Steps',
-        sub: d.days.length < 2 ? dayNavLabel(d.day).toUpperCase() : '', [
+        [
       ...dayNavRow(_day ?? d.day, d.days, _goDay),
       if (_loading && _d == null) ...[
         const SizedBox(height: S.x4),
-        InlineLoading(status: l?.loadingDaySteps ?? "Reading this day's steps"),
+        PendingChart(shape: PendingChartShape.bars, title: l?.dayStepsChartTitle ?? 'When they were counted', unit: 'steps'),
+        const PendingContent(pending: true, child: PendingRows(count: 3)),
       ] else if (d.spans.isEmpty)
         _absent(c, d)
       else ...[
@@ -425,6 +431,7 @@ class _DayStepsDetailState extends State<DayStepsDetail> implements NerdStatsLis
               ),
             ),
           ),
+          DayRhrNotice(d.rhrMarks, d.day),
           const SizedBox(height: S.x4),
           InlineMetrics(
             d.mixed

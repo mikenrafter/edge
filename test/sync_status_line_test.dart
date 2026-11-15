@@ -2,7 +2,7 @@
 //
 //   [elapsed]  icon / spinner  ·  one sentence  ·  at most one action
 //
-// Tap the line to expand today's step list inline (collapsed by default, open
+// Tap the line to expand today's step list inline (with a saved folded preference, open
 // or closed remembered under the persisted key 'sync-details'). Always visible
 // on Home, including idle. No estimated counts (AGENTS.md 4.1).
 //
@@ -13,13 +13,14 @@
 //    Calculate, Done) is in the tree; collapsed means none of them is.
 //  - The elapsed readout is the m:ss text the panel always drew ("1:15"); it
 //    sits LEFT of the status sentence on the same row.
-//  - Spinner = a CircularProgressIndicator; the action is a text button whose
+//  - Busy state = a debounced PendingMark; the action is a text button whose
 //    label is exactly 'Sync now' or 'Retry'.
 //  - Time wording: "Synced 12 min ago", "synced 3 h ago", band time as
 //    "2 h 10 min".
 // See docs/proof-workflow.md for the structural-fixture convention.
 
 import 'package:flutter/material.dart';
+import 'package:openstrap_edge/state/prefs.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -200,7 +201,7 @@ void _tw(String name, Future<void> Function(WidgetTester t) body) =>
 void _expectLine(WidgetTester t, String line,
     {String? action, bool spinner = false, String? reason}) {
   expect(find.text(line), findsOneWidget, reason: reason ?? 'status "$line"');
-  expect(find.byType(CircularProgressIndicator),
+  expect(find.byType(PendingMark),
       spinner ? findsOneWidget : findsNothing,
       reason: spinner ? 'busy: a spinner' : 'settled: no spinner');
   for (final a in const ['Sync now', 'Retry']) {
@@ -213,8 +214,10 @@ void _expectLine(WidgetTester t, String line,
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUp(() {
-    SharedPreferences.setMockInitialValues({});
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({'accordion_sync-details': false});
+    await Prefs.ensureLoaded();
+    await Prefs.setBoolAcked('accordion_sync-details', false);
     // "synced through … 14:32" is asserted as HH:MM.
     ClockFormatController.seed(ClockFormat.h24);
   });
@@ -272,8 +275,8 @@ void main() {
       await t.pumpWidget(_control(_nothingNew()));
       // The headline follows the ACTIVE step (Calculate); the download's
       // result stays on its own row.
-      _expectLine(t, 'Calculating…', spinner: true);
-      await t.tap(find.text('Calculating…'));
+      _expectLine(t, 'Calculating sleep, recovery and strain', spinner: true);
+      await t.tap(find.text('Calculating sleep, recovery and strain'));
       await _settle(t);
       expect(find.text('Nothing new on the band'), findsOneWidget,
           reason: 'the Download row keeps what the download did');
@@ -282,7 +285,7 @@ void main() {
     _tw('deriving, day known', (t) async {
       await t.pumpWidget(_control(_deriving(const SyncCalculateDetail(
           dayIndex: 3, dayTotal: 7, day: '2026-09-29'))));
-      _expectLine(t, 'Calculating · day 3 of 7', spinner: true);
+      _expectLine(t, 'Calculating sleep, recovery and strain · day 3 of 7', spinner: true);
     });
 
     _tw('deriving, day not known: "Calculating" and no day number', (t) async {
@@ -293,7 +296,8 @@ void main() {
               (w.data ?? '').startsWith('Calculating') &&
               !(w.data ?? '').contains('day')),
           findsOneWidget);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byType(PendingMark), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.text('Sync now'), findsNothing);
     });
 
@@ -306,9 +310,9 @@ void main() {
             chunks: 104,
             syncedThrough: DateTime(2026, 9, 30, 14, 32)),
       )));
-      _expectLine(t, 'Calculating · waiting for another calculation', spinner: true);
+      _expectLine(t, 'Waiting to calculate sleep, recovery and strain', spinner: true);
       expect(find.textContaining('Downloaded'), findsNothing);
-      await t.tap(find.text('Calculating · waiting for another calculation'));
+      await t.tap(find.text('Waiting to calculate sleep, recovery and strain'));
       await _settle(t);
       expect(find.textContaining('14:32'), findsOneWidget,
           reason: 'the Download row says where the data goes through');
@@ -320,8 +324,8 @@ void main() {
         const SyncCalculateDetail(waiting: true),
         download: const SyncDownloadDetail(),
       )));
-      _expectLine(t, 'Calculating · waiting for another calculation', spinner: true);
-      await t.tap(find.text('Calculating · waiting for another calculation'));
+      _expectLine(t, 'Waiting to calculate sleep, recovery and strain', spinner: true);
+      await t.tap(find.text('Waiting to calculate sleep, recovery and strain'));
       await _settle(t);
       expect(find.text('Nothing new on the band'), findsOneWidget);
     });
@@ -336,14 +340,14 @@ void main() {
             syncedThrough: DateTime(2026, 9, 30, 7, 0),
             bandNewest: DateTime(2026, 9, 30, 9, 10)),
       )));
-      _expectLine(t, 'Calculating · waiting for another calculation', spinner: true);
+      _expectLine(t, 'Waiting to calculate sleep, recovery and strain', spinner: true);
       expect(find.textContaining('still to fetch'), findsNothing);
     });
 
     _tw('waiting with no download detail at all: the same headline', (t) async {
       await t.pumpWidget(_control(
           _deriving(const SyncCalculateDetail(waiting: true))));
-      _expectLine(t, 'Calculating · waiting for another calculation', spinner: true);
+      _expectLine(t, 'Waiting to calculate sleep, recovery and strain', spinner: true);
     });
 
     _tw('completed: "Synced just now"', (t) async {
@@ -469,7 +473,7 @@ void main() {
   });
 
   group('tap the line to expand the steps', () {
-    _tw('collapsed by default, expands inline, collapses again', (t) async {
+    _tw('with a saved folded preference, expands inline, collapses again', (t) async {
       await t.pumpWidget(_control(_withBacklog()));
       _expectCollapsed();
       await t.tap(find.text('Downloading · 2 h 10 min of band time to go'));

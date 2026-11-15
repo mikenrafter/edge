@@ -1,3 +1,4 @@
+import 'review_read_label.dart';
 import '../../l10n/presentation_text.dart';
 import '../../l10n/display_text.dart';
 // DAY TIMELINE — what happened, in the order it happened.
@@ -24,6 +25,10 @@ import '../../l10n/display_text.dart';
 // says what it is.
 
 import 'dart:convert' show jsonDecode;
+import 'rhr_annotations.dart';
+import '../read_prefetch.dart';
+import '../../sync/import_focus.dart';
+import '../../data/day_label.dart' show dayLabelOf;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -37,10 +42,12 @@ import '../../compute/inputs/measurement_inputs.dart'
     show bmiScalesOf, nearWeight;
 import '../../compute/profile.dart' show bmiOf;
 import '../../data/coverage_resolver.dart' show OwnedSpan, coverageFromJson, spanAt;
-import '../../data/day_label.dart' show localDayEndSec;
+import '../../data/day_label.dart' show localDayStartSec, localDayEndSec, todayLabel;
 import '../../data/water_moment.dart';
 import '../../data/assumed_water.dart' show AssumedGlass, AssumedState;
 import '../../data/db.dart';
+import '../../compute/findings.dart';
+import '../../data/read_paused.dart';
 import '../../wake/wake_timeline.dart';
 import '../../data/journal_fields.dart';
 import '../../data/local_repository.dart';
@@ -66,7 +73,7 @@ import 'investigate.dart' show Investigate;
 import 'log_workout.dart' show LogWorkout, bumpInsights;
 import 'naps.dart' show NapsScreen;
 import 'home_screen.dart' show clockOfTs, go, repoOf;
-import 'metric_detail.dart' show dayNavRow, pickDay;
+import 'metric_detail.dart' show DayNav, pickDay;
 
 /// One thing that happened, at a time it is known to have happened at.
 @immutable
@@ -874,10 +881,16 @@ class TimelineData {
     this.notes = const [],
     this.raw,
     this.computedAtMs,
+    this.readMillis = const {},
+    this.loadMillis = 0,
+    this.rhrMarks = const [],
   });
 
   /// When the day's result was calculated (epoch ms), or null when unknown.
   final int? computedAtMs;
+  final Map<String, int> readMillis;
+  final int loadMillis;
+  final List<ChartAnnotation> rhrMarks;
 
   final String? day;
 
@@ -898,31 +911,62 @@ class TimelineData {
     LocalRepository repo, {
     String? want,
     AppLocalizations? l,
+    void Function(Set<String>)? onPending,
   }) async {
-    final days = await repo.availableDays();
-    final today = await repo.getTodayStored();
+    final pending = <String>{};
+    final elapsed = Stopwatch()..start();
+    final costs = <String, int>{};
+    Future<T> read<T>(String name, Future<T> Function() action) async {
+      final timer = Stopwatch()..start();
+      pending.add(name);
+      onPending?.call(Set.unmodifiable(pending));
+      try { return await action(); }
+      finally {
+        costs[name] = timer.elapsedMilliseconds;
+        pending.remove(name);
+        onPending?.call(Set.unmodifiable(pending));
+      }
+    }
+    final (days, today) = await (read('available days', repo.availableDays),
+      want != null && localDayEndSec(want) != null
+        ? Future<Map<String, dynamic>>.value(const {})
+        : read('stored today', repo.getTodayStored)).wait;
     // A pending review can precede the day's first derivation. Keep its real
     // day even when availableDays has no bundle for it yet.
     final day = want != null && localDayEndSec(want) != null ? want : pickDay(
         days, want, (today['status'] as Map?)?['today_day']?.toString());
     if (day == null) return TimelineData(days: days);
 
-    final timeline = await repo.getDayTimeline(day);
-    final wear = await repo.getDayWear(day);
-    final fields = await repo.getJournalFields();
-    final journal = await repo.getJournalMetrics(day);
-    final db = await LocalDb.instance;
-    final meals = await NutritionDb.entriesForDay(db, day);
-    final notes = await LocalDb.journalRows(sinceDaysEpoch: day);
-    final momentLabels = await LocalDb.momentLabels(date: day);
-    final symptoms = await LocalDb.symptomEntries(date: day);
-
-    // Doses: one row per (medication, slot), and only the ones actually taken
-    // carry a clock. A skipped dose is a real fact with no time attached, so it
-    // is not on the axis — see the note at the top of this file.
-    final defs = {for (final d in await MedDb.defs(db, activeOnly: false)) d.key: d};
+    // These are independent stored reads. Start them together so one slow
+    // bundle does not delay every other source [structural review read test].
+    final flagsRead = read('resting heart rate flags', () async {
+      try { return rhrChangeAnnotations(findingsHistory(await repo.getInsights()), l: l)
+        .where((a) => a.id == 'rhr-shift:$day').toList(); }
+      catch (_) { return <ChartAnnotation>[]; }
+    });
+    final ((timeline, wear, fields, journal, meals, notes, momentLabels),
+      (symptoms, definitions, doseRows, rawObservations, hrv, wake, assumed, water)) = await (
+      (read('heart rate, movement and sleep', () => repo.getDayTimeline(day)),
+       read('wear coverage', () => repo.getDayWear(day)),
+       read('journal fields', repo.getJournalFields),
+       read('journal values', () => repo.getJournalMetrics(day)),
+       read('meals', () => LocalDb.readerRun((db) => NutritionDb.entriesForDay(db, day))),
+       read('journal notes', () => LocalDb.journalRows(sinceDaysEpoch: day)),
+       read('moment labels', () => LocalDb.momentLabels(date: day))).wait,
+      (read('symptoms', () => LocalDb.symptomEntries(date: day)),
+       read('medication definitions', () => LocalDb.readerRun((db) => MedDb.defs(db, activeOnly: false))),
+       read('medication doses', () => LocalDb.readerRun((db) => MedDb.dosesForDay(db, day))),
+       read('device observations', () => repo.getDayObservations(day)),
+       read<Map<String, dynamic>>('calculation timestamp', () async {
+         try { return await repo.getDayHrv(day); } catch (_) { return {}; }
+       }),
+       read('wake timeline', () => repo.getWakeTimeline(day)),
+       read('assumed water', () => LocalDb.assumedWater(date: day)),
+       read('water moments', () => WaterMomentStore.forDay(day))).wait,
+    ).wait;
+    final defs = {for (final d in definitions) d.key: d};
     final taken = <({String label, int at})>[];
-    (await MedDb.dosesForDay(db, day)).forEach((key, slots) {
+    doseRows.forEach((key, slots) {
       for (final row in slots.values) {
         final ts = (row['taken_ts'] as num?)?.toInt();
         if (ts == null) continue;
@@ -934,31 +978,30 @@ class TimelineData {
     // the ONLY behaviour change: zero rows today, on every install, so the
     // list below is empty and this section renders nothing.
     final observations =
-        await timelineObservations(await repo.getDayObservations(day),
-            date: day);
+        await read('observation labels', () => timelineObservations(rawObservations, date: day));
     // A weighing's BMI is ours, off its weight and the profile's height:
     // only a scale whose flag is on crosses over (rule R6).
-    final bmiScales = await bmiScalesOf(observations);
-    final profile = bmiScales.isNotEmpty ? await repo.getProfile() : null;
+    final bmiScales = await read('BMI permissions', () => bmiScalesOf(observations));
+    final profile = bmiScales.isNotEmpty ? await read('profile', repo.getProfile) : null;
     final heightCm = profile?['height_cm'] as num?;
     final weightKg = profile?['weight_kg'] as num?;
 
     // When this day's result was calculated: a Save's placeholder row waits
     // for a result newer than the Save. Unknown (no result) reads as not newer.
-    int? computedAtMs;
-    try {
-      computedAtMs = ((await repo.getDayHrv(day))['computed_at'] as num?)?.toInt();
-    } catch (_) {/* no marker: the placeholder stays */}
+    final computedAtMs = (hrv['computed_at'] as num?)?.toInt();
 
     return TimelineData(
       day: day,
       days: days,
       computedAtMs: computedAtMs,
+      rhrMarks: await flagsRead,
+      readMillis: Map.unmodifiable(costs),
+      loadMillis: elapsed.elapsedMilliseconds,
       graph: dayGraph(timeline),
       raw: timeline,
       moments: dayMoments(
         timeline: timeline,
-        wakeTimeline: await repo.getWakeTimeline(day),
+        wakeTimeline: wake,
         wear: wear,
         meals: [for (final m in meals) m.sanitised],
         doses: taken,
@@ -966,8 +1009,8 @@ class TimelineData {
         fields: fields,
         momentLabels: momentLabels,
         symptoms: symptoms,
-        assumedWater: await LocalDb.assumedWater(date: day),
-        waterMoments: await WaterMomentStore.forDay(day),
+        assumedWater: assumed,
+        waterMoments: water,
         l: l,
       ),
       notes: [
@@ -1033,10 +1076,13 @@ String observationValue(num v) =>
 
 class DayTimelineScreen extends StatefulWidget {
   const DayTimelineScreen({super.key, this.day, this.data,
-      this.reviewMoments, this.reviewService, this.reviewEditor, this.focusId, this.reviewActivities});
+      this.reviewMoments, this.reviewService, this.reviewEditor, this.focusId, this.reviewActivities, this.reviewSnapshot, this.resolving = false, this.reviewEntry = false, this.resolvingLabel});
 
+  final bool resolving, reviewEntry;
+  final String? resolvingLabel;
   final String? focusId;
   final List<ActivitySuggestion>? reviewActivities;
+  final ReviewReadSnapshot? reviewSnapshot;
 
   final List<PendingMoment>? reviewMoments;
   final MomentReviewService? reviewService;
@@ -1090,7 +1136,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     }
   }
 
-  void _loadReview(String day) {
+  Future<void> _loadReview(String day) async {
     final repo = repoOf(context);
     if (repo == null) return;
     _review?.removeListener(_onReview);
@@ -1099,11 +1145,11 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     _review = DayReviewController(repo, day,
         service: widget.reviewService,
         moments: widget.reviewMoments,
-        editor: widget.reviewEditor, activities: widget.reviewActivities,
+        editor: widget.reviewEditor, activities: widget.reviewActivities, snapshot: widget.reviewSnapshot,
         enabledSince: context.read<AppState>().gestureSettings.followUpMoments
             ? context.read<AppState>().gestureSettings.followUpMomentsSince : null);
     _review!.addListener(_onReview);
-    unawaited(_review!.load());
+    await _review!.load();
   }
 
   Future<bool> _canLeave() async {
@@ -1291,6 +1337,15 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   }
 
   @override
+  void didUpdateWidget(DayTimelineScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.resolving && !widget.resolving) {
+      _day = widget.day;
+      _load();
+    }
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     // `code` alone misses a SYSTEM locale change while it is null (no
@@ -1310,7 +1365,18 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     }
   }
 
+  Set<String> _pendingReads = const {};
+  bool _reviewReading = false;
+  int _reviewReadToken = 0;
+  Future<void> _readReview(String day) async {
+    final token = ++_reviewReadToken;
+    if (mounted) setState(() => _reviewReading = true);
+    try { await _loadReview(day); }
+    finally { if (mounted && token == _reviewReadToken) setState(() => _reviewReading = false); }
+  }
+
   Future<void> _load() async {
+    if (widget.resolving) return;
     final token = ++_loadToken;
     _deviceToken++;
     final repo = repoOf(context);
@@ -1319,15 +1385,23 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
       return;
     }
     final l = AppLocalizations.of(context);
+    final releasePrefetch = ReadPrefetch.shared.visibleRead('review-day');
     try {
-      final d = await TimelineData.load(repo, want: _day, l: l);
+      final reviewRead = _day != null && _review?.day != _day ? _readReview(_day!) : Future<void>.value();
+      final d = await TimelineData.load(repo, want: _day, l: l, onPending: (reads) {
+        if (mounted && token == _loadToken) setState(() => _pendingReads = reads);
+      });
       // A device's own HR curve needs HR of either cadence: a ring's 5-minute
       // history draws as well as a band's 1 Hz stream.
       final candidates = mounted
           ? _anyHrCandidates(context, context.read<AppState>())
           : const <DeviceOption>[];
       if (mounted && token == _loadToken) {
-        if (_review?.day != d.day && d.day != null) _loadReview(d.day!);
+        // The chart can take its actual shape while the saved-review read finishes.
+        setState(() => _d = d);
+        await reviewRead;
+        if (_review?.day != d.day && d.day != null) await _readReview(d.day!);
+        if (!mounted || token != _loadToken) return;
         _review?.reconcileSettled(d.computedAtMs);
         setState(() => (
           _d = d,
@@ -1339,6 +1413,30 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
           _deviceBounded = false,
           _loading = false,
         ));
+        if (d.day != null) {
+          unawaited(
+            ReadPrefetch.shared.warm(
+              'review-day',
+              [
+                () => repo.getDayTimeline(d.day!),
+                () => repo.getDayWear(d.day!),
+              ],
+              busy: () =>
+                  !mounted ||
+                  ModalRoute.of(context)?.isCurrent == false ||
+                  ImportFocus.active.value ||
+                  context.read<AppState>().deriving ||
+                  context.read<AppState>().derivePending,
+            ),
+          );
+        }
+      }
+    } on ReadPaused {
+      if (mounted && token == _loadToken) {
+        setState(() {
+        _pendingReads = const {'import to finish copying stored data'};
+        _loading = false;
+      });
       }
     } catch (_) {
       if (mounted && token == _loadToken) {
@@ -1346,6 +1444,8 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         if (_review?.hasSettled == true) _review!.markReloadFailed(true);
         setState(() => _loading = false);
       }
+    } finally {
+      releasePrefetch();
     }
   }
 
@@ -1366,6 +1466,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
           days: d.days,
           graph: dayGraph(d.raw!),
           moments: d.moments,
+          rhrMarks: d.rhrMarks,
           notes: d.notes,
           raw: d.raw,
           computedAtMs: d.computedAtMs,
@@ -1399,6 +1500,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
             ? const DayGraph()
             : dayGraph(d.raw!, hrOverride: c['points'] as List?),
         moments: d.moments,
+        rhrMarks: d.rhrMarks,
         notes: d.notes,
         raw: d.raw,
         computedAtMs: d.computedAtMs,
@@ -1486,9 +1588,8 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
           ? a.row.moment.at.compareTo(b.row.moment.at)
           : a.rank.compareTo(b.rank));
     final rows = [for (final e in ranked) e.row];
-    final reviewing = review?.reviewing == true;
-    final title = reviewing
-        ? '${l?.homeReviewActivities ?? 'Review activities'} · ${review!.ids.length}'
+    final title = widget.reviewEntry
+        ? (l?.homeReviewActivities ?? 'Review activities')
         : (l?.dayTimelineTitle ?? 'Breakdown of your day');
     return PopScope(
       canPop: _allowPop || (review?.hasChanges != true && review?.busy != true),
@@ -1504,7 +1605,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
           // (every pending row prints its own Discard, so that label is ambiguous)
           // [guide_remove_detected.dart; guide_conformance_test 'review keys'].
           NavBar(title,
-              key: reviewing ? const ValueKey('day-review-nav') : null,
+              key: widget.reviewEntry ? const ValueKey('day-review-nav') : null,
               onBack: _leave),
           // The chart scrolls with the page, as it did before review existed.
           // The Save bar is a sibling BELOW the list, so no row sits behind it.
@@ -1515,14 +1616,51 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
               child: Padding(padding: const EdgeInsets.symmetric(horizontal: S.x4),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                ...dayNavRow(_day ?? d.day, d.days, _goDay),
+                PendingContent(pending: _loading && _d == null,
+                  child: DayNav(day: _day ?? d.day ?? todayLabel(), days: d.days,
+                    onDay: _goDay, alwaysShow: true)),
+                const SizedBox(height: S.x3),
                 TextButton(onPressed: () => go(c, const TypicalDayScreen()),
                   child: Text(l?.typicalDayTitle ?? 'Typical day')),
-                DayReviewNotices(controller: review, reloader: this),
+                if (!_loading && _d == null && _pendingReads.contains('import to finish copying stored data'))
+                  StatusCard(l?.reviewWaitingImportTitle ?? 'Waiting for import',
+                    l?.reviewWaitingImportBody ?? 'The import is copying stored data. Your activities can be read when it finishes.',
+                    fix: l?.reviewTryAgain ?? 'Try again', onFix: _load),
+                // This caption slot exists in both states. It never inserts a
+                // row above the chart when a slow read changes stage.
+                SizedBox(height: F.cap.fontSize! * MediaQuery.textScalerOf(c).scale(1) * 1.5,
+                  child: _loading ? Text(_reviewReading && _pendingReads.isEmpty
+                      ? reviewReadLabel('saved activity reviews', l)
+                      : _pendingReads.isEmpty ? (widget.resolvingLabel ?? reviewReadLabel('saved activity reviews', l))
+                      : reviewReadLabel(_pendingReads.first, l), maxLines: 1,
+                      overflow: TextOverflow.ellipsis, style: F.cap.copyWith(color: p.ink3)) : d.computedAtMs == null
+                                      ? null
+                                      : Text(
+                                          (l ??
+                                                  lookupAppLocalizations(
+                                                    const Locale('en'),
+                                                  ))
+                                              .asOfTime(
+                                                clockOfTs(
+                                                  d.computedAtMs! ~/ 1000,
+                                                ),
+                                              ),
+                                          style: F.cap.copyWith(color: p.ink3),
+                                        ),
+                                ),
                 if (_loading) ...[
-                  const SizedBox(height: S.x4),
-                  InlineLoading(status: l?.loadingDayTimeline ??
-                      "Reading this day's timeline"),
+                  if (_d == null || d.graph.hasCurve) PendingContent(pending: true,
+                    child: KeyedSubtree(key: const ValueKey('apk2-day-chart'),
+                      child: _DayGraphZoom(d.graph.hasCurve ? d.graph : DayGraph(
+                        hr: const [0, 0], movement: const [0, 0], dayStart: localDayStartSec(_day ?? todayLabel())),
+                        annotations: [...dayAnnotations(d.moments), ...d.rhrMarks],
+                        nerdStats: this, fineDetail: false))),
+                  if (_d != null && !d.graph.hasCurve && rows.isEmpty && d.notes.isEmpty)
+                    StatusCard(l?.dayTimelineNothingRecordedTitle ?? 'Nothing was recorded on this day',
+                      l?.dayTimelineNothingRecordedBody ?? 'Nothing recorded. The band was probably off.', icon: LucideIcons.circleSlash),
+                  if (_d == null || rows.isNotEmpty) PendingContent(pending: true, child: Section(l?.dayTimelineWhatHappenedSection ?? 'What happened',
+                    Surface(pad: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x2),
+                      child: _d == null ? const PendingRows(count: 3) : Column(children: _dayRows(rows, review))))),
                 ] else ...[
                   if (_candidates.length >= 2)
                     DeviceFilter(options: _candidates, selected: _device,
@@ -1536,7 +1674,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                       child: _DayGraphZoom(d.graph,
                           fineDetail: _device == null,
                           owners: coverageFromJson(d.raw?['hr_owner']),
-                          annotations: dayAnnotations(d.moments),
+                          annotations: [...dayAnnotations(d.moments), ...d.rhrMarks],
                           listener: this,
                           nerdStats: this,
                           key: ValueKey(d.day)))
@@ -1567,10 +1705,13 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                       'Patterns in your logs, not causes.',
                       style: F.over.copyWith(color: p.ink3)),
                   const SizedBox(height: S.x5),
+                DayReviewNotices(controller: review, reloader: this),
+                DayReviewSaveBar(key: review != null && !review.loading &&
+                  (review.hasChanges || review.busy)
+                  ? const ValueKey('apk2-review-savebar') : null, controller: review),
                 ],
                 ]))),
           )),
-          DayReviewSaveBar(controller: review),
         ]))),
         // Cupertino suppresses its route gesture while PopScope guards a
         // batch. Keep the leading-edge swipe as a request for confirmation.
@@ -1946,13 +2087,33 @@ class _ZoomState extends State<_DayGraphZoom> {
           '1-minute averages. Zoom in to two hours or less for per-second '
               'data, where kept.';
     }
-    final card = dayGraphCard(c, g,
-        zoomed: zoomed,
-        fine: _fine,
-        footnote: note,
-        annotations: widget.annotations,
-        listener: widget.listener,
-        nerdStats: widget.nerdStats);
+    final plot = dayGraphCard(
+      c,
+      g,
+      zoomed: zoomed,
+      fine: _fine,
+      footnote: note,
+      annotations: widget.annotations
+          .where((a) => a.kind != AnnotationKind.rhrShift)
+          .toList(),
+      listener: widget.listener,
+      nerdStats: widget.nerdStats,
+    );
+    final card = plot == null
+        ? null
+        : Column(
+            children: [
+              plot,
+              DayRhrNotice(
+                widget.annotations,
+                g.dayStart == null
+                    ? null
+                    : dayLabelOf(
+                        DateTime.fromMillisecondsSinceEpoch(g.dayStart! * 1000),
+                      ),
+              ),
+            ],
+          );
     if (card == null || n < 2) return card ?? const SizedBox.shrink();
     // Smaller thumbs and the theme's own colour: the same control as the app's
     // other sliders, not a red bar.
@@ -2008,7 +2169,7 @@ List<Widget> timelineBody(BuildContext c, TimelineData d,
       ? _DayGraphZoom(d.graph,
           fineDetail: fineDetail,
           owners: coverageFromJson(d.raw?['hr_owner']),
-          annotations: dayAnnotations(d.moments),
+          annotations: [...dayAnnotations(d.moments), ...d.rhrMarks],
           key: ValueKey(d.day))
       : null;
   return [
@@ -2186,6 +2347,7 @@ class MomentGroupRow extends StatefulWidget {
 }
 
 class _MomentGroupRowState extends State<MomentGroupRow> {
+  // Same-event groups are temporary disclosures, not saved section accordions.
   bool _open = false;
   void expand() {
     if (!_open) setState(() => _open = true);

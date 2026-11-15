@@ -132,11 +132,9 @@ void main() {
         (t) async {
       await _pumpBody(t, _moments([for (var i = 0; i < 5; i++) _ev(14, i)]));
       expect(find.text('$_tapTitle · 5 times'), findsOneWidget);
-      // Collapsed: the individual rows are not drawn.
-      expect(find.text(_tapTitle), findsNothing);
+      // Owner R2-7: repeated-event groups start collapsed and are not saved.
       for (var i = 1; i < 5; i++) {
-        expect(find.text(clockOfTs(_ts(i))), findsNothing,
-            reason: 'tap $i is hidden while collapsed');
+        expect(find.text(clockOfTs(_ts(i))), findsNothing);
       }
 
       await t.tap(find.text('$_tapTitle · 5 times'));

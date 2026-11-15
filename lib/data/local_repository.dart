@@ -13,6 +13,7 @@
 // nothing above this file references HTTP, JWT, or a backend URL anymore.
 
 import '../models/activity_suggestion.dart';
+import '../compute/pulse_alert_record.dart';
 import '../wake/wake_timeline.dart';
 import '../gestures/moment_review_queue.dart';
 import '../compute/manual_session.dart' show SessionSpan;
@@ -57,6 +58,20 @@ class SleepDetailBundle {
     required this.charts,
     required this.windows,
   });
+}
+
+/// Fast Sleep shape; history values remain absent until their separate read.
+class SleepPrimaryRead {
+  const SleepPrimaryRead({
+    required this.bundle,
+    required this.wake,
+    this.devices = const [],
+    this.historyCount = 0,
+  });
+  final SleepDetailBundle bundle;
+  final WakeNightTimeline wake;
+  final List<Map<String, Object?>> devices;
+  final int historyCount;
 }
 
 /// The local data contract for every insights screen + the AI Coach.
@@ -167,11 +182,34 @@ abstract class LocalRepository {
   Future<Map<String, dynamic>> getInsights() =>
       throw UnimplementedError('re-layer: getInsights');
 
+  /// Stored notification outcomes for Observations, keyed by flagged day.
+  /// Repositories without an alert ledger return no metadata. Read failures
+  /// propagate; the overview may omit this optional metadata on failure.
+  Future<Map<String, PulseAlertRecord>> getPulseAlertRecords() async => const {};
+
   // ── day drill-down detail ────────────────────────────────────────────────────
   /// One read for the whole Sleep detail screen: the night, its timeline, the
   /// insights, every named chart and the sleep windows ([windowDays] newest,
   /// or with [before] the newest strictly before that day — see
   /// [sleepWindows]).
+  /// Cheap shape read. Null retains compatibility for repositories that only
+  /// supply an atomic bundle. Production overrides this with bounded reads.
+  Future<SleepPrimaryRead?> getSleepDetailPrimary(String day) async => null;
+
+  /// Complete the history without re-reading the already published shape.
+  Future<SleepDetailBundle> getSleepDetailHistory(
+    String day,
+    SleepPrimaryRead primary, {
+    required List<String> chartKeys,
+    required int windowDays,
+    String? before,
+  }) => getSleepDetailBundle(
+    day,
+    chartKeys: chartKeys,
+    windowDays: windowDays,
+    before: before,
+  );
+
   Future<SleepDetailBundle> getSleepDetailBundle(
     String day, {
     required List<String> chartKeys,

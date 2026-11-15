@@ -95,42 +95,71 @@ class _TypicalDayScreenState extends State<TypicalDayScreen> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final d = _data;
+    final d = _data ?? const TypicalDayData();
     return detailScaffold(context, l?.typicalDayTitle ?? 'Typical day', [
       if (_failed) ...[
         Text(l?.typicalLoadFailed ?? 'Could not read your day. Try again.'),
         TextButton(onPressed: _load, child: Text(l?.typicalRetry ?? 'Try again')),
-      ] else if (d == null) const Center(child: CircularProgressIndicator())
-      else ...[
+      ] else ...[
         TextButton(onPressed: () => go(context, const TracksScreen()),
           child: Text(l?.tracksTitle ?? 'Tracks')),
         TextButton(onPressed: () => go(context, const AlarmScreen()),
           child: Text(l?.alarmNavTitle ?? 'Alarm')),
-        Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text(l?.typicalEnergy ?? 'Energy / alertness', style: F.head),
-          if (d.circadian.chronotypeLabel.isNotEmpty) Text(d.circadian.chronotypeLabel),
           const SizedBox(height: S.x3),
-          TypicalDayPlot(data: d),
+          TypicalDayPlot(key: const ValueKey('typical-primary-plot'), data: d),
           Text(l?.typicalForecastNote ?? 'A shape forecast from your observed sleep and body clock. Unavailable hours stay blank; it is not an energy measurement.', style: F.cap),
-          if (d.circadian.alertness.value != null && d.circadian.cosinorV['acrophase_hours'] == null)
+                    const SizedBox(height: S.x3),
+                    Text(
+                      '${l?.typicalQuiet ?? 'Quiet hours'}: ${_window(d.quiet)}',
+                    ),
+                    Text(
+                      '${l?.typicalSleep ?? 'Expected sleep'}: ${_window(d.sleep)}',
+                    ),
+
+                  ],
+                ),
+              ),
+              const SizedBox(height: S.x3),
+              Surface(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      l?.typicalMeals ?? 'Typical large meals',
+                      style: F.head,
+                    ),
+                    Text(
+                      d.meals.isEmpty
+                          ? (l?.typicalNoneSet ?? 'None set')
+                          : d.meals.map(clock).join(' · '),
+                    ),
+                    TextButton(
+                      onPressed: _saving ? null : _editMeals,
+                      child: Text(l?.typicalEditMeals ?? 'Edit meal times'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: S.x3),
+              _caffeine(context, d.caffeine),
+        // Unknown forecast prose belongs after the known plots and controls;
+        // it must not move the meal editor while the artifact is being read.
+                    if (d.circadian.chronotypeLabel.isNotEmpty)
+                      Text(d.circadian.chronotypeLabel),
+                    if (d.circadian.alertness.value != null && d.circadian.cosinorV['acrophase_hours'] == null)
             Text(l?.circadianDetailAssumedPhaseNote ?? 'Your own clock peak is not worked out yet, so this uses an average one.'),
           if (d.circadian.alertness.value == null)
             Text(l?.typicalNoCurve ?? 'Not enough recent sleep data for a curve.'),
-          const SizedBox(height: S.x3),
-          Text('${l?.typicalQuiet ?? 'Quiet hours'}: ${_window(d.quiet)}'),
-          Text('${l?.typicalSleep ?? 'Expected sleep'}: ${_window(d.sleep)}'),
-        ])),
-        const SizedBox(height: S.x3),
-        Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(l?.typicalMeals ?? 'Typical large meals', style: F.head),
-          Text(d.meals.isEmpty ? (l?.typicalNoneSet ?? 'None set') : d.meals.map(clock).join(' · ')),
-          TextButton(onPressed: _saving ? null : _editMeals,
-            child: Text(l?.typicalEditMeals ?? 'Edit meal times')),
-        ])),
-        const SizedBox(height: S.x3),
-        _caffeine(context, d.caffeine),
-      ],
-    ]);
+            ],
+          ].indexed
+          .map(
+            (entry) => PendingContent(
+              memoryKey: 'typical-day:${entry.$1}',
+              pending: _data == null && !_failed,
+              child: entry.$2,
+            )).toList());
   }
   String _window(ClockWindow? w) => w == null ? '—' : '${clock(w.startMinute)}–${clock(w.endMinute)}';
 
@@ -143,7 +172,7 @@ class _TypicalDayScreenState extends State<TypicalDayScreen> {
       ('latency', l?.typicalLatency ?? 'Bedtime caffeine / sleep latency', s.residualVsLatency),
       ('sleep', l?.typicalTst ?? 'Bedtime caffeine / total sleep', s.residualVsTotalSleep),
     ];
-    return Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Text(l?.typicalCaffeine ?? 'Caffeine timing', style: F.head),
       Text(l?.typicalPattern(s.dayCount) ?? 'Your pattern so far, ${s.dayCount} days'),
       const SizedBox(height: S.x2),

@@ -3883,7 +3883,74 @@
   "guideAddNapMissingTitle": "Vous ne voyez pas « {naps} » ?",
   "guideAddNapMissingBody": "**{naps}** se trouve sous votre nuit. Si cette partie, **{night}**, est repliée, touchez son titre pour l’ouvrir.",
   "guideTapsBack": "{count, plural, one{1 appui en arrière} other{{count} appuis en arrière}}",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "@guideTapsBack": {
+    "description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deriveDailyLabel": "Calcul du sommeil, de la récupération et de l’effort",
+  "deriveDailyProgress": "Calcul du sommeil, de la récupération et de l’effort · jour {index} sur {total}",
+  "deriveDailyProgressOn": "Calcul du sommeil, de la récupération et de l’effort · jour {index} sur {total} · {day}",
+  "deriveWaitingDailyLabel": "En attente du calcul du sommeil, de la récupération et de l’effort",
+  "deriveTrendsLabel": "Recalcul des tendances",
+  "reviewWaitingImportTitle": "En attente de l’importation",
+  "reviewWaitingImportBody": "L’importation copie les données enregistrées. Vos activités pourront être lues une fois terminée.",
+  "reviewTryAgain": "Réessayer",
+  "reviewReadActivities": "Lecture des siestes et entraînements en attente",
+  "reviewReadMoments": "Lecture des moments marqués et des prises d’eau",
+  "reviewReadDays": "Lecture des jours disponibles",
+  "reviewReadSaved": "Lecture des activités déjà vérifiées",
+  "metricSourcesUsed": "Sources utilisées",
+  "reviewReadHeart": "Lecture de la fréquence cardiaque, des mouvements et du sommeil",
+  "reviewReadWear": "Lecture du temps de port",
+  "reviewReadJournal": "Lecture de votre journal",
+  "reviewReadMeals": "Lecture des repas",
+  "reviewReadMedicines": "Lecture des médicaments et des prises",
+  "reviewReadDevices": "Lecture des mesures des appareils",
+  "reviewReadTime": "Lecture de l’heure de calcul de la journée",
+  "reviewReadWake": "Lecture des heures de réveil",
+  "reviewReadWater": "Lecture des prises d’eau",
+  "reviewReadProfile": "Lecture de votre profil",
+  "observationsLatestWeek": "Dernière semaine · {from} – {to}",
+  "@observationsLatestWeek": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "observationsNoWeek": "Rien n’a été signalé cette semaine.",
+  "observationsNoDay": "Rien n’a été signalé ce jour-là.",
+  "observationsEarlierWeek": "Semaine précédente",
+  "observationsLaterWeek": "Semaine suivante",
+  "observationsEventsUnit": "événements",
+  "observationsDayCount": "{day} : {count, plural, =1{1 événement} other{{count} événements}}",
+  "@observationsDayCount": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "rhrChangesTitle": "Variations de la fréquence cardiaque au repos",
+  "rhrNoReadings": "Aucune mesure de fréquence cardiaque au repos enregistrée.",
+  "sleepTabTimelineCardTitle": "Chronologie du sommeil",
+  "sleepTabStoodOutCardTitle": "Ce qui ressort",
+  "sleepTabUsualCardTitle": "Par rapport à vos habitudes",
+  "sleepTabSignalsCardTitle": "Signaux nocturnes",
+  "sleepTabThePlanCardTitle": "Le programme",
+  "pendingSectionLoading": "Chargement, {name}",
+  "pendingSectionLoaded": "Chargé, {name}",
+  "pendingSectionContent": "contenu",
   "findingNotificationIrregularRhythm": "Les intervalles de pouls enregistrés le {day} ont correspondu à notre règle d’irrégularité. Nous n’avons mesuré ni sa précision ni la fréquence des troubles du rythme qu’elle manque. Touchez pour lire ses limites.",
   "pulseSummaryTitle": "{count, plural, =1{Schéma de pouls irrégulier signalé sur 1 jour} other{Schémas de pouls irrégulier signalés sur {count} jours}}",
   "pulseSummaryBody": "{count, plural, =1{{days}. Les intervalles de pouls de ce jour ont correspondu à notre règle d’irrégularité. Nous n’avons pas mesuré sa précision ni à quelle fréquence elle manque un trouble du rythme cardiaque. Touchez pour lire les limites.} other{{days}. Les intervalles de pouls de ces jours ont correspondu à notre règle d’irrégularité. Nous n’avons pas mesuré sa précision ni à quelle fréquence elle manque un trouble du rythme cardiaque. Touchez pour lire les limites.}}",

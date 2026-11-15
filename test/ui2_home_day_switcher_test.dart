@@ -1,3 +1,4 @@
+import 'dart:async';
 // Home used to be fixed to today, with no way to look at yesterday's rings
 // without leaving the tab for a detail screen. This pins the switcher: it
 // reuses [DayNav] (the same day-stepper the Sleep/Strain/HRV detail screens
@@ -16,6 +17,8 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+import 'support/as_of_recalc_fakes.dart' show perfApp;
+import 'support/shift_run.dart' show phoneSurface;
 
 // The real device day, not a fixed string: `HomeScreen._load` decides
 // "today" by comparing the switcher's day against `todayLabel()`, exactly
@@ -29,6 +32,8 @@ final _yesterday = dayLabelOf(DateTime.now().subtract(const Duration(days: 1)));
 /// asserting the switcher actually swapped the screen's numbers, not just
 /// re-rendered the same ones.
 class _Repo extends LocalRepository {
+  Completer<void>? previousDay;
+
   @override
   Future<Map<String, dynamic>> getToday() async => {
         'daily': {
@@ -53,16 +58,20 @@ class _Repo extends LocalRepository {
   Future<int> pendingActivityCount() async => 0;
 
   @override
-  Future<Map<String, dynamic>> getDayOverview(String date) async =>
-      {'readiness': 42, 'resting_hr': 60};
+  Future<Map<String, dynamic>> getDayOverview(String date) async {
+    await previousDay?.future;
+    return {'readiness': 42, 'resting_hr': 60};
+  }
 
   @override
   Future<Map<String, dynamic>> getDayStrain(String date) async =>
       {'strain': 9.9, 'steps': 2500, 'calories': 300, 'calories_total': 2000};
 
   @override
-  Future<Map<String, dynamic>> getDaySleepV2(String date) async =>
-      {'has_sleep': true, 'duration_min': 250};
+  Future<Map<String, dynamic>> getDaySleepV2(String date) async {
+    if (date != _today) await previousDay?.future;
+    return {'has_sleep': true, 'duration_min': date == _today ? 400 : 250};
+  }
 
   // Sleep detail reads its night as one bundle: the night, and nothing else.
   @override
@@ -87,6 +96,57 @@ Future<void> _settle(WidgetTester t, {int n = 40}) async {
 }
 
 void main() {
+  // WHY: the Sleep day bar must not relabel the old night's duration while
+  // the next night's bundle is held. Shared debounce/fade is checked separately.
+  testWidgets('Sleep day changes clear the previous duration while reading', (t) async {
+    phoneSurface(t);
+    final repo = _Repo()..previousDay = Completer<void>();
+    final app = AppState.forTesting()..repo = repo;
+    addTearDown(app.dispose);
+    await t.pumpWidget(perfApp(app, const SleepDetail()));
+    await _settle(t);
+    expect(find.text('6h 40m'), findsOneWidget);
+    await t.tap(find.bySemanticsLabel('Previous day'));
+    await t.pump();
+    expect(find.text('6h 40m'), findsNothing);
+    expect(find.byType(PendingContent), findsWidgets);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    repo.previousDay!.complete();
+    await _settle(t);
+    expect(find.text('4h 10m'), findsOneWidget);
+    await t.pumpWidget(const SizedBox());
+  });
+
+  // WHY: switching day must never leave today's values under yesterday's date;
+  // the past-day action floats without adding a row inside the scroll content.
+  testWidgets('past-day reads hide old values and use the floating today pill', (t) async {
+    final repo = _Repo()..previousDay = Completer<void>();
+    final app = AppState.forTesting()..repo = repo;
+    addTearDown(app.dispose);
+    await t.pumpWidget(MaterialApp(theme: buildTheme(Brightness.dark),
+      home: ChangeNotifierProvider<AppState>.value(value: app,
+        child: const Scaffold(body: HomeScreen(hour: 9)))));
+    await _settle(t);
+    expect(find.text('70'), findsOneWidget);
+    await t.tap(find.bySemanticsLabel('Previous day'));
+    await t.pump();
+    expect(find.text('70'), findsNothing);
+    expect(find.byWidgetPredicate((w) => w is PendingContent && w.pending), findsWidgets);
+    final pill = find.byKey(const ValueKey('home-back-to-today'));
+    expect(find.ancestor(of: pill, matching: find.byType(Positioned)), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Back to today'), findsNothing);
+    final list = t.widget<ListView>(find.byType(ListView).first);
+    expect((list.padding! as EdgeInsets).bottom, greaterThanOrEqualTo(44 + 12));
+    repo.previousDay!.complete();
+    await _settle(t);
+    expect(find.text('42'), findsOneWidget);
+    await t.tap(pill);
+    await _settle(t);
+    expect(find.text('70'), findsOneWidget);
+    expect(pill, findsNothing);
+    await t.pumpWidget(const SizedBox());
+  });
+
   testWidgets('stepping to the previous day loads and shows ITS numbers',
       (t) async {
     final app = AppState.forTesting();

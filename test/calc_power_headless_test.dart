@@ -7,6 +7,7 @@ import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'package:openstrap_edge/ble/ios_ble_restore.dart';
 import 'package:openstrap_edge/compute/calc_power_policy.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
+import 'package:openstrap_edge/compute/processing_context.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/state/power_source.dart';
 import 'package:openstrap_edge/sync/background_sync.dart';
@@ -123,6 +124,7 @@ class _RecordingEngine extends DerivationEngine {
   @override
   Future<int> run(
     Profile profile, {
+    ProcessingContext processingContext = ProcessingContext.reanalysis,
     bool heavy = false,
     bool force = false,
     bool changedOnly = false,

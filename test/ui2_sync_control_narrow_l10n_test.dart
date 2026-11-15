@@ -4,6 +4,7 @@
 // fit, decided from width, scale and locale only: same card rect in every
 // state, a target of at least 44 x 44 inside the card, no scaling, no overflow.
 import 'package:flutter/material.dart';
+import 'package:openstrap_edge/state/prefs.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -77,7 +78,11 @@ Widget _host(SyncPresentationState s, Locale locale, double scale) =>
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(loadFonts);
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({'accordion_sync-details': false});
+    await Prefs.ensureLoaded();
+    await Prefs.setBoolAcked('accordion_sync-details', false);
+  });
 
   for (final locale in const [Locale('ru'), Locale('de'), Locale('fr')]) {
     for (final w in [320.0, 360.0]) {

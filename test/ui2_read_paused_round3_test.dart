@@ -20,18 +20,12 @@ import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/sync/import_focus.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
-import 'package:openstrap_edge/ui2/screens/beats.dart';
-import 'package:openstrap_edge/ui2/screens/circadian_detail.dart';
-import 'package:openstrap_edge/ui2/screens/explorer.dart';
-import 'package:openstrap_edge/ui2/screens/explorer_annotations.dart';
-import 'package:openstrap_edge/ui2/screens/journal_compose.dart';
-import 'package:openstrap_edge/ui2/screens/naps.dart';
-import 'package:openstrap_edge/ui2/last_result_cache.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
 import 'support/explorer_harness.dart' as ex;
 import 'support/read_paused_fakes.dart';
+import 'support/as_of_recalc_fakes.dart' show settle;
 
 Future<void> _settle(WidgetTester t, {int n = 40}) async {
   for (var i = 0; i < n; i++) {
@@ -418,11 +412,10 @@ void main() {
       final days = repo.count('availableDays');
 
       endFocus();
-      for (var i = 0; i < 40; i++) {
-        await t.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 10)));
-        await t.pump();
-      }
+      // The real SQLite read must settle; a fixed 400 ms sleep races under
+      // the sharded gate. Keep the exact one-reload assertion below.
+      await settle(t, until: () => find.text(kPausedLine).evaluate().isEmpty,
+          what: 'Naps resumes after import focus');
       expect(find.text(kPausedLine), findsNothing);
       expect(repo.count('availableDays'), days + 1);
     });
@@ -454,8 +447,9 @@ void main() {
       await _pump(t, repo, const CircadianDetail());
       await _real(t);
       expect(find.text(kPausedLine), findsNothing);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget,
-          reason: 'still waiting for the warm: a pending state');
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byWidgetPredicate((w) => w is PendingContent && w.pending), findsWidgets,
+          reason: 'still waiting for the warm: a debounced placeholder');
     });
 
     testWidgets('Beats: beats accepted on a retry of the same night clear '

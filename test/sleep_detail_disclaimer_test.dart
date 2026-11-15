@@ -119,11 +119,15 @@ void main() {
           findsNothing,
         );
         if (state == 'loading') {
-          expect(find.text('Reading the night'), findsOneWidget);
+          expect(find.byType(CircularProgressIndicator), findsNothing);
+          expect(find.byWidgetPredicate((w) => w is PendingContent && w.pending), findsWidgets);
         } else if (state == 'loaded') {
           expect(find.text('Total sleep'), findsOneWidget);
         } else if (state == 'empty') {
-          expect(find.text('No night to show'), findsWidgets);
+          expect(find.text('Total sleep'), findsOneWidget);
+          expect(find.text(embedded ? 'Sleep timeline' : 'Through the night'), findsOneWidget);
+          // The reason stays in the night section; the research warning
+          // above remains visible in every state.
         }
         expect(t.takeException(), isNull);
       });

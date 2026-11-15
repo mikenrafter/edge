@@ -22,6 +22,8 @@
 // while expanded.
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:openstrap_edge/state/prefs.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ecg/ecg_controller.dart';
 import 'package:openstrap_edge/ecg/ecg_models.dart';
@@ -63,8 +65,11 @@ String _rowText(WidgetTester t, String field) => t
     .join(' ');
 
 Future<void> _expand(WidgetTester t) async {
-  await t.tap(_key('ecg-details'));
-  await t.pumpAndSettle();
+  // A previous visit may have saved this section open.
+  if (_detail('result_code').evaluate().isEmpty) {
+    await t.tap(_key('ecg-details'));
+    await t.pumpAndSettle();
+  }
 }
 
 EcgDetailData _data(EcgReading r, {int packets = 0, List<EcgReading> attempts = const []}) =>
@@ -90,6 +95,10 @@ EcgReading get _full => cardioReading(
 );
 
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({'accordion_ecg_details': false, 'accordion_ecg_timeline': false});
+    await Prefs.ensureLoaded();
+  });
   group('the accordion is there for EVERY reading, with no Nerd stats setting',
       () {
     final variants = <String, (EcgReading, int)>{
@@ -108,7 +117,7 @@ void main() {
       });
     }
 
-    testWidgets('collapsed it shows no rows; tapping opens it', (t) async {
+    testWidgets('with a saved folded preference it shows no rows; tapping opens it', (t) async {
       await _pump(t, EcgDetailScreen(data: _data(_full, packets: 3)));
       expect(_detail('result_code'), findsNothing);
       await _expand(t);

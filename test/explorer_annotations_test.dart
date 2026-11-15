@@ -469,7 +469,7 @@ void main() {
       expect(find.text('Drank water'), findsNothing);
     });
 
-    testWidgets('a loader that fails leaves the lines and no lane', (t) async {
+    testWidgets('a loader that fails leaves the lines and an empty reserved lane', (t) async {
       await pumpExplorer(t, repo(),
           today: '2026-10-04',
           annotationLoader: (_, _) async => throw StateError('no store'));
@@ -477,12 +477,16 @@ void main() {
       await tapKey(t, 'explore-day-prev');
       await tapKey(t, 'explore-pick:hr');
       expect(plotLine(t, 'hr').runs, isNotEmpty);
-      expect(find.byKey(ChartAnnotationLane.laneKey), findsNothing);
+      expect(find.byKey(ChartAnnotationLane.laneKey), findsOneWidget);
+      expect(find.byType(AnnotationIcon), findsNothing,
+          reason: 'reserved space must not invent annotation events');
     });
 
-    testWidgets('no items, no lane and no extra height', (t) async {
+    testWidgets('no items keeps an empty reserved annotation lane', (t) async {
       await openDay(t, const []);
-      expect(find.byKey(ChartAnnotationLane.laneKey), findsNothing);
+      expect(find.byKey(ChartAnnotationLane.laneKey), findsOneWidget);
+      expect(find.byType(AnnotationIcon), findsNothing,
+          reason: 'reserved space must not invent annotation events');
     });
 
     testWidgets('the loader is asked for the shown day, again for another',

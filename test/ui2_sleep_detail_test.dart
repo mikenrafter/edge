@@ -1,3 +1,4 @@
+import 'support/sleep_disclosures.dart';
 // The Sleep screen's judgement layer, below the fold.
 //
 // The goldens capture the top of the screen — the viewport is 1400 pt and the
@@ -59,6 +60,7 @@ Future<void> _pump(WidgetTester t, SleepData d, {double scale = 1}) async {
     ),
   ));
   await t.pumpAndSettle();
+  await openSleepDisclosures(t);
 }
 
 void main() {
@@ -391,6 +393,7 @@ void main() {
         home: SleepDetail(data: SleepData(day: '2026-05-20', night: _night())),
       ));
       await t.pumpAndSettle();
+      await openSleepDisclosures(t);
       expect(t.takeException(), isNull);
       final label = lang == 'ru' ? 'Гипнограмма' : 'Hypnogram';
       final plot =

@@ -134,7 +134,7 @@ class _TrackLogScreenState extends State<TrackLogScreen> {
             Text(text(_error!), key: const ValueKey('track-log-error')),
           if (_tracks == null) ...[
             if (_error == null)
-              const Center(child: CircularProgressIndicator())
+              const PendingContent(pending: true, child: Surface(child: PendingRows(count: 5)))
             else
               TextButton(onPressed: _load, child: Text(text('Retry'))),
           ] else if (_tracks!.isEmpty)

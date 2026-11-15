@@ -1,3 +1,5 @@
+import '../state/prefs.dart';
+import 'skeleton/async_section.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -50,7 +52,7 @@ class _SyncControlState extends State<SyncControl> {
   static const _detailsId = 'sync-details';
 
   final _ticker = _SyncTicker();
-  bool _open = false;
+  late bool _open = Prefs.getBool(accordionPrefKey(_detailsId), true);
 
   /// Set once the person has toggled it: a stored answer that arrives after
   /// that must not undo what they just did.
@@ -138,8 +140,7 @@ class _SyncControlState extends State<SyncControl> {
         SizedBox(
           width: 20,
           height: 20,
-          child: CircularProgressIndicator(
-              strokeWidth: 2, color: p.on(C.blue)),
+          child: PendingMark(),
         )
       else
         Icon(icon, size: 20, color: tint),
@@ -386,12 +387,12 @@ String syncStatusLine(SyncPresentationState s, DateTime now, [AppLocalizations? 
       final calc = s.calculate;
       if (calc != null && calc.waiting) {
         return _downloadLine(s, l) ??
-            (l?.syncStatusWaitingCalculation ?? 'Waiting for another calculation…');
+            (l?.deriveWaitingDailyLabel ?? 'Waiting to calculate sleep, recovery and strain');
       }
       final i = calc?.dayIndex, total = calc?.dayTotal;
       return i != null && total != null && i > 0
-          ? (l?.syncLineCalcDay('$i', '$total') ?? 'Calculating · day $i of $total')
-          : l?.syncStatusCalculating ?? 'Calculating…';
+          ? (l?.deriveDailyProgress('$i', '$total') ?? 'Calculating sleep, recovery and strain · day $i of $total')
+          : (l?.deriveDailyLabel ?? 'Calculating sleep, recovery and strain');
     case 'completed':
       if (s.partial) return l?.syncStatusPartial ?? 'Synced, but some days need another pass';
       final done = s.finishedAt;
@@ -410,7 +411,7 @@ String syncStatusLine(SyncPresentationState s, DateTime now, [AppLocalizations? 
 }
 
 String _calcWaitingHeadline(AppLocalizations? l) =>
-    l?.syncStatusCalculatingWaiting ?? 'Calculating · waiting for another calculation';
+    l?.deriveWaitingDailyLabel ?? 'Waiting to calculate sleep, recovery and strain';
 
 String _activeStepLine(SyncStep step, AppLocalizations? l) {
   if (step.id == SyncStepId.calculate && step.calculate?.waiting == true) {
@@ -455,17 +456,11 @@ String? calcProgressLine(SyncPresentationState s, [AppLocalizations? l]) {
 
 String _calcLine(AppLocalizations? l,
     {required bool waiting, int? i, int? total, String? day}) {
-  if (waiting) {
-    return l?.deriveProgressWaiting ?? 'Waiting for another calculation';
-  }
-  if (i == null || total == null || i <= 0) {
-    return l?.deriveProgressCalculating ?? 'Calculating…';
-  }
+  if (waiting) return l?.deriveWaitingDailyLabel ?? 'Waiting to calculate sleep, recovery and strain';
+  if (i == null || total == null || i <= 0) return l?.deriveDailyLabel ?? 'Calculating sleep, recovery and strain';
   return day == null
-      ? (l?.deriveProgressDay('$i', '$total') ??
-          'Calculating · day $i of $total')
-      : (l?.deriveProgressDayOn('$i', '$total', day) ??
-          'Calculating · day $i of $total · $day');
+    ? (l?.deriveDailyProgress('$i', '$total') ?? 'Calculating sleep, recovery and strain · day $i of $total')
+    : (l?.deriveDailyProgressOn('$i', '$total', day) ?? 'Calculating sleep, recovery and strain · day $i of $total · $day');
 }
 
 /// [calcProgressLine] for any derive pass, sync or not, from
@@ -473,6 +468,7 @@ String _calcLine(AppLocalizations? l,
 /// reports here and never on the sync's own steps.
 String? deriveProgressLine(DeriveProgress? p, [AppLocalizations? l]) {
   if (p == null) return null;
+  if (p.crossDay) return l?.deriveTrendsLabel ?? 'Rebuilding trends';
   return _calcLine(l,
       waiting: p.waiting, i: p.dayIndex, total: p.dayTotal, day: p.day);
 }
@@ -507,7 +503,7 @@ class CalcLoading extends StatelessWidget {
 Widget syncBusyMark(Color color) => SizedBox(
       width: 18,
       height: 18,
-      child: CircularProgressIndicator(strokeWidth: 2, color: color),
+      child: PendingMark(),
     );
 
 /// The first clause of [syncStatusLine]: "Downloading…", "Calculating", "Sync

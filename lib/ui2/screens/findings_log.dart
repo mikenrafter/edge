@@ -1,4 +1,4 @@
-// OBSERVATIONS — the log of every health watch that has ever fired.
+// OBSERVATIONS — a dated timeline of the existing health watches.
 //
 // Named for the card it is a history of: the Observation widget has printed
 // "HEALTH OBSERVATION" over the illness card since the design system existed,
@@ -7,11 +7,9 @@
 // sweep measures every metric against your own trailing history, while these
 // are standing watches with their own thresholds.
 //
-// Four detectors fire on every rollup and exactly one of them, illness, ever
-// reached a screen. The other three — the overnight anomaly, the skin
-// temperature flag, and the change-point search that says "your resting
-// heart-rate trend shifted" — existed only as a push notification. One buzz,
-// and dismissing it lost it for good.
+// These are existing detector results, projected onto calendar days. The latest
+// week stays summarized while earlier weeks can be explored; the focused day
+// repeats the detector's own wording, including its uncertainty and date.
 //
 // A LOG YOU GO TO, NOT A FEED THAT COMES TO YOU. notification_center.dart
 // records that the in-app notifications feed was removed deliberately, because
@@ -26,103 +24,427 @@
 // entries carry the same "this is a screen, see a clinician" wording they
 // carry in the notification.
 
+// Latest-week summary, standard day scrub and canonical rows in its detail.
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-
 import '../../compute/findings.dart';
+import '../../data/day_label.dart';
 import '../../data/db.dart';
 import '../../data/pulse_episode_store.dart';
 import 'pulse_episode.dart';
 import '../../l10n/app_localizations.dart';
+import '../../models/chart_point.dart';
 import '../../state/clock_format.dart' show formatClockOf;
 import '../ui2.dart';
+import '../why_row.dart';
+import '../finding_presentation.dart';
+export '../finding_presentation.dart' show findingColor;
 import 'home_screen.dart' show prettyDay;
 import 'metric_detail.dart' show detailScaffold;
 
-/// The accent a finding is drawn in. Two, not six: the detections the design
-/// sanctions interrupting for, and everything else. A palette per detector
-/// would read as a severity scale nobody calibrated.
-Color _ink(P p, Finding f) => p.on(f.medical ? C.orange : C.blue);
+Color _ink(P p, Finding f) => p.on(findingColor(f.kind));
 
-IconData _icon(Finding f) => switch (f.kind) {
-      FindingKind.illness => LucideIcons.stethoscope,
-      FindingKind.anomaly => LucideIcons.waves,
-      FindingKind.tempElevated => LucideIcons.thermometer,
-      FindingKind.irregularRhythm => LucideIcons.heartPulse,
-      FindingKind.lowReadiness => LucideIcons.batteryLow,
-      FindingKind.rhrShift => LucideIcons.trendingUp,
-    };
+List<String> observationWeek(String end, int week) => [
+  for (var i = 6; i >= 0; i--) dayLabelBefore(end, week * 7 + i)!,
+];
 
-class FindingsLog extends StatelessWidget {
-  const FindingsLog(this.findings, {super.key});
-
+class FindingsLog extends StatefulWidget {
+  const FindingsLog(
+    this.findings, {
+    super.key,
+    this.rhr = const [],
+    this.today,
+  });
   final List<Finding> findings;
+  final List<ChartPoint> rhr;
+  final String? today;
+  @override
+  State<FindingsLog> createState() => _FindingsLogState();
+}
 
+class _FindingsLogState extends State<FindingsLog> {
+  int _week = 0;
+  String? _focus;
+  late final String _end = widget.today ?? todayLabel();
+  List<Finding> on(String day) =>
+      widget.findings.where((f) => f.date == day).toList();
+  void move(int delta) => setState(() {
+    _week += delta;
+    _focus = null;
+  });
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    final l = AppLocalizations.of(c);
-    // Already newest-first out of findingsHistory; grouped here only so a day
-    // with three findings reads as one morning rather than three events.
-    final byDay = <String, List<Finding>>{};
-    for (final f in findings) {
-      (byDay[f.date] ??= []).add(f);
-    }
-
-    return detailScaffold(
-      c,
-      l?.findingsLogTitle ?? 'Observations',
-      [
-        TextButton(onPressed:()=>Navigator.of(c).push(MaterialPageRoute<void>(builder:(_)=>const PulseEpisodesScreen())), child:const Text('See all pulse episodes')),
-        FutureBuilder<List<PulseEpisodeSnapshot>>(
-          future: LocalDb.instance.then((db) => PulseEpisodeStore(db).list()),
-          builder: (c, s) => s.hasError
-            ? const Text('Pulse recordings could not be loaded. Reopen to retry.')
-            : Column(children: [for (final e in s.data ?? <PulseEpisodeSnapshot>[]) PulseEpisodeRow(e)]),
-        ),
-        if (findings.isEmpty)
-          StatusCard(
-            l?.findingsLogEmptyTitle ?? 'Nothing has stood out',
-            l?.findingsLogEmptyBody ??
-                'Nothing unusual found.',
-            icon: LucideIcons.check,
-          )
-        else ...[
-          for (final day in byDay.keys) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(S.x1, S.x5, S.x1, S.x2),
-              child: Text(prettyDay(day),
-                  style: F.cap.copyWith(
-                      color: p.ink3, fontWeight: FontWeight.w600)),
+    final l =
+        AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));
+    final days = observationWeek(_end, _week);
+    final latest = observationWeek(_end, 0);
+    final weekEvents = widget.findings
+        .where((f) => latest.contains(f.date))
+        .toList();
+    final kinds = FindingKind.values
+        .where((k) => widget.findings.any((f) => f.kind == k))
+        .toList();
+    final focus =
+        _focus ??
+        days.lastWhere((d) => on(d).isNotEmpty, orElse: () => days.last);
+    final counts = [for (final day in days) on(day).length.toDouble()];
+    final maximum = math.max(1, counts.reduce(math.max).toInt());
+    final axisTop = maximum <= 4 ? maximum : (maximum / 2).ceil() * 2;
+    final focused = on(focus);
+    final focusedKinds = kinds.where((k) => focused.any((f) => f.kind == k));
+    final earliest = widget.findings.fold(
+      _end,
+      (String d, f) => f.date.compareTo(d) < 0 ? f.date : d,
+    );
+    return detailScaffold(c, l.findingsLogTitle, [
+      TextButton(onPressed: () => Navigator.of(c).push(MaterialPageRoute<void>(builder: (_) => const PulseEpisodesScreen())), child: const Text('See all pulse episodes')),
+      FutureBuilder<List<PulseEpisodeSnapshot>>(
+        future: LocalDb.instance.then((db) => PulseEpisodeStore(db).list()),
+        builder: (c, s) => s.hasError
+          ? const Text('Pulse recordings could not be loaded. Reopen to retry.')
+          : Column(children: [for (final e in s.data ?? <PulseEpisodeSnapshot>[]) PulseEpisodeRow(e)]),
+      ),
+      Padding(
+        key: const ValueKey('observations-latest-week'),
+        padding: const EdgeInsets.symmetric(vertical: S.x3),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l.observationsLatestWeek(
+                prettyDay(latest.first, l),
+                prettyDay(latest.last, l),
+              ),
+              style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600),
             ),
-            Surface(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(height: S.x2),
+            if (weekEvents.isEmpty)
+              Text(l.observationsNoWeek, style: F.cap.copyWith(color: p.ink2)),
+            Wrap(
+              spacing: S.x3,
+              runSpacing: S.x2,
+              children: [
+                for (final k in kinds)
+                  if (weekEvents.any((f) => f.kind == k))
+                    Text(
+                      '${weekEvents.where((f) => f.kind == k).length} · ${findingTitle(l, Finding(k, _end))}',
+                      style: F.cap.copyWith(color: p.on(findingColor(k))),
+                    ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      Surface(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  tooltip: l.observationsEarlierWeek,
+                  onPressed: earliest.compareTo(days.first) < 0
+                      ? () => move(1)
+                      : null,
+                  icon: const Icon(LucideIcons.chevronLeft),
+                ),
+                Expanded(
+                  child: Text(
+                    '${prettyDay(days.first, l)} – ${prettyDay(days.last, l)}',
+                    textAlign: TextAlign.center,
+                    style: F.cap.copyWith(color: p.ink2),
+                  ),
+                ),
+                IconButton(
+                  tooltip: l.observationsLaterWeek,
+                  onPressed: _week > 0 ? () => move(-1) : null,
+                  icon: const Icon(LucideIcons.chevronRight),
+                ),
+              ],
+            ),
+            ChartFrame(
+              title: l.findingsLogTitle,
+              unit: l.observationsEventsUnit,
+              height: _observationPlotHeight,
+              yAxis: AxisSpec(
+                min: 0,
+                max: axisTop.toDouble(),
+                ticks: maximum <= 4 ? maximum + 1 : 3,
+                format: axisInt,
+              ),
+              panel: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  for (var i = 0; i < byDay[day]!.length; i++) ...[
-                    if (i > 0) ...[
-                      const SizedBox(height: S.x3),
-                      Divider(color: p.line, height: 1),
-                      const SizedBox(height: S.x3),
+                  ChartKeyReadout(
+                    time: prettyDay(focus, l),
+                    timeSpan: days.map((d) => prettyDay(d, l)).toList(),
+                    scrubbed: true,
+                    cells: [
+                      ChartCell(
+                        l.observationsEventsUnit,
+                        p.ink,
+                        value: '${focused.length}',
+                      ),
+                      for (final k in focusedKinds)
+                        ChartCell(
+                          findingTitle(l, Finding(k, focus)),
+                          p.on(findingColor(k)),
+                          value: '${focused.where((f) => f.kind == k).length}',
+                        ),
                     ],
-                    FindingRow(byDay[day]![i]),
-                  ],
+                  ),
+                  const SizedBox(height: S.x2),
+                  if (focused.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(S.x3),
+                      child: Text(
+                        l.observationsNoDay,
+                        style: F.body.copyWith(color: p.ink2),
+                      ),
+                    ),
+                  for (final f in focused)
+                    Padding(
+                      padding: const EdgeInsets.only(top: S.x2),
+                      child: WhyRow(
+                        id: 'finding:${f.kind.name}:${f.date}',
+                        title:
+                            '${prettyDay(f.date, l)} · ${findingTitle(l, f)}',
+                        body: findingDetail(l, f),
+                        color: findingColor(f.kind),
+                        icon: findingIcon(f),
+                        fullText: true,
+                        onTap: f.kind == FindingKind.rhrShift
+                            ? () => Navigator.of(c).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => RhrChangesScreen(
+                                    findings: widget.findings,
+                                    points: widget.rhr,
+                                  ),
+                                ),
+                              )
+                            : null,
+                      ),
+                    ),
                 ],
+              ),
+              // Slot-centred dates share the plot cells and precede its readout.
+              axisFooter: Row(
+                children: [
+                  for (final day in days)
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: S.x2),
+                        child: Text(
+                          day.substring(8),
+                          key: ValueKey('observation-day:$day'),
+                          textAlign: TextAlign.center,
+                          style: F.cap.copyWith(
+                            color: day == focus ? p.ink : p.ink3,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              child: ChartScrub(
+                key: ValueKey('observations-week:$_week'),
+                label: l.findingsLogTitle,
+                step: 1 / 7,
+                slots: 7,
+                slotBars: true,
+                snapToSlots: true,
+                keys: [
+                  ChartKey.slots(
+                    l.observationsEventsUnit,
+                    p.ink,
+                    counts,
+                    (i, v) => '${v.round()}',
+                    bars: true,
+                  ),
+                ],
+                time: (v) =>
+                    prettyDay(days[ChartScrub.slotAt(7, v, bars: true)], l),
+                onChanged: (v) => setState(
+                  () => _focus = days[ChartScrub.slotAt(7, v, bars: true)],
+                ),
+                child: _DayMarkers(
+                  days: days,
+                  events: widget.findings,
+                  top: axisTop,
+                  p: p,
+                ),
               ),
             ),
           ],
-        const SizedBox(height: S.x5),
-        // THE ONE THING A LOG OWES ITS READER: what it is a log OF. These
-        // entries are worked out from the data on every open rather than
-        // written down when they fired, so a day whose data was later
-        // re-derived changes here with it — including out of existence.
-          Text(
-            l?.findingsLogDerivedNote ??
-                'Recalculated each time you open this, so it can change if a '
-                    'day is re-analysed.',
-            style: F.cap.copyWith(color: p.ink3, height: 1.5),
+        ),
+      ),
+      if (widget.findings.any((f) => f.kind == FindingKind.rhrShift))
+        TextButton.icon(
+          onPressed: () => Navigator.of(c).push(
+            MaterialPageRoute<void>(
+              builder: (_) => RhrChangesScreen(
+                findings: widget.findings,
+                points: widget.rhr,
+              ),
+            ),
           ),
-      ],
+          icon: const Icon(LucideIcons.chartLine),
+          label: Text(l.rhrChangesTitle),
+        ),
+      const SizedBox(height: S.x3),
+      Text(
+        l.findingsLogDerivedNote,
+        style: F.cap.copyWith(color: p.ink3, height: 1.5),
+      ),
+    ]);
+  }
+}
+
+const _observationPlotHeight = 130.0;
+
+class _DayMarkers extends StatelessWidget {
+  const _DayMarkers({
+    required this.days,
+    required this.events,
+    required this.top,
+    required this.p,
+  });
+  final List<String> days;
+  final List<Finding> events;
+  final int top;
+  final P p;
+  @override
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.end,
+    children: [
+      for (final day in days)
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: S.x2),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                for (final kind in FindingKind.values)
+                  for (final event in events.where(
+                    (f) => f.date == day && f.kind == kind,
+                  ))
+                    SizedBox(
+                      height: _observationPlotHeight / top,
+                      child: Center(
+                        child: Icon(
+                          findingIcon(event),
+                          size: math.min(20, _observationPlotHeight / top - 2),
+                          color: p.on(findingColor(kind)),
+                        ),
+                      ),
+                    ),
+              ],
+            ),
+          ),
+        ),
+    ],
+  );
+}
+
+class RhrChangesScreen extends StatelessWidget {
+  const RhrChangesScreen({
+    super.key,
+    required this.findings,
+    required this.points,
+  });
+  final List<Finding> findings;
+  final List<ChartPoint> points;
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final l =
+        AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));
+    final byDay = {
+      for (final q in points)
+        if (q.v.isFinite)
+          dayLabelOf(DateTime.fromMillisecondsSinceEpoch(q.t * 1000)): q.v,
+    };
+    final dates = {
+      ...byDay.keys,
+      for (final f in findings)
+        if (f.kind == FindingKind.rhrShift) f.date,
+    }.toList()..sort();
+    final end = dates.isEmpty ? todayLabel() : dates.last;
+    final start = dates.isEmpty ? end : dates.first;
+    final days = <String>[];
+    // Calendar labels, not elapsed 24-hour durations: DST must not move a mark.
+    for (
+      var day = start;
+      day.compareTo(end) <= 0;
+      day = dayLabelBefore(day, -1)!
+    ) {
+      days.add(day);
+    }
+    if (days.length == 1) days.insert(0, dayLabelBefore(start, 1)!);
+    final values = [for (final d in days) byDay[d]];
+    final axis = AxisSpec.of(
+      values.whereType<double>().toList(),
+      ticks: 3,
+      format: (v) => '${v.round()}',
+    );
+    final marks = dailyAnnotations(rhrChangeAnnotations(findings, l: l), days);
+    return detailScaffold(c, l.rhrChangesTitle, [
+      Surface(
+        child: ChartFrame(
+          title: l.healthRowRestingHr,
+          unit: 'bpm',
+          height: 180,
+          yAxis: axis,
+          series: values,
+          xLabels: [prettyDay(days.first, l), prettyDay(days.last, l)],
+          annotations: marks.isEmpty
+              ? null
+              : AnnotationSet(
+                  items: marks,
+                  domainStart: 0,
+                  domainEnd: (days.length - 1).toDouble(),
+                ),
+          panel: byDay.isEmpty
+              ? ChartKeyReadout(
+                  cells: [ChartCell(l.healthRowRestingHr, p.on(C.red))],
+                )
+              : null,
+          footnote: byDay.isEmpty ? l.rhrNoReadings : null,
+          child: ChartScrub(
+            label: l.healthRowRestingHr,
+            keys: [
+              ChartKey.slots(
+                l.healthRowRestingHr,
+                p.on(C.red),
+                values,
+                (i, v) => '${v.round()} bpm',
+              ),
+            ],
+            slots: days.length,
+            gaps: true,
+            time: (v) => prettyDay(days[ChartScrub.slotAt(days.length, v)], l),
+            child: CustomPaint(
+              size: Size.infinite,
+              painter: LineChart(values, p.on(C.red), axis: axis, fill: false),
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(height: S.x3),
+      for (final f in findings.where((f) => f.kind == FindingKind.rhrShift))
+        Padding(
+          padding: const EdgeInsets.only(bottom: S.x2),
+          child: WhyRow(
+            id: 'rhr:${f.date}',
+            title: '${prettyDay(f.date, l)} · ${findingTitle(l, f)}',
+            body: findingDetail(l, f),
+            color: C.blue,
+            icon: findingIcon(f),
+            fullText: true,
+          ),
+        ),
     ]);
   }
 }
@@ -159,13 +481,16 @@ class FindingRow extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.only(top: S.x1),
-                child: Icon(_icon(f), size: 16, color: ink),
+                child: Icon(findingIcon(f), size: 16, color: ink),
               ),
               const SizedBox(width: S.x2),
               Expanded(
-                child: Text(title,
-                    style: F.body.copyWith(
-                        color: p.ink, fontWeight: FontWeight.w600),
+                child: Text(
+                  title,
+                  style: F.body.copyWith(
+                    color: p.ink,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],

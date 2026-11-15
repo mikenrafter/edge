@@ -4,6 +4,8 @@
 // (lib/ecg/ecg_seconds.dart), and "not kept" when the waveform was not.
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:openstrap_edge/state/prefs.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ecg/ecg_models.dart';
 import 'package:openstrap_edge/ecg/ecg_seconds.dart';
@@ -55,6 +57,10 @@ String _texts(WidgetTester t, Finder under) => t
     .join('\n');
 
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({'accordion_ecg_details': false, 'accordion_ecg_timeline': false});
+    await Prefs.ensureLoaded();
+  });
   group('the one decoder', () {
     test('a live packet decodes its own header bytes', () {
       final s = ecgSecondOf(

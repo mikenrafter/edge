@@ -436,7 +436,7 @@ class _SignalPriorityScreenState extends State<SignalPriorityScreen> {
                 padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
                 children: [
                   if (_rebuilding) ...[
-                    const LinearProgressIndicator(),
+                    const PendingMark(),
                     const SizedBox(height: S.x2),
                     Text('Rebuilding history. This can take several minutes.',
                         style: F.cap.copyWith(color: p.ink3)),
