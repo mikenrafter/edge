@@ -25,6 +25,7 @@ import 'package:openstrap_edge/ui2/ui2.dart';
 
 import 'support/explorer_harness.dart' as ex;
 import 'support/read_paused_fakes.dart';
+import 'support/as_of_recalc_fakes.dart' show settle;
 
 Future<void> _settle(WidgetTester t, {int n = 40}) async {
   for (var i = 0; i < n; i++) {
@@ -411,11 +412,10 @@ void main() {
       final days = repo.count('availableDays');
 
       endFocus();
-      for (var i = 0; i < 40; i++) {
-        await t.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 10)));
-        await t.pump();
-      }
+      // The real SQLite read must settle; a fixed 400 ms sleep races under
+      // the sharded gate. Keep the exact one-reload assertion below.
+      await settle(t, until: () => find.text(kPausedLine).evaluate().isEmpty,
+          what: 'Naps resumes after import focus');
       expect(find.text(kPausedLine), findsNothing);
       expect(repo.count('availableDays'), days + 1);
     });
