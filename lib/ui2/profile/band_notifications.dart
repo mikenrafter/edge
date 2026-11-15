@@ -516,6 +516,9 @@ class _AppRow extends StatelessWidget {
     final row = Pressable(
       onTap: enabled ? () => onChanged?.call(app.package, !app.on) : null,
       semanticLabel: '${appLabel(app.package)}, ${app.on ? (l?.bandNotifBuzzesDescription ?? 'buzzes') : (l?.bandNotifDoesNotBuzzDescription ?? 'does not buzz')}',
+      // The row holds its own "Buzz pattern" control: the label covers the
+      // texts, which are excluded below, and that control stays reachable.
+      semanticChildren: true,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: S.x3),
         child: Row(children: [
@@ -539,7 +542,7 @@ class _AppRow extends StatelessWidget {
           ),
           const SizedBox(width: S.x3),
           Expanded(
-            child: Column(
+            child: ExcludeSemantics(child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(appLabel(app.package),
@@ -550,13 +553,13 @@ class _AppRow extends StatelessWidget {
                       style: F.over.copyWith(color: p.ink3),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis),
-                ]),
+                ])),
           ),
           const SizedBox(width: S.x2),
-          Text(app.on ? (l?.bandNotifBuzzes ?? 'Buzzes') : (l?.stateOff ?? 'Off'),
+          ExcludeSemantics(child: Text(app.on ? (l?.bandNotifBuzzes ?? 'Buzzes') : (l?.stateOff ?? 'Off'),
               style: F.cap.copyWith(
                   color: app.on ? p.on(C.green) : p.ink3,
-                  fontWeight: FontWeight.w600)),
+                  fontWeight: FontWeight.w600))),
           // The app's own rhythm. Present for every app, usable only for one
           // that is switched on.
           if (sequence != null)
@@ -565,7 +568,8 @@ class _AppRow extends StatelessWidget {
               onTap: enabled && app.on && onBuzzPattern != null
                   ? () => onBuzzPattern!(app.package)
                   : null,
-              semanticLabel: 'Buzz pattern, ${patternName ?? 'Custom'}',
+              semanticLabel: l?.bandNotifBuzzPattern(patternName ?? (l.bandNotifPatternCustom)) ??
+                  'Buzz pattern, ${patternName ?? 'Custom'}',
               child: Opacity(
                 opacity: enabled && app.on && onBuzzPattern != null ? 1 : .4,
                 child: Padding(

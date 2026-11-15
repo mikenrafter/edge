@@ -90,7 +90,9 @@ void main() {
 
   for (final d in ShellDomain.values) {
     apk1Test('tab ${d.name}', (t) async {
-      await apk1Mount(t, initial: d);
+      // hour: the greeting reads the wall clock (see ui2_a11y_pixels_test).
+      await apk1Mount(t, initial: d,
+          source: HomeScreen(data: apk1Home(), now: apk1Now, hour: 9));
       await _sweep(t, d.name);
     });
   }

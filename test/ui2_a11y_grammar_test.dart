@@ -109,7 +109,7 @@ void main() {
     expect(month.hasFlag(SemanticsFlag.isButton), isTrue);
     expect(month.hasFlag(SemanticsFlag.isEnabled), isFalse);
     expect(month.hasFlag(SemanticsFlag.hasEnabledState), isTrue);
-    expect(month.label, 'Month', reason: 'the state is a flag, not English in the label');
+    expect(month.label, 'Month, unavailable', reason: 'the label still says why');
   });
 
   testWidgets('Section: the title is a heading node of its own', (t) async {
@@ -231,6 +231,23 @@ void main() {
       InsightCard('Bed earlier', 'Three short nights.', action: 'See why', onTap: () {}),
     ], nav: true));
     expect(repeatedLines(t), isEmpty);
+  });
+
+  testWidgets('opt-in 48 dp targets: an icon Pressable is 48 x 48 on Android, 44 without the opt-in', (t) async {
+    // CLAIM(A11Y-TAP48): the pilot opt-in raises only the Pressable minimum.
+    Widget icon() => Center(child: Pressable(
+        onTap: () {}, semanticLabel: 'Close', child: const Icon(Icons.close, size: 18)));
+    // Away from the screen edge: the guideline skips nodes touching it.
+    final page = [const SizedBox(height: 100), icon()];
+    await t.pumpWidget(_host(page));
+    expect(t.getSize(find.byType(Pressable)), const Size(44, 44));
+    expect((await androidTapTargetGuideline.evaluate(t)).passed, isFalse,
+        reason: 'positive control: 44 fails the Android guideline');
+    Pressable.debugTap48 = true;
+    addTearDown(() => Pressable.debugTap48 = null);
+    await t.pumpWidget(_host([const SizedBox(height: 100), icon()]));
+    expect(t.getSize(find.byType(Pressable)), const Size(48, 48));
+    await expectLater(t, meetsGuideline(androidTapTargetGuideline));
   });
 
   testWidgets('the repeated-line check catches what it is for', (t) async {

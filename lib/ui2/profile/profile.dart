@@ -311,7 +311,12 @@ class _SettingsAccordionState extends State<_SettingsAccordionCard> {
         child: Column(children: [
           Pressable(
             onTap: _toggle,
-            semanticLabel: '${widget.a.title}, ${_open ? 'expanded' : 'collapsed'}',
+            // The open state is a real flag (TalkBack says "expanded" or
+            // "collapsed" in the phone's language), not English in the label.
+            expanded: _open,
+            semanticLabel: !_open && summary != null && summary.isNotEmpty
+                ? '${widget.a.title}, $summary'
+                : widget.a.title,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: S.x3),
               child: Row(children: [

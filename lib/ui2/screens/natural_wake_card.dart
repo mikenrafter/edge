@@ -24,7 +24,7 @@ class NaturalWakeBuzzingCard extends StatelessWidget {
           }
           final p = P.of(c);
           final l = AppLocalizations.of(c);
-          final title = buzzing ? 'Natural Wake is buzzing' : switch (wake.awaitingWakePath) {
+          final title = buzzing ? (l?.naturalWakeBuzzing ?? 'Natural Wake is buzzing') : switch (wake.awaitingWakePath) {
             WakePath.natural => l?.wakeJournalNatural ?? 'Natural wake',
             WakePath.gradual => l?.wakeJournalGradual ?? 'Gradual wake',
             WakePath.alarm || null => l?.wakeJournalAlarm ?? 'Alarm',
@@ -40,7 +40,7 @@ class NaturalWakeBuzzingCard extends StatelessWidget {
                 ),
                 const SizedBox(height: S.x1),
                 Text(
-                  'or double-tap the band',
+                  l?.naturalWakeOrTapBand ?? 'or double-tap the band',
                   style: F.cap.copyWith(color: p.ink2),
                 ),
                 const SizedBox(height: S.x3),

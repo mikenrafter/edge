@@ -259,7 +259,10 @@ class _CustomFieldSheetState extends State<_CustomFieldSheet> {
                       ],
                       if (_error != null) ...[
                         const SizedBox(height: S.x3),
-                        Text(_error!, style: F.cap.copyWith(color: C.red)),
+                        // p.on: raw C.red text is 3.4-3.8:1 on the light cards (A11Y-CONTRAST).
+                        // A live region: the error lands after Save.
+                        Semantics(liveRegion: true,
+                            child: Text(_error!, style: F.cap.copyWith(color: p.on(C.red)))),
                       ],
                     ],
                   ),

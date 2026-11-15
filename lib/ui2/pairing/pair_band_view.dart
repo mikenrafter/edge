@@ -116,11 +116,21 @@ class _PairBandViewState extends State<PairBandView> {
                     onTap: () => widget.host.pickBand(shown[i]),
                   ),
                 ],
-                if (widget.problem != null) ...[
-                  const SizedBox(height: S.x4),
-                  StatusCard(l.pairSensorThatDidNotWork, widget.problem!,
-                      icon: LucideIcons.circleAlert),
-                ],
+                // A failed pick is spoken when it lands: the card appears
+                // below the list, far from the row the user tapped.
+                AnnounceOnChange(
+                  message: widget.problem == null
+                      ? null
+                      : '${l.pairSensorThatDidNotWork}. ${widget.problem}',
+                  child: widget.problem == null
+                      ? const SizedBox.shrink()
+                      : Padding(
+                          padding: const EdgeInsets.only(top: S.x4),
+                          child: StatusCard(l.pairSensorThatDidNotWork,
+                              widget.problem!,
+                              icon: LucideIcons.circleAlert),
+                        ),
+                ),
                 const SizedBox(height: S.x4),
                 TroubleConnectingCard(
                     entries: widget.entries, openLink: widget.openLink),

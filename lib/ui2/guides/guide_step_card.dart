@@ -167,11 +167,8 @@ class _GuideStepCardState extends State<GuideStepCard> {
     }
     final actions = <Widget>[];
     if (model is GuideCardOnStep && model.missingHelp != null) {
-      actions.add(Flexible(child: Semantics(
-        key: GuideStepCard.dontSeeItKey, container: true, button: true, expanded: _expanded,
-        child: Pressable(onTap: () => setState(() => _expanded = !_expanded),
-          child: Text(l.guideDontSeeIt, style: F.cap.copyWith(color: p.on(C.blue)))),
-      )));
+      actions.add(Flexible(child: Pressable(key: GuideStepCard.dontSeeItKey, expanded: _expanded, onTap: () => setState(() => _expanded = !_expanded),
+          child: Text(l.guideDontSeeIt, style: F.cap.copyWith(color: p.on(C.blue))))));
     }
     if (model is GuideCardOffPath && widget.onBackToGuide != null) {
       actions.add(Flexible(child: Pressable(key: GuideStepCard.backToGuideKey,

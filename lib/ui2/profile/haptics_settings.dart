@@ -618,8 +618,9 @@ class HapticsSettingsView extends StatelessWidget {
       _sectionLink(c, p, 'ecg'),
     ],
     HapticsTab.band => [
+      // No label: the row's own switch says its name and its on/off state,
+      // which a label would hide.
       Pressable(key: const ValueKey('haptics-phone-also'),
-        semanticLabel: _l(c)?.hapticsPhoneAlso ?? 'Also play vibrations on the phone',
         onTap: phoneVibrate == null
             ? null
             : () => phoneVibrate!.setAlso(!phoneAlso),
@@ -915,12 +916,14 @@ class HapticsSettingsView extends StatelessWidget {
               key: ValueKey('haptic-slot:${slot.key}'),
               onTap: onAssignToSlot == null ? null : () => _pickForSlot(c, slot),
               semanticLabel: '${slot.label}, $label',
+              // The row holds a preview button and a spoken score of its own.
+              semanticChildren: true,
               child: Padding(padding: const EdgeInsets.symmetric(vertical: S.x2),
                 child: Row(children: [
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [Text(slot.label, style: F.body.copyWith(color: p.ink)),
-                      Text(label,
-                        style: F.over.copyWith(color: P.of(c).ink3)),
+                    children: [ExcludeSemantics(child: Text(slot.label, style: F.body.copyWith(color: p.ink))),
+                      ExcludeSemantics(child: Text(label,
+                        style: F.over.copyWith(color: P.of(c).ink3))),
                       // The staff takes the text column's width, under the
                       // name: its "~x.xs" label and its notes need room, and
                       // beside the name at a large text size it ran into the
@@ -1022,7 +1025,7 @@ class HapticsSettingsView extends StatelessWidget {
         child: Pressable(
           key: ValueKey('haptic-slot-section-link:$sectionId'),
           onTap: () => open(sectionId),
-          semanticLabel: 'Open $title',
+          semanticLabel: AppLocalizations.of(c)?.hapticsOpenSection(title) ?? 'Open $title',
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: S.x1),
             child: Row(

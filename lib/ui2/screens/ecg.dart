@@ -214,7 +214,7 @@ class _ExportRow extends StatelessWidget {
             child: Text(
               l?.ecgExportFailed(failure!) ??
                   'Couldn\'t save the ECG log: $failure',
-              style: F.cap.copyWith(color: C.red),
+              style: F.cap.copyWith(color: p.on(C.red)), // A11Y-CONTRAST
             ),
           ),
       ],
@@ -400,7 +400,7 @@ class _EcgHomeScreenState extends State<EcgHomeScreen> {
           ),
           Pressable(
             key: const ValueKey('ecg-screener-link'),
-            semanticLabel: 'What the results mean',
+            semanticLabel: AppLocalizations.of(c)?.ecgWhatResultsMean ?? 'What the results mean',
             onTap: () => go(c, const EcgScreenerScreen()),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: S.x2),
@@ -408,7 +408,7 @@ class _EcgHomeScreenState extends State<EcgHomeScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      'What the results mean',
+                      AppLocalizations.of(c)?.ecgWhatResultsMean ?? 'What the results mean',
                       style: F.body.copyWith(color: p.on(C.blue)),
                     ),
                   ),
@@ -1764,12 +1764,12 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
                 ],
                 Pressable(
                   key: const ValueKey('ecg-screener-link'),
-                  semanticLabel: 'What the results mean',
+                  semanticLabel: AppLocalizations.of(c)?.ecgWhatResultsMean ?? 'What the results mean',
                   onTap: () => go(c, const EcgScreenerScreen()),
                   child: Padding(
                     padding: const EdgeInsets.only(top: S.x3),
                     child: Text(
-                      'What the results mean',
+                      AppLocalizations.of(c)?.ecgWhatResultsMean ?? 'What the results mean',
                       style: F.cap.copyWith(
                         color: p.on(C.blue),
                         fontWeight: FontWeight.w700,
@@ -1957,7 +1957,7 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
               child: Text(
                 l?.ecgDelete ?? 'Delete reading',
                 textAlign: TextAlign.center,
-                style: F.body.copyWith(color: C.red),
+                style: F.body.copyWith(color: p.on(C.red)), // A11Y-CONTRAST
               ),
             ),
           ),

@@ -55,9 +55,17 @@ class InlineLoading extends StatelessWidget {
         ),
         const SizedBox(width: S.x2),
         Expanded(
-          child: Text(
-            [status, if (d != null && d.isNotEmpty) d].join(' · '),
-            style: F.cap.copyWith(color: p.ink2),
+          // The status alone is spoken, as a live region (see below); the
+          // day count would make it chatter.
+          child: Semantics(
+            container: true,
+            liveRegion: true,
+            label: status,
+            excludeSemantics: true,
+            child: Text(
+              [status, if (d != null && d.isNotEmpty) d].join(' · '),
+              style: F.cap.copyWith(color: p.ink2),
+            ),
           ),
         ),
       ]);
@@ -71,8 +79,17 @@ class InlineLoading extends StatelessWidget {
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
         const SizedBox(height: S.x2),
-        Text(status,
-            textAlign: TextAlign.center, style: F.cap.copyWith(color: p.ink2)),
+        // A live region (A11Y-LIVE): a screen reader says the status when it
+        // changes ("Reading last night" -> "Calculating"). The spinner is
+        // silent. The detail line stays a plain node: a day count that ticks
+        // would be announced on every tick.
+        Semantics(
+          container: true,
+          liveRegion: true,
+          child: Text(status,
+              textAlign: TextAlign.center,
+              style: F.cap.copyWith(color: p.ink2)),
+        ),
         if (d != null && d.isNotEmpty)
           Text(d,
               textAlign: TextAlign.center,

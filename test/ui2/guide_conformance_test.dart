@@ -204,14 +204,14 @@ void main() {
           exception: FlutterError('A RenderFlex overflowed by 2.0 pixels on the right.'),
           informationCollector: () => [DiagnosticsNode.message('creator: Row:file:///lib/ui2/$where:22')],
         );
-    expect(isKnownNextOverflow(overflowIn('sync_control.dart:1020')), isTrue);
+    expect(isKnownNextOverflow(overflowIn('sync_control.dart:1036')), isTrue);
     expect(isKnownNextOverflow(overflowIn('screens/workout_screen.dart:382')), isTrue);
     expect(isKnownNextOverflow(overflowIn('screens/workout_screen.dart:1320')), isFalse, reason: 'the History row is ours to keep clean');
     expect(isKnownNextOverflow(overflowIn('guides/guide_step_card.dart:50')), isFalse);
     expect(
         isKnownNextOverflow(FlutterErrorDetails(
             exception: FlutterError('Null check operator used on a null value'),
-            informationCollector: () => [DiagnosticsNode.message('sync_control.dart:1020:22')])),
+            informationCollector: () => [DiagnosticsNode.message('sync_control.dart:1036:22')])),
         isFalse);
   });
 

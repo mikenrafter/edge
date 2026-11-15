@@ -482,6 +482,13 @@ class _CalmBreathingState extends State<CalmBreathing>
       // twice.
       final app = context.read<AppState>();
       if (!app.breathingPacedByBand) app.buzzBreathPhase(at.phase.kind);
+      // With a screen reader on, the phase is also SPOKEN (A11Y-BREATH): the
+      // ring and its word are the only other cues, and with no band connected
+      // the buzz above does nothing. Spoken even while the band paces, since
+      // a voice is not a second buzz.
+      if (MediaQuery.accessibleNavigationOf(context)) {
+        announce(context, breathPhaseKindLabel(at.phase.kind, AppLocalizations.of(context)));
+      }
     }
     setState(() => _elapsed = elapsed);
   }

@@ -248,7 +248,7 @@ class LiveHrCard extends StatelessWidget {
             // Bare scrub: no frame, so it draws its own key row under the trace.
             // The 56 pt belongs to the trace alone, not to the row beneath it.
             ChartScrub(
-              label: 'Live heart rate',
+              label: AppLocalizations.of(c)?.liveHrChartLabel ?? 'Live heart rate',
               // The stream carries no timestamps, so the position is "how many
               // readings ago", counted from the newest.
               time: ago,

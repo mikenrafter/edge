@@ -20,6 +20,7 @@
 // the page open with the pattern kept.
 
 import 'dart:async';
+import '../../l10n/app_localizations.dart';
 import 'dart:math' as math;
 
 import 'package:clock/clock.dart';
@@ -433,9 +434,9 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
                 trailing: Pressable(
                   key: const ValueKey('pattern-editor-save'),
                   onTap: canGo ? _save : null,
-                  semanticLabel: 'Save',
+                  semanticLabel: AppLocalizations.of(c)?.actionSave ?? 'Save',
                   child: Text(
-                    'Save',
+                    AppLocalizations.of(c)?.actionSave ?? 'Save',
                     style: F.body.copyWith(
                       color: canGo ? p.on(C.blue) : p.ink3,
                       fontWeight: FontWeight.w700,
@@ -464,7 +465,7 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
                   Pressable(
                     key: const ValueKey('pattern-editor-from-taps'),
                     onTap: _fromTaps,
-                    semanticLabel: 'Start from taps',
+                    semanticLabel: AppLocalizations.of(c)?.patternEditorStartFromTaps ?? 'Start from taps',
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -581,7 +582,7 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
                       Expanded(
                         child: _PriorityOption(
                           key: const ValueKey('pattern-editor-mode-follow'),
-                          label: 'Follow rhythm',
+                          label: AppLocalizations.of(c)?.patternEditorFollowRhythm ?? 'Follow rhythm',
                           selected: _follow,
                           onTap: () => _setMode(follow: true),
                         ),
@@ -590,7 +591,7 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
                       Expanded(
                         child: _PriorityOption(
                           key: const ValueKey('pattern-editor-mode-dynamics'),
-                          label: 'Allow dynamics',
+                          label: AppLocalizations.of(c)?.patternEditorAllowDynamics ?? 'Allow dynamics',
                           selected: !_follow,
                           onTap: () => _setMode(follow: false),
                         ),
@@ -720,9 +721,8 @@ class _PriorityOption extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    return Semantics(
-      selected: selected,
-      child: Pressable(
+    return Pressable(
+        selected: selected,
         onTap: onTap,
         semanticLabel: label,
         child: Container(
@@ -747,8 +747,7 @@ class _PriorityOption extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 

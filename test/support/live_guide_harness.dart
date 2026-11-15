@@ -184,7 +184,8 @@ class LiveGuideApp {
 
 /// KNOWN next BUGS, NOT the guides'. Two layout overflows exist on integrate/next
 /// today and show up when the real screens are pumped at 390 px and 1.3x text:
-///  * lib/ui2/sync_control.dart:1020, the shared status line's actions row (the width
+///  * lib/ui2/sync_control.dart:1036 (1020 before the a11y pilot moved it), the
+///    shared status line's actions row (the width
 ///    `syncActionLines` measures is a few px short): de and fr, on every shell tab,
 ///    in the unpaired state every harness screen is in;
 ///  * lib/ui2/screens/workout_screen.dart:374, the training-load card's headline row
@@ -207,7 +208,7 @@ void tolerateKnownNextOverflows() {
 bool isKnownNextOverflow(FlutterErrorDetails details) {
   final text = details.toString();
   return text.contains('RenderFlex overflowed') &&
-      (text.contains('sync_control.dart:1020:') || text.contains('workout_screen.dart:382:'));
+      (text.contains('sync_control.dart:1036:') || text.contains('workout_screen.dart:382:'));
 }
 
 /// Mounts [home] (default: the real [AppMainShell]) under the providers the

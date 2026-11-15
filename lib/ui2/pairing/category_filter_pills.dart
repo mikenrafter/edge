@@ -63,9 +63,8 @@ class _Pill extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    return Semantics(
-      selected: selected,
-      child: Pressable(
+    return Pressable(
+        selected: selected,
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: S.x3, vertical: 9),
@@ -80,7 +79,6 @@ class _Pill extends StatelessWidget {
                   color: selected ? p.ink : p.ink2,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
         ),
-      ),
-    );
+      );
   }
 }

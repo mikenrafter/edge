@@ -1059,11 +1059,9 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
     final on = _journalMarks;
     return Align(
       alignment: Alignment.centerRight,
-      child: Semantics(
-        key: MetricDetail.journalToggleKey,
-        selected: on,
-        button: true,
-        child: Pressable(
+      child: Pressable(
+          key: MetricDetail.journalToggleKey,
+          selected: on,
           onTap: () => setState(() => _journalMarks = !on),
           child: Container(
             padding:
@@ -1078,7 +1076,6 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
                     fontWeight: FontWeight.w600)),
           ),
         ),
-      ),
     );
   }
 
@@ -2531,6 +2528,8 @@ class DayNav extends StatelessWidget {
           opacity: to == null ? .35 : 1,
           child: Pressable(
             onTap: to == null ? null : () => onDay(to),
+            // At the end of the range the arrow is a disabled button, not text.
+            control: true,
             semanticLabel: label,
             child: Icon(icon, size: 20, color: p.ink),
           ),

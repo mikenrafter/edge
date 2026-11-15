@@ -1030,9 +1030,8 @@ class _UnstableToggle extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    return Semantics(
-      selected: selected,
-      child: Pressable(
+    return Pressable(
+        selected: selected,
         onTap: onTap,
         semanticLabel: 'Unstable',
         child: Container(
@@ -1054,8 +1053,7 @@ class _UnstableToggle extends StatelessWidget {
             maxLines: 1,
           ),
         ),
-      ),
-    );
+      );
   }
 }
 

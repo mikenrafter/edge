@@ -1476,8 +1476,11 @@ class MedRow extends StatelessWidget {
     final taken = slot.state == DoseState.taken;
     return Pressable(
       onTap: onTap,
-      semanticLabel: l?.wellnessMedAtTime(slot.def.label, slot.timeLabel) ??
-          '${slot.def.label} at ${slot.timeLabel}',
+      // The label replaced the row's text, which also says whether the dose
+      // was taken: the state goes in the label. The row's "More" button stays.
+      semanticLabel: '${l?.wellnessMedAtTime(slot.def.label, slot.timeLabel) ?? '${slot.def.label} at ${slot.timeLabel}'}, '
+          '${slot.def.doseLabel}, ${_stateLabel(l, slot.state)}',
+      semanticChildren: true,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: S.x3),
         child: Row(
@@ -1493,7 +1496,7 @@ class MedRow extends StatelessWidget {
             ),
             const SizedBox(width: S.x3),
             Expanded(
-              child: Column(
+              child: ExcludeSemantics(child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
@@ -1506,7 +1509,7 @@ class MedRow extends StatelessWidget {
                     style: F.over.copyWith(color: p.ink3),
                   ),
                 ],
-              ),
+              )),
             ),
             if (onMore != null)
               Pressable(

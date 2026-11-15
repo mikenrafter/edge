@@ -89,7 +89,10 @@ void main() {
 
   for (final d in ShellDomain.values) {
     apk1Test('tab ${d.name}', (t) async {
-      await apk1Mount(t, initial: d);
+      // hour: the greeting reads the wall clock, not package:clock, so an
+      // unpinned Home says "Good afternoon" after noon and the golden moves.
+      await apk1Mount(t, initial: d,
+          source: HomeScreen(data: apk1Home(), now: apk1Now, hour: 9));
       await expectLater(find.byType(MaterialApp),
           matchesGoldenFile('goldens/a11y/tab_${d.name}.png'));
     });

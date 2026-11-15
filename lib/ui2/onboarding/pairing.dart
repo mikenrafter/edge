@@ -332,7 +332,17 @@ class PairingView extends StatelessWidget {
                 size: 36,
                 color: p.on(C.blue)),
             const SizedBox(height: S.x5),
-            Text(_title(c, phase, blocker), style: F.t1.copyWith(color: p.ink)),
+            // The phase is the pairing's outcome so far ("Paired", "That did
+            // not work"): a heading, spoken when it changes (A11Y-ANNOUNCE).
+            AnnounceOnChange(
+              message: [_title(c, phase, blocker), ?body].join('. '),
+              child: Semantics(
+                container: true,
+                header: true,
+                child: Text(_title(c, phase, blocker),
+                    style: F.t1.copyWith(color: p.ink)),
+              ),
+            ),
                         if (body != null) ...[
               const SizedBox(height: S.x3),
               Text(body, style: F.body.copyWith(color: p.ink2)),
