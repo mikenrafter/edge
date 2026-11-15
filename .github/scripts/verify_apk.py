@@ -20,7 +20,7 @@ VARIANT_ABIS = {
     "armeabi-v7a": {"armeabi-v7a"},
     "x86_64": {"x86_64"},
 }
-PORTABLE_MAX_BYTES = 150_000_000
+PORTABLE_MAX_BYTES = 200_000_000  # fork cap (owner, 2026-11-15); upstream keeps 150 MB
 
 
 def verify_apk(apk, pubspec, variant, aapt2):

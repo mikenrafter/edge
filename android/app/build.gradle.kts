@@ -116,6 +116,14 @@ android {
             manifestPlaceholders["appLabel"] = "Edge Dev"
         }
         release {
+            // Fork builds (`-PforkDevRelease=true`, set by the fork's release
+            // script) ship release as the same Edge Dev app as profile: its own
+            // id, label and data beside the official install.
+            if (project.findProperty("forkDevRelease") == "true") {
+                applicationIdSuffix = ".dev"
+                versionNameSuffix = "-dev"
+                manifestPlaceholders["appLabel"] = "Edge Dev"
+            }
             // Use the real release key when it's configured (local key.properties or CI
             // env), otherwise fall back to debug so `flutter run --release` still works.
             signingConfig = if (hasReleaseSigning) {

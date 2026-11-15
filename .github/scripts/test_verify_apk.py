@@ -10,6 +10,7 @@ import zipfile
 
 
 SCRIPT = Path(__file__).with_name("verify_apk.py")
+PORTABLE_MAX_BYTES = 200_000_000  # matches verify_apk.py
 
 
 class VerifyApkTest(unittest.TestCase):
@@ -117,17 +118,17 @@ class VerifyApkTest(unittest.TestCase):
                 self.verify(error=f"missing lib/arm64-v8a/{library}")
 
     def test_portable_size_limit_is_inclusive_and_counts_padding(self):
-        # WHY: the 150 MB cap covers actual file bytes, including packaging holes.
+        # WHY: the portable cap covers actual file bytes, including packaging holes.
         self.package(("arm64-v8a", "armeabi-v7a", "x86_64"))
         # Prepending a sparse hole preserves ZIP offsets relative to its end.
         contents = self.apk.read_bytes()
         with self.apk.open("wb") as apk:
-            apk.seek(150_000_000 - len(contents))
+            apk.seek(PORTABLE_MAX_BYTES - len(contents))
             apk.write(contents)
-        self.assertEqual(self.verify("portable")["bytes"], 150_000_000)
+        self.assertEqual(self.verify("portable")["bytes"], PORTABLE_MAX_BYTES)
         with self.apk.open("ab") as apk:
             apk.write(b"x")
-        self.verify("portable", error="maximum is 150000000")
+        self.verify("portable", error=f"maximum is {PORTABLE_MAX_BYTES}")
 
     def test_rejects_tool_failure_and_invalid_zip(self):
         # WHY: tool and container errors cannot be mistaken for a verified artifact.
