@@ -309,7 +309,7 @@ void main() {
       addTearDown(gap.dispose);
       final stage = await pumpLiveStage(t, guide: stageGuide(scrollLast: true));
       await _settle(t);
-      stage.navigator.push(MaterialPageRoute<void>(builder: (_) => ValueListenableBuilder<double>(
+      stage.navigator.push(PageRouteBuilder<void>(transitionDuration: Duration.zero, pageBuilder: (_, _, _) => ValueListenableBuilder<double>(
         valueListenable: gap, builder: (_, value, _) => _R4Page(stage.taps, gap: value))));
       final position = await _awaitPage(t);
       for (var i = 0; i < 60 && stage.run.currentStep?.id != 'finish'; i++) {
@@ -345,11 +345,15 @@ void main() {
       await t.pump(const Duration(milliseconds: 16));
       await finger.moveBy(const Offset(0, -4));
       await t.pump(const Duration(milliseconds: 16));
+      await t.pump();
+      await t.pump();
       final held = position.pixels;
       second.value = true;
       await t.pump();
       await t.pump();
       expect(stage.run.currentStep?.id, 'two');
+      // Let the new reveal enter its moving phase before returning to S.
+      await t.pump(const Duration(milliseconds: 16));
       second.value = false;
       await t.pump();
       await t.pump();
