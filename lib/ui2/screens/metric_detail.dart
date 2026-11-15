@@ -2590,11 +2590,11 @@ Widget detailLinkRow(BuildContext c, IconData icon, String title, String sub,
         Icon(icon, size: 17, color: p.ink3),
         const SizedBox(width: S.x3),
         Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child: PendingStatic(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title,
                 style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
             Text(sub, style: F.over.copyWith(color: p.ink3)),
-          ]),
+          ])),
         ),
         Icon(LucideIcons.chevronRight, size: 18, color: p.ink3),
       ]),
