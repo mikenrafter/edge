@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'package:openstrap_edge/state/units_controller.dart';
 import 'package:openstrap_edge/alarm/snooze/snooze_settings.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
@@ -40,6 +42,12 @@ class _PrivateRepo extends GuideFakeRepo {
   }
 }
 
+Widget _app(AppState app, Widget child) => ChangeNotifierProvider<UnitsController>(
+  create: (_) => UnitsController.seed(UnitSystem.metric), child: perfApp(app, child));
+
+Finder _scroll() => find.descendant(of: find.byType(ListView).first,
+  matching: find.byType(Scrollable)).first;
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late BackupEnv env;
@@ -56,7 +64,7 @@ void main() {
     final repo = _PrivateRepo();
     final app = AppState.forTesting()..repo = repo;
     addTearDown(app.dispose);
-    await t.pumpWidget(perfApp(app, const WorkoutScreen()));
+    await t.pumpWidget(_app(app, const WorkoutScreen()));
     final setup = ShiftRun(t);
     await landed(setup);
     await t.tap(find.text('History'));
@@ -82,7 +90,7 @@ void main() {
     phoneSurface(t);
     final app = AppState.forTesting()..repo = _PrivateRepo();
     addTearDown(app.dispose);
-    await t.pumpWidget(perfApp(app, const JournalCompose()));
+    await t.pumpWidget(_app(app, const JournalCompose()));
     final setup = ShiftRun(t);
     await landed(setup);
     final trend = find.byWidgetPredicate((w) =>
@@ -115,8 +123,8 @@ void main() {
     final app = AppState.forTesting(engine: FakeAlarmEngine());
     addTearDown(app.dispose);
     await t.runAsync(() => app.setSnoozeSettings(const SnoozeSettings(enabled: true)));
-    await t.pumpWidget(perfApp(app, const AlarmScreen()));
-    await t.ensureVisible(find.byType(SnoozeSettingsRows));
+    await t.pumpWidget(_app(app, const AlarmScreen()));
+    await t.scrollUntilVisible(find.byType(SnoozeSettingsRows), 300, scrollable: _scroll());
     final run = ShiftRun(t)..opened();
     await run.frames([0, 150, 2500]);
     answer.complete(false);
@@ -134,15 +142,17 @@ void main() {
     addTearDown(app.dispose);
     final epoch = DateTime(2026, 11, 14, 7).millisecondsSinceEpoch ~/ 1000;
     app.device.alarmEpoch = epoch;
-    await t.pumpWidget(perfApp(app, const AlarmScreen()));
+    await t.pumpWidget(_app(app, const AlarmScreen()));
     final setup = ShiftRun(t);
     await landed(setup);
     final timeline = find.text('Timeline and status');
-    await t.ensureVisible(timeline);
-    await t.tap(timeline);
-    await landed(setup);
+    await t.scrollUntilVisible(timeline, 300, scrollable: _scroll());
     final decision = find.text('Last wake decision');
-    await t.ensureVisible(decision);
+    if (decision.evaluate().isEmpty) {
+      await t.tap(timeline);
+      await landed(setup);
+    }
+    await t.scrollUntilVisible(decision, 200, scrollable: _scroll());
     final run = ShiftRun(t)..opened();
     await run.frames([0, 150, 2500]);
     await t.runAsync(() async {
