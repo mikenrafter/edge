@@ -16,6 +16,7 @@
 import '../wake/wake_journal.dart';
 import '../wake/wake_timeline.dart';
 import '../compute/findings.dart' show servedReadiness;
+import '../compute/pulse_alert_record.dart';
 import '../compute/inputs/canonical.dart'
     show
         activeWearable,
@@ -1246,6 +1247,10 @@ class LocalRepositoryImpl extends LocalRepository {
     if (a == null || b == null) return null;
     return calendarDaysBetween(a, b);
   }
+
+  @override
+  Future<Map<String, PulseAlertRecord>> getPulseAlertRecords() =>
+      LocalDb.pulseAlertRecords();
 
   @override
   Future<Map<String, dynamic>> getInsights() => ReadPerf.reading('getInsights', () async {

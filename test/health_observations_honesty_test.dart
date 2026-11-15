@@ -104,7 +104,7 @@ void main() {
   });
 
   // CLAIM health-alert-read: alert metadata is part of the repository snapshot,
-  // starts with the primary read, and cannot delay a second publication later.
+  // starts with the primary read, and returns with the same snapshot.
   // catches: a screen-level SQLite read that bypasses the repository seam.
   test('alert records start with primary and reach the matching finding', () async {
     final gate = Completer<Map<String, dynamic>>();
@@ -118,6 +118,7 @@ void main() {
       gate.complete(const {});
     }
     final d = await loaded;
+    expect(d.findings, hasLength(1));
     expect(d.findings.single.date, _AlertRepo.day);
     expect(d.findings.single.alert, same(repo.record));
   });
@@ -181,6 +182,11 @@ class _AlertRepo extends _Gated {
   static const day = '2026-11-12';
   final record = PulseAlertRecord(PulseAlertState.sent, 1794499200000);
   bool alertsAsked = false;
+  @override
+  Future<Map<String, dynamic>> getInsights() async => const {
+    'recent': [{'date': day}],
+  };
+  @override
   Future<Map<String, PulseAlertRecord>> getPulseAlertRecords() async {
     alertsAsked = true;
     return {day: record};

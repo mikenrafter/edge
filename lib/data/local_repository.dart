@@ -13,6 +13,7 @@
 // nothing above this file references HTTP, JWT, or a backend URL anymore.
 
 import '../models/activity_suggestion.dart';
+import '../compute/pulse_alert_record.dart';
 import '../wake/wake_timeline.dart';
 import '../gestures/moment_review_queue.dart';
 import '../compute/manual_session.dart' show SessionSpan;
@@ -180,6 +181,11 @@ abstract class LocalRepository {
   /// notifications read. Empty map when no rollup has been computed yet.
   Future<Map<String, dynamic>> getInsights() =>
       throw UnimplementedError('re-layer: getInsights');
+
+  /// Stored notification outcomes for Observations, keyed by flagged day.
+  /// Repositories without an alert ledger return no metadata. Read failures
+  /// propagate; the overview may omit this optional metadata on failure.
+  Future<Map<String, PulseAlertRecord>> getPulseAlertRecords() async => const {};
 
   // ── day drill-down detail ────────────────────────────────────────────────────
   /// One read for the whole Sleep detail screen: the night, its timeline, the
