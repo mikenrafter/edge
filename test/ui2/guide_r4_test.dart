@@ -33,11 +33,16 @@ const _probeKey = ValueKey('r4-probe');
 /// found at once and simply off screen.
 class _R4Page extends StatelessWidget {
   final StageTaps taps;
-  final double gap, after;
+  final double gap;
+  static const after = 1600.0;
   final ScrollController? controller;
   final Key targetKey, titleKey;
   final VoidCallback? onBuild;
-  const _R4Page(this.taps, {this.gap = 1400, this.after = 1600, this.controller, this.targetKey = stageFinish, this.titleKey = stageDetailsTitle, this.onBuild});
+
+  /// A lazily built list (ListView.builder): the target is row 60 of 120, so it is not built
+  /// until the reveal search scrolls near it, and there is room to scroll past it.
+  final bool lazy;
+  const _R4Page(this.taps, {this.gap = 1400, this.lazy = false, this.controller, this.targetKey = stageFinish, this.titleKey = stageDetailsTitle, this.onBuild});
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +52,15 @@ class _R4Page extends StatelessWidget {
         child: Column(children: [
           Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 0), child: ScreenTitle('Stage details', key: titleKey)),
           Expanded(
-            child: SingleChildScrollView(
+            child: lazy
+                ? ListView.builder(
+                    controller: controller,
+                    itemCount: 120,
+                    itemBuilder: (_, i) => i == 60
+                        ? Pressable(key: targetKey, onTap: () => taps.finish++, child: const Surface(child: Text('Finish')))
+                        : SizedBox(height: 60, child: Surface(child: Text('Row $i'))),
+                  )
+                : SingleChildScrollView(
               controller: controller,
               padding: const EdgeInsets.all(16),
               child: Column(children: [
@@ -66,7 +79,6 @@ class _R4Page extends StatelessWidget {
 
 Finder get _pageScroll => find.descendant(of: find.byType(_R4Page).last, matching: find.byType(Scrollable)).first;
 ScrollPosition _position(WidgetTester t) => t.state<ScrollableState>(_pageScroll).position;
-LiveGuideOverlayState _overlay(WidgetTester t) => t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
 
 Future<void> _settle(WidgetTester t) async {
   await t.pump();
@@ -193,9 +205,10 @@ void main() {
       expect(position.pixels, 0, reason: 'the guide does not scroll back under the user');
     });
 
-    // WHY: data safety: a tap during the glide still reaches the real control exactly once
-    // (the glide never swallows, duplicates or redirects a tap).
-    testWidgets('R4-1f: a tap on a page control during the glide reaches it once', (t) async {
+    // WHY: data safety: a touch during the glide is never taken for a tap on the target (no
+    // duplicate or redirected tap) and the run does not move. (A placeholder swallows taps by
+    // design, so the touch lands on the page's first card, which is one.)
+    testWidgets('R4-1f: a tap during the glide does not tap the target or move the run, and stops the glide', (t) async {
       final stage = await _arrive(t);
       final position = await _awaitPage(t);
       while (position.pixels <= 0) {
@@ -204,21 +217,27 @@ void main() {
       for (var i = 0; i < 4; i++) {
         await t.pump(const Duration(milliseconds: 16));
       }
-      // The probe is at the top of the page body: still visible a few frames in.
       final probe = t.getRect(find.byKey(_probeKey));
       expect(probe.bottom, greaterThan(0));
       await t.tapAt(probe.center);
-      await t.pump(const Duration(milliseconds: 16));
-      expect(stage.taps.otherAction, 1);
-      expect(stage.run.state, isA<GuideAtStep>(), reason: 'a tap off the target does not move the run');
+      final stopped = position.pixels;
+      for (var i = 0; i < 60; i++) {
+        await t.pump(const Duration(milliseconds: 16));
+      }
+      expect(position.pixels, closeTo(stopped, .5), reason: 'the tap stopped the glide');
+      expect(stage.taps.finish, 0, reason: 'the target was not tapped');
+      expect(stage.run.state, isA<GuideAtStep>());
+      expect(stage.run.currentStep?.id, 'finish');
     });
 
     // WHY: lazy lists build the target only after the reveal search jumped to it; the glide
-    // applies to the settled position all the same.
+    // applies to the settled position all the same (the search leaves it anywhere in view).
     testWidgets('R4-1g: a target in a lazily built list ends a third down as well', (t) async {
-      final stage = await pumpLiveStage(t, guide: stageGuide(scrollLast: true), detailsGap: 3000);
+      final stage = await pumpLiveStage(t, guide: stageGuide(scrollLast: true));
       await _settle(t);
-      await pushStagePage(t, stage, StagePages(stage.taps, detailsGap: 3000).details());
+      stage.navigator.push(MaterialPageRoute<void>(builder: (_) => _R4Page(stage.taps, lazy: true)));
+      await _awaitPage(t);
+      expect(find.byKey(stageFinish, skipOffstage: false), findsNothing, reason: 'positive control: not built yet');
       await _settle(t);
       await _settle(t);
       await _settle(t);
@@ -438,15 +457,18 @@ void main() {
         if (sides[i] != sides[i - 1]) flips++;
       }
       expect(flips, 1, reason: 'one flip on the way through');
-      // Jitter 6 px either side of the flip: nothing flickers.
+      // Back to the flip point, then jitter 6 px either side of it: nothing flickers.
+      position.jumpTo(flip!);
+      await t.pump();
+      expect(sideOf(t), GuidePillSide.below);
       for (var i = 0; i < 6; i++) {
-        for (final o in [flip! - 6, flip + 4]) {
+        for (final o in [flip - 6, flip + 4]) {
           position.jumpTo(o);
           await t.pump();
           expect(sideOf(t), GuidePillSide.below, reason: 'offset $o is inside the band');
         }
       }
-      position.jumpTo(flip! - 40);
+      position.jumpTo(flip - 40);
       await t.pump();
       expect(sideOf(t), GuidePillSide.above, reason: 'well clear of the band it goes back above');
     });

@@ -415,9 +415,9 @@ void main() {
     }
   });
 
-  group('the tap pill never covers legible text (guide #1)', () {
+  group('the tap pill is above its target, never on it (guide #1, round 4)', () {
     for (final (locale, scale) in const [(Locale('en'), 1.0), (Locale('en'), 1.3), (Locale('ru'), 1.0), (Locale('ru'), 1.3)]) {
-      testWidgets('${locale.languageCode} at text scale $scale: no step\'s pill overlaps legible text or a visual', (t) async {
+      testWidgets('${locale.languageCode} at text scale $scale: every step\'s pill is above its target', (t) async {
         // why: in step 3 the pill used to sit above "Set your own zones" and
         // hid the line of text above it. Legible = a text line of the demo
         // screen that no skeleton shape covers and that is not the target's own.
@@ -469,15 +469,19 @@ void main() {
           if (i == 0) {
             expect(visuals, isNotEmpty, reason: 'positive control: step 1 keeps the Recovery and Sleep rings legible');
           }
+          // Round 4 (owner): the label is ABOVE its target, whatever sits there; below only when
+          // above would leave the frame. (It used to dodge legible text and so jumped between
+          // steps.) The positive controls above keep proving the screens do have text and
+          // visuals around the target.
           final pill = t.getRect(find.byKey(GuideStepView.tapPillKey));
-          for (final r in [...legible, ...visuals]) {
-            expect(pill.overlaps(r), isFalse, reason: 'step ${i + 1} ${locale.languageCode}: pill $pill covers legible content $r');
+          final outline = t.getRect(find.byKey(GuideStepView.outlineKey));
+          final frame = t.getRect(find.byKey(GuideStepView.frameKey));
+          if (outline.top - pill.height + 2 >= frame.top - .5) {
+            expect(pill.bottom, closeTo(outline.top + 2, .6), reason: 'step ${i + 1} ${locale.languageCode}: above');
+          } else {
+            expect(pill.top, closeTo(outline.bottom - 2, .6), reason: 'step ${i + 1} ${locale.languageCode}: below only because above leaves the frame');
           }
-          if (i == 0) {
-            final outline = t.getRect(find.byKey(GuideStepView.outlineKey));
-            expect(pill.bottom, lessThanOrEqualTo(outline.top + 2.5),
-                reason: 'step 1: the free space is above the Strain outline (owner review), not beside it: pill $pill outline $outline');
-          }
+          expect(pill.overlaps(target), isFalse);
           expect(t.takeException(), isNull);
         }
       });

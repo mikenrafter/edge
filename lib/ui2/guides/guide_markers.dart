@@ -9,7 +9,7 @@ import 'dart:math' as math;
 // and the review frame (test/support/guide_view.dart, review tooling only).
 // Everything here is derived from a laid-out tree; nothing knows about a screen.
 
-import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -18,6 +18,7 @@ import '../skeleton/skeleton.dart';
 import '../skeleton/unit_paint.dart' show isIconParagraph;
 import '../theme.dart';
 import '../grammar.dart' show ScreenTitle, NavBar;
+import 'guide_motion.dart';
 import 'tree_geometry.dart';
 
 /// Gap between the target and its outline, in pixels.
@@ -26,11 +27,13 @@ const kGuideOutlineGap = 4.0;
 /// The yellow of the outline and the pills.
 const kGuideMarkerColor = C.yellow;
 
-/// A small yellow pill with dark text (the "tap" / "scroll" markers).
+/// A small yellow pill with dark text (the "tap" label; the review views' "scroll" marker).
+/// [leading] sits before the text (the live "tap" label's pointing hand).
 class GuideMarkerPill extends StatelessWidget {
   final String text;
   final bool arrow;
-  const GuideMarkerPill(this.text, {super.key, this.arrow = false});
+  final Widget? leading;
+  const GuideMarkerPill(this.text, {super.key, this.arrow = false, this.leading});
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
@@ -40,6 +43,7 @@ class GuideMarkerPill extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (leading != null) ...[leading!, const SizedBox(width: S.x1)],
               Text(text, style: F.cap.copyWith(color: C.n900, fontWeight: FontWeight.w700)),
               if (arrow) ...[
                 const SizedBox(width: S.x1),
@@ -49,6 +53,80 @@ class GuideMarkerPill extends StatelessWidget {
           ),
         ),
       );
+}
+
+/// How far the tap hand travels toward the target at the peak of a nudge, in pixels.
+const kGuideNudgeTravel = 4.0;
+
+/// How far the scroll chevron slides in the direction to scroll, in pixels.
+const kGuideChevronTravel = 6.0;
+
+/// The small pointing hand beside the "tap" label. It nudges toward the target twice per
+/// 1.6 s cycle of the shared guide clock ([guideNudgeValue]); the pill is ABOVE the target
+/// when [side] is above, so the hand points down and nudges down, and the reverse below.
+/// Reduced motion: no nudge. Only this widget listens to the clock: nothing else rebuilds.
+/// CLAIM(guide-tap-hand) [guide_r4_test R4-3a, R4-3b, R4-5b].
+class GuideTapHand extends AnimatedWidget {
+  final Animation<double> clock;
+  final ValueListenable<GuidePillSide> side;
+  static const handKey = ValueKey('guide-live-tap-hand');
+
+  GuideTapHand({super.key, required this.clock, required this.side}) : super(listenable: Listenable.merge([clock, side]));
+
+  @override
+  Widget build(BuildContext context) {
+    final above = side.value == GuidePillSide.above;
+    final nudge = Motion.enabled(context) ? guideNudgeValue(clock.value) : 0.0;
+    return Transform.translate(
+      offset: Offset(0, (above ? 1 : -1) * kGuideNudgeTravel * nudge),
+      child: Transform.rotate(
+        angle: above ? math.pi : 0,
+        child: const Icon(LucideIcons.pointer, key: handKey, size: 14, color: C.n900),
+      ),
+    );
+  }
+}
+
+/// The mid-screen scroll indicator: a swipe hand, "scroll" and a chevron that slides in the
+/// direction to scroll (down when the target is below, up when it is above). Shown while the
+/// target is out of view. Reduced motion: the chevron stands still.
+/// CLAIM(guide-scroll-indicator) [guide_r4_test R4-2a, R4-2c, R4-5c].
+class GuideScrollIndicator extends AnimatedWidget {
+  final String text;
+  final Animation<double> clock;
+
+  /// True when the target is above the screen: the chevron points and slides up.
+  final bool up;
+  static const chevronKey = ValueKey('guide-live-scroll-chevron');
+
+  const GuideScrollIndicator({super.key, required this.text, required this.clock, required this.up}) : super(listenable: clock);
+
+  @override
+  Widget build(BuildContext context) {
+    final travel = Motion.enabled(context) ? guideChevronValue(clock.value) : 0.0;
+    return DecoratedBox(
+      decoration: const BoxDecoration(color: C.yellow, borderRadius: R.rPill),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: S.x3, vertical: S.x1),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(LucideIcons.hand, size: 16, color: C.n900),
+            const SizedBox(width: S.x1),
+            Text(text, style: F.cap.copyWith(color: C.n900, fontWeight: FontWeight.w700)),
+            const SizedBox(width: S.x1),
+            Transform.translate(
+              offset: Offset(0, (up ? -1 : 1) * kGuideChevronTravel * travel),
+              child: Opacity(
+                opacity: 1 - .5 * travel,
+                child: Icon(up ? LucideIcons.chevronUp : LucideIcons.chevronDown, key: chevronKey, size: 16, color: C.n900),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Everything under [root] that the step leaves readable and the tap pill must
@@ -102,79 +180,68 @@ List<Rect> legibleContent(Element root, {required List<Rect> keep}) {
   ];
 }
 
-/// Places the "tap" pill next to the outline. Order of preference:
-///  1. beside it: to the LEFT, vertically centred on the outline;
-///  2. above it, astride the top edge at its right end;
-///  3. below it, astride the bottom edge at its right end.
-/// A position is taken only when it is inside [bounds] and overlaps none of
-/// [avoid] (the step's legible text lines). When none qualifies the one that
-/// covers the least text is used (always inside [bounds]).
-///
-/// CLAIM(pill-clear): the pill never covers the target: the outline is grown by
-/// [kGuideOutlineGap] (4) past the target and the pill reaches 2 px into it
-/// [guide_view_test 'the tap pill sits beside the target'].
-/// CLAIM(pill-order): left, then above, then below, skipping any position that
-/// leaves the frame or touches legible text
-/// [guide_view_test 'GuidePillLayout'].
 /// Which side of the target a pill sits on.
 enum GuidePillSide { above, below }
 
+/// Places the "tap" pill next to the outline: ABOVE it, astride the top edge at its right
+/// end, and below it (astride the bottom edge) only when above would leave [bounds] (off
+/// screen, or under the title / NavBar). Legible text no longer moves it: the label has one
+/// place, so it never jumps between steps or frames (owner, round 4).
+///
+/// [previous] is the side the same step's last frame chose. Coming from below, above is
+/// taken again only with [kGuidePillBand] spare pixels of room, so a target scrolling
+/// through the threshold does not flip the label back and forth. A new step passes null: the
+/// same geometry always gives the same side.
+///
+/// CLAIM(pill-clear): the pill never covers the target: the outline is grown by
+/// [kGuideOutlineGap] (4) past the target and the pill reaches 2 px into it
+/// [guide_view_test 'GuidePillLayout'].
+/// CLAIM(pill-above): above whenever it fits, else below; hysteresis with [previous]
+/// [guide_r4_test R4-4a..R4-4e].
 class GuidePillLayout extends SingleChildLayoutDelegate {
   final Rect outline;
   final Rect bounds;
+
+  /// Legible text lines. Kept for the review views; no longer decides the side.
   final List<Rect> avoid;
 
   /// The side chosen on the previous frame of the same step (null on the first).
   final GuidePillSide? previous;
   const GuidePillLayout(this.outline, this.bounds, [this.avoid = const [], this.previous]);
 
+  /// Spare room above the target (px) that a pill coming from below needs before it goes back.
+  static const kGuidePillBand = 12.0;
+
   // The default would hand the pill the whole frame as TIGHT constraints.
   @override
   BoxConstraints getConstraintsForChild(BoxConstraints constraints) => constraints.loosen();
 
-  /// The three candidate boxes for a pill of [size], in preference order, each
-  /// only when it lies inside [bounds].
-  List<Rect> candidates(Size size) {
-    final rightEnd = (outline.right - size.width - S.x2).clamp(bounds.left, bounds.right - size.width).toDouble();
-    final all = [
-      Rect.fromLTWH(outline.left + 2 - size.width, outline.center.dy - size.height / 2, size.width, size.height),
-      Rect.fromLTWH(rightEnd, outline.top - size.height + 2, size.width, size.height),
-      Rect.fromLTWH(rightEnd, outline.bottom - 2, size.width, size.height),
-    ];
-    return [
-      for (final c in all)
-        if (c.left >= bounds.left - .01 && c.right <= bounds.right + .01 && c.top >= bounds.top - .01 && c.bottom <= bounds.bottom + .01) c,
-    ];
+  Rect _box(Size size, GuidePillSide side) {
+    final x = (outline.right - size.width - S.x2).clamp(bounds.left, math.max(bounds.left, bounds.right - size.width)).toDouble();
+    return Rect.fromLTWH(x, side == GuidePillSide.above ? outline.top - size.height + 2 : outline.bottom - 2, size.width, size.height);
   }
 
-  static double _overlapArea(Rect a, Rect b) {
-    final i = a.intersect(b);
-    return i.width <= 0 || i.height <= 0 ? 0 : i.width * i.height;
+  bool _inside(Rect c) => c.left >= bounds.left - .01 && c.right <= bounds.right + .01 && c.top >= bounds.top - .01 && c.bottom <= bounds.bottom + .01;
+
+  /// The side the pill of [size] takes, see the class doc.
+  GuidePillSide sideFor(Size size) {
+    final above = _box(size, GuidePillSide.above);
+    final aboveFits = _inside(above);
+    final belowFits = _inside(_box(size, GuidePillSide.below));
+    if (previous == GuidePillSide.below && belowFits && !(aboveFits && above.top - bounds.top >= kGuidePillBand)) {
+      return GuidePillSide.below;
+    }
+    if (aboveFits) return GuidePillSide.above;
+    return belowFits ? GuidePillSide.below : GuidePillSide.above;
   }
 
-  /// Where the pill goes (its box), see the class doc.
+  /// Where the pill goes (its box), see the class doc. When neither side fits the frame at
+  /// all, it is above, pushed inside.
   Rect place(Size size) {
-    final fits = candidates(size);
-    for (final c in fits) {
-      if (!avoid.any((r) => r.overlaps(c))) return c;
-    }
-    if (fits.isNotEmpty) {
-      // Nothing is free: cover the least text.
-      Rect best = fits.first;
-      var bestCover = double.infinity;
-      for (final c in fits) {
-        final cover = avoid.fold<double>(0, (sum, r) => sum + _overlapArea(r, c));
-        if (cover < bestCover) {
-          best = c;
-          bestCover = cover;
-        }
-      }
-      return best;
-    }
-    // No candidate fits the frame at all: above, pushed inside.
-    final x = (outline.right - size.width - S.x2).clamp(bounds.left, bounds.right - size.width).toDouble();
-    final y = (outline.top - size.height + 2).clamp(bounds.top, bounds.bottom - size.height).toDouble();
-    return Rect.fromLTWH(x, y, size.width, size.height);
+    final box = _box(size, sideFor(size));
+    if (_inside(box)) return box;
+    final y = box.top.clamp(bounds.top, math.max(bounds.top, bounds.bottom - size.height)).toDouble();
+    return Rect.fromLTWH(box.left, y, size.width, size.height);
   }
 
   @override
@@ -182,7 +249,7 @@ class GuidePillLayout extends SingleChildLayoutDelegate {
 
   @override
   bool shouldRelayout(GuidePillLayout old) =>
-      old.outline != outline || old.bounds != bounds || !listEquals(old.avoid, avoid);
+      old.outline != outline || old.bounds != bounds || old.previous != previous || !listEquals(old.avoid, avoid);
 }
 
 /// [text] with every `**quoted**` run in bold: the captions quote the app's own

@@ -239,17 +239,21 @@ void main() {
       expect(t.takeException(), isNull);
     });
 
-    testWidgets('an idle guide schedules no frames when nothing on screen is a placeholder', (t) async {
+    testWidgets('an idle guide schedules no frames when nothing on screen is a placeholder, a tap label or a chevron', (t) async {
       // why: the overlay re-plans after each frame; the loop must settle
-      // (PR 1 'markers follow layout' made the same promise for the frame view). The pulse
-      // is the only reason for a frame and it runs only while a placeholder is shown
-      // (owner review R1): the Details page has the target card and one neighbour only.
-      // catches: a pulse that runs for the whole guide.
+      // (PR 1 'markers follow layout' made the same promise for the frame view). The shared
+      // clock is the only reason for a frame and it runs only while a placeholder is shown or
+      // the "tap" hand / scroll chevron is on screen (owner review R1, round 4): the Done card
+      // has none of them.
+      // catches: a clock that runs for the whole guide.
       final stage = await pumpLiveStage(t);
       await _settleReveal(t);
       await pushStagePage(t, stage, StagePages(stage.taps).details());
       await _settleReveal(t);
       expect(_overlay(t).hasPlaceholders, isFalse);
+      await t.tap(find.byKey(stageFinish));
+      await _settleReveal(t);
+      expect(stage.run.state, isA<GuideFinished>());
       await t.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
     });
 
@@ -374,9 +378,10 @@ void main() {
       }
     });
 
-    testWidgets('a scrollThenTap step reveals a far target, shows the scroll marker and ends with the target on screen', (t) async {
-      // why: spec "scroll steps reveal the target (revealTarget) and show the
-      // scroll marker". Finish is 3000 px down a lazily built list.
+    testWidgets('a scrollThenTap step reveals a far target and ends with the target on screen and no scroll indicator', (t) async {
+      // why: spec "scroll steps reveal the target (revealTarget)"; round 4: the scroll
+      // indicator is shown only while the target is out of view (guide_r4_test covers the
+      // indicator itself). Finish is 3000 px down a lazily built list.
       final stage = await pumpLiveStage(t, guide: stageGuide(scrollLast: true), detailsGap: 3000);
       await _settleReveal(t);
       expect(find.byKey(LiveGuideOverlay.scrollMarkerKey), findsNothing, reason: 'step 1 is a plain tap');
@@ -386,9 +391,8 @@ void main() {
       expect(find.byKey(stageFinish), findsOneWidget);
       final finish = _rectOf(t, find.byKey(stageFinish));
       expect(finish.top >= 0 && finish.bottom <= 780, isTrue, reason: 'scrolled into view: $finish');
-      expect(find.byKey(LiveGuideOverlay.scrollMarkerKey), findsOneWidget);
-      final marker = t.getRect(find.byKey(LiveGuideOverlay.scrollMarkerKey));
-      expect(marker.height, greaterThan(marker.width), reason: 'scroll reads vertically with an arrow down');
+      expect(find.byKey(LiveGuideOverlay.scrollMarkerKey), findsNothing, reason: 'in view: the indicator is gone');
+      expect(find.byKey(LiveGuideOverlay.outlineKey), findsOneWidget);
     });
   });
 

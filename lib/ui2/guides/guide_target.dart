@@ -12,6 +12,7 @@
 // a lazy screen to the target. Both read rects in the same root space.
 
 import 'dart:async' show unawaited;
+import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
@@ -312,6 +313,71 @@ abstract interface class RevealGate {
   bool get isOpen;
 }
 
+/// How [revealTarget] brings a found target into view when it is off screen: a gentle
+/// ease-in-out scroll that leaves the target [anchor] of the way down [area] (round 4).
+/// One per reveal. [cancel] (any user pointer-down) stops it where it is, and a glide
+/// cancelled before it starts never starts: the page is the user's from then on. With a zero
+/// [duration] the page jumps, to the same place.
+///
+/// A class, not a callback, so the heavy-calc guard (test/guards) can resolve the calls.
+/// CLAIM(reveal-glide) [guide_r4_test R4-1a, R4-1d].
+class RevealGlide {
+  /// The part of the screen the target should end up in, in global coordinates (the visible
+  /// area between the chrome).
+  final Rect area;
+
+  /// 0 = the top of [area], 1 = the bottom: where the target's centre goes.
+  final double anchor;
+
+  /// Room kept above the target for the "tap" label.
+  final double labelRoom;
+  final Duration duration;
+
+  RevealGlide({required this.area, required this.duration, this.anchor = 1 / 3, this.labelRoom = 32});
+
+  final List<ScrollPosition> _moving = [];
+  bool _cancelled = false;
+
+  bool get isCancelled => _cancelled;
+
+  /// Stops every scroll of this glide where it stands and keeps it from starting more (the
+  /// user touched the screen).
+  void cancel() {
+    _cancelled = true;
+    for (final position in List.of(_moving)) {
+      if (position.hasPixels && position.context.storageContext.mounted) position.jumpTo(position.pixels);
+    }
+  }
+
+  /// Stops owning the scroll: nothing more starts, and nothing is touched (the page may be
+  /// gone). For a superseded or disposed glide.
+  void abandon() {
+    _cancelled = true;
+    _moving.clear();
+  }
+
+  /// The [ScrollPosition.ensureVisible] alignment that puts an object of [objectHeight]
+  /// at the wanted place when the scrollable's viewport starts at [viewportTop] and is
+  /// [viewportHeight] tall (global coordinates).
+  double alignmentFor(double objectHeight, double viewportTop, double viewportHeight) {
+    var top = area.top + area.height * anchor - objectHeight / 2;
+    top = math.max(top, area.top + labelRoom);
+    top = math.min(top, area.bottom - objectHeight);
+    top = math.max(top, area.top);
+    final slack = viewportHeight - objectHeight;
+    if (slack <= 0) return 0;
+    return ((top - viewportTop) / slack).clamp(0.0, 1.0);
+  }
+
+  Future<void> _run(ScrollPosition position, RenderObject object, double alignment) {
+    if (_cancelled) return Future<void>.value();
+    _moving.add(position);
+    return position
+        .ensureVisible(object, alignment: alignment, duration: duration, curve: Curves.easeInOut)
+        .whenComplete(() => _moving.remove(position));
+  }
+}
+
 /// [RevealGate] that also closes when [root] unmounts.
 class _RootGate implements RevealGate {
   final Element root;
@@ -337,18 +403,31 @@ class _RootGate implements RevealGate {
 ///
 /// Call it from a post-frame callback or an event handler, never during
 /// build or layout. Discovery advances on normal frames. [isCurrent] cancels
-/// work when the user navigates or ends the guide.
+/// work when the user navigates or ends the guide. With a [glide], the final scroll to a
+/// target that is off screen is animated (see [RevealGlide]) and the future completes when
+/// it ends or is cancelled; without one it jumps and centres, as before.
 Future<TargetResolution> revealTarget(
   Element root,
   GuideTarget target,
   AppLocalizations l, {
   int maxViewports = 20,
   RevealGate? isCurrent,
+  RevealGlide? glide,
 }) async {
   final gate = _RootGate(root, isCurrent);
   bool active() => gate.isOpen;
   if (!active()) return TargetNotBuilt(target, 'page is no longer active');
+  if (glide != null) {
+    // A page that has only just been pushed is still sliding in and is not current yet:
+    // nothing moves (no search jump, no glide) until the next frame, and a gate that has
+    // closed by then ends the reveal (the guide reveals again once the page is current).
+    await _nextLayout();
+    if (!active()) return TargetNotBuilt(target, 'page is no longer active');
+  }
   var now = target.resolve(root, l);
+  // A target that had to be searched for was off screen on arrival, wherever the search left
+  // the page: the glide then places it even if the search left it in view.
+  final searched = now is TargetNotBuilt;
   if (now is TargetNotBuilt) {
     final search = _Search(root, target, l, maxViewports, gate);
     final found = await search.runAll();
@@ -364,7 +443,7 @@ Future<TargetResolution> revealTarget(
   }
   if (now is! TargetFound) return now;
 
-  _scrollIntoView(root, target, l);
+  await _scrollIntoView(root, target, l, glide, placeAnyway: searched);
   await _nextLayout();
   if (!active()) return TargetNotBuilt(target, 'page is no longer active');
   return target.resolve(root, l);
@@ -462,26 +541,43 @@ class _Search {
 /// Scrolls every scrollable under [root] that contains the resolved target so
 /// it sits inside that scrollable's viewport (centred when it had to move).
 /// Scrollables ABOVE the root (the page the guide sits in) are left alone.
-void _scrollIntoView(Element root, GuideTarget target, AppLocalizations l) {
+///
+/// With a [glide], the first vertical scrollable on the way up moves the target to the
+/// glide's place (animated) when the target is not fully inside that scrollable's
+/// viewport, or when [placeAnyway] (the target had to be searched for); the future
+/// completes when those scrolls end.
+Future<void> _scrollIntoView(Element root, GuideTarget target, AppLocalizations l, RevealGlide? glide, {bool placeAnyway = false}) {
   final owned = _scrollablesUnder(root).toSet();
   final element = switch (target._lookup(root, laidOutBox(root)!, root, l)) {
     _Hit(:final element) => element,
     _Miss() => null,
   };
-  if (element == null) return;
+  if (element == null) return Future<void>.value();
   var object = element.renderObject;
   BuildContext cursor = element;
+  final moves = <Future<void>>[];
+  var glided = false;
   while (object is RenderBox) {
     final scrollable = cursor.findAncestorStateOfType<ScrollableState>();
     final viewportBox = scrollable?.context.findRenderObject();
     if (scrollable == null || !owned.contains(scrollable) || viewportBox is! RenderBox) break;
     final seen = rectInRoot(object, viewportBox);
     final viewport = Offset.zero & viewportBox.size;
-    if (!(viewport.contains(seen.topLeft) && viewport.contains(seen.bottomRight))) {
+    var inside = viewport.contains(seen.topLeft) && viewport.contains(seen.bottomRight);
+    if (glide != null && !glided && scrollable.position.axis == Axis.vertical) {
+      glided = true;
+      if (!inside || placeAnyway) {
+        if (glide.isCancelled) break;
+        final viewportTop = viewportBox.localToGlobal(Offset.zero).dy;
+        final alignment = glide.alignmentFor(object.size.height, viewportTop, viewportBox.size.height);
+        moves.add(glide._run(scrollable.position, object, alignment));
+      }
+    } else if (!inside) {
       // Zero duration = an immediate jump; the returned future is already done.
       unawaited(scrollable.position.ensureVisible(object, alignment: 0.5, duration: Duration.zero));
     }
     cursor = scrollable.context;
     object = viewportBox;
   }
+  return Future.wait(moves);
 }

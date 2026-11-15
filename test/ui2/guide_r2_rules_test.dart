@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/ui2/guides/guide_catalogue.dart';
 import 'package:openstrap_edge/ui2/guides/guide_run.dart';
@@ -94,10 +95,10 @@ void main() {
             if (find.byKey(LiveGuideOverlay.scrollMarkerKey).evaluate().isEmpty) {
               violations.add('frame $frame offsets=$positions: offscreen/unbuilt target has no scroll marker');
             } else if (target != null) {
-              final rotation = t.widget<RotatedBox>(marker).quarterTurns % 4;
-              final expectedDirection = target.top < 0 ? 3 : 1;
-              if (rotation != expectedDirection) {
-                violations.add('frame $frame: scroll arrow points away from target $target');
+              // Round 4: the indicator's chevron points the way to scroll.
+              final chevron = target.top < 0 ? LucideIcons.chevronUp : LucideIcons.chevronDown;
+              if (find.descendant(of: marker, matching: find.byIcon(chevron)).evaluate().isEmpty) {
+                violations.add('frame $frame: scroll chevron points away from target $target');
               }
             }
           } else if (visible) {
@@ -154,7 +155,9 @@ void main() {
     testWidgets('r2 dragged card stays above tabs on ${scene.id}', (t) async {
       final m = await pumpR2Scene(t, scene);
       try {
-        await settleLiveGuide(t, frames: 18);
+        // Round 4: a step whose target is below the fold now glides there for 600 ms before
+        // the scene can tap it, so the last step starts later: wait for its reveal to end.
+        await settleLiveGuide(t, frames: 30);
         final initial = t.getRect(find.byKey(GuideStepCard.cardKey));
         final positions = [for (final e in builtElements(m.app.runner.routes.page!))
           if (e is StatefulElement && e.state is ScrollableState)
@@ -239,7 +242,7 @@ void main() {
       expect(away.bottom, lessThan(0), reason: 'target really moved above viewport');
       final marker = find.byKey(LiveGuideOverlay.scrollMarkerKey);
       expect(marker, findsOneWidget);
-      expect(t.widget<RotatedBox>(marker).quarterTurns % 4, 3, reason: 'points UP toward hidden target');
+      expect(find.descendant(of: marker, matching: find.byIcon(LucideIcons.chevronUp)), findsOneWidget, reason: 'points UP toward hidden target');
       expect(find.byKey(LiveGuideOverlay.outlineKey), findsNothing, reason: 'no clipped outline');
       await t.dragFrom(const Offset(4, 100), const Offset(0, 600));
       await t.pump(const Duration(milliseconds: 50));

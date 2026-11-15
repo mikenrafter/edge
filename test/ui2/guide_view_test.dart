@@ -67,65 +67,43 @@ Rect _inSkeleton(WidgetTester t, Rect global) {
 void main() {
   group('GuidePillLayout', () {
     // Frame 300 x 600; pill 40 x 20. Candidate boxes, by hand (S.x2 = ${S.x2}):
-    //   left  : x = outline.left + 2 - 40, y = outline.centre.dy - 10
     //   above : x = outline.right - 40 - S.x2, y = outline.top - 20 + 2
     //   below : x = same,                      y = outline.bottom - 2
+    // Round 4 (owner): the label is ABOVE its target, below only when above leaves the frame;
+    // legible text no longer moves it, and the old "beside, on the left" spot is gone.
+    // Hysteresis is covered by guide_r4_test.dart.
     const bounds = Rect.fromLTWH(0, 0, 300, 600);
     const size = Size(40, 20);
 
-    test('beside the outline (left, vertically centred) when it fits', () {
-      // why: new rule - the pill no longer sits above, where it covered text.
+    test('above, astride the top edge at its right end, when it fits', () {
+      // why: CLAIM(pill-above). Room on the left no longer attracts the pill.
       const outline = Rect.fromLTWH(150, 300, 100, 30);
       final pill = const GuidePillLayout(outline, bounds).place(size);
-      expect(pill, const Rect.fromLTWH(112, 305, 40, 20)); // 150 + 2 - 40; 315 - 10
+      expect(pill, Rect.fromLTWH(250 - 40 - S.x2, 282, 40, 20)); // 300 - 20 + 2
     });
 
-    test('above when there is no room on the left', () {
-      // why: second preference. Outline at x=20: left box would start at -18.
-      const outline = Rect.fromLTWH(20, 300, 100, 30);
-      final pill = const GuidePillLayout(outline, bounds).place(size);
-      expect(pill, Rect.fromLTWH(120 - 40 - S.x2, 282, 40, 20)); // 300 - 20 + 2
-    });
-
-    test('below when left does not fit and above leaves the frame', () {
-      // why: third preference. Outline 5 px from the top: above would start at -13.
+    test('below only when above leaves the frame', () {
+      // why: the one exception. Outline 5 px from the top: above would start at -13.
       const outline = Rect.fromLTWH(20, 5, 100, 30);
       final pill = const GuidePillLayout(outline, bounds).place(size);
       expect(pill, Rect.fromLTWH(120 - 40 - S.x2, 33, 40, 20)); // 35 - 2
     });
 
-    test('a position that overlaps legible text is skipped', () {
-      // why: step 3 of guide #1 - text right above the link must stay readable.
+    test('legible text above the target does not move the pill', () {
+      // why: one place, every step, every frame. (The old rule skipped any position that
+      // touched text, which made the label jump between steps.)
       const outline = Rect.fromLTWH(20, 300, 100, 30);
-      const textAbove = Rect.fromLTWH(30, 285, 80, 14); // inside the above box (72..112 x 282..302)
+      const textAbove = Rect.fromLTWH(30, 285, 80, 14); // inside the above box
       final pill = const GuidePillLayout(outline, bounds, [textAbove]).place(size);
-      expect(pill, Rect.fromLTWH(120 - 40 - S.x2, 328, 40, 20)); // below: 330 - 2
-      // and a text line to the left pushes the pill off the left slot
-      const outline2 = Rect.fromLTWH(150, 300, 100, 30);
-      const textLeft = Rect.fromLTWH(100, 305, 40, 14); // overlaps the left box 112..152
-      final pill2 = const GuidePillLayout(outline2, bounds, [textLeft]).place(size);
-      expect(pill2, Rect.fromLTWH(250 - 40 - S.x2, 282, 40, 20));
+      expect(pill, Rect.fromLTWH(120 - 40 - S.x2, 282, 40, 20));
     });
 
-    test('text that only touches the pill\'s edge does not block it', () {
-      // why: boundary - Rect.overlaps is strict; touching is not covering.
-      const outline = Rect.fromLTWH(150, 300, 100, 30);
-      const touching = Rect.fromLTWH(60, 305, 52, 14); // right edge 112 = pill.left
-      expect(const GuidePillLayout(outline, bounds, [touching]).place(size), const Rect.fromLTWH(112, 305, 40, 20));
-    });
-
-    test('with every position blocked, the one covering the least text wins and stays inside the frame', () {
-      // why: never off-screen, never silently the old behaviour; deterministic.
-      const outline = Rect.fromLTWH(150, 300, 100, 30);
-      // left box 112..152 x 305..325; above 202..242 x 282..302; below 202..242 x 328..348
-      final big = [
-        const Rect.fromLTWH(112, 305, 40, 20), // fully covers left (area 800)
-        const Rect.fromLTWH(202, 282, 40, 20), // fully covers above (800)
-        const Rect.fromLTWH(202, 328, 40, 5), // covers 5 of 20 rows of below (200)
-      ];
-      final pill = GuidePillLayout(outline, bounds, big).place(size);
-      expect(pill, const Rect.fromLTWH(202, 328, 40, 20));
-      expect(bounds.contains(pill.topLeft) && bounds.contains(pill.bottomRight), isTrue);
+    test('with neither side in the frame it is above, pushed inside, never off-screen', () {
+      // why: never off-screen, deterministic. A frame shorter than outline + pill.
+      const tight = Rect.fromLTWH(0, 0, 300, 30);
+      const outline = Rect.fromLTWH(20, 2, 100, 26);
+      final pill = const GuidePillLayout(outline, tight).place(size);
+      expect(tight.contains(pill.topLeft) && tight.contains(pill.bottomRight - const Offset(.01, .01)), isTrue, reason: '$pill');
     });
 
     test('getPositionForChild is the placed box\'s corner and constraints are loose', () {
@@ -133,7 +111,7 @@ void main() {
       // stretched it over the whole frame once) and use place().
       const outline = Rect.fromLTWH(150, 300, 100, 30);
       const d = GuidePillLayout(outline, bounds);
-      expect(d.getPositionForChild(const Size(300, 600), size), const Offset(112, 305));
+      expect(d.getPositionForChild(const Size(300, 600), size), Offset(250 - 40 - S.x2, 282));
       expect(d.getConstraintsForChild(BoxConstraints.tight(const Size(300, 600))).minWidth, 0);
     });
   });
@@ -293,10 +271,10 @@ void main() {
           caption: fnText((_) => 'Tap Go link'),
         );
 
-    testWidgets('the tap pill never covers legible text: it goes below when left has no room and above is taken', (t) async {
-      // why: guide #1 step 3 - the pill covered the line of text above the link.
-      // Deterministic version: the hint is kept legible (alsoKeep) and sits 6 px
-      // above the target at the same x. proves: CLAIM(pill-legible), CLAIM(pill-order)
+    testWidgets('the tap pill stays above the target even over a legible line (round 4)', (t) async {
+      // why: guide #1 step 3 had a hint line right above the link. The pill used to dodge it
+      // (and jumped between steps); the owner's rule is one place: above. It never covers the
+      // target and stays in the frame. proves: CLAIM(pill-above)
       await _pump(t, hintAbove());
       final frame = t.getRect(find.byKey(_fk));
       final hint = t.getRect(find.text('Legible hint line'));
@@ -304,18 +282,14 @@ void main() {
       final outline = t.getRect(find.byKey(GuideStepView.outlineKey));
       final pill = t.getRect(find.byKey(GuideStepView.tapPillKey));
       expect(hint.bottom, lessThan(target.top), reason: 'fixture sanity: the hint is above the target');
-      expect(pill.overlaps(hint), isFalse, reason: 'pill $pill covers the hint $hint');
       expect(pill.overlaps(target), isFalse);
       expect(skContains(frame, pill), isTrue);
-      expect(pill.top, greaterThanOrEqualTo(outline.bottom - 2.5), reason: 'left has no room (target at the margin) and above is taken: below');
-      // control: without the text knowledge the same layout picks the old spot, onto the hint
-      final blind = GuidePillLayout(outline, frame.deflate(7)).place(pill.size);
-      expect(blind.overlaps(hint), isTrue, reason: 'positive control: the blind spot $blind covers the hint $hint');
+      expect(pill.bottom, closeTo(outline.top + 2, .6), reason: 'above, astride the top edge');
     });
 
-    testWidgets('with nothing legible nearby and room on the left, the pill sits beside the target', (t) async {
-      // why: the new first preference. The target is a label pushed to the right
-      // of the screen so there is room on its left.
+    testWidgets('with room on the left, the pill still sits above the target', (t) async {
+      // why: the old first preference (beside, on the left) is gone. The target is a label
+      // pushed to the right of the screen so there is room on its left.
       final step = demoStep(
         id: 'right',
         screen: (_) => Scaffold(
@@ -336,8 +310,8 @@ void main() {
       await _pump(t, step);
       final outline = t.getRect(find.byKey(GuideStepView.outlineKey));
       final pill = t.getRect(find.byKey(GuideStepView.tapPillKey));
-      expect(pill.right, closeTo(outline.left + 2, 0.6), reason: 'pill ends 2 px inside the outline, on its left');
-      expect(pill.center.dy, closeTo(outline.center.dy, 0.6), reason: 'vertically centred on the outline');
+      expect(pill.bottom, closeTo(outline.top + 2, 0.6), reason: 'pill ends 2 px inside the outline, above it');
+      expect(pill.right, lessThanOrEqualTo(outline.right + .6));
     });
   });
 

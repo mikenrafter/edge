@@ -395,7 +395,7 @@ void main() {
   });
 
   group('guide #8 log a past workout', () {
-    testWidgets('History tab -> the far "Log a past workout" card is revealed with the scroll marker -> the real form', (t) async {
+    testWidgets('History tab -> the far "Log a past workout" card is scrolled into view -> the real form', (t) async {
       // why: a third guide, with a scroll step on a real lazy list and a
       // sub-tab tap that changes the same screen (the later anchor appears).
       final app = await pumpLiveGuideApp(t);
@@ -405,7 +405,8 @@ void main() {
       await t.tap(_label(l.workoutTabHistory));
       await _reveal(t);
       expect(_step(app), 1);
-      expect(find.byKey(LiveGuideOverlay.scrollMarkerKey), findsOneWidget);
+      expect(find.byKey(LiveGuideOverlay.scrollMarkerKey), findsNothing, reason: 'revealed and in view: no scroll indicator');
+      expect(find.byKey(LiveGuideOverlay.outlineKey), findsOneWidget);
       expect(_label(l.workoutLogPastFix), findsOneWidget);
       await t.tap(_label(l.workoutLogPastFix));
       await _reveal(t);
