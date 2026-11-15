@@ -119,28 +119,36 @@ class PulseEpisodeStore {
     }
   }
 
-  /// CLAIM(pulse-upgrade): the immutable record-key snapshot and its completion
-  /// marker commit together before detection or delivery [pulse_upgrade_test].
+  /// Fallback for fresh installs, which have no onUpgrade transaction.
+  Future<void> initializeUpgrade({required int nowMs}) => db.transaction(
+    (txn) => captureUpgrade(txn, nowMs: nowMs),
+  );
+
+  /// CLAIM(pulse-upgrade): schema migration commits the immutable record-key
+  /// snapshot, prior-pilot sweep and marker before sync can add new records
+  /// [pulse_upgrade_migration_test]. The caller must supply its transaction;
+  /// failures propagate so all three writes roll back together.
   /// Recording timestamps are identities, not a cutoff: a missing older key
   /// delivered later remains new. Keeping keys after signal eviction also makes
   /// restore and re-decoding of the same records historical forever.
-  Future<void> initializeUpgrade({required int nowMs}) => db.transaction((
-    txn,
-  ) async {
-    if ((await txn.query('pulse_upgrade', limit: 1)).isNotEmpty) return;
-    await txn.execute(
+  static Future<void> captureUpgrade(
+    DatabaseExecutor db, {
+    required int nowMs,
+  }) async {
+    if ((await db.query('pulse_upgrade', limit: 1)).isNotEmpty) return;
+    await db.execute(
       'INSERT OR IGNORE INTO pulse_upgrade_record(source,ts_ms) '
       'SELECT device_id,ts_ms FROM decoded_rr',
     );
     // A prior pilot may already have episodes. Close their debt in the same
     // transaction, before any delivery path can claim it.
-    await txn.rawUpdate(
+    await db.rawUpdate(
       "UPDATE pulse_episode_outbox SET state='sent',reason='before this version',"
       "token=NULL,summary_key=NULL,at_ms=?",
       [nowMs],
     );
-    await txn.insert('pulse_upgrade', {'id': 1, 'recorded_ms': nowMs});
-  });
+    await db.insert('pulse_upgrade', {'id': 1, 'recorded_ms': nowMs});
+  }
 
   /// An episode alerts by itself when the band synced the day it started on
   /// ([syncDays]); every other path, or no knowledge, takes [origin].

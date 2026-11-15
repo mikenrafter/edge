@@ -1099,10 +1099,14 @@ Future<Database> _ldbPrivOpen() async {
         if (oldV < 88) {
           await PulseEpisodeStore.create(db);
         }
-        // v89 adds the durable phase 2 upgrade boundary; capture is deferred
-        // to the worker, so opening the DB never copies signal history.
+        // CLAIM(pulse-upgrade): capture inside onUpgrade's transaction before
+        // the first derive pass lets concurrently synced records reach the worker.
         if (oldV < 89) {
           await PulseEpisodeStore.create(db);
+          await PulseEpisodeStore.captureUpgrade(
+            db,
+            nowMs: DateTime.now().millisecondsSinceEpoch,
+          );
         }
       },
       onOpen: (db) async {

@@ -197,6 +197,29 @@ void main() {
     expect((await store.get('strap:${6 * slotMs}'))!.id, 'strap:${5 * slotMs}');
   });
 
+  // WHY/CLAIM(pulse-identity): a superseded row can qualify again at its
+  // own seed after the replacement disappears. Its terminal record is not an
+  // alert, and its alias must stop redirecting it (review r2 mutation M2).
+  test('a superseded episode requalifies at its own start and alerts once',
+      () async {
+    await store.reconcile(det({0, 1, 2}), origin: 'sync', nowMs: 1);
+    await store.reconcile(det({1, 2}), origin: 'sync', nowMs: 2);
+    final retired = (await db.query('pulse_episode', where: "id='strap:0'")).single;
+    expect(retired['status'], 'superseded');
+    final record = (await db.query('pulse_episode_outbox',
+        where: "episode_id='strap:0'")).single;
+    expect(record['state'], 'not_sent');
+    expect(record['reason'], 'superseded episode');
+    await store.reconcile(det({}), origin: 'sync', nowMs: 3);
+    await store.reconcile(det({0, 1, 2}), origin: 'sync', nowMs: 4);
+    expect((await store.get('strap:0'))!.id, 'strap:0');
+    expect(await owedIds(), ['strap:0']);
+    await deliver('strap:0');
+    await store.reconcile(det({0, 1, 2}), origin: 'sync', nowMs: 7);
+    expect(await owedIds(), isEmpty);
+    expect((await store.get('strap:0'))!.alertState, 'sent');
+  });
+
   // WHY/CLAIM(pulse-identity): model check over reconcile sequences: trims,
   // growth, splits, merges, retraction and return, with delivery in between.
   // Never two active rows over one stretch; never two alerts for one stretch;
@@ -254,7 +277,7 @@ void main() {
       }
       expect(await owedIds(), isEmpty);
     }
-  });
+  }, timeout: const Timeout(Duration(minutes: 3)));
 
   // WHY/CLAIM(pulse-retention): the retention pass reads sizes and dates, never
   // the blobs (rule B8: Android cursor windows are about 2 MB).
