@@ -20,6 +20,34 @@ void main() {
     await env.dispose();
   });
 
+  // WHY: a workout with no scores has nothing to clear or report as lost.
+  // CLAIM(export-accounted-data). catches unconditional score-cleared entries.
+  test('workout without scores produces no scores-cleared omission', () async {
+    final db = await LocalDb.instance;
+    await db.insert('sessions', {
+      'id': 'no-scores',
+      'start_ts': 100,
+      'end_ts': 200,
+      'type': 'running',
+      'status': 'done',
+      'source': 'manual',
+      'created_at': 1,
+    });
+    final source = await LocalDb.exportCopy();
+    final report = await mapOfficialSnapshot(
+      source,
+      '${env.root.path}/official.db',
+      await File('assets/official_export/v0.11.3.json').readAsString(),
+    );
+    expect(
+      report.skipped.where(
+        (s) => s.table == 'sessions' && s.reason.contains('scores cleared'),
+      ),
+      isEmpty,
+    );
+    await File(source).delete();
+  });
+
   // catches: new tables silently dropped by a common-column copier.
   test('every runtime source table and column has a reviewed policy', () async {
     final db = await LocalDb.instance;

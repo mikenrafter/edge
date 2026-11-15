@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'official_export_skips.dart';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -14,32 +15,41 @@ import '../onboarding/welcome.dart' show askBackupPassphrase;
 import '../ui2.dart';
 
 Future<bool?> askOfficialRecovery(BuildContext context) {
-  var keep = true;
   return showDialog<bool>(
     context: context,
     barrierDismissible: false,
-    builder: (c) => StatefulBuilder(
-      builder: (c, set) => AlertDialog(
-        title: const Text(
-          "Save a second file with data the official version doesn't yet support?",
-        ),
-        content: CheckboxListTile(
-          contentPadding: EdgeInsets.zero,
-          value: keep,
-          onChanged: (v) => set(() => keep = v ?? true),
-          title: const Text('Keep an encrypted fork recovery file'),
-          subtitle: const Text(
-            'Includes fork-only records, settings and saved files. If you decline, these remain only in this fork.',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c, keep),
-            child: const Text('Continue'),
-          ),
-        ],
+    builder: (_) => const _RecoveryDialog(),
+  );
+}
+
+class _RecoveryDialog extends StatefulWidget {
+  const _RecoveryDialog();
+  @override
+  State<_RecoveryDialog> createState() => _RecoveryDialogState();
+}
+
+class _RecoveryDialogState extends State<_RecoveryDialog> {
+  bool _keep = true;
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text(
+      "Save a second file with data the official version doesn't yet support?",
+    ),
+    content: CheckboxListTile(
+      contentPadding: EdgeInsets.zero,
+      value: _keep,
+      onChanged: (value) => setState(() => _keep = value ?? true),
+      title: const Text('Keep an encrypted fork recovery file'),
+      subtitle: const Text(
+        'Includes fork-only records, settings and saved files. If you decline, these remain only in this fork.',
       ),
     ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context, _keep),
+        child: const Text('Continue'),
+      ),
+    ],
   );
 }
 
@@ -49,13 +59,32 @@ class OfficialExportScreen extends StatefulWidget {
   State<OfficialExportScreen> createState() => _OfficialExportScreenState();
 }
 
-class _OfficialExportScreenState extends State<OfficialExportScreen> {
+class _OfficialExportScreenState extends State<OfficialExportScreen>
+    implements OfficialRecoveryChoice, OfficialExportProgress {
   var _coordinator = OfficialExportCoordinator();
   String _phase = 'ready';
   String? _stage, _message, _latest;
   int? _processed;
   bool _fresh = false;
-  List<String> _files = [], _skipped = [];
+  List<String> _files = [];
+  OfficialExportReport? _report;
+
+  @override
+  Future<bool?> choose() async {
+    if (!mounted) return false;
+    return askOfficialRecovery(context);
+  }
+
+  @override
+  void update(String stage, int? count) {
+    if (mounted) {
+      setState(() {
+        _stage = stage;
+        _processed = count;
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -132,23 +161,13 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> {
       );
       final temp = await getTemporaryDirectory();
       final result = await _coordinator.export(
-        snapshot: captureStrictOfficialSnapshot,
+        snapshot: const StrictOfficialSnapshot(),
         privateRoot: Directory('${temp.path}/official-export'),
         destination: destination,
         passphrase: passphrase,
         profileText: profile,
-        askRecovery: () async {
-          if (!mounted) return false;
-          return askOfficialRecovery(context);
-        },
-        onProgress: (s, n) {
-          if (mounted) {
-            setState(() {
-              _stage = s;
-              _processed = n;
-            });
-          }
-        },
+        recoveryChoice: this,
+        onProgress: this,
       );
       if (!mounted) return;
       setState(() {
@@ -158,10 +177,7 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> {
             _files = result.names;
             _message =
                 'Folder: ${destination.label}. ${result.recoveryError ?? (result.recoveryKept ? 'Recovery file saved and verified.' : 'Recovery declined. Unsupported data remains in this fork.')}';
-            _skipped = [
-              for (final s in result.report.skipped)
-                '${s.table}${s.columns.isEmpty ? '' : '.${s.columns.join(', ')}'}: ${s.rows} row${s.rows == 1 ? '' : 's'}${s.identity == null ? '' : ' • ${s.identity}'}. ${s.reason}',
-            ];
+            _report = result.report;
           case OfficialExportCancelled():
             _phase = 'cancelled';
             _files = result.savedFiles;
@@ -191,11 +207,11 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> {
       message: _message,
       latestTag: _latest,
       fresh: _fresh,
-      onFreshChanged: (v) => setState(() => _fresh = v),
+      onFreshChanged: (v) => setState(() => _fresh = v ?? false),
       onStart: _start,
       onCancel: _coordinator.cancel,
       savedFiles: _files,
-      skipLines: _skipped,
+      report: _report,
     ),
   );
 }
@@ -208,7 +224,7 @@ class OfficialExportView extends StatelessWidget {
     this.processed,
     this.message,
     this.savedFiles = const [],
-    this.skipLines = const [],
+    this.report,
     this.latestTag,
     this.fresh = false,
     this.onFreshChanged,
@@ -218,13 +234,15 @@ class OfficialExportView extends StatelessWidget {
   final String phase;
   final String? stage, message, latestTag;
   final int? processed;
-  final List<String> savedFiles, skipLines;
+  final List<String> savedFiles;
+  final OfficialExportReport? report;
   final bool fresh;
-  final ValueChanged<bool>? onFreshChanged;
+  final ValueChanged<bool?>? onFreshChanged;
   final VoidCallback? onStart, onCancel;
   @override
   Widget build(BuildContext c) {
     final palette = P.of(c);
+    final skipLines = summarizeOfficialSkips(report?.skipped ?? const []);
     Widget paragraph(String text) => Padding(
       padding: const EdgeInsets.only(bottom: S.x3),
       child: Text(text, style: TextStyle(color: palette.ink, height: 1.45)),
@@ -330,7 +348,7 @@ class OfficialExportView extends StatelessWidget {
                   if (skipLines.isNotEmpty)
                     section('Skipped items', [
                       paragraph(
-                        'These were excluded from the official file. The recovery file keeps their original data if you choose to save it.',
+                        'These items are excluded from the official file. Originals remain in this fork. The file manifest lists each affected record.',
                       ),
                       for (final line in skipLines) paragraph(line),
                     ]),
@@ -369,9 +387,7 @@ class OfficialExportView extends StatelessWidget {
                         'The official app has no personal history yet',
                       ),
                       value: fresh,
-                      onChanged: onFreshChanged == null
-                          ? null
-                          : (v) => onFreshChanged!(v ?? false),
+                      onChanged: onFreshChanged,
                     ),
                     if (!fresh)
                       paragraph(

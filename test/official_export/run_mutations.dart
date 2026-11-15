@@ -47,10 +47,13 @@ Future<void> main() async {
   await mutate(
     'restore-obsolete-beats',
     'lib/data/official_export/mapper.dart',
-    (s) => s.replaceFirst('if (live.isNotEmpty) {', r'''if (live.isNotEmpty) {
+    (s) => s.replaceFirst(
+      "if (liveSeconds.contains(measured['ts_ms'])) {",
+      r'''if (liveSeconds.contains(measured['ts_ms'])) {
         for (final beat in bucket.beats[measured['ts_ms']] ?? const <Map<String, Object?>>[]) {
           await txn.insert('decoded_rr', beat, conflictAlgorithm: ConflictAlgorithm.replace);
-        }'''),
+        }''',
+    ),
     'test/official_export/archive_test.dart',
     'exact archive expands; a live parent with no beats never regains old beats',
   );

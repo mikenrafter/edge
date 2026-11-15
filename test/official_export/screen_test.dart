@@ -1,6 +1,8 @@
+import 'export_hooks.dart';
 // WHY: target, limitations and recovery choice must stay visible, including
 // small dark screens. Proves CLAIM(export-accounted-data/export-verified-save).
 import 'dart:io';
+import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -10,6 +12,12 @@ import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
 import '../support/bundled_fonts.dart';
+import '../backup/backup_support.dart';
+import 'fixture.dart';
+import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/official_export/coordinator.dart';
+import 'package:openstrap_edge/data/official_export/destination.dart';
+import 'package:openstrap_edge/data/official_export/snapshot.dart';
 
 Future<void> captureExportShot(
   WidgetTester t,
@@ -33,11 +41,110 @@ Future<void> captureExportShot(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(loadFonts);
+  // WHY: the saved phase must show readable counts from a real production
+  // report, including hundreds of repeated omissions. CLAIM(export-accounted-data).
+  testWidgets('saved skipped items group a real rich export report', (t) async {
+    late OfficialExportSaved saved;
+    await t.runAsync(() async {
+      final env = await BackupEnv.create('official_screen_report.db');
+      try {
+        final db = await LocalDb.instance;
+        await seedOfficialFixture(db);
+        for (var i = 0; i < 312; i++) {
+          await db.insert('sessions', {
+            ...officialFixtureRows()['sessions']!,
+            'id': 'session-$i',
+          });
+        }
+        await db.insert('sessions', {
+          'id': 'no-scores',
+          'start_ts': 100,
+          'end_ts': 200,
+          'type': 'running',
+          'status': 'done',
+          'source': 'manual',
+          'created_at': 1,
+        });
+        await Directory('${env.root.path}/saved').create();
+        final result = await OfficialExportCoordinator().export(
+          snapshot: const StrictOfficialSnapshot(),
+          privateRoot: Directory('${env.root.path}/private'),
+          destination: LocalOfficialDestination(
+            Directory('${env.root.path}/saved'),
+          ),
+          passphrase: 'render real export report',
+          profileText: await File(
+            'assets/official_export/v0.11.3.json',
+          ).readAsString(),
+          recoveryChoice: TestRecoveryChoice(() async => false),
+        );
+        expect(
+          result,
+          isA<OfficialExportSaved>(),
+          reason: result is OfficialExportFailed ? result.reason : '',
+        );
+        saved = result as OfficialExportSaved;
+        await Directory('build/export-official-shots').create(recursive: true);
+        await File(
+          'build/export-official-shots/skipped-report.json',
+        ).writeAsString(
+          const JsonEncoder.withIndent('  ').convert(saved.report.toJson()),
+        );
+      } finally {
+        await env.dispose();
+      }
+    });
+    t.view.physicalSize = const Size(1170, 3300);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    final key = GlobalKey();
+    await t.pumpWidget(
+      ChangeNotifierProvider(
+        create: (_) =>
+            ThemeController.seed(AppThemeChoice.dark, Brightness.dark),
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: buildTheme(Brightness.dark),
+          home: RepaintBoundary(
+            key: key,
+            child: OfficialExportView(
+              phase: 'saved',
+              savedFiles: saved.names,
+              report: saved.report,
+            ),
+          ),
+        ),
+      ),
+    );
+    await t.pump();
+    expect(find.textContaining('Files saved and verified'), findsOneWidget);
+    await captureExportShot(t, key, 'skipped-real-saved-top');
+    await t.scrollUntilVisible(find.text('Skipped items'), 400);
+    await t.pumpAndSettle();
+    await Scrollable.ensureVisible(
+      t.element(find.text('Skipped items')),
+      alignment: 0,
+    );
+    await t.pumpAndSettle();
+    expect(
+      find.text(
+        'Workout scores: 313 workouts. The official app recomputes them.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('session-311'), findsNothing);
+    expect(find.textContaining('ecg_reading'), findsNothing);
+    expect(find.textContaining('attempt_group'), findsNothing);
+
+    expect(find.text('Choose folder and passphrase'), findsNothing);
+    expect(t.takeException(), isNull);
+    await captureExportShot(t, key, 'skipped-real-saved');
+  });
+
   for (final state in [
     'ready',
     'running',
     'saved',
-    'skipped',
     'failed',
     'cancelled',
     'newer',
@@ -71,12 +178,6 @@ void main() {
                     ? const [
                         'openstrap-official-v0.11.3-pilot.db.osbk',
                         'openstrap-fork-recovery-pilot.db.osbk',
-                      ]
-                    : const [],
-                skipLines: state == 'skipped'
-                    ? const [
-                        'water_moment: 18 records. Official importer does not support this table.',
-                        'ecg_reading.attempt_group: 4 values. Attempt grouping stays in recovery.',
                       ]
                     : const [],
                 latestTag: state == 'newer' ? 'v0.12.0' : null,

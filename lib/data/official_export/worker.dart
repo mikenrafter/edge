@@ -180,3 +180,38 @@ List<String> officialCoveredDaysHeavy(WorkerInputs inputs, OfficialRows page) {
       ),
   ];
 }
+
+// One worker per bounded SQL page, rather than one isolate per decision.
+@heavy
+List<({String json, List<String> omitted})?> sanitizeOfficialActivitiesHeavy(
+  WorkerInputs inputs,
+  List<String> texts,
+) {
+  WorkerInit.ensure(inputs);
+  assertWorker();
+  return [
+    for (final text in texts) sanitizeOfficialActivityHeavy(inputs, text),
+  ];
+}
+
+@heavy
+OfficialArchiveKeys officialArchiveKeysHeavy(
+  WorkerInputs inputs,
+  OfficialRows live,
+  OfficialRows archived,
+) {
+  WorkerInit.ensure(inputs);
+  assertWorker();
+  return OfficialArchiveKeys(
+    live: {for (final row in live.rows) row['ts_ms'] as int},
+    archived: {for (final row in archived.rows) row['ts_ms'] as int},
+  );
+}
+
+@SendableShape(
+  'sets contain only integer recording milliseconds; sendable_officialArchiveKeysHeavy_test pins both sets across the real isolate boundary',
+)
+class OfficialArchiveKeys {
+  const OfficialArchiveKeys({required this.live, required this.archived});
+  final Set<int> live, archived;
+}

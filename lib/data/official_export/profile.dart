@@ -108,6 +108,27 @@ class OfficialExportReport {
   };
 }
 
+/// Owned by one coordinator; checked between bounded I/O operations.
+class OfficialExportCancellation {
+  bool _cancelled = false;
+  void cancel() => _cancelled = true;
+  void check() {
+    if (_cancelled) throw const ExportCancellation();
+  }
+}
+
+abstract interface class OfficialExportProgress {
+  void update(String stage, int? count);
+}
+
+abstract interface class OfficialSnapshot {
+  Future<String> capture(String destinationPath);
+}
+
+abstract interface class OfficialRecoveryChoice {
+  Future<bool?> choose();
+}
+
 class ExportCancellation implements Exception {
   const ExportCancellation();
 }

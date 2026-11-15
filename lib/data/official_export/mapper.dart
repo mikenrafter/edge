@@ -20,33 +20,140 @@ String quoteSql(String name) => '"${name.replaceAll('"', '""')}"';
 Future<String> exportFileHash(String path) =>
     Isolate.run(() => officialFileHashHeavy(exportWorkerInputs, path));
 
+// Keyset pages keep scans bounded as history grows. The snapshot is immutable.
+// CLAIM(export-linear-pages): indexed pages avoid OFFSET rescans for supported
+// tables [paging_test; pilot timings]. A foreign table shadowing all three
+// SQLite rowid aliases uses the compatibility fallback to preserve duplicates.
+class _ExportPages {
+  _ExportPages(
+    this.db,
+    this.table,
+    this.order,
+    this.rowId,
+    this.cursorColumn,
+    this.fallback,
+  );
+  final Database db;
+  final String table;
+  final List<String> order;
+  final String? rowId;
+  final String cursorColumn;
+  final bool fallback;
+  List<Object?>? _last;
+  int _read = 0;
+
+  static Future<_ExportPages> open(Database db, String table) async {
+    final info = await db.rawQuery('PRAGMA table_info(${quoteSql(table)})');
+    final keys = [...info.where((c) => (c['pk'] as int) > 0)]
+      ..sort((a, b) => (a['pk'] as int).compareTo(b['pk'] as int));
+    final sql =
+        (await db.rawQuery('SELECT sql FROM sqlite_master WHERE name=?', [
+              table,
+            ])).single['sql']
+            as String;
+    final withoutRowId = RegExp(
+      r'WITHOUT\s+ROWID',
+      caseSensitive: false,
+    ).hasMatch(sql);
+    final columns = {for (final c in info) c['name'] as String};
+    final lowerColumns = {for (final c in columns) c.toLowerCase()};
+    final aliases = [
+      'rowid',
+      '_rowid_',
+      'oid',
+    ].where((c) => !lowerColumns.contains(c)).toList();
+    final rowId = withoutRowId || aliases.isEmpty ? null : aliases.first;
+    var cursorColumn = '__export_cursor';
+    while (lowerColumns.contains(cursorColumn)) {
+      cursorColumn += '_';
+    }
+    return _ExportPages(
+      db,
+      table,
+      [
+        for (final c in keys) c['name'] as String,
+        // Heap tables have no indexed logical key. Their stable snapshot rowid
+        // avoids repeatedly sorting every column, and distinguishes duplicates.
+        ?rowId,
+        if (rowId == null && !withoutRowId) ...columns,
+      ],
+      rowId,
+      cursorColumn,
+      !withoutRowId && rowId == null,
+    );
+  }
+
+  Future<List<Map<String, Object?>>> next({int limit = 1024}) async {
+    final last = _last;
+    final args = <Object?>[];
+    String? where;
+    if (last != null && !fallback) {
+      if (last.every((v) => v != null)) {
+        where = order.length == 1
+            ? '${quoteSql(order.single)} > ?'
+            : '(${order.map(quoteSql).join(',')}) > (${List.filled(order.length, '?').join(',')})';
+        args.addAll(last);
+      } else {
+        // SQLite tuples containing NULL compare as unknown. Spell out the
+        // NULL-first lexicographic successor only for that uncommon boundary.
+        final alternatives = <String>[];
+        for (var i = 0; i < order.length; i++) {
+          final terms = <String>[];
+          for (var j = 0; j < i; j++) {
+            terms.add('${quoteSql(order[j])} IS ?');
+            args.add(last[j]);
+          }
+          terms.add(
+            last[i] == null
+                ? '${quoteSql(order[i])} IS NOT NULL'
+                : '${quoteSql(order[i])} > ?',
+          );
+          if (last[i] != null) args.add(last[i]);
+          alternatives.add('(${terms.join(' AND ')})');
+        }
+        where = alternatives.join(' OR ');
+      }
+    }
+    final page = await db.rawQuery(
+      'SELECT *${rowId == null ? '' : ', ${quoteSql(rowId!)} AS ${quoteSql(cursorColumn)}'} '
+      'FROM ${quoteSql(table)} ${where == null ? '' : 'WHERE $where'} '
+      'ORDER BY ${order.map(quoteSql).join(',')} LIMIT $limit ${fallback ? 'OFFSET $_read' : ''}',
+      args,
+    );
+    if (page.isEmpty) return [];
+    _read += page.length;
+    _last = [
+      for (final c in order)
+        c == rowId ? page.last[cursorColumn] : page.last[c],
+    ];
+    return [
+      for (final row in page)
+        {
+          for (final e in row.entries)
+            if (e.key != cursorColumn) e.key: e.value,
+        },
+    ];
+  }
+}
+
 Future<Map<String, Object?>> inventoryDatabase(
   Database db, {
-  void Function()? checkCancelled,
+  OfficialExportCancellation? cancellation,
 }) async {
   final out = <String, Object?>{};
   for (final entry in await db.rawQuery(
     "SELECT name FROM sqlite_master WHERE type='table' AND name NOT GLOB 'sqlite_*' AND name!='fork_transition_manifest' ORDER BY name",
   )) {
-    checkCancelled?.call();
+    cancellation?.check();
     final table = entry['name'] as String;
     final info = await db.rawQuery('PRAGMA table_info(${quoteSql(table)})');
     final columns = [for (final c in info) c['name'] as String];
-    final keys = [...info.where((c) => (c['pk'] as int) > 0)]
-      ..sort((a, b) => (a['pk'] as int).compareTo(b['pk'] as int));
-    final order = keys.isEmpty
-        ? columns
-        : [for (final k in keys) k['name'] as String];
+    final pages = await _ExportPages.open(db, table);
     var digest = OfficialProfile.hash(jsonEncode([table, columns]));
     var count = 0;
     while (true) {
-      checkCancelled?.call();
-      final page = await db.query(
-        table,
-        orderBy: order.map(quoteSql).join(','),
-        offset: count,
-        limit: 256,
-      );
+      cancellation?.check();
+      final page = await pages.next();
       if (page.isEmpty) break;
       final previous = digest;
       final input = OfficialRows(page);
@@ -84,8 +191,8 @@ Future<OfficialExportReport> mapOfficialSnapshot(
   String sourcePath,
   String destinationPath,
   String profileText, {
-  void Function()? checkCancelled,
-  void Function(String, int)? progress,
+  OfficialExportCancellation? cancellation,
+  OfficialExportProgress? progress,
 }) async {
   if (await File(destinationPath).exists()) {
     throw const FileSystemException(
@@ -112,9 +219,9 @@ Future<OfficialExportReport> mapOfficialSnapshot(
   try {
     sourceInventory = await inventoryDatabase(
       source,
-      checkCancelled: checkCancelled,
+      cancellation: cancellation,
     );
-    checkCancelled?.call();
+    cancellation?.check();
     target = await openDatabase(destinationPath, singleInstance: false);
     final out = target;
     // The snapshot is never reopened as a lower-version live database.
@@ -179,14 +286,14 @@ Future<OfficialExportReport> mapOfficialSnapshot(
       'workout_split',
     ];
     for (final table in {...tableOrder, ...sourceInventory.keys}) {
-      checkCancelled?.call();
+      cancellation?.check();
       final inv = sourceInventory[table] as Map?;
       if (inv == null) continue;
       final count = inv['rows'] as int;
       if (table == 'substrate_archive') continue;
       final policy = profile.policies[table];
       if (policy != 'keep' || !targetTables.containsKey(table)) {
-        if (count > 0) {
+        {
           skipped.add(
             ExportSkip(
               table,
@@ -226,19 +333,36 @@ Future<OfficialExportReport> mapOfficialSnapshot(
           ),
         );
       }
-      for (var offset = 0; offset < count; offset += 256) {
-        checkCancelled?.call();
-        progress?.call('Mapping $table', offset);
-        final rows = await source.query(
-          table,
-          limit: 256,
-          offset: offset,
-          orderBy: (inv['columns'] as List)
-              .map((c) => quoteSql(c as String))
-              .join(','),
-        );
+      final pages = await _ExportPages.open(source, table);
+      var offset = 0;
+      while (true) {
+        cancellation?.check();
+        progress?.update('Mapping $table', offset);
+        final rows = await pages.next();
+        if (rows.isEmpty) break;
+        offset += rows.length;
+        final activityTexts = table == 'activity_suggestions'
+            ? [
+                for (final row in rows)
+                  row['details_json'] is String
+                      ? row['details_json'] as String
+                      : '',
+              ]
+            : <String>[];
+        final activityDetails = activityTexts.isEmpty
+            ? null
+            : await Isolate.run(
+                () => sanitizeOfficialActivitiesHeavy(
+                  exportWorkerInputs,
+                  activityTexts,
+                ),
+              );
         await out.transaction((txn) async {
+          final batch = txn.batch();
+          final pending = <({Map<String, Object?> row, String identity})>[];
+          var rowIndex = -1;
           for (final original in rows) {
+            rowIndex++;
             final row = <String, Object?>{
               for (final c in columns)
                 if (original.containsKey(c) && !unknown.contains(c))
@@ -321,6 +445,9 @@ Future<OfficialExportReport> mapOfficialSnapshot(
                 skip('Session is live or has no verified actual end');
                 continue;
               }
+              final cleared = _sessionScores
+                  .where((c) => row[c] != null)
+                  .toList();
               for (final c in _sessionScores) {
                 if (row.containsKey(c)) row[c] = null;
               }
@@ -340,15 +467,17 @@ Future<OfficialExportReport> mapOfficialSnapshot(
                   row[c] = null;
                 }
               }
-              skipped.add(
-                ExportSkip(
-                  table,
-                  1,
-                  'Fork session scores cleared for official recomputation',
-                  identity: identity,
-                  columns: _sessionScores.where(original.containsKey).toList(),
-                ),
-              );
+              if (cleared.isNotEmpty) {
+                skipped.add(
+                  ExportSkip(
+                    table,
+                    1,
+                    'Fork session scores cleared for official recomputation',
+                    identity: identity,
+                    columns: cleared,
+                  ),
+                );
+              }
             }
             if ({
                   'session_sensor',
@@ -381,10 +510,7 @@ Future<OfficialExportReport> mapOfficialSnapshot(
                 skip('Unsupported activity kind or undecided proposal');
                 continue;
               }
-              final text = row['details_json'] as String;
-              final details = await Isolate.run(
-                () => sanitizeOfficialActivityHeavy(exportWorkerInputs, text),
-              );
+              final details = activityDetails![rowIndex];
               if (details == null) {
                 skip('Activity decision JSON is unreadable');
                 continue;
@@ -428,31 +554,59 @@ Future<OfficialExportReport> mapOfficialSnapshot(
                 skip('Pending computed workout proposal');
                 continue;
               }
-              skipped.add(
-                ExportSkip(
-                  table,
-                  1,
-                  'Fork HR aggregates cleared from dismissed proposal',
-                  identity: identity,
-                  columns: ['avg_bpm', 'peak_bpm'],
-                ),
-              );
+              final cleared = [
+                'avg_bpm',
+                'peak_bpm',
+              ].where((c) => row[c] != null).toList();
+              if (cleared.isNotEmpty) {
+                skipped.add(
+                  ExportSkip(
+                    table,
+                    1,
+                    'Fork HR aggregates cleared from dismissed proposal',
+                    identity: identity,
+                    columns: cleared,
+                  ),
+                );
+              }
               for (final c in ['avg_bpm', 'peak_bpm']) {
                 if (row.containsKey(c)) row[c] = null;
               }
             }
-            if (table == 'activity_review_meta') row['revision'] = 0;
-            try {
-              await txn.insert(table, row);
-              if (table == 'sessions') {
-                exportedSessions.add(row['id'] as String);
-              } else if (table == 'imported_workout') {
-                exportedSessions.add(row['uuid'] as String);
-              }
-            } on DatabaseException catch (error) {
-              skip(
-                'Target constraints rejected row: ${error.isUniqueConstraintError() ? 'duplicate identity' : 'incompatible value or required field'}',
+            if (table == 'activity_review_meta' && row['revision'] != 0) {
+              skipped.add(
+                ExportSkip(
+                  table,
+                  1,
+                  'Review revision reset for official ownership',
+                  identity: identity,
+                  columns: ['revision'],
+                ),
               );
+              row['revision'] = 0;
+            }
+            batch.insert(table, row);
+            pending.add((row: row, identity: identity));
+          }
+          // One native round trip per page; keep individual constraint failures
+          // accountable instead of aborting unrelated portable records.
+          final results = await batch.commit(continueOnError: true);
+          for (var i = 0; i < results.length; i++) {
+            final result = results[i];
+            final item = pending[i];
+            if (result is DatabaseException) {
+              skipped.add(
+                ExportSkip(
+                  table,
+                  1,
+                  'Target constraints rejected row: ${result.isUniqueConstraintError() ? 'duplicate identity' : 'incompatible value or required field'}',
+                  identity: item.identity,
+                ),
+              );
+            } else if (table == 'sessions') {
+              exportedSessions.add(item.row['id'] as String);
+            } else if (table == 'imported_workout') {
+              exportedSessions.add(item.row['uuid'] as String);
             }
           }
         });
@@ -465,7 +619,7 @@ Future<OfficialExportReport> mapOfficialSnapshot(
       sourceInventory,
       skipped,
       deletionWindows,
-      checkCancelled,
+      cancellation,
       progress,
     );
     // Validate children even when a parent was rejected by target constraints.
@@ -517,7 +671,7 @@ Future<OfficialExportReport> mapOfficialSnapshot(
     }
     final outputInventory = await inventoryDatabase(
       out,
-      checkCancelled: checkCancelled,
+      cancellation: cancellation,
     );
     final report = OfficialExportReport(
       skipped: skipped,
@@ -600,8 +754,8 @@ Future<void> _expandArchives(
   Map<String, Object?> inventory,
   List<ExportSkip> skipped,
   List<List<int>>? deleted,
-  void Function()? check,
-  void Function(String, int)? progress,
+  OfficialExportCancellation? cancellation,
+  OfficialExportProgress? progress,
 ) async {
   if (!inventory.containsKey('substrate_archive')) return;
   final count = (inventory['substrate_archive'] as Map)['rows'] as int;
@@ -631,15 +785,15 @@ Future<void> _expandArchives(
 
   final ambiguousSeconds = <String>{};
   final conflictingDevices = <String>{};
-  for (var offset = 0; offset < count; offset++) {
-    check?.call();
-    progress?.call('Expanding lossless archive buckets', offset);
-    final row = (await source.query(
-      'substrate_archive',
-      limit: 1,
-      offset: offset,
-      orderBy: 'device_id,utc_day',
-    )).single;
+  final pages = await _ExportPages.open(source, 'substrate_archive');
+  var offset = 0;
+  while (true) {
+    cancellation?.check();
+    progress?.update('Expanding lossless archive buckets', offset);
+    final page = await pages.next(limit: 1);
+    if (page.isEmpty) break;
+    final row = page.single;
+    offset++;
     final identity = '${row['device_id']}/${row['utc_day']}';
     if (deleted == null) {
       skipped.add(
@@ -669,10 +823,51 @@ Future<void> _expandArchives(
       );
       continue;
     }
+    var livePage = const OfficialRows([]);
+    var archivedPage = const OfficialRows([]);
+    final times = [
+      for (final row in bucket.onehz)
+        if (row['ts_ms'] is int) row['ts_ms'] as int,
+    ];
+    if (times.isNotEmpty) {
+      final bounds = times.fold((
+        times.first,
+        times.first,
+      ), (b, t) => (t < b.$1 ? t : b.$1, t > b.$2 ? t : b.$2));
+      final args = [row['device_id'], bounds.$1, bounds.$2];
+      livePage = OfficialRows(
+        await source.rawQuery(
+          'SELECT ts_ms FROM decoded_onehz WHERE device_id=? AND ts_ms BETWEEN ? AND ?',
+          args,
+        ),
+      );
+      archivedPage = OfficialRows(
+        await target.rawQuery(
+          'SELECT ts_ms FROM decoded_onehz WHERE device_id=? AND ts_ms BETWEEN ? AND ?',
+          args,
+        ),
+      );
+    }
+    final keys = await Isolate.run(
+      () =>
+          officialArchiveKeysHeavy(exportWorkerInputs, livePage, archivedPage),
+    );
+    final liveSeconds = keys.live;
+    final archivedSeconds = keys.archived;
+    final cols = {
+      for (final c in profile.target['tables']['decoded_onehz'] as List)
+        c['name'] as String,
+    };
+    final allowed = profile.sourceColumns('decoded_onehz');
+    final beatCols = {
+      for (final c in profile.target['tables']['decoded_rr'] as List)
+        c['name'] as String,
+    };
     await target.transaction((txn) async {
+      final batch = txn.batch();
       var excluded = false;
       for (final original in bucket.onehz) {
-        check?.call();
+        cancellation?.check();
         final measured = {...original, 'device_id': row['device_id']};
         final secondKey = '${row['device_id']}/${original['ts_ms']}';
         if (ambiguousSeconds.contains(secondKey) ||
@@ -709,14 +904,7 @@ Future<void> _expandArchives(
           excluded = true;
           continue;
         }
-        final live = await source.query(
-          'decoded_onehz',
-          columns: ['ts_ms'],
-          where: 'device_id=? AND ts_ms=?',
-          whereArgs: [row['device_id'], measured['ts_ms']],
-          limit: 1,
-        );
-        if (live.isNotEmpty) {
+        if (liveSeconds.contains(measured['ts_ms'])) {
           skipped.add(
             ExportSkip(
               'substrate_archive',
@@ -727,35 +915,24 @@ Future<void> _expandArchives(
           );
           continue;
         } // Whole live second owns its current RR set.
-        final cols = {
-          for (final c in profile.target['tables']['decoded_onehz'] as List)
-            c['name'] as String,
-        };
-        final allowed = profile.sourceColumns('decoded_onehz');
         final parent = {
           for (final e in measured.entries)
             if (cols.contains(e.key) && allowed.contains(e.key)) e.key: e.value,
         };
-        final existing = await txn.query(
-          'decoded_onehz',
-          where: 'device_id=? AND ts_ms=?',
-          whereArgs: [row['device_id'], parent['ts_ms']],
-          limit: 1,
-        );
-        if (existing.isNotEmpty) {
+        if (archivedSeconds.contains(parent['ts_ms'])) {
           ambiguousSeconds.add(secondKey);
           conflictingDevices.add(row['device_id'] as String);
-          await txn.delete(
+          batch.delete(
             'decoded_rr',
             where: 'device_id=? AND ts_ms=?',
             whereArgs: [row['device_id'], parent['ts_ms']],
           );
-          await txn.delete(
+          batch.delete(
             'decoded_onehz',
             where: 'device_id=? AND ts_ms=?',
             whereArgs: [row['device_id'], parent['ts_ms']],
           );
-          await txn.delete(
+          batch.delete(
             'substrate_archive',
             where: 'device_id=?',
             whereArgs: [row['device_id']],
@@ -771,15 +948,12 @@ Future<void> _expandArchives(
           );
           continue;
         }
-        await txn.insert('decoded_onehz', parent);
+        batch.insert('decoded_onehz', parent);
+        archivedSeconds.add(parent['ts_ms'] as int);
         for (final beat
             in bucket.beats[parent['ts_ms']] ??
                 const <Map<String, Object?>>[]) {
-          final beatCols = {
-            for (final c in profile.target['tables']['decoded_rr'] as List)
-              c['name'] as String,
-          };
-          await txn.insert('decoded_rr', {
+          batch.insert('decoded_rr', {
             for (final e in beat.entries)
               if (beatCols.contains(e.key)) e.key: e.value,
             'device_id': row['device_id'],
@@ -791,7 +965,7 @@ Future<void> _expandArchives(
       if (!excluded &&
           deleted.isEmpty &&
           !conflictingDevices.contains(row['device_id'])) {
-        await txn.insert('substrate_archive', {
+        batch.insert('substrate_archive', {
           for (final entry in row.entries)
             if (archiveColumns.contains(entry.key) &&
                 !omitted.contains(entry.key))
@@ -809,6 +983,7 @@ Future<void> _expandArchives(
           ),
         );
       }
+      await batch.commit(noResult: true);
     });
   }
 }

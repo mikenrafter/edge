@@ -1,3 +1,4 @@
+import 'export_hooks.dart';
 // WHY: cancellation, provider corruption and failure must not leave readable
 // health files behind. Proves CLAIM(export-no-source-write/export-verified-save).
 import 'dart:io';
@@ -54,21 +55,21 @@ void main() {
       final temp = await Directory('${env.root.path}/sessions').create();
       final coordinator = OfficialExportCoordinator();
       final result = await coordinator.export(
-        snapshot: (_) async => source,
+        snapshot: TestSnapshot((_) async => source),
         privateRoot: temp,
         destination: LocalOfficialDestination(out),
         passphrase: 'correct horse sample phrase',
         profileText: await File(
           'assets/official_export/v0.11.3.json',
         ).readAsString(),
-        askRecovery: () async {
+        recoveryChoice: TestRecoveryChoice(() async {
           expect(
             out.listSync().whereType<File>().map((f) => f.path),
             hasLength(1),
           );
           expect(out.listSync().single.path, contains('official-v0.11.3'));
           return true;
-        },
+        }),
       );
       expect(result, isA<OfficialExportSaved>());
       final saved = result as OfficialExportSaved;
@@ -98,14 +99,14 @@ void main() {
     final out = await Directory('${env.root.path}/out').create();
     final temp = await Directory('${env.root.path}/sessions').create();
     final result = await OfficialExportCoordinator().export(
-      snapshot: (_) async => source,
+      snapshot: TestSnapshot((_) async => source),
       privateRoot: temp,
       destination: CorruptDestination(out),
       passphrase: 'correct horse sample phrase',
       profileText: await File(
         'assets/official_export/v0.11.3.json',
       ).readAsString(),
-      askRecovery: () async => true,
+      recoveryChoice: TestRecoveryChoice(() async => true),
     );
     expect(result, isA<OfficialExportFailed>());
     expect(temp.listSync(), isEmpty);
@@ -124,17 +125,17 @@ void main() {
       final temp = await Directory('${env.root.path}/sessions').create();
       final coordinator = OfficialExportCoordinator();
       final result = await coordinator.export(
-        snapshot: (_) async {
+        snapshot: TestSnapshot((_) async {
           coordinator.cancel();
           return source;
-        },
+        }),
         privateRoot: temp,
         destination: LocalOfficialDestination(out),
         passphrase: 'correct horse sample phrase',
         profileText: await File(
           'assets/official_export/v0.11.3.json',
         ).readAsString(),
-        askRecovery: () async => true,
+        recoveryChoice: TestRecoveryChoice(() async => true),
       );
       expect(result, isA<OfficialExportCancelled>());
       expect(temp.listSync(), isEmpty);
@@ -154,14 +155,14 @@ void main() {
       final out = await Directory('${env.root.path}/out').create();
       final temp = await Directory('${env.root.path}/sessions').create();
       final result = await OfficialExportCoordinator().export(
-        snapshot: (_) async => source,
+        snapshot: TestSnapshot((_) async => source),
         privateRoot: temp,
         destination: RecoveryFailureDestination(out),
         passphrase: 'correct horse sample phrase',
         profileText: await File(
           'assets/official_export/v0.11.3.json',
         ).readAsString(),
-        askRecovery: () async => true,
+        recoveryChoice: TestRecoveryChoice(() async => true),
       );
       expect(result, isA<OfficialExportSaved>());
       final saved = result as OfficialExportSaved;
@@ -199,17 +200,17 @@ void main() {
       final out = await Directory('${env.root.path}/out').create();
       final temp = await Directory('${env.root.path}/sessions').create();
       final result = await OfficialExportCoordinator().export(
-        snapshot: (path) async {
+        snapshot: TestSnapshot((path) async {
           await File(path).writeAsString('plaintext partial snapshot');
           throw const FileSystemException('Snapshot interrupted');
-        },
+        }),
         privateRoot: temp,
         destination: LocalOfficialDestination(out),
         passphrase: 'correct horse sample phrase',
         profileText: await File(
           'assets/official_export/v0.11.3.json',
         ).readAsString(),
-        askRecovery: () async => false,
+        recoveryChoice: TestRecoveryChoice(() async => false),
       );
       expect(result, isA<OfficialExportFailed>());
       expect(temp.listSync(), isEmpty);

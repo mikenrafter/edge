@@ -41,28 +41,36 @@ class OfficialExportFailed extends OfficialExportResult {
   final List<String> savedFiles;
 }
 
+class _SessionProgress implements OfficialExportProgress {
+  _SessionProgress(this.cancellation, this.sink);
+  final OfficialExportCancellation cancellation;
+  final OfficialExportProgress? sink;
+  String stage = 'Preparing private snapshot';
+  @override
+  void update(String label, int? count) {
+    stage = label;
+    sink?.update(label, count);
+    cancellation.check();
+  }
+}
+
 class OfficialExportCoordinator {
   static bool _active = false;
   static Future<void> _cleanupTail = Future<void>.value();
-  bool _cancelled = false;
-  void cancel() {
-    _cancelled = true;
-  }
-
-  void _check() {
-    if (_cancelled) throw const ExportCancellation();
-  }
+  final _cancellation = OfficialExportCancellation();
+  void cancel() => _cancellation.cancel();
+  void _check() => _cancellation.check();
 
   /// [snapshot] writes directly inside the leased private session. It must
   /// return a consistent full snapshot with strict prefs and approved files.
   Future<OfficialExportResult> export({
-    required Future<String> Function(String path) snapshot,
+    required OfficialSnapshot snapshot,
     required Directory privateRoot,
     required OfficialDestination destination,
     required String passphrase,
     required String profileText,
-    required Future<bool?> Function() askRecovery,
-    void Function(String stage, int? count)? onProgress,
+    required OfficialRecoveryChoice recoveryChoice,
+    OfficialExportProgress? onProgress,
   }) async {
     if (_active) {
       return const OfficialExportFailed(
@@ -74,7 +82,7 @@ class OfficialExportCoordinator {
     _active = true;
     final files = <String>[];
     final names = <String>[];
-    String stage = 'Preparing private snapshot';
+    final progressState = _SessionProgress(_cancellation, onProgress);
     Directory? session;
     RandomAccessFile? lease;
     String? unfinished;
@@ -89,13 +97,11 @@ class OfficialExportCoordinator {
       lease = await File('${session.path}/lease').open(mode: FileMode.write);
       await lease.lock(FileLock.exclusive);
       void progress(String label, [int? n]) {
-        stage = label;
-        onProgress?.call(label, n);
-        _check();
+        progressState.update(label, n);
       }
 
-      progress(stage);
-      final sourcePath = await snapshot('${session.path}/fork.db');
+      progress(progressState.stage);
+      final sourcePath = await snapshot.capture('${session.path}/fork.db');
       if (!sourcePath.startsWith('${session.path}/')) {
         // Test/custom snapshot seams remain owned from the moment they return.
         await File(sourcePath).rename('${session.path}/fork.db');
@@ -107,8 +113,8 @@ class OfficialExportCoordinator {
         source,
         official,
         profileText,
-        checkCancelled: _check,
-        progress: (s, n) => progress(s, n),
+        cancellation: _cancellation,
+        progress: progressState,
       );
       progress('Verifying official database');
       final sourceDb = await openDatabase(source, singleInstance: false);
@@ -193,7 +199,7 @@ class OfficialExportCoordinator {
 
       await save(official, officialName, report.outputInventory);
       progress('Official file saved and verified');
-      final recovery = await askRecovery();
+      final recovery = await recoveryChoice.choose();
       _check();
       if (recovery == true) {
         try {
@@ -223,7 +229,7 @@ class OfficialExportCoordinator {
       return OfficialExportCancelled(List.unmodifiable(files));
     } catch (error) {
       return OfficialExportFailed(
-        stage,
+        progressState.stage,
         error.toString(),
         List.unmodifiable(files),
       );

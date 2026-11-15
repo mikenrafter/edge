@@ -1,3 +1,4 @@
+import 'export_hooks.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
@@ -6,11 +7,91 @@ import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/official_export/coordinator.dart';
 import 'package:openstrap_edge/data/official_export/destination.dart';
 import 'package:openstrap_edge/data/official_export/mapper.dart';
+import 'package:openstrap_edge/data/official_export/profile.dart';
 import 'package:openstrap_edge/data/official_export/snapshot.dart';
 import 'package:openstrap_edge/import/backup_crypto.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../backup/backup_support.dart';
 import 'fixture.dart';
+
+// WHY: neither an unsupported column nor a rejected row may disappear silently.
+// CLAIM(export-accounted-data). The oracle reads both DB schemas and row values;
+// it does not reuse the mapper's policy/omission lists.
+Future<void> expectConserved(
+  Database source,
+  Database target,
+  OfficialExportReport report,
+) async {
+  final tables = [
+    for (final row in await source.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT GLOB 'sqlite_*' AND name!='fork_transition_manifest' ORDER BY name",
+    ))
+      row['name'] as String,
+  ];
+  expect(report.sourceInventory.keys.toSet(), tables.toSet());
+  for (final table in tables) {
+    final sourceColumns = [
+      for (final c in await source.rawQuery(
+        'PRAGMA table_info(${quoteSql(table)})',
+      ))
+        c['name'] as String,
+    ];
+    final targetColumns = {
+      for (final c in await target.rawQuery(
+        'PRAGMA table_info(${quoteSql(table)})',
+      ))
+        c['name'] as String,
+    };
+    final omissions = report.skipped.where((s) => s.table == table).toList();
+    final wholeRows = omissions.where((s) => s.columns.isEmpty).toList();
+    final sourceRows = await source.query(table);
+    final targetRows = targetColumns.isEmpty
+        ? <Map<String, Object?>>[]
+        : await target.query(table);
+    // Whole-table omissions account for its columns too, including empty tables.
+    {
+      for (final column in sourceColumns) {
+        expect(
+          targetColumns.contains(column) ||
+              omissions.any((s) => s.columns.contains(column)) ||
+              (targetRows.isEmpty &&
+                  wholeRows.isNotEmpty &&
+                  wholeRows.fold(0, (n, s) => n + s.rows) == sourceRows.length),
+          isTrue,
+          reason: 'Unaccounted column $table.$column',
+        );
+      }
+    }
+    expect(
+      sourceRows.length - targetRows.length,
+      wholeRows.fold(0, (n, s) => n + s.rows),
+      reason: 'Unaccounted rows in $table',
+    );
+    final info = await source.rawQuery('PRAGMA table_info(${quoteSql(table)})');
+    final keys = [...info.where((c) => (c['pk'] as int) > 0)]
+      ..sort((a, b) => (a['pk'] as int).compareTo(b['pk'] as int));
+    final pk = [for (final c in keys) c['name'] as String];
+    if (pk.isEmpty) continue;
+    for (final row in sourceRows) {
+      final id = officialRowIdentity(row, pk);
+      final matches = targetRows.where((r) => officialRowIdentity(r, pk) == id);
+      if (matches.isEmpty) continue;
+      for (final column in sourceColumns.where(targetColumns.contains)) {
+        if (equals(row[column]).matches(matches.single[column], {})) continue;
+        expect(
+          omissions.any(
+            (s) =>
+                (s.identity == null || s.identity == id) &&
+                (s.columns.contains(column) ||
+                    s.columns.any((c) => c.startsWith('$column.'))),
+          ),
+          isTrue,
+          reason: 'Unlisted normalization $table.$column $id',
+        );
+      }
+    }
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -60,14 +141,14 @@ void main() {
         }
         final private = await Directory('${env.root.path}/private').create();
         final result = await OfficialExportCoordinator().export(
-          snapshot: captureStrictOfficialSnapshot,
+          snapshot: const StrictOfficialSnapshot(),
           privateRoot: private,
           destination: LocalOfficialDestination(artifact),
           passphrase: 'official pilot fixture passphrase',
           profileText: await File(
             'assets/official_export/v0.11.3.json',
           ).readAsString(),
-          askRecovery: () async => true,
+          recoveryChoice: TestRecoveryChoice(() async => true),
         );
         expect(
           result,
@@ -107,11 +188,22 @@ void main() {
           plain,
           'official pilot fixture passphrase',
         );
+        final recovery = File('${env.root.path}/recovery.db');
+        await decryptBackupFile(
+          File(saved.files.last),
+          recovery,
+          'official pilot fixture passphrase',
+        );
+        final conservedSource = await databaseFactory.openDatabase(
+          recovery.path,
+          options: OpenDatabaseOptions(readOnly: true, singleInstance: false),
+        );
         final target = await databaseFactory.openDatabase(
           plain.absolute.path,
           options: OpenDatabaseOptions(readOnly: true, singleInstance: false),
         );
         try {
+          await expectConserved(conservedSource, target, saved.report);
           for (final entry in officialFixtureRows().entries) {
             final rows = await target.query(entry.key);
             expect(
@@ -171,13 +263,8 @@ void main() {
           expect(await target.query('decoded_onehz'), hasLength(2));
         } finally {
           await target.close();
+          await conservedSource.close();
         }
-        final recovery = File('${env.root.path}/recovery.db');
-        await decryptBackupFile(
-          File(saved.files.last),
-          recovery,
-          'official pilot fixture passphrase',
-        );
         await verifyDatabaseInventory(
           recovery.path,
           saved.report.sourceInventory,

@@ -70,8 +70,9 @@ class UnresolvedOk {
 /// another package; those closures stay in the guard baseline until each
 /// reader becomes a persisted artifact.
 const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#officialArchiveKeysHeavy, dispatcher: Dispatcher.run, reason: 'archive/live key sets from bounded native recording windows'),
   WorkerEntry(#decodeOfficialWindowsHeavy, dispatcher: Dispatcher.run, reason: 'read deletion-window payload without parsing stored JSON on the UI isolate'),
-  WorkerEntry(#sanitizeOfficialActivityHeavy, dispatcher: Dispatcher.run, reason: 'retain only reviewed decision facts from stored activity JSON'),
+  WorkerEntry(#sanitizeOfficialActivitiesHeavy, dispatcher: Dispatcher.run, reason: 'retain only reviewed decision facts from stored activity JSON'),
   WorkerEntry(#officialCoveredDaysHeavy, dispatcher: Dispatcher.run, reason: 'label native-grouped raw coverage through the shared day-label API'),
   WorkerEntry(#hashOfficialRowsHeavy, dispatcher: Dispatcher.run, reason: 'typed export row checksums, one bounded page per worker'),
   WorkerEntry(#officialFileHashHeavy, dispatcher: Dispatcher.run, reason: 'streaming export file SHA-256'),
@@ -251,21 +252,6 @@ const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
 
 /// Fingerprinted unresolved invocations. Shrink-only.
 const List<UnresolvedOk> kUnresolvedOk = <UnresolvedOk>[
-  UnresolvedOk(file: "data/official_export/coordinator.dart", symbol: "OfficialExportCoordinator.export", source: "onProgress?.call(label, n)", ordinal: 0, reason: "export stage observer; updates the screen with one bounded progress value"),
-  UnresolvedOk(file: "data/official_export/coordinator.dart", symbol: "OfficialExportCoordinator.export", source: "snapshot('\${session.path}/fork.db')", ordinal: 1, reason: "owned snapshot seam; production uses LocalDb.exportCopy with strict extras and a leased private destination"),
-  UnresolvedOk(file: "data/official_export/coordinator.dart", symbol: "OfficialExportCoordinator.export", source: "askRecovery()", ordinal: 2, reason: "UI decision after the verified official save; no stored-data work"),
-  UnresolvedOk(file: "data/official_export/mapper.dart", symbol: "inventoryDatabase", source: "checkCancelled?.call()", ordinal: 0, reason: "checks the coordinator cancellation flag before each table"),
-  UnresolvedOk(file: "data/official_export/mapper.dart", symbol: "inventoryDatabase", source: "checkCancelled?.call()", ordinal: 1, reason: "checks the coordinator cancellation flag before each bounded page"),
-  UnresolvedOk(file: "data/official_export/mapper.dart", symbol: "mapOfficialSnapshot", source: "checkCancelled?.call()", ordinal: 0, reason: "checks the coordinator cancellation flag before constructing the output"),
-  UnresolvedOk(file: "data/official_export/mapper.dart", symbol: "mapOfficialSnapshot", source: "checkCancelled?.call()", ordinal: 1, reason: "checks the coordinator cancellation flag before each table"),
-  UnresolvedOk(file: "data/official_export/mapper.dart", symbol: "mapOfficialSnapshot", source: "checkCancelled?.call()", ordinal: 2, reason: "checks the coordinator cancellation flag before each bounded page"),
-  UnresolvedOk(file: "data/official_export/mapper.dart", symbol: "mapOfficialSnapshot", source: "progress?.call('Mapping \$table', offset)", ordinal: 3, reason: "export stage observer with the real page offset"),
-  UnresolvedOk(file: "data/official_export/mapper.dart", symbol: "_expandArchives", source: "check?.call()", ordinal: 0, reason: "checks the coordinator cancellation flag before each archive bucket"),
-  UnresolvedOk(file: "data/official_export/mapper.dart", symbol: "_expandArchives", source: "progress?.call('Expanding lossless archive buckets', offset)", ordinal: 1, reason: "export stage observer with the real archive bucket offset"),
-  UnresolvedOk(file: "data/official_export/mapper.dart", symbol: "_expandArchives", source: "check?.call()", ordinal: 2, reason: "checks the coordinator cancellation flag between archive parent writes"),
-  UnresolvedOk(file: "ui2/profile/official_export.dart", symbol: "OfficialExportView.build", source: "onFreshChanged!(v ?? false)", ordinal: 0, reason: "checkbox observer stores one fresh-target confirmation boolean"),
-  UnresolvedOk(file: "ui2/profile/official_export.dart", symbol: "askOfficialRecovery", source: "set(() => keep = v ?? true)", ordinal: 0, reason: "StatefulBuilder setter updates one default-yes recovery checkbox"),
-
   UnresolvedOk(
     file: 'data/db/restore.dart',
     symbol: 'LocalDb.importFromDbFile',

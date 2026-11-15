@@ -177,3 +177,6 @@ in the same change that introduces it (AGENTS.md §6).
 - **Fork recovery file**: the optional encrypted full fork snapshot, including
   portable preferences and approved saved files. The official importer cannot
   restore its fork-only contents. Credentials remain on the source device.
+- **Export cancellation**: the coordinator-owned token checked between export
+  I/O operations. Snapshot providers, recovery choices and progress sinks are
+  explicit interfaces so the worker guard can resolve their calls.

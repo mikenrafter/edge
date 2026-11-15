@@ -8,6 +8,14 @@ import '../backup_extras.dart';
 import '../db.dart';
 import '../../settings/settings_repository.dart';
 import 'mapper.dart';
+import 'profile.dart';
+
+class StrictOfficialSnapshot implements OfficialSnapshot {
+  const StrictOfficialSnapshot();
+  @override
+  Future<String> capture(String destinationPath) =>
+      captureStrictOfficialSnapshot(destinationPath);
+}
 
 Future<Map<String, Object?>> _extrasBoundary() async {
   final sp = await SharedPreferences.getInstance();
