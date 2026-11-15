@@ -1,0 +1,15 @@
+name: release_environment
+description: Install-local release checker network and storage policy.
+version: 1.0.0
+publish_to: none
+environment:
+  sdk: '>=3.10.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: wtf.openstrap.release_environment
+        pluginClass: ReleaseEnvironmentPlugin

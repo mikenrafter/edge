@@ -169,3 +169,12 @@ in the same change that introduces it (AGENTS.md §6).
   metadata is excluded from restore, and does not version analytics output.
   Schema 87 also carries legacy medical claims for already flagged pulse days
   into their dedicated daily delivery keys.
+
+- **Release source**: one of the two GitHub repositories checked for app releases:
+  `OpenStrap/edge` (official) or `mikenrafter/edge` (fork). Versions are ordered
+  within a source, never by comparing official and fork build counters.
+- **Release page**: a canonical HTTPS GitHub `/releases/tag/` page for a supported
+  tag in a release source. The checker only opens these pages; it never fetches
+  an APK or invokes an installer.
+- **Release claim**: an install-local, permanent atomic record that a release
+  notification was attempted. It has no daily expiry and is excluded from backup.

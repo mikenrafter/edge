@@ -46,7 +46,7 @@
 //   app.isConnected -> beat-timing rows                  ui2/screens/calm_breathing      breathingBeatTiming
 //                                                        .dart:745,754
 //   app.isConnected -> onRename                          ui2/profile/devices.dart:1861   bandRename
-//   kSideloadOtaEnabled via updateChecksAvailable        ui2/profile/settings.dart:209   updateChecks
+//   Android release pages via updateChecksAvailable        ui2/profile/settings.dart:209   updateChecks
 //   kHealthDataContributionEnabled || consent            ui2/profile/settings.dart:204   healthShare
 //   defaultTargetPlatform == android (intent copy)       ui2/profile/settings.dart:1963  androidAutomation
 //   targetsForBandFamily(device.generation)              state/app_state.dart:605        bandAlerts
@@ -140,7 +140,7 @@ enum Feature {
   /// Renaming the band writes to it.
   bandRename,
 
-  /// Check for updates (the sideload build).
+  /// GitHub release pages (Android).
   updateChecks,
 
   /// Contribute my health data: the build has it, or this install already
@@ -242,7 +242,7 @@ class CapabilityInputs {
   /// Flags that are OFF; absent means on, the shipped default.
   final Set<FeatureFlag> flagsOff;
 
-  /// The build can check for updates (sideload OTA).
+  /// The platform can schedule GitHub release checks.
   final bool updateChecksBuild;
 
   /// The build can contribute health data.

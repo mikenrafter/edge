@@ -20,7 +20,7 @@ import '../data/db.dart';
 
 /// Compile-time gate for the whole health-data-contribution feature (this
 /// upload path + the "Contribute my health data" toggle in Settings and
-/// onboarding). Defaults OFF, same convention as [kSideloadOtaEnabled] in
+/// onboarding). Defaults OFF. This is independent of the release checker in
 /// update_service.dart.
 ///
 /// Two-tier by release channel (see docs/privacy.html's "GitHub releases"

@@ -24,6 +24,7 @@
 // [taps]; AppState listens and navigates.
 
 import 'dart:async';
+import '../state/locale_controller.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -88,6 +89,10 @@ class NotificationService {
   Stream<String> get taps => _taps.stream;
 
   // ── Channels (one per category — keep them disjoint) ────────────────────────
+  AndroidNotificationChannel _updatesChannel = const
+      AndroidNotificationChannel('app_updates', 'App updates',
+        description: 'Opted-in GitHub release announcements');
+
   static const AndroidNotificationChannel _deviceChannel =
       AndroidNotificationChannel(
     'device_alerts',
@@ -286,6 +291,7 @@ class NotificationService {
         NotifCategory.recovery => _recoveryChannel,
         NotifCategory.reminders => _remindersChannel,
         NotifCategory.device => _deviceChannel,
+        NotifCategory.updates => _updatesChannel,
       };
 
   Importance _importanceFor(NotifCategory c) =>
@@ -334,6 +340,10 @@ class NotificationService {
     final androidImpl = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     await androidImpl?.createNotificationChannel(_deviceChannel);
+    final updateStrings = await LocaleController.currentStrings();
+    _updatesChannel = AndroidNotificationChannel('app_updates', updateStrings.updatesTitle,
+      description: updateStrings.updatesAutomatic);
+    await androidImpl?.createNotificationChannel(_updatesChannel);
     await androidImpl?.createNotificationChannel(_healthChannel);
     await androidImpl?.createNotificationChannel(_recoveryChannel);
     await androidImpl?.createNotificationChannel(_remindersChannel);

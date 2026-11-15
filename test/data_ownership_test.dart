@@ -11,7 +11,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/csv_export.dart';
 import 'package:openstrap_edge/data/db.dart';
-import 'package:openstrap_edge/sync/update_service.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -166,13 +165,7 @@ void main() {
     expect(kCsvExportExclusions, isNotEmpty);
   });
 
-  test('update checks do not fire on a build without the OTA feature',
-      () async {
-    // kSideloadOtaEnabled is a --dart-define, absent under `flutter test`, so
-    // this is the store/self-built case: fetchStatus must make no request at
-    // all. It used to be gated only on a non-empty URL, which meant a GET on
-    // every launch and every foreground in shipped builds.
-    expect(kSideloadOtaEnabled, isFalse);
-    expect(await UpdateService.fetchStatus(), isNull);
-  });
+  // GitHub traffic consent is exercised through the real coordinator in
+  // test/updates/update_checker_test.dart; the removed OTA compile flag no
+  // longer authorizes any outbound traffic.
 }

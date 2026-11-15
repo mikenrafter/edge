@@ -15,6 +15,7 @@ import 'state/clock_format.dart';
 import 'state/locale_controller.dart';
 import 'state/units_controller.dart';
 import 'sync/headless_boot.dart';
+import 'sync/update_background.dart';
 import 'sync/ios_bg_task.dart';
 import 'sync/ios_shortcut_sync.dart';
 import 'theme/theme_controller.dart';
@@ -97,6 +98,12 @@ Future<void> main() async {
         Workmanager().cancelByUniqueName(kHeavyDeriveTaskName),
         Workmanager().cancelByUniqueName(kSyncTaskName),
       ]).timeout(_kStartupInitTimeout);
+    } catch (_) {}
+  }
+
+  if (Platform.isAndroid) {
+    try {
+      await Workmanager().initialize(updateCallbackDispatcher).timeout(_kStartupInitTimeout);
     } catch (_) {}
   }
 
