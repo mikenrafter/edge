@@ -67,6 +67,13 @@ void main() {
       final history = find.descendant(of: tabs, matching: find.widgetWithText(Pressable, subTabs.items[2]));
       expect(t.getRect(find.byKey(LiveGuideOverlay.outlineKey)).contains(t.getRect(history.first).intersect(t.getRect(tabs)).center), isTrue);
       expect(find.text('1 tap back'), findsOneWidget);
+      // WHY: P1c / CLAIM(off-path-clock-rest): this route-back pill stays static
+      // while the wearer browses elsewhere, with no scheduled frames.
+      expect(find.byKey(LiveGuideOverlay.tapPillKey), findsOneWidget);
+      await t.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
+      expect(_overlay(t).isPulsing, isFalse);
+      expect(t.binding.hasScheduledFrame, isFalse);
+
       // WHY: owner review R4: off path the cards next to the route-back control stay lit,
       // also when that control is a sub-tab; the cards further away dim.
       // # catches: neighbour lighting skipped for tab-like route-back controls.

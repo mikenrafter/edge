@@ -1,3 +1,4 @@
+import 'dart:async';
 // Guides round 4 (owner, 2026-11-14, after APK 5e7c00dd): arriving at a step whose target
 // is off screen scrolls to it gently; a scroll indicator replaces the old side marker;
 // the tap label gets a nudging hand; every marker keeps ONE side of its target; reduced
@@ -230,6 +231,137 @@ void main() {
       expect(stage.run.currentStep?.id, 'finish');
     });
 
+    // WHY: C1 / CLAIM(reveal-touch-cancel): the first probe must yield the page to
+    // the finger, without either another probe or restoration to the search origin.
+    // catches: search checking only the step gate, or restoring origin on cancellation.
+    testWidgets('R4-fix-C1: a touch after the first lazy probe leaves only finger movement', (t) async {
+      final stage = await pumpLiveStage(t, guide: stageGuide(scrollLast: true));
+      await _settle(t);
+      stage.navigator.push(MaterialPageRoute<void>(builder: (_) => _R4Page(stage.taps, lazy: true)));
+      final position = await _awaitPage(t);
+      for (var i = 0; i < 60 && position.pixels == 0; i++) {
+        await t.pump(const Duration(milliseconds: 16));
+      }
+      expect(position.pixels, greaterThan(0), reason: 'positive control: first search probe happened');
+      expect(find.byKey(stageFinish), findsNothing, reason: 'the distant target is still unbuilt');
+      final finger = await t.startGesture(const Offset(30, 420));
+      final stopped = position.pixels;
+      await t.pump(const Duration(milliseconds: 16));
+      expect(position.pixels, stopped, reason: 'no next probe and no origin restoration');
+      await finger.moveBy(const Offset(0, -40)); // acquire the drag
+      await t.pump(const Duration(milliseconds: 16));
+      final dragging = position.pixels;
+      for (var i = 0; i < 60; i++) {
+        await finger.moveBy(const Offset(0, -2));
+        await t.pump(const Duration(milliseconds: 16));
+        expect(position.pixels, closeTo(dragging + (i + 1) * 2, .01), reason: 'frame $i follows only the finger');
+      }
+      await finger.cancel();
+      await _trace(t, position, frames: 60);
+      expect(position.pixels, closeTo(dragging + 120, .01));
+    });
+
+    // WHY: D1 / CLAIM(glide-tap-stops): Flutter ignores the first activation on a
+    // moving scrollable. Cancelling must never turn that stop tap into an activation.
+    testWidgets('R4-fix-D1: tapping the lit target during a glide stops without activation', (t) async {
+      final stage = await _arrive(t);
+      final position = await _awaitPage(t);
+      for (var i = 0; i < 70; i++) {
+        await t.pump(const Duration(milliseconds: 16));
+        final target = t.getRect(find.byKey(stageFinish));
+        if (position.isScrollingNotifier.value && target.top > 100 && target.bottom < 650 && !_card(t).overlaps(target)) break;
+      }
+      expect(position.isScrollingNotifier.value, isTrue);
+      final target = t.getRect(find.byKey(stageFinish));
+      expect(target.top, greaterThan(100));
+      expect(target.bottom, lessThan(650));
+      expect(_card(t).overlaps(target), isFalse);
+      await t.tapAt(target.center);
+      final stopped = position.pixels;
+      await _trace(t, position, frames: 60);
+      expect(position.pixels, stopped);
+      expect(stage.taps.finish, 0);
+      expect(stage.run.currentStep?.id, 'finish');
+      await t.tap(find.byKey(stageFinish));
+      await t.pump();
+      expect(stage.taps.finish, 1, reason: 'positive control: a second tap activates normally');
+    });
+
+    // WHY: C5 / CLAIM(reveal-route-cancel): system navigation has no pointer-down.
+    // catches: a driven scroll continuing underneath a popup or a pushed route.
+    testWidgets('R4-fix-C5: a route change stops the glide underneath', (t) async {
+      final stage = await _arrive(t);
+      final position = await _awaitPage(t);
+      for (var i = 0; i < 60 && position.pixels == 0; i++) {
+        await t.pump(const Duration(milliseconds: 16));
+      }
+      expect(position.isScrollingNotifier.value, isTrue);
+      unawaited(showDialog<void>(context: stage.navigator.context, builder: (_) => const AlertDialog(title: Text('Pause'))));
+      final stopped = position.pixels;
+      await _trace(t, position, frames: 60);
+      expect(position.pixels, stopped, reason: 'the page stopped as soon as its route changed');
+    });
+
+    // WHY: C6 / CLAIM(reveal-touch-scope): a pending visible-target check moves
+    // nothing. A touch then must preserve the late-content reveal.
+    testWidgets('R4-fix-C6a: touching an idle pending reveal still permits late content', (t) async {
+      final gap = ValueNotifier<double>(120);
+      addTearDown(gap.dispose);
+      final stage = await pumpLiveStage(t, guide: stageGuide(scrollLast: true));
+      await _settle(t);
+      stage.navigator.push(MaterialPageRoute<void>(builder: (_) => ValueListenableBuilder<double>(
+        valueListenable: gap, builder: (_, value, _) => _R4Page(stage.taps, gap: value))));
+      final position = await _awaitPage(t);
+      for (var i = 0; i < 60 && stage.run.currentStep?.id != 'finish'; i++) {
+        await t.pump(const Duration(milliseconds: 16));
+      }
+      expect(stage.run.currentStep?.id, 'finish');
+      expect(position.isScrollingNotifier.value, isFalse);
+      final finger = await t.startGesture(const Offset(30, 25));
+      await finger.up();
+      await _trace(t, position, frames: 60);
+      gap.value = 1400;
+      await _trace(t, position, frames: 120);
+      expect(position.pixels, greaterThan(500), reason: 'the nonmoving reveal touch did not suppress late arrival');
+      expect(t.getRect(find.byKey(stageFinish)).bottom, lessThan(780));
+    });
+
+    // WHY: C6 / CLAIM(reveal-touch-scope): S -> S+1 -> S in the same page while
+    // dragging cannot clear the user's ownership of the interrupted S arrival.
+    testWidgets('R4-fix-C6b: returning to a step under the finger does not reveal again', (t) async {
+      final second = ValueNotifier<bool>(false);
+      addTearDown(second.dispose);
+      final stage = await pumpLiveStage(t, guide: _twoPageGuide());
+      await _settle(t);
+      stage.navigator.push(MaterialPageRoute<void>(builder: (_) => ValueListenableBuilder<bool>(
+        valueListenable: second, builder: (_, value, _) => _R4Page(stage.taps,
+          targetKey: value ? _secondKey : stageFinish, titleKey: value ? _secondTitle : stageDetailsTitle))));
+      final position = await _awaitPage(t);
+      for (var i = 0; i < 60 && position.pixels == 0; i++) {
+        await t.pump(const Duration(milliseconds: 16));
+      }
+      final finger = await t.startGesture(const Offset(30, 420));
+      await finger.moveBy(const Offset(0, -40));
+      await t.pump(const Duration(milliseconds: 16));
+      await finger.moveBy(const Offset(0, -4));
+      await t.pump(const Duration(milliseconds: 16));
+      final held = position.pixels;
+      second.value = true;
+      await t.pump();
+      await t.pump();
+      expect(stage.run.currentStep?.id, 'two');
+      second.value = false;
+      await t.pump();
+      await t.pump();
+      expect(stage.run.currentStep?.id, 'one');
+      for (var i = 0; i < 60; i++) {
+        await finger.moveBy(const Offset(0, -2));
+        await t.pump(const Duration(milliseconds: 16));
+        expect(position.pixels, closeTo(held + 2 * (i + 1), .01), reason: 'a returning step leaves the drag alone');
+      }
+      await finger.cancel();
+    });
+
     // WHY: lazy lists build the target only after the reveal search jumped to it; the glide
     // applies to the settled position all the same (the search leaves it anywhere in view).
     testWidgets('R4-1g: a target in a lazily built list ends a third down as well', (t) async {
@@ -259,7 +391,12 @@ void main() {
       }
       await t.pump(const Duration(milliseconds: 100));
       final marker = find.byKey(LiveGuideOverlay.scrollMarkerKey);
-      expect(marker, findsOneWidget, reason: 'mid-glide the target is still out of view');
+      expect(marker, findsNothing, reason: 'R4-fix-C3: no indicator while the arrival glide moves');
+      final finger = await t.startGesture(const Offset(30, 420));
+      await finger.up();
+      await t.pump();
+      await t.pump();
+      expect(marker, findsOneWidget, reason: 'stopped with target still out of view');
       final box = t.getRect(marker);
       expect(box.center.dx, closeTo(390 / 2, 12), reason: 'centred across the screen');
       expect(box.center.dy, inInclusiveRange(780 * .35, 780 * .65), reason: 'mid-screen');
@@ -267,8 +404,9 @@ void main() {
       expect(find.descendant(of: marker, matching: find.byIcon(LucideIcons.hand)), findsOneWidget, reason: 'swipe hand');
       expect(find.descendant(of: marker, matching: find.byIcon(LucideIcons.chevronDown)), findsOneWidget);
       expect(find.descendant(of: marker, matching: find.byIcon(LucideIcons.chevronUp)), findsNothing);
-      await _trace(t, position, frames: 60);
-      await _settle(t);
+      position.jumpTo(1400);
+      await t.pump();
+      await t.pump();
       expect(find.byKey(LiveGuideOverlay.scrollMarkerKey), findsNothing, reason: 'in view: hidden');
     });
 
@@ -279,6 +417,10 @@ void main() {
       while (position.pixels <= 0) {
         await t.pump(const Duration(milliseconds: 16));
       }
+      final finger = await t.startGesture(const Offset(30, 420));
+      await finger.up();
+      await t.pump();
+      await t.pump();
       final marker = find.byKey(LiveGuideOverlay.scrollMarkerKey);
       expect(marker, findsOneWidget);
       expect(find.ancestor(of: marker, matching: find.byType(IgnorePointer)), findsWidgets);
@@ -295,6 +437,10 @@ void main() {
       await _trace(t, position, frames: 60);
       await _settle(t);
       position.jumpTo(position.maxScrollExtent);
+      await t.pump();
+      await t.pump();
+      final finger = await t.startGesture(const Offset(30, 420));
+      await finger.up();
       await t.pump();
       await t.pump();
       final marker = find.byKey(LiveGuideOverlay.scrollMarkerKey);
@@ -379,6 +525,56 @@ void main() {
       expect(find.byKey(_handKey), findsNothing);
       await t.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
     });
+  });
+
+  // WHY: P1 / CLAIM(marker-repaint-isolation): hand/chevron ticks must stop at
+  // their own repaint boundary, before reaching the card, outline, or overlay painter.
+  testWidgets('R4-fix-P1a: each animated marker owns a repaint boundary', (t) async {
+    await _arrive(t, gap: 120);
+    await _awaitPage(t);
+    await _settle(t);
+    await _settle(t);
+    final pill = find.byKey(LiveGuideOverlay.tapPillKey);
+    expect(pill, findsOneWidget);
+    final pillBoundary = find.ancestor(of: pill, matching: find.byType(RepaintBoundary)).first;
+    expect(find.descendant(of: pillBoundary, matching: find.byKey(GuideStepCard.cardKey)), findsNothing);
+    expect(find.descendant(of: pillBoundary, matching: find.byKey(LiveGuideOverlay.outlineKey)), findsNothing);
+    expect(find.descendant(of: pillBoundary, matching: find.byKey(LiveGuideOverlay.skeletonKey)), findsNothing);
+    _position(t).jumpTo(1100);
+    await t.pump();
+    await t.pump();
+    final indicator = find.byKey(LiveGuideOverlay.scrollMarkerKey);
+    expect(indicator, findsOneWidget);
+    final indicatorBoundary = find.ancestor(of: indicator, matching: find.byType(RepaintBoundary)).first;
+    expect(find.descendant(of: indicatorBoundary, matching: find.byKey(GuideStepCard.cardKey)), findsNothing);
+    expect(find.descendant(of: indicatorBoundary, matching: find.byKey(LiveGuideOverlay.skeletonKey)), findsNothing);
+  });
+
+  // WHY: P1 / CLAIM(hand-clock-rest): two 200 ms nudge peaks, then 800 ms of
+  // stillness per 1600 ms cycle. Inspect the clock and scheduled work, not pixels.
+  // catches: repeat() throughout the hand-only cycle or restarting from zero too early.
+  testWidgets('R4-fix-P1b: a hand-only clock sleeps through the still half and resumes', (t) async {
+    final stage = await pumpLiveStage(t);
+    await _settle(t);
+    await pushStagePage(t, stage, StagePages(stage.taps).details());
+    await _settle(t);
+    final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
+    expect(overlay.hasPlaceholders, isFalse);
+    final hand = t.widget<GuideTapHand>(find.byType(GuideTapHand));
+    for (var i = 0; i < 120 && overlay.isPulsing; i++) {
+      await t.pump(const Duration(milliseconds: 16));
+    }
+    expect(hand.clock.value, greaterThanOrEqualTo(.5));
+    expect(overlay.isPulsing, isFalse);
+    expect(t.binding.hasScheduledFrame, isFalse);
+    final rest = hand.clock.value;
+    await t.pump(const Duration(milliseconds: 400));
+    expect(hand.clock.value, rest);
+    expect(t.binding.hasScheduledFrame, isFalse);
+    await t.pump(const Duration(milliseconds: 400));
+    await t.pump(const Duration(milliseconds: 16));
+    expect(overlay.isPulsing, isTrue);
+    expect(t.binding.hasScheduledFrame, isTrue);
   });
 
   group('placement', () {
