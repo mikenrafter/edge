@@ -934,12 +934,12 @@ class SleepCoordinator extends ChangeNotifier {
     final operation = ++_operation;
     ++_pending;
     notifyListeners();
-    void finish(SleepOperationResult value) {
+    void finish(SleepOperationResult value, {bool retainFailure = false}) {
       if (result.isCompleted) return;
-      if (!value.success) {
+      if (!value.success && retainFailure) {
         _failures[operation] = SleepReceiptFailure(operation, day,
             value.error ?? 'Could not save this change. Try again.');
-      } else {
+      } else if (value.success) {
         _failures.removeWhere((id, failure) => id < operation && failure.day == day);
       }
       result.complete(value);
@@ -955,6 +955,7 @@ class SleepCoordinator extends ChangeNotifier {
           error:
               'Saving timed out. Reopen this night to check your saved times.',
         ),
+        retainFailure: true,
       ),
     );
     _tail = _tail.then((_) async {
@@ -973,7 +974,7 @@ class SleepCoordinator extends ChangeNotifier {
           finish(await work());
         }
       } catch (e) {
-        finish(SleepOperationResult(success: false, error: '$e'));
+        finish(SleepOperationResult(success: false, error: '$e'), retainFailure: true);
       } finally {
         timer.cancel();
       }

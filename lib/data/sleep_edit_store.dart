@@ -26,8 +26,8 @@ class SleepEditView {
   final String? ownPhase;
   final bool ownUnapplied;
 
-  /// The earliest earlier night whose edit is still outstanding, and its
-  /// phase. This day is scored against it: its values stay, flagged.
+  /// An earlier outstanding night and its phase, prioritizing the earliest
+  /// failure so every projection exposes it. This day is scored against it: its values stay, flagged.
   final String? dependsOn, dependsPhase;
 
   Map<String, Object?> toJson() => {
@@ -173,23 +173,23 @@ class SleepEditStore {
       "OR day_id < ? AND phase != 'done' ORDER BY day_id",
       [day, day],
     );
-    if (rows.isEmpty) return SleepEditView.none;
-    String? own, dependsOn, dependsPhase;
-    var ownUnapplied = false;
-    for (final r in rows) {
-      if (r['day_id'] == day) {
-        own = r['phase'] as String;
-        ownUnapplied = r['applied_revision'] != r['revision'];
-      } else if (dependsOn == null) {
-        dependsOn = r['day_id'] as String;
-        dependsPhase = r['phase'] as String;
-      }
-    }
+    return _viewFor(rows, day);
+  }
+
+  // CLAIM(sleep-edit-r3): cards and chart points choose the same dependency
+  // from date-ordered jobs [responsiveness_sleep_r3_test: R3-3].
+  static SleepEditView _viewFor(List<Map<String, Object?>> jobs, String day) {
+    final own = jobs.where((j) => j['day_id'] == day &&
+        (j['applied_revision'] != j['revision'] || j['phase'] != 'done')).firstOrNull;
+    final earlier = jobs.where((j) =>
+        (j['day_id'] as String).compareTo(day) < 0 && j['phase'] != 'done');
+    final dependency = earlier.where((j) => j['phase'] == 'failed').firstOrNull ??
+        earlier.firstOrNull;
     return SleepEditView(
-      ownPhase: own,
-      ownUnapplied: ownUnapplied,
-      dependsOn: dependsOn,
-      dependsPhase: dependsPhase,
+      ownPhase: own?['phase'] as String?,
+      ownUnapplied: own != null && own['applied_revision'] != own['revision'],
+      dependsOn: dependency?['day_id'] as String?,
+      dependsPhase: dependency?['phase'] as String?,
     );
   }
 
@@ -238,42 +238,23 @@ class SleepEditStore {
       final jobs = await db.query(
         'sleep_edit_job',
         where: "phase != 'done' OR applied_revision < revision",
+        orderBy: 'day_id ASC',
       );
       if (jobs.isEmpty) return rows;
       final out = <Map<String, dynamic>>[];
       for (final row in rows) {
         final date = row['date'] as String;
-        if (jobs.any(
-          (j) => j['day_id'] == date && j['applied_revision'] != j['revision'],
-        )) {
-          continue;
-        }
-        final earlier = [
-          for (final j in jobs)
-            if ((j['day_id'] as String).compareTo(date) < 0 &&
-                j['phase'] != 'done')
-              j,
-        ];
-        out.add(
-          earlier.isEmpty
-              ? row
-              : {
-                  ...row,
-                  'sleep_edit': SleepEditView(
-                    dependsOn: earlier.first['day_id'] as String,
-                    dependsPhase: earlier.any((j) => j['phase'] == 'failed')
-                        ? 'failed'
-                        : 'queued',
-                  ),
-                },
-        );
+        final view = _viewFor(jobs, date);
+        if (view.withholdNight) continue;
+        out.add(view.isNone ? row : {...row, 'sleep_edit': view});
       }
       return out;
     }, name: 'sleep edit chart visibility');
   }
 
   /// Reuse a complete measured night only when its persisted bounds exactly
-  /// match the current assertion. The proof and applied marker share a writer
+  /// match the current assertion. With no override, recalculation retains the
+  /// stored assertion itself. The proof and applied marker share a writer
   /// transaction; a source label alone is never proof. CLAIM(sleep-edit-r2)
   /// [responsiveness_sleep_r2_test: identical measured confirmed window].
   static Future<bool> reuseMeasuredNightIfCurrent(
@@ -288,16 +269,17 @@ class SleepEditStore {
       final measured = await tx.rawQuery(
         r'''
             SELECT 1 FROM day_result AS r
-            JOIN sleep_override AS o ON o.day_id = r.day_id
+            LEFT JOIN sleep_override AS o ON o.day_id = r.day_id
             WHERE r.day_id = ? AND r.algo_version =
               (SELECT MAX(algo_version) FROM day_result WHERE day_id = ? AND algo_version <= ?)
-              AND r.partial = 0 AND r.skipped = 0 AND o.source != 'rejected'
+              AND r.partial = 0 AND r.skipped = 0
+              AND (o.day_id IS NULL OR (o.source != 'rejected'
               AND CASE WHEN json_valid(r.window_json) THEN
                 COALESCE(json_extract(r.window_json, '$.value.onset_ms'),
                          json_extract(r.window_json, '$.onset_ms')) END = o.onset_ts * 1000
               AND CASE WHEN json_valid(r.window_json) THEN
                 COALESCE(json_extract(r.window_json, '$.value.offset_ms'),
-                         json_extract(r.window_json, '$.offset_ms')) END = o.offset_ts * 1000
+                         json_extract(r.window_json, '$.offset_ms')) END = o.offset_ts * 1000))
               AND (r.rhr > 0 OR r.rmssd > 0 OR
                 CASE WHEN json_valid(r.payload_json) THEN CAST(
                   COALESCE(json_extract(r.payload_json, '$.scalars.tst_min.value'),

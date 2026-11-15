@@ -300,7 +300,17 @@ extension _EngineDayCompute on DerivationEngine {
         ? null
         : math.min(day.sleepEditGeneration!,
             history.sleepEditGenerationUpTo(day.date));
-    var blankSource = await _userBlankedNight(day.date, scMap);
+    final noInputJob = producedNothing
+        ? await SleepEditStore.status(day.date)
+        : null;
+    final unappliedEdit = noInputJob != null &&
+        (noInputJob['applied_revision'] as int) < (noInputJob['revision'] as int);
+    // A retained job is history, not a new assertion. This also gates the
+    // manual-override blanking path; legacy nights without jobs keep their
+    // existing rejection semantics. CLAIM(sleep-edit-r3)
+    var blankSource = producedNothing && noInputJob != null && !unappliedEdit
+        ? null
+        : await _userBlankedNight(day.date, scMap);
     if (producedNothing && blankSource == null && fence != null &&
         await SleepEditStore.reuseMeasuredNightIfCurrent(day.date, fence, algoVersion: kAlgoVersion)) {
       _declineReasons[day.date] = 'measured_window_matches_assertion';
@@ -309,7 +319,7 @@ extension _EngineDayCompute on DerivationEngine {
     // A new assertion cannot inherit measurements from an unproven window.
     // Store an unavailable night with its daytime facts in the same fenced
     // result transaction. CLAIM(sleep-edit-r2) [responsiveness_sleep_r2_test].
-    if (producedNothing && blankSource == null && await SleepEditStore.status(day.date) != null) {
+    if (producedNothing && blankSource == null && unappliedEdit) {
       blankSource = (await LocalDb.getSleepOverride(day.date))?['source'] as String? ?? 'auto';
     }
     if (blankSource != null) {

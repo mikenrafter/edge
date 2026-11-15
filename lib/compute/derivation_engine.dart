@@ -1994,7 +1994,10 @@ part 'engine/settled.dart';
 // only when the complete stored measured window matches exactly. Other nights
 // record unavailable measurements while preserving daytime facts.
 // A failed second half keeps the edit unapplied even with carried detail.
-const int kAlgoVersion = 120;
+// 121 (sleep edit R3): finished edits preserve pruned measured nights, and a
+// recalculation without an override retains the stored assertion. Only an
+// unapplied changed assertion can invalidate measurements with no input.
+const int kAlgoVersion = 121;
 
 enum SleepEditCalculation { complete, incomplete, superseded }
 
@@ -3374,7 +3377,9 @@ class DerivationEngine {
                     ? DayResultWrite.userOverride
                     : DayResultWrite.derive,
                 onStaleTonight: repass ? null : staleTonight.add);
-            if (committed != DayDerive.committed && committed != DayDerive.reused) _incompleteSelectedDays.add(dayId);
+            if (committed == DayDerive.refused) {
+              _incompleteSelectedDays.add(dayId);
+            }
             if (repass) {
               // Counted and reported by its first derive.
               if (committed == DayDerive.committed) {
@@ -3473,7 +3478,7 @@ class DerivationEngine {
     }
   }
 
-  // Owner: this engine's selected pass. Partial, refused and declined days
+  // Owner: this engine's selected pass. Partial, refused and skipped days
   // keep the interactive edit's durable obligation. No other pass reads it.
   final _incompleteSelectedDays = <String>{};
 
