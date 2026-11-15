@@ -39,6 +39,7 @@ class _TrackEditorState extends State<TrackEditor> {
       _prescribed = _initial.prescribed;
   List<TrackRangeDraft>? _history;
   final _customSystem = TextEditingController();
+  final _formScroll = ScrollController();
   bool _failed = false, _saving = false;
   String? _error;
   @override
@@ -50,6 +51,7 @@ class _TrackEditorState extends State<TrackEditor> {
   @override
   void dispose() {
     _customSystem.dispose();
+    _formScroll.dispose();
     super.dispose();
   }
 
@@ -98,7 +100,7 @@ class _TrackEditorState extends State<TrackEditor> {
         throw const FormatException('definition');
       }
     } on FormatException {
-      setState(() => _error = 'Invalid');
+      _showError('Invalid');
       return;
     }
     setState(() {
@@ -112,12 +114,20 @@ class _TrackEditorState extends State<TrackEditor> {
       );
       if (mounted) Navigator.of(context).pop(definition);
     } on ArgumentError {
-      if (mounted) setState(() => _error = 'Invalid');
+      _showError('Invalid');
     } catch (_) {
-      if (mounted) setState(() => _error = 'Failed');
+      _showError('Failed');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  void _showError(String key) {
+    if (!mounted) return;
+    // Expanded forms can be long: a rejected Save must reveal its reason.
+    FocusScope.of(context).unfocus();
+    setState(() => _error = key);
+    if (_formScroll.hasClients) _formScroll.jumpTo(_formScroll.position.minScrollExtent);
   }
 
   void _addRange({bool daily = false}) {
@@ -176,6 +186,7 @@ class _TrackEditorState extends State<TrackEditor> {
                   : const PendingContent(pending: true, child: Surface(child: PendingRows(count: 5)))),
             )
           : ListView(
+              controller: _formScroll,
               padding: const EdgeInsets.all(S.x4),
               children: [
                 if (_error != null)

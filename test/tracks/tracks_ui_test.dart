@@ -15,7 +15,7 @@ import '../support/bundled_fonts.dart';
 import 'ui_support.dart';
 
 Future<void> _expand(WidgetTester t, String label) async {
-  final accordion = find.byWidgetPredicate((w) => w is SettingsAccordion && w.title == label).first;
+  final accordion = find.byWidgetPredicate((w) => w is SettingsAccordion && w.title == label);
   await t.scrollUntilVisible(accordion, 300, scrollable: find.byType(Scrollable).first);
   final header = find.descendant(of: accordion, matching: find.text(label)).first;
   await t.ensureVisible(header);
@@ -135,7 +135,10 @@ void main() {
     await t.enterText(find.byKey(const ValueKey('track-detection-max')), '2');
     await t.tap(find.byKey(const ValueKey('track-save')));
     await t.pumpAndSettle();
-    expect(find.byKey(const ValueKey('track-form-error')), findsOneWidget);
+    final error = find.byKey(const ValueKey('track-form-error'));
+    expect(error, findsOneWidget);
+    expect(t.getRect(error).top, greaterThanOrEqualTo(0));
+    expect(t.getRect(error).bottom, lessThan(t.view.physicalSize.height / t.view.devicePixelRatio));
     expect(find.byType(TrackEditor), findsOneWidget);
     final saved = (await t.runAsync(
       () => store.definitions(),
