@@ -1073,10 +1073,13 @@ class RingTrio extends StatelessWidget {
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c);
     final at = now ?? pc.clock.now();
-    final rings = [for (final k in HomeRingKind.values) _ringOf(k, d, l, at)];
     final locale = l?.localeName ?? Localizations.localeOf(c).toString();
     final cache = cacheDay == null || cacheFresh ? null : HomeRingDetailCache.local.read(cacheDay!, locale);
     if (cacheFresh && cacheDay != null) HomeRingDetailCache.local.record(cacheDay!, locale, d, help);
+    // Cache supplies the pending layout template, never an exposed ring score:
+    // PendingContent suppresses these data leaves until the current read lands.
+    final shape = pending && cache != null ? cache.data : d;
+    final rings = [for (final k in HomeRingKind.values) _ringOf(k, shape, l, at)];
     final detail = cache?.data ?? d;
     final detailRings = [for (final k in HomeRingKind.values) _ringOf(k, detail, l, at)];
     final gaps = detailRings.where((r) => r.why != null).toList();

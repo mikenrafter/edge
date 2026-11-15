@@ -74,11 +74,15 @@ void main() {
             data: HomeData(
               dayId: todayLabel(),
               readiness: const Metric(value: 22, confidence: 1),
+              strain: const Metric(value: 14, confidence: 1),
+              sleepMin: const Metric(value: 300, confidence: 1),
+              sleepNeedMin: const Metric(value: 480, confidence: 1),
             ),
           ),
         ),
       );
       expect(find.text('Recovery 22 of 100'), findsOneWidget);
+      final settledRows = t.getRect(find.byKey(const ValueKey('home-ring-details')));
       await t.pumpWidget(const SizedBox());
       await t.runAsync(
         () => SettingsRepository.instance.update((_) {}, sections: const {}),
@@ -90,6 +94,8 @@ void main() {
         reason:
             'the same-day secondary cache must be readable before first paint',
       );
+      expect(t.getRect(find.byKey(const ValueKey('home-ring-details'))), settledRows,
+          reason: 'cached text and the ring sizing template retain row geometry');
       final rows = find.text('Recovery 22 of 100');
       expect(
         find.ancestor(
