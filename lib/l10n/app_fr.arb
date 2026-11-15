@@ -3935,5 +3935,10 @@
     }
   },
   "rhrChangesTitle": "Variations de la fréquence cardiaque au repos",
-  "rhrNoReadings": "Aucune mesure de fréquence cardiaque au repos enregistrée."
+  "rhrNoReadings": "Aucune mesure de fréquence cardiaque au repos enregistrée.",
+  "sleepTabTimelineCardTitle": "Chronologie du sommeil",
+  "sleepTabStoodOutCardTitle": "Ce qui ressort",
+  "sleepTabUsualCardTitle": "Par rapport à vos habitudes",
+  "sleepTabSignalsCardTitle": "Signaux nocturnes",
+  "sleepTabThePlanCardTitle": "Le programme"
 }

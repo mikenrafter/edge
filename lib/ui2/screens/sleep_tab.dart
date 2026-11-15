@@ -7,62 +7,15 @@
 // where they live changed.
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
-
-import '../../l10n/app_localizations.dart';
-import '../profile/alarm.dart';
-import '../profile/profile.dart' show SettingsAccordion;
 import '../ui2.dart';
-import 'circadian_detail.dart';
-import 'metric_detail.dart' show detailLinkRow;
 import 'sleep_detail.dart';
-import 'wellness_screen.dart';
 
 class SleepTab extends StatelessWidget {
   const SleepTab({super.key});
-
   @override
   Widget build(BuildContext c) {
-    final l = AppLocalizations.of(c);
     final request = ShellDate.maybeOf(c);
-    return SleepDetail(
-      key: ValueKey(request?.revision ?? 0),
-      day: request?.date,
-      embedded: true,
-      footer: [
-        SettingsAccordion(
-          l?.sleepTabPlanTitle ?? 'Your sleep plan',
-          id: 'sleep_plan',
-          initiallyExpanded: true,
-          children: const [WellnessScreen(sleepPlanOnly: true)],
-        ),
-        SettingsAccordion(
-          l?.sleepTabMoreTitle ?? 'Alarm and body clock',
-          id: 'sleep_more',
-          initiallyExpanded: true,
-          children: [
-            Column(children: [
-            detailLinkRow(
-                c,
-                LucideIcons.alarmClock,
-                l?.settingsAlarmRowTitle ?? 'Alarm',
-                l?.settingsAlarmRowSub ??
-                    'Buzzes on your wrist, on the band’s own clock',
-                () => Navigator.of(c).push(MaterialPageRoute<void>(
-                    builder: (_) => const AlarmScreen()))),
-            const SizedBox(height: S.x3),
-            detailLinkRow(
-                c,
-                LucideIcons.sunMoon,
-                l?.healthBodyClockTitle ?? 'Body clock',
-                l?.healthChronotypeJetlagRegularity ??
-                    'Natural bedtime, weekend shift and schedule consistency',
-                () => Navigator.of(c).push(MaterialPageRoute<void>(
-                    builder: (_) => const CircadianDetail()))),
-          ]),
-          ],
-        ),
-      ],
-    );
+    return SleepDetail(key: ValueKey(request?.revision ?? 0),
+      day: request?.date, embedded: true);
   }
 }

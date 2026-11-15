@@ -135,8 +135,8 @@ void main() {
     await show('S1-sleep-night', SleepDetail(data: night), reveal: 'Through the night');
     await show('S1-night-actions', SleepDetail(data: night), reveal: 'Through the night', focus: 'Recalculate this night');
     app.repo = _FullRepo(night.night);
-    await show('S3-sleep-tab', const SleepTab(), reveal: 'Alarm and body clock');
-    await show('S3-sleep-footer', const SleepTab(), reveal: 'Through the night', focus: 'Naps');
+    await show('S3-sleep-tab', const SleepTab(), reveal: 'The Plan');
+    await show('S3-sleep-footer', const SleepTab(), focus: 'Naps');
     await show('home-past-day', const HomeScreen(hour: 9), navigate: () async {
       await settle(t, n: 8);
       await t.tap(find.bySemanticsLabel('Previous day'));

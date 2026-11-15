@@ -3935,5 +3935,10 @@
     }
   },
   "rhrChangesTitle": "静息心率变化",
-  "rhrNoReadings": "没有已保存的静息心率读数。"
+  "rhrNoReadings": "没有已保存的静息心率读数。",
+  "sleepTabTimelineCardTitle": "睡眠时间线",
+  "sleepTabStoodOutCardTitle": "值得注意的变化",
+  "sleepTabUsualCardTitle": "与你的平时相比",
+  "sleepTabSignalsCardTitle": "夜间信号",
+  "sleepTabThePlanCardTitle": "睡眠计划"
 }

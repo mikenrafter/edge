@@ -2795,7 +2795,7 @@ class LocalRepositoryImpl extends LocalRepository {
       getDeviceNights(day),
       getWakeTimeline(day),
       LocalDb.ownMetricSeriesDayWithHistoryCount(
-        day, const ['unobserved_min', 'awakenings', 'longest_sleep_min', 'sol_min'],
+        day, const ['unobserved_min', 'awakenings', 'longest_sleep_min', 'sol_min', 'irregular_rhythm_flag'],
         historyKey: 'tst_min',
       ),
     ).wait;

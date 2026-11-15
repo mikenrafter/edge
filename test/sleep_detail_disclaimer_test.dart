@@ -125,8 +125,8 @@ void main() {
           expect(find.text('Total sleep'), findsOneWidget);
         } else if (state == 'empty') {
           expect(find.text('Total sleep'), findsOneWidget);
-          expect(find.text('Through the night'), findsOneWidget);
-          // The reason is in the closed night section; the research warning
+          expect(find.text(embedded ? 'Sleep timeline' : 'Through the night'), findsOneWidget);
+          // The reason stays in the night section; the research warning
           // above remains visible in every state.
         }
         expect(t.takeException(), isNull);

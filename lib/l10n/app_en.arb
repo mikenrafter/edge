@@ -19422,5 +19422,10 @@
   "reviewReadTime": "Reading when the day was calculated",
   "reviewReadWake": "Reading wake times",
   "reviewReadWater": "Reading water entries",
-  "reviewReadProfile": "Reading your profile"
+  "reviewReadProfile": "Reading your profile",
+  "sleepTabTimelineCardTitle": "Sleep timeline",
+  "sleepTabStoodOutCardTitle": "What stood out",
+  "sleepTabUsualCardTitle": "Against your usual",
+  "sleepTabSignalsCardTitle": "Overnight signals",
+  "sleepTabThePlanCardTitle": "The Plan"
 }

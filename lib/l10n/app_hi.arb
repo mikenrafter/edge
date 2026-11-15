@@ -3935,5 +3935,10 @@
     }
   },
   "rhrChangesTitle": "आराम के समय हृदय गति में बदलाव",
-  "rhrNoReadings": "आराम के समय हृदय गति की कोई रीडिंग सेव नहीं है।"
+  "rhrNoReadings": "आराम के समय हृदय गति की कोई रीडिंग सेव नहीं है।",
+  "sleepTabTimelineCardTitle": "नींद की समयरेखा",
+  "sleepTabStoodOutCardTitle": "क्या अलग रहा",
+  "sleepTabUsualCardTitle": "आपकी सामान्य नींद से तुलना",
+  "sleepTabSignalsCardTitle": "रात के संकेत",
+  "sleepTabThePlanCardTitle": "योजना"
 }

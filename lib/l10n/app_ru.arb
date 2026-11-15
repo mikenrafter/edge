@@ -9839,5 +9839,10 @@
     }
   },
   "rhrChangesTitle": "Изменения пульса в покое",
-  "rhrNoReadings": "Сохранённых измерений пульса в покое нет."
+  "rhrNoReadings": "Сохранённых измерений пульса в покое нет.",
+  "sleepTabTimelineCardTitle": "Хронология сна",
+  "sleepTabStoodOutCardTitle": "Что выделилось",
+  "sleepTabUsualCardTitle": "В сравнении с обычным",
+  "sleepTabSignalsCardTitle": "Ночные показатели",
+  "sleepTabThePlanCardTitle": "План"
 }

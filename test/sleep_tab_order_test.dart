@@ -4,7 +4,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/layout_shift/layout_shift.dart';
 import 'package:openstrap_edge/state/app_state.dart';
@@ -14,7 +13,6 @@ import 'package:openstrap_edge/ui2/screens/sleep_detail.dart';
 import 'package:openstrap_edge/ui2/screens/sleep_tab.dart';
 import 'package:openstrap_edge/ui2/screens/metric_detail.dart' show DayNav;
 import 'package:openstrap_edge/ui2/why_row.dart';
-import 'package:openstrap_edge/ui2/ui2.dart';
 import 'support/as_of_recalc_fakes.dart';
 import 'support/skeleton_fixture.dart';
 import 'support/shift_run.dart';
@@ -22,6 +20,9 @@ import 'support/pilot_shots.dart';
 
 class OrderedSleepRepo extends SleepRepo {
   Completer<void>? held;
+  @override
+  Future<List<Map<String,Object?>>> getDeviceNights(String day) async => [
+    {'device_id':'paired','label':'Paired watch',...await getDaySleepV2(day)}];
   @override
   Future<SleepDetailBundle> getSleepDetailBundle(String day, {required List<String> chartKeys, required int windowDays, String? before}) async {
     await held?.future;
@@ -36,11 +37,12 @@ const cards=['timeline','stood-out','usual','signals','plan'];
 Finder card(String id)=>find.byKey(ValueKey('sleep-tab:$id'));
 Finder within(String id,Finder child)=>find.descendant(of:card(id),matching:child);
 void main(){
+  setUpAll(skLoadAppFonts);
   testWidgets('five cards keep the approved order and first has no collapse control', (t) async {
     skTallView(t,w:390,h:10000);final repo=OrderedSleepRepo();final app=AppState.forTesting()..repo=repo;addTearDown(app.dispose);
     final data=await SleepData.load(repo);
     await t.pumpWidget(perfApp(app,SleepDetail(embedded:true,data:data)));
-    for(final id in cards)expect(card(id),findsOneWidget);
+    for(final id in cards) { expect(card(id),findsOneWidget); }
     final tops=[for(final id in cards)t.getTopLeft(card(id)).dy];expect(tops,orderedEquals([...tops]..sort()));
     expect(within('timeline',find.byType(SettingsAccordion)),findsNothing);
     expect(find.byType(SettingsAccordion),findsNWidgets(4));
@@ -51,6 +53,7 @@ void main(){
     expect(within('stood-out',find.text('What charged and drained you')),findsOneWidget);
     expect(within('stood-out',find.byType(WhyRow)),findsOneWidget);
     expect(within('signals',find.byKey(const ValueKey('sleep-stage-rows'))),findsOneWidget);
+    expect(within('signals',find.byType(DeviceFilter)),findsOneWidget);
     expect(within('plan',find.text("Tonight's need")),findsOneWidget);
     expect(find.text("Tonight's need"),findsOneWidget);
     expect(within('plan',find.text('Body clock')),findsOneWidget);
@@ -64,7 +67,25 @@ void main(){
     repo.held!.complete();await run.frames([0,16,100,300,600]);
     final score=run.score(ShiftPolicy.standard.copyWith(loadWeight:0,colorWeight:0));
     debugPrint(formatShiftReport('sleep-tab-order',score,run.probe.frames.length));
-    expect(score.total,lessThan(.016));for(final f in score.findings.where((f)=>f.rule=='shift'))expect(f.score,lessThan(.002));
+    expect(score.total,lessThan(.016));for(final f in score.findings.where((f)=>f.rule=='shift')) { expect(f.score,lessThan(.002)); }
     await t.pumpWidget(const SizedBox());
   });
+  // Reviewed render artifacts for the five approved cards, using the existing
+  // shot helper; assertions above own behavior and geometry.
+  testWidgets('five Sleep cards dark review renders', (t) async {
+    phoneSurface(t); final repo=OrderedSleepRepo();
+    final app=AppState.forTesting()..repo=repo; addTearDown(app.dispose);
+    final data=await SleepData.load(repo);
+    await t.pumpWidget(pilotShot(perfApp(app,SleepDetail(embedded:true,data:data),brightness:Brightness.dark)));
+    await t.pump(); await t.pump(const Duration(milliseconds:600));
+    for(final id in cards) {
+      await t.scrollUntilVisible(card(id),300,scrollable:find.byType(Scrollable).first);
+      await Scrollable.ensureVisible(t.element(card(id)),alignment:0);
+      await t.pump();
+      await takePilotShot(t,'sleep-$id');
+      expect(t.takeException(),isNull);
+    }
+    await t.pumpWidget(const SizedBox());
+  });
+
 }

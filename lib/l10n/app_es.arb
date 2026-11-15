@@ -3953,5 +3953,10 @@
     }
   },
   "rhrChangesTitle": "Cambios en la frecuencia cardíaca en reposo",
-  "rhrNoReadings": "No hay mediciones guardadas de frecuencia cardíaca en reposo."
+  "rhrNoReadings": "No hay mediciones guardadas de frecuencia cardíaca en reposo.",
+  "sleepTabTimelineCardTitle": "Cronología del sueño",
+  "sleepTabStoodOutCardTitle": "Lo que destacó",
+  "sleepTabUsualCardTitle": "Frente a lo habitual",
+  "sleepTabSignalsCardTitle": "Señales nocturnas",
+  "sleepTabThePlanCardTitle": "El plan"
 }

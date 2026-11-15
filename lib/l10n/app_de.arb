@@ -4041,5 +4041,10 @@
     }
   },
   "rhrChangesTitle": "Änderungen des Ruhepulses",
-  "rhrNoReadings": "Keine Ruhepulswerte gespeichert."
+  "rhrNoReadings": "Keine Ruhepulswerte gespeichert.",
+  "sleepTabTimelineCardTitle": "Schlafverlauf",
+  "sleepTabStoodOutCardTitle": "Was aufgefallen ist",
+  "sleepTabUsualCardTitle": "Im Vergleich zu sonst",
+  "sleepTabSignalsCardTitle": "Nächtliche Signale",
+  "sleepTabThePlanCardTitle": "Der Plan"
 }
