@@ -1057,26 +1057,28 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     Widget link(IconData icon, String name, String sub, Widget target) =>
         detailLinkRow(c, icon, name, sub, () => go(c, target));
     return [
-      Column(
+      InsideCard(
         key: const ValueKey('sleep-tab:timeline'),
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-        ..._dayNav(d),
-        _answer(c, p, d, n),
-        if (_deviceNight(d) case final dn?)
-          _night(c, p, d, dn, device: dn)
-        else
-          _night(c, p, d, n),
-        ...?window,
-        if (window == null)
-          _emptyWindowCard(
-            c,
-            p,
-            d,
-            rejected: n['sleep_source'] == 'rejected',
-          ),
-        ..._napsButton(c, l, d.day),
-        ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ..._dayNav(d),
+            _answer(c, p, d, n),
+            if (_deviceNight(d) case final dn?)
+              _night(c, p, d, dn, device: dn)
+            else
+              _night(c, p, d, n),
+            ...?window,
+            if (window == null)
+              _emptyWindowCard(
+                c,
+                p,
+                d,
+                rejected: n['sleep_source'] == 'rejected',
+              ),
+            ..._napsButton(c, l, d.day),
+          ],
+        ),
       ),
       const SizedBox(height: S.x3),
       _accordion(
@@ -1829,8 +1831,12 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             // Real glyphs, not '': an empty label line rounds a pixel shorter
             // at large text and would move everything under the axis.
             xLabels: [
-              for (final k in ['onset_ts', 'wake_ts'])
-                n[k] is num ? clockOfTs((n[k] as num).round()) : '\u00A0',
+              for (final ts in [
+                start,
+                if (start != null && end != null) start + (end - start) ~/ 2 else null,
+                end,
+              ])
+                ts == null ? '\u00A0' : clockOfTs(ts),
             ],
             annotations: annotations,
             child: _loading && _d == null ? const PendingPlot(shape: PendingChartShape.stages) : const SizedBox.expand(),

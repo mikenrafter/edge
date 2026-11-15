@@ -13,6 +13,7 @@ import 'package:openstrap_edge/ui2/screens/sleep_detail.dart';
 import 'package:openstrap_edge/ui2/screens/sleep_tab.dart';
 import 'package:openstrap_edge/ui2/screens/metric_detail.dart' show DayNav;
 import 'package:openstrap_edge/ui2/why_row.dart';
+import 'package:openstrap_edge/ui2/grammar.dart' show InsideCard, Surface;
 import 'support/as_of_recalc_fakes.dart';
 import 'support/skeleton_fixture.dart';
 import 'support/shift_run.dart';
@@ -44,8 +45,12 @@ void main(){
     await t.pumpWidget(perfApp(app,SleepDetail(embedded:true,data:data)));
     for(final id in cards) { expect(card(id),findsOneWidget); }
     final tops=[for(final id in cards)t.getTopLeft(card(id)).dy];expect(tops,orderedEquals([...tops]..sort()));
-    expect(t.widget(card('timeline')), isA<Column>());
+    expect(t.widget(card('timeline')), isNot(isA<Surface>()));
     expect(find.text('Sleep timeline'), findsNothing);
+    for (final element in within('timeline', find.byType(Surface)).evaluate()) {
+      expect(InsideCard.of(element), isTrue,
+        reason: 'timeline contents stay flat when the outer card is removed');
+    }
     expect(within('timeline',find.byType(SettingsAccordion)),findsNothing);
     expect(find.byType(SettingsAccordion),findsNWidgets(4));
     expect(within('timeline',find.byType(DayNav)),findsOneWidget);
