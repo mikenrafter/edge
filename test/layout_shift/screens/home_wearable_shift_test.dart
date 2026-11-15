@@ -8,6 +8,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/layout_shift/layout_shift.dart';
 import 'package:openstrap_edge/ui2/profile/wearable_numbers.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 
@@ -62,7 +63,9 @@ void main() {
     await run.frames();
     await t.pump(const Duration(seconds: 5));
     expect(find.byType(WearableCellsCard), findsOneWidget);
-    final r = run.score();
+    // Height motion has its own frame-level check. This budget is geometry;
+    // charge read/animation latency separately in the normal report below.
+    final r = run.score(ShiftPolicy.standard.copyWith(loadWeight: 0));
     run.expectNoErrors('home cold open, wearable');
     // Plain Home cold open scores 0.018; a card landing late was 0.26.
     expect(r.warnings, isEmpty);

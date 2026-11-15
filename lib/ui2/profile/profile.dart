@@ -313,7 +313,7 @@ class _SettingsAccordionState extends State<_SettingsAccordionCard> {
           borderRadius: R.rLg,
           boxShadow: p.el(1),
         ),
-        child: Column(children: [
+        child: SettlingHeight(child: Column(children: [
           Pressable(
             onTap: _toggle,
             semanticLabel: '${widget.a.title}, ${_open ? 'expanded' : 'collapsed'}',
@@ -347,7 +347,7 @@ class _SettingsAccordionState extends State<_SettingsAccordionCard> {
               Divider(color: p.line, height: 1),
               Padding(padding: const EdgeInsets.symmetric(vertical: S.x3), child: row),
             ],
-        ]),
+        ])),
       )),
     );
   }
