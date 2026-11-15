@@ -30,6 +30,9 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../compute/findings.dart';
+import '../../data/db.dart';
+import '../../data/pulse_episode_store.dart';
+import 'pulse_episode.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/clock_format.dart' show formatClockOf;
 import '../ui2.dart';
@@ -70,6 +73,13 @@ class FindingsLog extends StatelessWidget {
       c,
       l?.findingsLogTitle ?? 'Observations',
       [
+        TextButton(onPressed:()=>Navigator.of(c).push(MaterialPageRoute<void>(builder:(_)=>const PulseEpisodesScreen())), child:const Text('See all pulse episodes')),
+        FutureBuilder<List<PulseEpisodeSnapshot>>(
+          future: LocalDb.instance.then((db) => PulseEpisodeStore(db).list()),
+          builder: (c, s) => s.hasError
+            ? const Text('Pulse recordings could not be loaded. Reopen to retry.')
+            : Column(children: [for (final e in s.data ?? <PulseEpisodeSnapshot>[]) PulseEpisodeRow(e)]),
+        ),
         if (findings.isEmpty)
           StatusCard(
             l?.findingsLogEmptyTitle ?? 'Nothing has stood out',
@@ -132,7 +142,8 @@ class FindingRow extends StatelessWidget {
     // A view built without localizations (a bare test host) still says it in
     // English rather than not at all.
     final l = AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));
-    final title = findingTitle(l, f);
+    final title = f.kind == FindingKind.irregularRhythm
+        ? 'Historical daily flag: episode recording unavailable' : findingTitle(l, f);
     final detail = findingDetail(l, f);
     final note = switch (f.alert) {
       final a? => a.note(l, time: formatClockOf(a.at)),

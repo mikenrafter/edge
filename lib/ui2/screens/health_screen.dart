@@ -14,6 +14,8 @@ import 'package:provider/provider.dart';
 
 import '../../compute/findings.dart';
 import '../../compute/pulse_alert_record.dart';
+import '../../data/pulse_episode_store.dart';
+import 'pulse_episode.dart';
 import '../../data/day_label.dart';
 import '../../data/db.dart';
 import '../../data/lab_catalogue.dart';
@@ -99,6 +101,8 @@ class HealthData {
   /// Recomputed from the rollup on every load rather than logged, so the
   /// history is there from the first run instead of starting empty today.
   final List<Finding> findings;
+  final List<PulseEpisodeSnapshot> pulseEpisodes;
+  final bool pulseReadFailed;
 
   /// The newest day bundle's personal `baselines` block — the usual range the
   /// trend cards draw for resting HR and HRV. Null when it could not be read.
@@ -128,6 +132,8 @@ class HealthData {
     this.napCount,
     this.napDay = '',
     this.findings = const [],
+    this.pulseEpisodes = const [],
+    this.pulseReadFailed = false,
     this.baselines,
     this.chartsNewestDay,
     this.chartsComputedAt,
@@ -264,7 +270,16 @@ class HealthData {
     final heart = await _soft(() => repo.getDayHeart(todayLabel()));
     final wearable = await wearableRead;
 
+    var pulseEpisodes=<PulseEpisodeSnapshot>[];
+    var pulseReadFailed=false;
+    try {pulseEpisodes=await PulseEpisodeStore(await LocalDb.instance).list();}
+    catch(_){pulseReadFailed=true;}
+    for(final e in pulseEpisodes) {
+      irregular.removeWhere((day)=>day.compareTo(e.row['day'] as String)>=0 && day.compareTo(e.row['end_day'] as String)<=0);
+    }
     return HealthData(
+      pulseEpisodes:pulseEpisodes,
+      pulseReadFailed:pulseReadFailed,
       wearable: wearable,
       today: today,
       insights: cd,
@@ -1043,7 +1058,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
       Section(
         key: const ValueKey('card:observations'),
         l?.healthObservationsTitle ?? 'Observations',
-        illnessCard ??
+        illnessCard ?? (d.pulseReadFailed ? const Surface(child:Text('Pulse recordings could not be loaded. Open Observations to retry.')) : null) ?? (d.pulseEpisodes.isNotEmpty ? Surface(child:PulseEpisodeRow(d.pulseEpisodes.first)) : null) ??
             // No live illness, but the log is not empty: the newest entry in
             // place and the rest one tap away. ONE row — a wall of findings
             // on the tab you land on is the feed this is not.
@@ -1080,9 +1095,9 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
                     ]),
                     ),
                   )),
-        action: d.findings.isEmpty ? null : (l?.healthSeeAll ?? 'See all'),
+        action: l?.healthSeeAll ?? 'See all',
         onAction:
-            d.findings.isEmpty ? null : () => go(c, FindingsLog(d.findings)),
+            () => go(c, FindingsLog(d.findings)),
       ),
 
       // Naps moved to the Sleep tab, beside the night (the Naps door there).

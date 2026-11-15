@@ -106,6 +106,8 @@ const String kRouteProfile = '/profile';
 /// index, which is Home. That is how both of these used to land on Home while
 /// `domainForRoute` claimed otherwise.
 const String kRouteRecap = '/recap';
+const String kRoutePulseEpisode = '/pulse-episode';
+const String kRoutePulseEpisodes = '/pulse-episodes';
 
 /// Emitted by the two alarm safety notifications (latch-failure, the 7pm
 /// no-alarm-tonight check-in) and the alarm-fired note. Lands on the Alarm
@@ -147,6 +149,8 @@ const Map<String, int> _tabRoutes = {
 // on the home screen — three taps from the battery it was about. The
 // destinations exist in app.dart; this is the half that was missing.
 const Map<String, int> _screenRoutes = {
+  kRoutePulseEpisode: 2,
+  kRoutePulseEpisodes: 2,
   kRouteAiMorning: 0,
   kRouteAiEvening: 0,
   kRouteJournalCompose: 0,
