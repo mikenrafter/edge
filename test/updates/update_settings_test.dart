@@ -6,6 +6,10 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:openstrap_edge/sync/update_store.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/sync/update_service.dart';
 import 'package:openstrap_edge/ui2/profile/app_updates.dart';
@@ -61,6 +65,75 @@ void main() {
       waiting: true,
     ),
   };
+  // WHY: B1 must label a new official release as a separate app, including the
+  // compact Settings entry. The production selector supplies the relationship.
+  // catches: reusing the in-place Update available title for official news.
+  test('official news summary identifies the separate app', () async {
+    final candidate = selectRelease(ReleaseSource.official, [{
+      'id': 1, 'tag_name': 'v0.11.4', 'draft': false, 'prerelease': false,
+      'assets': [{'id': 10, 'name': 'openstrap-edge-v0.11.4.apk'}],
+    }], const InstalledRelease(version: '0.11.3', build: 78, fork: true, mode: 'profile'))!;
+    final l = await AppLocalizations.delegate.load(const Locale('en'));
+    expect(updateSummary(l, UpdateSnapshot(enabled: true, phase: UpdatePhase.available,
+      sources: {ReleaseSource.official: SourceUpdate(candidate: candidate)})),
+      'New official app release · Official · v0.11.4 · Release');
+  });
+
+  // WHY: the first pilot only captured the Settings entry. Exercise the real
+  // screen with both source cards, consent, toggles and the metered dialog.
+  // catches: card/text overflow or missing separation at large text sizes.
+  testWidgets('dark App updates screen and metered dialog captures', (t) async {
+    t.view.devicePixelRatio = 1;
+    t.view.physicalSize = const Size(390, 844);
+    addTearDown(t.view.resetPhysicalSize);
+    addTearDown(t.view.resetDevicePixelRatio);
+    final out = Platform.environment['UPDATE_SHOTS'];
+    for (final scale in [1.0, 2.0]) {
+      for (final name in ['off', 'current', 'official-news']) {
+        final snapshot = name == 'official-news' ? UpdateSnapshot(
+          enabled: true, phase: UpdatePhase.available, sources: {
+            ...states['current']!.sources,
+            ReleaseSource.official: SourceUpdate(candidate: selectRelease(ReleaseSource.official, [{
+              'id': 3, 'tag_name': 'v0.11.4', 'draft': false, 'prerelease': false,
+              'assets': [{'id': 11, 'name': 'openstrap-edge-v0.11.4.apk'}],
+            }], const InstalledRelease(version: '0.11.3', build: 78, fork: true, mode: 'profile'))),
+          }) : states[name]!;
+        final service = _CaptureService(snapshot);
+        final key = GlobalKey();
+        await t.pumpWidget(MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: buildTheme(Brightness.dark), locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          builder: (context, child) => MediaQuery(data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)), child: child!),
+          home: RepaintBoundary(key: key, child: AppUpdatesScreen(service: service)),
+        ));
+        await t.pumpAndSettle();
+        final suffix = scale == 1 ? 'normal' : 'large';
+        await capture(t, key, out, 'screen-$name-top-$suffix');
+        await t.ensureVisible(find.text('mikenrafter/edge'));
+        await t.pumpAndSettle();
+        await capture(t, key, out, 'screen-$name-fork-$suffix');
+        await t.ensureVisible(find.text('OpenStrap/edge'));
+        await t.pumpAndSettle();
+        expect(find.text('Open release page'), name == 'off' ? findsNothing : findsNWidgets(2));
+        await capture(t, key, out, 'screen-$name-official-$suffix');
+        if (name == 'current') {
+          await t.ensureVisible(find.text('Check now'));
+          await t.tap(find.text('Check now'));
+          await t.pumpAndSettle();
+          expect(find.byType(AlertDialog), findsOneWidget);
+          await capture(t, key, out, 'screen-metered-$suffix');
+          await t.tap(find.text('CANCEL'));
+          await t.pumpAndSettle();
+        }
+        expect(t.takeException(), isNull, reason: '$name $scale');
+        await t.pumpWidget(const SizedBox());
+        service.dispose();
+      }
+    }
+  });
+
   // catches: clipping/error omissions and a source label that disappears in translation.
   testWidgets('dark Settings rows in every state and all seven locales', (
     t,
@@ -147,4 +220,29 @@ void main() {
       }
     }
   });
+}
+
+Future<void> capture(WidgetTester t, GlobalKey key, String? out, String name) async {
+  expect(t.takeException(), isNull, reason: name);
+  if (out == null) return;
+  await t.runAsync(() async {
+    final boundary = t.renderObject(find.byKey(key)) as RenderRepaintBoundary;
+    final image = await boundary.toImage(pixelRatio: 2);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    await Directory(out).create(recursive: true);
+    await File('$out/dark-$name.png').writeAsBytes(bytes!.buffer.asUint8List());
+    image.dispose();
+  });
+}
+class _CaptureService extends UpdateService {
+  _CaptureService(UpdateSnapshot state) : super(
+    store: UpdateStore(_NoDatabase()), client: MockClient((_) async => http.Response('[]', 200)),
+    installed: const InstalledRelease(version: '0.11.3', build: 78, fork: true, mode: 'profile'),
+    now: () => DateTime.utc(2026, 11, 15, 12), unmetered: () async => false,
+    schedule: (_) async {},
+  ) { snapshot = state; }
+}
+class _NoDatabase implements Database {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
 }

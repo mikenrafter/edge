@@ -292,9 +292,9 @@ void main() {
       requests.clear();
       // The other allowed repository's id is still wrong for this source.
       final wrongId = source == ReleaseSource.official ? 1403688012 : 1196502414;
-      respond = (_) async => http.Response('[]', 200, headers: {
+      respond = (r) async => http.Response('[]', 200, headers: r.url.path.contains(source.repository) ? {
         'link': '<https://api.github.com/repositories/$wrongId/releases?per_page=100&page=2>; rel="next"',
-      });
+      } : {});
       await service.check(manual: true);
       expect(service.snapshot.sources[source]!.error, UpdateError.incomplete);
       expect(requests.where((r) => r.url.queryParameters.containsKey('page')), isEmpty);
