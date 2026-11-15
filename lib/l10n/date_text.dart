@@ -33,6 +33,14 @@ String localizedDate(
   return DateFormat.yMMMd(locale).format(date);
 }
 
+/// Weekday, day, month and time in the locale's own order, e.g. "Thu 12 Nov,
+/// 08:14". No year: it is the moment something happened, not a record's date.
+String localizedDateTime(DateTime moment, String code) {
+  localizedDate(moment, code); // makes sure the date symbols are loaded
+  final locale = DateFormat.localeExists(code) ? code : 'en';
+  return DateFormat.MMMEd(locale).add_Hm().format(moment);
+}
+
 String displayDate(BuildContext context, DateTime date) => localizedDate(
   date,
   AppLocalizations.of(context)?.localeName ??

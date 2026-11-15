@@ -3884,5 +3884,12 @@
   "guideAddNapMissingBody": "**{naps}** se trouve sous votre nuit. Si cette partie, **{night}**, est repliée, touchez son titre pour l’ouvrir.",
   "guideTapsBack": "{count, plural, one{1 appui en arrière} other{{count} appuis en arrière}}",
   "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
-  "findingNotificationIrregularRhythm": "Les intervalles de pouls enregistrés le {day} ont correspondu à notre règle d’irrégularité. Nous n’avons mesuré ni sa précision ni la fréquence des troubles du rythme qu’elle manque. Touchez pour lire ses limites."
+  "findingNotificationIrregularRhythm": "Les intervalles de pouls enregistrés le {day} ont correspondu à notre règle d’irrégularité. Nous n’avons mesuré ni sa précision ni la fréquence des troubles du rythme qu’elle manque. Touchez pour lire ses limites.",
+  "pulseSummaryTitle": "{count, plural, =1{Schéma de pouls irrégulier signalé sur 1 jour antérieur} other{Schémas de pouls irrégulier signalés sur {count} jours antérieurs}}",
+  "pulseSummaryBody": "{days}. Les intervalles de pouls de ces jours ont correspondu à notre règle d’irrégularité. Nous n’avons pas mesuré sa précision ni à quelle fréquence elle manque un trouble du rythme cardiaque. Touchez pour lire les limites.",
+  "pulseSummaryDaysMore": "{days} et {more} autres",
+  "pulseAlertSent": "Alerte envoyée {when}",
+  "pulseAlertInSummary": "Inclus dans une alerte récapitulative {when}",
+  "pulseAlertOff": "Pas d’alerte : les notifications étaient désactivées",
+  "pulseAlertNotPermitted": "Pas d’alerte : les notifications n’étaient pas autorisées"
 }

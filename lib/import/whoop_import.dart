@@ -177,7 +177,6 @@ class WhoopImporter {
         }
       }
     }
-    if (pendingDays.isNotEmpty) await LocalDb.invalidatePulseDelivery();
     for (final entry in pendingDays.entries) {
       switch (await _buildAndWriteDay(entry.key, entry.value, rawDays)) {
         case _DayWrite.written:

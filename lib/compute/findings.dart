@@ -35,6 +35,7 @@ import 'package:openstrap_analytics/onehz.dart' as ana;
 import '../data/day_label.dart' show dayLabelBefore;
 import '../l10n/app_localizations.dart';
 import '../l10n/date_text.dart';
+import 'pulse_alert_record.dart';
 
 /// The headline composite's band cut-offs — its OWN quantiles (see the long
 /// note on `readinessBand`): p=.05 → 26, p=.20 → 37, p=.75 → 61. The ring,
@@ -59,7 +60,7 @@ enum FindingKind {
 
 @immutable
 class Finding {
-  const Finding(this.kind, this.date, {this.risen, this.score});
+  const Finding(this.kind, this.date, {this.risen, this.score, this.alert});
 
   final FindingKind kind;
 
@@ -73,6 +74,10 @@ class Finding {
 
   /// The readiness the ring showed, for [FindingKind.lowReadiness] only.
   final int? score;
+
+  /// What became of this day's alert, for [FindingKind.irregularRhythm] only.
+  /// Null when the day has not been through a delivery pass yet.
+  final PulseAlertRecord? alert;
 
   /// DETECTION-class, the ones the design sanctions interrupting for. It picks
   /// the notification's dedupe key and marks the entry in the log; it never
@@ -125,6 +130,8 @@ Finding? lowReadinessFinding(String date, double? readiness) =>
 /// already computed, so nothing is re-detected here except the resting-HR
 /// change points, which need the whole series at once.
 ///
+/// [alerts] carries each flagged day's alert record, for the small note under it.
+///
 /// [readiness] and [irregularDays] come from `metric_series` — the one store
 /// that keeps a value per day for as long as the day exists — because neither
 /// is in `recent[]`. Absent, those two kinds simply do not appear; they are
@@ -140,6 +147,7 @@ List<Finding> findingsHistory(
   Map<String, dynamic> cd, {
   Map<String, double> readiness = const {},
   Set<String> irregularDays = const {},
+  Map<String, PulseAlertRecord> alerts = const {},
 }) {
   final recent = cd['recent'];
   if (recent is! List) return const [];
@@ -182,7 +190,7 @@ List<Finding> findingsHistory(
     if (r['anomaly'] == true) out.add(Finding(FindingKind.anomaly, date));
     if (r['temp'] == true) out.add(Finding(FindingKind.tempElevated, date));
     if (irregularDays.contains(date)) {
-      out.add(Finding(FindingKind.irregularRhythm, date));
+      out.add(Finding(FindingKind.irregularRhythm, date, alert: alerts[date]));
     }
     final low = lowReadinessFinding(date, readiness[date]);
     if (low != null) out.add(low);

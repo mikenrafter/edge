@@ -19369,5 +19369,65 @@
         "example": "Thu, Nov 12, 2026"
       }
     }
+  },
+  "pulseSummaryTitle": "{count, plural, =1{Irregular pulse flag found on 1 earlier day} other{Irregular pulse flags found on {count} earlier days}}",
+  "@pulseSummaryTitle": {
+    "description": "One notification for several earlier flagged days found by an import, backfill, restore, reanalysis or algorithm update, or held back while notifications were off. count is how many days.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pulseSummaryBody": "{days}. Pulse timing on these days matched our irregularity rule. We have not measured its accuracy or how often it misses a rhythm problem. Tap to read the limits.",
+  "@pulseSummaryBody": {
+    "description": "Body of that summary. days is the list of recorded local dates, e.g. Thu, Nov 12, 2026, Sat, Nov 14, 2026.",
+    "placeholders": {
+      "days": {
+        "type": "String",
+        "example": "Thu, Nov 12, 2026, Sat, Nov 14, 2026"
+      }
+    }
+  },
+  "pulseSummaryDaysMore": "{days} and {more} more",
+  "@pulseSummaryDaysMore": {
+    "description": "The summary's date list when there are too many to show. days is the shown dates, more how many are left out.",
+    "placeholders": {
+      "days": {
+        "type": "String",
+        "example": "Thu, Nov 12, 2026"
+      },
+      "more": {
+        "type": "int"
+      }
+    }
+  },
+  "pulseAlertSent": "Alert sent {when}",
+  "@pulseAlertSent": {
+    "description": "Small text under a flagged day: its own notification was shown. when is a short local date and time.",
+    "placeholders": {
+      "when": {
+        "type": "String",
+        "example": "Thu, Nov 12 08:14"
+      }
+    }
+  },
+  "pulseAlertInSummary": "Included in a summary alert {when}",
+  "@pulseAlertInSummary": {
+    "description": "Small text under a flagged day: it was named in a summary notification.",
+    "placeholders": {
+      "when": {
+        "type": "String",
+        "example": "Thu, Nov 12 08:14"
+      }
+    }
+  },
+  "pulseAlertOff": "No alert: notifications were off",
+  "@pulseAlertOff": {
+    "description": "Small text under a flagged day: no notification was shown because notifications were off."
+  },
+  "pulseAlertNotPermitted": "No alert: notifications were not permitted",
+  "@pulseAlertNotPermitted": {
+    "description": "Small text under a flagged day: no notification was shown because the phone did not permit it."
   }
 }

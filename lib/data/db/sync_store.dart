@@ -397,7 +397,7 @@ Future<void> _ldbPrivCommitSyncBatchLocked(List<RawRecord> raws, List<Sample?> s
           // Read novelty before REPLACE, inside the same serialized transaction.
           // A replay or correction of an existing second cannot authorize an alert.
           try {
-            pulseContext = await _pulseArrivalContext(txn, raws, samples);
+            pulseContext = await _ldbPrivPulseArrivalContext(txn, raws, samples);
           } catch (_) {
             // Delivery metadata must never prevent raw capture or ACK.
           }
@@ -569,7 +569,7 @@ Future<void> _ldbPrivCommitSyncBatchLocked(List<RawRecord> raws, List<Sample?> s
         // the rows is the correct failure mode (rolls back with them).
         await LocalDb._writeCaptureFreshness(txn, raws);
       });
-      await _queuePulseArrival(pulseContext);
+      await _ldbPrivQueuePulseArrival(pulseContext);
     } finally {
       // ALWAYS restore NORMAL — even if the commit threw — so a leaked FULL does
       // not fsync every subsequent write on this connection. Non-fatal.
@@ -1503,7 +1503,7 @@ Future<void> _ldbInsertRecordsBatch(List<RawRecord> raws, List<Sample?> samples,
     var pulseContext = ProcessingContext.reanalysis;
     await db.transaction((txn) async {
       if (processingOrigin == ProcessingOrigin.recentSync) {
-        try { pulseContext = await _pulseArrivalContext(txn, raws, samples); } catch (_) {}
+        try { pulseContext = await _ldbPrivPulseArrivalContext(txn, raws, samples); } catch (_) {}
       }
       final batch = txn.batch();
       for (var i = 0; i < raws.length; i++) {
@@ -1513,7 +1513,7 @@ Future<void> _ldbInsertRecordsBatch(List<RawRecord> raws, List<Sample?> samples,
       }
       await batch.commit(noResult: true);
     });
-    await _queuePulseArrival(pulseContext);
+    await _ldbPrivQueuePulseArrival(pulseContext);
   }
 
 Future<void> _ldbUpsertSyncLedgerEntry({required String chunkId, required String kind, required String status, required int? ackedAt, required String? lastError, required Map<String, dynamic>? metaPatch, required DatabaseExecutor? txn}) async {
@@ -2066,43 +2066,39 @@ Future<int?> _ldbLastDecodedRecTs() async {
 
 
 // Bounded to the incoming pulse-bearing records; no history-wide scan.
-Future<ProcessingContext> _pulseArrivalContext(DatabaseExecutor txn,
-    List<RawRecord> raws, List<Sample?> samples) async {
-  final candidates = <int, int>{};
-  final now = LocalDb.nowMs();
-  for (var i = 0; i < raws.length && i < samples.length; i++) {
-    final raw = raws[i];
-    if (samples[i]?.rrIntervalsMs.isEmpty ?? true) continue;
-    final ts = raw.recTs;
-    if (ts == null || ts <= 0) continue;
-    final latency = raw.capturedAt - ts * 1000;
-    if (latency < 0 || latency > kPulseAlertArrivalBudget.inMilliseconds ||
-        raw.capturedAt > now || now - raw.capturedAt > kPulseAlertArrivalBudget.inMilliseconds) {
-      continue;
+Future<ProcessingContext> _ldbPrivPulseArrivalContext(DatabaseExecutor txn,
+      List<RawRecord> raws, List<Sample?> samples) async {
+    final candidates = <int, int>{};
+    // A record dated past tomorrow is a clock fault, not a day to announce.
+    final latestSec = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 86400;
+    for (var i = 0; i < raws.length && i < samples.length; i++) {
+      final raw = raws[i];
+      if (samples[i]?.rrIntervalsMs.isEmpty ?? true) continue;
+      final ts = raw.recTs;
+      if (ts == null || ts <= 0 || ts > latestSec) continue;
+      candidates[ts] = raw.capturedAt;
     }
-    candidates[ts] = raw.capturedAt;
+    final seconds = candidates.keys.toList();
+    for (var start = 0; start < seconds.length; start += 400) {
+      final end = start + 400 < seconds.length ? start + 400 : seconds.length;
+      final part = seconds.sublist(start, end);
+      final rows = await txn.rawQuery(
+          'SELECT rec_ts FROM decoded_onehz WHERE device_id = ? AND rec_ts IN (${List.filled(part.length, '?').join(',')}) '
+          'UNION SELECT rec_ts FROM decoded_rr WHERE device_id = ? AND rec_ts IN (${List.filled(part.length, '?').join(',')})',
+          [LocalDb.kPrimaryDeviceId, ...part, LocalDb.kPrimaryDeviceId, ...part]);
+      for (final row in rows) { candidates.remove((row['rec_ts'] as num).toInt()); }
+    }
+    return ProcessingContext.arrival([
+      for (final e in candidates.entries) (recordedMs: e.key * 1000, arrivedMs: e.value),
+    ]);
   }
-  final seconds = candidates.keys.toList();
-  for (var start = 0; start < seconds.length; start += 400) {
-    final end = start + 400 < seconds.length ? start + 400 : seconds.length;
-    final part = seconds.sublist(start, end);
-    final rows = await txn.rawQuery(
-        'SELECT rec_ts FROM decoded_onehz WHERE device_id = ? AND rec_ts IN (${List.filled(part.length, '?').join(',')}) '
-        'UNION SELECT rec_ts FROM decoded_rr WHERE device_id = ? AND rec_ts IN (${List.filled(part.length, '?').join(',')})',
-        [LocalDb.kPrimaryDeviceId, ...part, LocalDb.kPrimaryDeviceId, ...part]);
-    for (final row in rows) { candidates.remove((row['rec_ts'] as num).toInt()); }
-  }
-  return ProcessingContext.arrival([
-    for (final e in candidates.entries) (recordedMs: e.key * 1000, arrivedMs: e.value),
-  ], historyRevision: await LocalDb._pulseHistoryRevisionVia(txn));
-}
 
-Future<void> _queuePulseArrival(ProcessingContext context) async {
-  if (context.pulseDays.isEmpty) return;
-  try {
-    await LocalDb.enqueueDeriveJob(type: 'derive_light',
-        reason: 'recent_pulse_sync', processingContext: context);
-  } catch (_) {
-    // Delivery intent is optional; the raw commit must still succeed.
+Future<void> _ldbPrivQueuePulseArrival(ProcessingContext context) async {
+    if (context.pulseDays.isEmpty) return;
+    try {
+      await LocalDb.enqueueDeriveJob(type: 'derive_light',
+          reason: 'recent_pulse_sync', processingContext: context);
+    } catch (_) {
+      // Delivery intent is optional; the raw commit must still succeed.
+    }
   }
-}

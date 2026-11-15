@@ -134,7 +134,9 @@ class FindingRow extends StatelessWidget {
     final title = findingTitle(l, f);
     final detail = findingDetail(l, f);
     return Semantics(
-      label: '$title. $detail',
+      label: f.alert == null
+          ? '$title. $detail'
+          : '$title. $detail. ${f.alert!.note(l)}',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -156,6 +158,10 @@ class FindingRow extends StatelessWidget {
           ),
           const SizedBox(height: S.x2),
           Text(detail, style: F.cap.copyWith(color: p.ink2, height: 1.5)),
+          if (f.alert != null) ...[
+            const SizedBox(height: S.x2),
+            Text(f.alert!.note(l), style: F.cap.copyWith(color: p.ink3)),
+          ],
         ],
       ),
     );

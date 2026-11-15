@@ -128,18 +128,22 @@ class DeriveScheduler {
   ProcessingContext _runningContext = ProcessingContext.reanalysis;
   ProcessingContext get runningContext => _runningContext;
 
-  /// Manual sync reads the same durable provenance the scheduled job would.
+  /// Manual sync reads the same durable provenance the scheduled job would:
+  /// the recent-sync contexts, merged. A queued import or reanalysis job says
+  /// nothing about whether the band's new data is fresh, so it neither joins
+  /// the merge nor silences it. Each day's own eligibility is still decided in
+  /// the engine ([ProcessingContext.forDerivation]), so an imported day stays
+  /// silent either way. With no recent-sync job queued the result is silent.
   Future<ProcessingContext> pendingProcessingContext() async {
     final jobs = await LocalDb.computeJobs(state: 'queued', limit: 1000);
-    var context = const ProcessingContext(ProcessingOrigin.recentSync);
+    ProcessingContext? merged;
     for (final job in jobs) {
       final next = ProcessingContext.decode(job['processing_context']);
-      if (next.origin == ProcessingOrigin.historical) return ProcessingContext.historical;
-      if (next.origin == ProcessingOrigin.recentSync) context = context.merge(next);
+      if (next.origin != ProcessingOrigin.recentSync) continue;
+      merged = merged?.merge(next) ?? next;
     }
-    return context;
+    return merged ?? ProcessingContext.reanalysis;
   }
-
 
   /// [_storedSeq] when the heavy pass now running began; null when none runs.
   /// Owner: this scheduler. [requestHeavy] reads it to tell "asked again about

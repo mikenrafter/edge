@@ -158,6 +158,7 @@ const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   'alarm_schedule': (SliceKeep.all, null, 'alarm settings'),
   'notifications': (SliceKeep.all, null, 'in-app notifications'),
   'notif_fired': (SliceKeep.all, null, 'notification history'),
+  'pulse_alert': (SliceKeep.all, null, 'pulse alert history'),
   'notif_slots': (SliceKeep.all, null, 'notification slots'),
 };
 

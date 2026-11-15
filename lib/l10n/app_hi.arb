@@ -3884,5 +3884,12 @@
   "guideAddNapMissingBody": "**{naps}** आपकी रात के नीचे है। अगर वह भाग, **{night}**, बंद है, तो उसका शीर्षक टैप करके खोलें।",
   "guideTapsBack": "{count, plural, one{1 टैप पीछे} other{{count} टैप पीछे}}",
   "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
-  "findingNotificationIrregularRhythm": "{day} को रिकॉर्ड किए गए पल्स अंतराल हमारे अनियमितता नियम से मेल खाते थे। हमने इसकी सटीकता या लय की समस्या छूटने की दर नहीं मापी है। सीमाएँ पढ़ने के लिए टैप करें।"
+  "findingNotificationIrregularRhythm": "{day} को रिकॉर्ड किए गए पल्स अंतराल हमारे अनियमितता नियम से मेल खाते थे। हमने इसकी सटीकता या लय की समस्या छूटने की दर नहीं मापी है। सीमाएँ पढ़ने के लिए टैप करें।",
+  "pulseSummaryTitle": "{count, plural, =1{1 पिछले दिन अनियमित पल्स पैटर्न चिह्नित हुआ} other{{count} पिछले दिनों में अनियमित पल्स पैटर्न चिह्नित हुए}}",
+  "pulseSummaryBody": "{days}। इन दिनों के पल्स अंतराल हमारे अनियमितता नियम से मेल खाते थे। हमने इसकी सटीकता या यह कितनी बार हृदय की लय की समस्या को नहीं पकड़ पाता, यह नहीं मापा है। सीमाएँ पढ़ने के लिए टैप करें।",
+  "pulseSummaryDaysMore": "{days} और {more} अन्य",
+  "pulseAlertSent": "अलर्ट भेजा गया {when}",
+  "pulseAlertInSummary": "सारांश अलर्ट में शामिल {when}",
+  "pulseAlertOff": "कोई अलर्ट नहीं: सूचनाएँ बंद थीं",
+  "pulseAlertNotPermitted": "कोई अलर्ट नहीं: सूचनाओं की अनुमति नहीं थी"
 }

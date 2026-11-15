@@ -364,6 +364,23 @@ Future<bool> _ldbRewriteDayPayload(String dayId, int algoVersion, String payload
     return n > 0;
   }
 
+Future<({int version, bool imported})?> _ldbPulseDayProvenance(String dayId) =>
+    LocalDb.readerRun((db) async {
+      // The served row's version and whether it is an import snapshot, without
+      // loading its payload (the same marker the write guard keys on).
+      final rows = await db.rawQuery(
+        'SELECT algo_version, payload_json LIKE \'%"imported":true%\' AS imported '
+        'FROM day_result WHERE day_id = ? AND algo_version <= ? '
+        'ORDER BY algo_version DESC LIMIT 1',
+        [dayId, LocalDb._servedAlgoCeiling],
+      );
+      if (rows.isEmpty) return null;
+      return (
+        version: (rows.single['algo_version'] as num).toInt(),
+        imported: rows.single['imported'] == 1,
+      );
+    });
+
 Future<Map<String, dynamic>?> _ldbDayResultMeta(String dayId, {required bool onReader}) async {
     Future<Map<String, dynamic>?> read(DatabaseExecutor db) async {
     final rows = await db.rawQuery(
@@ -637,6 +654,7 @@ Future<Map<String, dynamic>> _ldbSchemaHealth() async {
       'workout_route',
       'workout_split',
       'notif_fired',
+      'pulse_alert',
       'metric_series_version',
       'metric_method',
       'band_backlog',

@@ -13,6 +13,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../compute/findings.dart';
+import '../../compute/pulse_alert_record.dart';
 import '../../data/day_label.dart';
 import '../../data/db.dart';
 import '../../data/lab_catalogue.dart';
@@ -278,7 +279,11 @@ class HealthData {
       napCount: (naps['naps'] as List?)?.length,
       napDay: napDay,
       findings:
-          findingsHistory(cd, readiness: ready, irregularDays: irregular),
+          findingsHistory(cd,
+              readiness: ready,
+              irregularDays: irregular,
+              alerts: await LocalDb.pulseAlertRecords()
+                  .catchError((_) => const <String, PulseAlertRecord>{})),
       baselines: heart['baselines'] is Map
           ? (heart['baselines'] as Map).cast<String, dynamic>()
           : null,

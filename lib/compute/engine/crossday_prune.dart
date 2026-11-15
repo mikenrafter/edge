@@ -319,10 +319,11 @@ extension _EngineCrossDayPrune on DerivationEngine {
     ProcessingContext processingContext = ProcessingContext.reanalysis}) async {
     try {
       final cdRow = await LocalDb.baseline('crossday');
-      final cd = DerivationEngine._decodeBundle(cdRow?['payload_json']);
-      if (cd == null) return;
+      // No cross-day rollup yet (a first day or two of data) is an empty one:
+      // the pulse days below do not depend on it.
+      final cd = DerivationEngine._decodeBundle(cdRow?['payload_json']) ??
+          const <String, dynamic>{};
       // The cross-day decision is `planExceptionNotices` (findings.dart).
-      // Pulse notices additionally require the intake provenance below.
       today ??= LocalDb.localDayLabelNow();
       final anchor = exceptionAnchor(cd);
       // Only a pin taken on the anchor day's own night (LocalDb.headlinePinFor).
@@ -336,22 +337,6 @@ extension _EngineCrossDayPrune on DerivationEngine {
             ? null
             : await LocalDb.metricValueOn(anchor.date, 'readiness'),
       );
-
-      // Pulse findings have their own day identity, independent of the newest
-      // cross-day anchor and of the shared medical escalation slot.
-      final pulseNotices = <ExceptionNotice>[];
-      for (final day in processingContext.pulseDays.keys) {
-        if (!processingContext.allowsPulseDay(day, DateTime.now())) continue;
-        if (await LocalDb.metricValueOn(day, 'irregular_rhythm_flag') == 1.0) {
-          pulseNotices.add(ExceptionNotice(day, [Finding(FindingKind.irregularRhythm, day)]));
-        }
-      }
-
-      // Read AFTER the flags: an import invalidates before its first history
-      // write, so a flag read from replaced history cannot borrow an old job.
-      if (processingContext.historyRevision == await LocalDb.pulseHistoryRevision()) {
-        notices.addAll(pulseNotices);
-      }
 
       // One notice per day the findings are ABOUT. The key's date is that
       // day, so a night fires at most once however many passes see it.
@@ -389,10 +374,15 @@ extension _EngineCrossDayPrune on DerivationEngine {
             route: '/heart',
           ),
         );
-        if (notice.medical && !notice.pulse && fired) {
+        if (notice.medical && fired) {
           await const FiredKeyStore().recordFired('${notice.date}:exception');
         }
       }
+      // Irregular-pulse days have their own keys, record and summary; they
+      // neither claim nor wait on the shared medical slot above.
+      await PulseAlertDelivery.run(
+        individualDays: processingContext.individualDays,
+      );
     } catch (e) {
       _log('notifications FAILED/skipped: $e');
     }

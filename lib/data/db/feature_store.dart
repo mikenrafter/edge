@@ -18,6 +18,46 @@ Future<bool> _ldbClaimNotifFired(String key, {required int? firedAtMs}) async {
     return won;
   }
 
+Future<List<String>> _ldbPulseDaysToAlert() async {
+    final db = await LocalDb.instance;
+    final rows = await db.rawQuery(
+      'SELECT s.date AS day FROM metric_series s '
+      'LEFT JOIN pulse_alert a ON a.day = s.date '
+      "WHERE s.key = 'irregular_rhythm_flag' AND s.value = 1 "
+      "AND (a.day IS NULL OR a.state = 'not_sent') ORDER BY s.date",
+    );
+    return [for (final r in rows) r['day'] as String];
+  }
+
+Future<void> _ldbRecordPulseAlert(List<String> days, {required PulseAlertState state, required PulseAlertReason? reason, required int atMs, required String? summaryKey}) async {
+    if (days.isEmpty) return;
+    await LocalDb._guardedWrite<void>((db) async {
+      await db.transaction((txn) async {
+        for (final day in days) {
+          final args = [PulseAlertRecord.stateName(state), PulseAlertRecord.reasonName(reason), atMs, summaryKey];
+          await txn.rawInsert(
+            'INSERT OR IGNORE INTO pulse_alert(state, reason, at_ms, summary_key, day) VALUES(?, ?, ?, ?, ?)',
+            [...args, day],
+          );
+          // Only a not_sent row may be replaced; sent and summary are final.
+          await txn.rawUpdate(
+            'UPDATE pulse_alert SET state = ?, reason = ?, at_ms = ?, summary_key = ? '
+            "WHERE day = ? AND state = 'not_sent'",
+            [...args, day],
+          );
+        }
+      });
+    });
+  }
+
+Future<Map<String, PulseAlertRecord>> _ldbPulseAlertRecords() async {
+    final db = await LocalDb.instance;
+    final rows = await db.rawQuery('SELECT day, state, reason, at_ms FROM pulse_alert');
+    return {
+      for (final r in rows) r['day'] as String: ?PulseAlertRecord.fromRow(r),
+    };
+  }
+
 Future<int> _ldbClaimNotifSlot(String category, String dedupeKey, {required int startAt, required int bandSize, required int maxProbes}) async {
     if (bandSize <= 0) throw ArgumentError('bandSize must be > 0');
     // maxProbes beyond bandSize can only re-probe candidates already tried

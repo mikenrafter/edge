@@ -104,6 +104,7 @@ import 'minute_bills.dart';
 import 'step_cadence.dart';
 import 'profile.dart';
 import 'processing_context.dart';
+import 'pulse_alert_delivery.dart';
 import 'substrate.dart';
 import 'substrate_retention.dart';
 import 'union_cut_heavy.dart';
@@ -2788,7 +2789,13 @@ class DerivationEngine {
         }
       }
       _diag['stage'] = 'scope';
-      final scope = await _deriveScope(heavy: heavy, force: force);
+      final scope = await _deriveScope(
+        heavy: heavy,
+        force: force,
+        arrivalDays: processingContext.origin == ProcessingOrigin.recentSync
+            ? processingContext.pulseDays.keys.toSet()
+            : const {},
+      );
       await debugScopeHook?.call();
       _diag
         ..['scope_days'] = scope.targetDays.length
@@ -2884,6 +2891,14 @@ class DerivationEngine {
           await _refreshBaselines();
           await _runCrossDay(profile);
           await _runNotifications();
+        } else {
+          // Nothing derived, but a flagged day can still be owed its alert (it
+          // was held back while notifications were off).
+          try {
+            await PulseAlertDelivery.run();
+          } catch (e) {
+            _log('pulse alerts FAILED/skipped: $e');
+          }
         }
         onScope?.call(0);
         onScopeDays?.call(const []);
@@ -2893,14 +2908,8 @@ class DerivationEngine {
       final previousPulseResults = <String, ({int version, bool imported})>{};
       if (!force && processingContext.origin == ProcessingOrigin.recentSync) {
         for (final day in processingContext.pulseDays.keys) {
-          final previous = await LocalDb.dayResult(day);
-          if (previous != null) {
-            previousPulseResults[day] = (
-              version: (previous['algo_version'] as num).toInt(),
-              imported: RegExp(r'"imported"\s*:\s*true')
-                  .hasMatch(previous['payload_json'] as String? ?? ''),
-            );
-          }
+          final previous = await LocalDb.pulseDayProvenance(day);
+          if (previous != null) previousPulseResults[day] = previous;
         }
       }
       final pulseContext = processingContext.forDerivation(
@@ -4378,7 +4387,6 @@ class DerivationEngine {
     void Function(String day)? onDayDone,
   }) async {
     if (sub.isEmpty || dates.isEmpty) return 0;
-    await LocalDb.invalidatePulseDelivery();
     // Under the SAME lock as run()/runDays(): this writes day_result rows, and
     // an import racing a background derive of the same day is exactly the
     // partial-overwrites-complete case the lock exists for.

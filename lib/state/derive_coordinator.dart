@@ -88,6 +88,7 @@ class DeriveCoordinator {
     required Future<void> Function() maybeReclaimDiskSpace,
     PeriodicCalculationPolicy? calculationPolicy,
     PublishGate? publishGate,
+    Duration? schedulerSettle,
     this.reminderSleep,
   })  : _engine = engine,
         _profileOf = profile,
@@ -104,7 +105,8 @@ class DeriveCoordinator {
         _healthShareConsent = healthShareConsent,
         _maybeReclaimDiskSpace = maybeReclaimDiskSpace,
         _policyOverride = calculationPolicy,
-        _publishGateOverride = publishGate;
+        _publishGateOverride = publishGate,
+        _schedulerSettle = schedulerSettle;
 
   // The engine is resolved on use: AppState builds it lazily (it reads the
   // `_background` flag both of its constructors have set by then).
@@ -129,6 +131,10 @@ class DeriveCoordinator {
   final Future<void> Function() _maybeReclaimDiskSpace;
   final PeriodicCalculationPolicy? _policyOverride;
   final PublishGate? _publishGateOverride;
+
+  /// Tests only: the scheduler's settle window for both job kinds. Null keeps
+  /// the production defaults.
+  final Duration? _schedulerSettle;
 
   /// P2.3 stub: the serialised publish loop every freshness write and revision
   /// bump goes through.
@@ -199,6 +205,8 @@ class DeriveCoordinator {
     run: _runScheduled,
     log: _log,
     onChanged: _schedulerChanged,
+    lightSettle: _schedulerSettle ?? const Duration(seconds: 8),
+    heavySettle: _schedulerSettle ?? const Duration(seconds: 2),
     // Measurement only: queue wait and hold reasons for DerivePerf.
     onQueued: () => _derive.perf.enqueued(),
     onWaiting: ({required settling}) {
