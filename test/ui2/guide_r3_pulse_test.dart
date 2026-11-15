@@ -104,21 +104,22 @@ void main() {
     await _settle(t);
     expect(stage.run.state, isA<GuideAtStep>());
     expect(overlay.hasPlaceholders, isFalse, reason: 'Details has a target card and one neighbour: all lit or dim');
-    expect(overlay.isPulsing, isTrue, reason: 'round 4: the tap hand nudges on the shared clock');
+    expect(find.byKey(LiveGuideOverlay.tapHandKey), findsOneWidget, reason: 'the hand owns the clock, with a still-half rest');
     for (var i = 0; i < 30; i++) {
       await t.pump(const Duration(milliseconds: 50));
       expect(stage.dim.pulse, 1, reason: 'no placeholder, so the placeholder pulse never leaves rest');
     }
   });
 
-  testWidgets('R1: off path and the Done card schedule no frames', (t) async {
+  testWidgets('R1: off path without a route-back pill, and the Done card, schedule no frames', (t) async {
     final stage = await pumpLiveStage(t);
     await _settle(t);
     final overlay = _overlay(t);
     await pushStagePage(t, stage, StagePages(stage.taps).other());
     await _settle(t);
     expect(stage.run.state, isA<GuideOffPath>());
-    expect(overlay.isPulsing, isFalse, reason: 'off path: dim only, no placeholders');
+    expect(find.byKey(LiveGuideOverlay.tapHandKey), findsNothing, reason: 'this stage has no route-back control');
+    expect(overlay.isPulsing, isFalse, reason: 'no hand and no placeholders');
     await _idle(t);
     // Back to the step, then to the Done card: finishing the last step.
     stage.navigator.pop();

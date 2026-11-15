@@ -59,6 +59,21 @@ Future<void> _pump(WidgetTester t, GuideStep step, {int number = 2, Locale local
   await t.pumpAndSettle();
 }
 
+Future<void> _showReviewIndicator(WidgetTester t, {Locale locale = const Locale('en')}) async {
+  final step = demoStep(id: 'indicator',
+    screen: (_) => const Scaffold(body: SingleChildScrollView(child: Column(children: [
+      Text('Page'), SizedBox(height: 2200), Text('Target', key: ValueKey('review-indicator-target')), SizedBox(height: 1500),
+    ]))),
+    target: GuideTarget.key(const ValueKey('review-indicator-target')),
+    anchor: GuideTarget.key(const ValueKey('review-indicator-target')),
+    action: GuideAction.scrollThenTap, caption: fnText((_) => 'Tap Target'));
+  await _pump(t, step, locale: locale);
+  final scroll = find.descendant(of: find.byType(Skeletonize), matching: find.byType(Scrollable));
+  t.state<ScrollableState>(scroll.first).position.jumpTo(0);
+  await t.pump();
+  await t.pump();
+}
+
 Rect _inSkeleton(WidgetTester t, Rect global) {
   final rb = t.renderObject<RenderBox>(find.byType(Skeletonize));
   return Rect.fromPoints(rb.globalToLocal(global.topLeft), rb.globalToLocal(global.bottomRight));
@@ -87,15 +102,6 @@ void main() {
       const outline = Rect.fromLTWH(20, 5, 100, 30);
       final pill = const GuidePillLayout(outline, bounds).place(size);
       expect(pill, Rect.fromLTWH(120 - 40 - S.x2, 33, 40, 20)); // 35 - 2
-    });
-
-    test('legible text above the target does not move the pill', () {
-      // why: one place, every step, every frame. (The old rule skipped any position that
-      // touched text, which made the label jump between steps.)
-      const outline = Rect.fromLTWH(20, 300, 100, 30);
-      const textAbove = Rect.fromLTWH(30, 285, 80, 14); // inside the above box
-      final pill = const GuidePillLayout(outline, bounds, [textAbove]).place(size);
-      expect(pill, Rect.fromLTWH(120 - 40 - S.x2, 282, 40, 20));
     });
 
     test('with neither side in the frame it is above, pushed inside, never off-screen', () {
@@ -143,15 +149,28 @@ void main() {
       expect(find.byKey(GuideStepView.scrollMarkerKey), findsNothing, reason: 'no scroll needed here');
     });
 
-    testWidgets('a scrollThenTap step scrolls the target into the frame and shows the scroll marker',
+    testWidgets('a scrollThenTap step scrolls into the frame and hides the settled indicator',
         (t) async {
       // why: step 2 of guide #1. The target starts ~3000 px (4 viewports) below the 780 px
       // phone; without the programmatic scroll it is outside the frame.
       await _pump(t, _step(3000, GuideAction.scrollThenTap));
       expect(skContains(t.getRect(find.byKey(_fk)), t.getRect(find.text(howSet))), isTrue,
           reason: 'target must end up inside the frame');
-      expect(find.byKey(GuideStepView.scrollMarkerKey), findsOneWidget);
+      expect(find.byKey(GuideStepView.scrollMarkerKey), findsNothing, reason: 'M1: review and live indicators both hide once the target is visible');
       expect(find.byKey(GuideStepView.outlineKey), findsOneWidget);
+    });
+
+    // WHY: M1 / CLAIM(guide-scroll-indicator): the review uses the same mid-screen
+    // component and direction as the live guide, only while the target is hidden.
+    testWidgets('M1: review scroll indicator is centred and shares the live component', (t) async {
+      await _showReviewIndicator(t);
+      final marker = find.byKey(GuideStepView.scrollMarkerKey);
+      expect(marker, findsOneWidget);
+      expect(t.widget(marker), isA<GuideScrollIndicator>());
+      final frame = t.getRect(find.byKey(_fk));
+      expect(t.getRect(marker).center.dx, closeTo(frame.center.dx, .01));
+      expect(t.getRect(marker).center.dy, closeTo(frame.center.dy, .01));
+      expect(t.widget<GuideScrollIndicator>(marker).up, isFalse);
     });
 
     testWidgets('the screen inside is skeletonized except the target\'s section; chrome stays', (t) async {
@@ -187,12 +206,13 @@ void main() {
       String marker(WidgetTester t) => t
           .widget<Text>(find.descendant(of: find.byKey(GuideStepView.scrollMarkerKey), matching: find.byType(Text)).first)
           .data!;
-      await _pump(t, _step(3000, GuideAction.scrollThenTap));
-      final (enPill, enMarker) = (pill(t), marker(t));
-      await _pump(t, _step(3000, GuideAction.scrollThenTap), locale: const Locale('de'));
-      expect(enPill, isNotEmpty);
-      expect(enMarker, isNotEmpty);
+      await _pump(t, _step(0, GuideAction.tap));
+      final enPill = pill(t);
+      await _pump(t, _step(0, GuideAction.tap), locale: const Locale('de'));
       expect(pill(t), isNot(enPill));
+      await _showReviewIndicator(t);
+      final enMarker = marker(t);
+      await _showReviewIndicator(t, locale: const Locale('de'));
       expect(marker(t), isNot(enMarker));
     });
   });
@@ -343,7 +363,7 @@ void main() {
     testWidgets('the scroll marker is not announced', (t) async {
       // why: "scroll" with no context is noise; the caption already says it.
       final h = t.ensureSemantics();
-      await _pump(t, _step(3000, GuideAction.scrollThenTap));
+      await _showReviewIndicator(t);
       final marker = t.widget<Text>(find.descendant(of: find.byKey(GuideStepView.scrollMarkerKey), matching: find.byType(Text)).first).data!;
       expect(skTraversalLabels(t).any((l) => l == marker), isFalse);
       // dispose before the test ends: the harness checks handles BEFORE tearDowns run

@@ -9,7 +9,7 @@ import 'dart:math' as math;
 // and the review frame (test/support/guide_view.dart, review tooling only).
 // Everything here is derived from a laid-out tree; nothing knows about a screen.
 
-import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -64,26 +64,67 @@ const kGuideChevronTravel = 6.0;
 /// The small pointing hand beside the "tap" label. It nudges toward the target twice per
 /// 1.6 s cycle of the shared guide clock ([guideNudgeValue]); the pill is ABOVE the target
 /// when [side] is above, so the hand points down and nudges down, and the reverse below.
-/// Reduced motion: no nudge. Only this widget listens to the clock: nothing else rebuilds.
+/// Reduced motion: no nudge. Only the render transform listens to the clock; nothing rebuilds.
 /// CLAIM(guide-tap-hand) [guide_r4_test R4-3a, R4-3b, R4-5b].
-class GuideTapHand extends AnimatedWidget {
+class GuideTapHand extends StatelessWidget {
   final Animation<double> clock;
   final ValueListenable<GuidePillSide> side;
   static const handKey = ValueKey('guide-live-tap-hand');
 
-  GuideTapHand({super.key, required this.clock, required this.side}) : super(listenable: Listenable.merge([clock, side]));
+  const GuideTapHand({super.key, required this.clock, required this.side});
 
   @override
-  Widget build(BuildContext context) {
-    final above = side.value == GuidePillSide.above;
-    final nudge = Motion.enabled(context) ? guideNudgeValue(clock.value) : 0.0;
-    return Transform.translate(
-      offset: Offset(0, (above ? 1 : -1) * kGuideNudgeTravel * nudge),
-      child: Transform.rotate(
-        angle: above ? math.pi : 0,
-        child: const Icon(LucideIcons.pointer, key: handKey, size: 14, color: C.n900),
-      ),
-    );
+  Widget build(BuildContext context) => _GuideHandTransform(clock: clock, side: side,
+    enabled: Motion.enabled(context),
+    child: const Icon(LucideIcons.pointer, key: handKey, size: 14, color: C.n900));
+}
+
+/// Listen in paint, outside LayoutBuilder's build scope: an AnimatedWidget below
+/// that scope dirties the overlay's layout even with a repaint boundary.
+/// CLAIM(marker-repaint-isolation) [guide_r3_routing_test off-path paint/build probe].
+class _GuideHandTransform extends SingleChildRenderObjectWidget {
+  final Animation<double> clock;
+  final ValueListenable<GuidePillSide> side;
+  final bool enabled;
+  const _GuideHandTransform({required this.clock, required this.side, required this.enabled, required super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderGuideHand(clock, side, enabled);
+  @override
+  void updateRenderObject(BuildContext context, _RenderGuideHand renderObject) => renderObject.update(clock, side, enabled);
+}
+
+class _RenderGuideHand extends RenderTransform {
+  Animation<double> _clock;
+  ValueListenable<GuidePillSide> _side;
+  bool _enabled;
+  _RenderGuideHand(this._clock, this._side, this._enabled)
+      : super(transform: Matrix4.identity(), alignment: Alignment.center);
+
+  void _listen(bool on) {
+    if (on) { _clock.addListener(_tick); _side.addListener(_tick); }
+    else { _clock.removeListener(_tick); _side.removeListener(_tick); }
+  }
+
+  void update(Animation<double> clock, ValueListenable<GuidePillSide> side, bool enabled) {
+    if (attached) _listen(false);
+    _clock = clock;
+    _side = side;
+    _enabled = enabled;
+    if (attached) _listen(true);
+    _tick();
+  }
+
+  @override
+  void attach(PipelineOwner owner) { super.attach(owner); _listen(true); _tick(); }
+  @override
+  void detach() { _listen(false); super.detach(); }
+
+  void _tick() {
+    final above = _side.value == GuidePillSide.above;
+    final nudge = _enabled ? guideNudgeValue(_clock.value) : 0.0;
+    transform = Matrix4.translationValues(0, (above ? 1 : -1) * kGuideNudgeTravel * nudge, 0)
+      ..rotateZ(above ? math.pi : 0);
   }
 }
 
@@ -91,7 +132,7 @@ class GuideTapHand extends AnimatedWidget {
 /// direction to scroll (down when the target is below, up when it is above). Shown while the
 /// target is out of view. Reduced motion: the chevron stands still.
 /// CLAIM(guide-scroll-indicator) [guide_r4_test R4-2a, R4-2c, R4-5c].
-class GuideScrollIndicator extends AnimatedWidget {
+class GuideScrollIndicator extends StatelessWidget {
   final String text;
   final Animation<double> clock;
 
@@ -99,11 +140,10 @@ class GuideScrollIndicator extends AnimatedWidget {
   final bool up;
   static const chevronKey = ValueKey('guide-live-scroll-chevron');
 
-  const GuideScrollIndicator({super.key, required this.text, required this.clock, required this.up}) : super(listenable: clock);
+  const GuideScrollIndicator({super.key, required this.text, required this.clock, required this.up});
 
   @override
   Widget build(BuildContext context) {
-    final travel = Motion.enabled(context) ? guideChevronValue(clock.value) : 0.0;
     return DecoratedBox(
       decoration: const BoxDecoration(color: C.yellow, borderRadius: R.rPill),
       child: Padding(
@@ -115,17 +155,56 @@ class GuideScrollIndicator extends AnimatedWidget {
             const SizedBox(width: S.x1),
             Text(text, style: F.cap.copyWith(color: C.n900, fontWeight: FontWeight.w700)),
             const SizedBox(width: S.x1),
-            Transform.translate(
-              offset: Offset(0, (up ? -1 : 1) * kGuideChevronTravel * travel),
-              child: Opacity(
-                opacity: 1 - .5 * travel,
-                child: Icon(up ? LucideIcons.chevronUp : LucideIcons.chevronDown, key: chevronKey, size: 16, color: C.n900),
-              ),
-            ),
+            RepaintBoundary(child: _GuideScrollChevron(clock: clock, up: up)),
           ],
         ),
       ),
     );
+  }
+}
+
+/// Only the moving part hears the clock; ticks never dirty a build/layout scope.
+class _GuideScrollChevron extends SingleChildRenderObjectWidget {
+  final Animation<double> clock;
+  final bool up;
+  _GuideScrollChevron({required this.clock, required this.up}) : super(child: Transform.translate(
+    offset: Offset.zero,
+    child: Icon(up ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+      key: GuideScrollIndicator.chevronKey, size: 16, color: C.n900)));
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderGuideChevron(clock, up, Motion.enabled(context));
+  @override
+  void updateRenderObject(BuildContext context, _RenderGuideChevron renderObject) => renderObject.update(clock, up, Motion.enabled(context));
+}
+
+class _RenderGuideChevron extends RenderOpacity {
+  Animation<double> _clock;
+  bool _up, _enabled;
+  _RenderGuideChevron(this._clock, this._up, this._enabled);
+
+  void update(Animation<double> clock, bool up, bool enabled) {
+    if (attached) _clock.removeListener(_tick);
+    _clock = clock;
+    _up = up;
+    _enabled = enabled;
+    if (attached) _clock.addListener(_tick);
+    _tick();
+  }
+
+  @override
+  set child(RenderBox? value) { super.child = value; _tick(); }
+  @override
+  void attach(PipelineOwner owner) { super.attach(owner); _clock.addListener(_tick); _tick(); }
+  @override
+  void detach() { _clock.removeListener(_tick); super.detach(); }
+
+  void _tick() {
+    final travel = _enabled ? guideChevronValue(_clock.value) : 0.0;
+    opacity = 1 - .5 * travel;
+    if (child case final RenderTransform shift) {
+      shift.transform = Matrix4.translationValues(0, (_up ? -1 : 1) * kGuideChevronTravel * travel, 0);
+    }
   }
 }
 
@@ -202,12 +281,9 @@ class GuidePillLayout extends SingleChildLayoutDelegate {
   final Rect outline;
   final Rect bounds;
 
-  /// Legible text lines. Kept for the review views; no longer decides the side.
-  final List<Rect> avoid;
-
   /// The side chosen on the previous frame of the same step (null on the first).
   final GuidePillSide? previous;
-  const GuidePillLayout(this.outline, this.bounds, [this.avoid = const [], this.previous]);
+  const GuidePillLayout(this.outline, this.bounds, [this.previous]);
 
   /// Spare room above the target (px) that a pill coming from below needs before it goes back.
   static const kGuidePillBand = 12.0;
@@ -249,7 +325,7 @@ class GuidePillLayout extends SingleChildLayoutDelegate {
 
   @override
   bool shouldRelayout(GuidePillLayout old) =>
-      old.outline != outline || old.bounds != bounds || old.previous != previous || !listEquals(old.avoid, avoid);
+      old.outline != outline || old.bounds != bounds || old.previous != previous;
 }
 
 /// [text] with every `**quoted**` run in bold: the captions quote the app's own
