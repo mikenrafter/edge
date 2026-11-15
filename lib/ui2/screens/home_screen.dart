@@ -28,6 +28,8 @@ import '../../l10n/date_text.dart';
 // only three of them and they are read together.
 
 import 'dart:async';
+import 'dart:convert';
+import '../../settings/settings_repository.dart';
 import '../read_prefetch.dart';
 import '../skeleton/load_memory.dart';
 import 'dart:math' as math;
@@ -98,6 +100,8 @@ import 'sleep_detail.dart';
 import 'sleep_tab.dart';
 import 'workout_screen.dart';
 import 'health_screen.dart';
+
+part 'home_ring_cache.dart';
 
 // ═══════════════════ shared plumbing ═══════════════════
 
@@ -1020,6 +1024,8 @@ String driverLabel(Object? key, [AppLocalizations? l]) {
 /// [DayStrainDetail], sleep → [SleepDetail].
 class RingTrio extends StatelessWidget {
   final HomeData d;
+  final bool pending, cacheFresh;
+  final String? cacheDay;
 
   /// Push the ring's own screen. Null in a gallery, where there is no navigator
   /// worth pushing onto.
@@ -1042,6 +1048,9 @@ class RingTrio extends StatelessWidget {
   const RingTrio(
       {super.key,
       required this.d,
+      this.pending = false,
+      this.cacheFresh = true,
+      this.cacheDay,
       this.onOpen,
       this.now,
       this.since,
@@ -1065,13 +1074,18 @@ class RingTrio extends StatelessWidget {
     final l = AppLocalizations.of(c);
     final at = now ?? pc.clock.now();
     final rings = [for (final k in HomeRingKind.values) _ringOf(k, d, l, at)];
-    final gaps = rings.where((r) => r.why != null).toList();
-    final observation = _HomeScreenState._bodyWatch(c, d, todayLabel(at));
-    final pressing = pressingRings(d, now: at).take(observation == null ? 2 : 1).toList();
-    final older = d.strain.fromOlderVersion;
+    final locale = l?.localeName ?? Localizations.localeOf(c).toString();
+    final cache = cacheDay == null || cacheFresh ? null : HomeRingDetailCache.local.read(cacheDay!, locale);
+    if (cacheFresh && cacheDay != null) HomeRingDetailCache.local.record(cacheDay!, locale, d, help);
+    final detail = cache?.data ?? d;
+    final detailRings = [for (final k in HomeRingKind.values) _ringOf(k, detail, l, at)];
+    final gaps = detailRings.where((r) => r.why != null).toList();
+    final observation = _HomeScreenState._bodyWatch(c, detail, todayLabel(at));
+    final pressing = pressingRings(detail, now: at).take(observation == null ? 2 : 1).toList();
+    final older = detail.strain.fromOlderVersion;
     // The shared "Updated 8:12 · 62 → 58" line (Readiness detail and Health print
     // it too): a changed number is explained, as a neutral row.
-    final note = recoveryUpdatedLine(d.readinessUpdate, l);
+    final note = recoveryUpdatedLine(detail.readinessUpdate, l);
     // THERE IS NO "THESE TWO ARE FROM SATURDAY" LINE ANY MORE, and there is
     // nothing left for one to explain. Recovery and sleep used to be served
     // from the last scored night whenever today's had not settled, and this
@@ -1089,13 +1103,13 @@ class RingTrio extends StatelessWidget {
     // With nothing more specific to say, the screen's own status (reading,
     // calculating, failed, "no data for this day", guidance) outranks the
     // per-ring "no reading" reasons, as it did in the old help strip.
-    final status = help;
+    final status = cache == null ? help : cache.help == null ? null : RingHelp(cache.help!);
     final onlyStatus = observation == null && pressing.isEmpty &&
         older == null && note == null && status != null && status.text.isNotEmpty;
     final rows = <Widget>[
       ?observation,
       for (final k in pressing)
-        _HomeWhyPanel(kind: k, data: d, onTap: _open(k)),
+        _HomeWhyPanel(kind: k, data: detail, onTap: _open(k)),
       // A changed number is explained before an absent ring's reason.
       if (note != null)
         _HomeUpdateNote(line: note, onTap: _open(HomeRingKind.recovery)),
@@ -1104,12 +1118,12 @@ class RingTrio extends StatelessWidget {
         _HomeNoteRow(id: 'gap:${r.kind.name}', title: r.label,
             text: presentationText(l, r.why ?? ''), onTap: _open(r.kind)),
       if (older != null)
-        _HomeOlderPanel(version: older, reason: d.strain.olderVersionReason,
+        _HomeOlderPanel(version: older, reason: detail.strain.olderVersionReason,
             onTap: _open(HomeRingKind.strain)),
     ];
     if (onlyStatus) {
       rows.add(_HomeNoteRow(id: 'status', text: status.text,
-          busy: status.busy, onTap: status.onTap));
+          busy: status.busy && pending && cache == null, onTap: status.onTap));
     }
     final slot = [
       for (final (i, row) in rows.take(2).indexed) ...[
@@ -1123,6 +1137,7 @@ class RingTrio extends StatelessWidget {
       child: LayoutBuilder(builder: (c, box) => Column(children: [
         // The "since" line: centred above the rings,
         // its height reserved whether or not the time is known.
+        PendingContent(pending: pending, child: Column(children: [
         _sinceLine(c, l),
         // Rows replace columns by locale, text scale and width only, never by
         // the day's data: an empty card and a loaded one are the same layout.
@@ -1145,7 +1160,13 @@ class RingTrio extends StatelessWidget {
               ],
             ],
           ),
-        ...slot,
+        ])),
+        PendingContent(key: const ValueKey('home-ring-details'), pending: pending && cache == null,
+          child: Column(children: slot)),
+        if (cache != null && !pending && help != null) ...[
+          const SizedBox(height: S.x2),
+          _HomeNoteRow(id: 'retained-status', text: help!.text, onTap: help!.onTap),
+        ],
       ])),
     );
   }
@@ -3021,8 +3042,11 @@ class _HomeScreenState extends State<HomeScreen>
         since: _recordingsThrough,
         card(
         'rings',
-        PendingContent(pending: _loading && loaded == null, child: RingTrio(
+        RingTrio(
           d: ringData,
+          pending: _loading && loaded == null,
+          cacheDay: widget.data?.dayId ?? _day ?? todayLabel(),
+          cacheFresh: loaded != null,
           now: widget.now,
           since: _recordingsThrough,
           holdText: held,
@@ -3038,7 +3062,7 @@ class _HomeScreenState extends State<HomeScreen>
                 // pick resolves to that one.
                 HomeRingKind.sleep => SleepDetail(day: isToday ? null : _day),
               }),
-        )),
+        ),
       ),
       ),
       if (!bare) ...[
