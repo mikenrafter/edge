@@ -165,6 +165,8 @@ const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   'pulse_episode_alias': (SliceKeep.all, null, 'pulse episode history'),
   'pulse_source_complete': (SliceKeep.all, null, 'pulse completeness certificate'),
   'pulse_input_arrival': (SliceKeep.all, null, 'pulse episode history'),
+  'pulse_upgrade': (SliceKeep.all, null, 'pulse upgrade boundary'),
+  'pulse_upgrade_record': (SliceKeep.all, null, 'pulse upgrade record identities'),
   'pulse_alert': (SliceKeep.all, null, 'pulse alert history'),
   'notif_slots': (SliceKeep.all, null, 'notification slots'),
 };

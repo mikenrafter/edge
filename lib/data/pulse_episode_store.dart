@@ -19,6 +19,8 @@ const pulseEpisodeTables = [
   'pulse_episode_alias',
   'pulse_input_arrival',
   'pulse_source_complete',
+  'pulse_upgrade',
+  'pulse_upgrade_record',
 ];
 const pulseEvidenceBudget = 128 * 1024 * 1024;
 const pulseEvidenceDays = 365;
@@ -40,7 +42,10 @@ class PulseEpisodeSnapshot {
   List<Map<String, dynamic>> get beats =>
       (evidence?['beats'] as List? ?? []).cast<Map<String, dynamic>>();
   String get alertNote => switch (alertState) {
-    'sent' => 'Alert sent',
+    'sent' =>
+      alertReason == 'before this version'
+          ? 'Already sent: before this version'
+          : 'Alert sent',
     'summary' => 'Alert included in a summary',
     'pending' || 'unknown' => 'Alert delivery unknown; it will not be repeated',
     'not_sent' => 'Not sent: ${alertReason ?? 'notifications off'}',
@@ -66,7 +71,11 @@ bool pulseOutboxConsumed(Map<String, Object?> outbox) =>
       _ => false,
     };
 
-const _retiredReasons = ['decision changed', 'joined episode', 'superseded episode'];
+const _retiredReasons = [
+  'decision changed',
+  'joined episode',
+  'superseded episode',
+];
 
 class PulseEpisodeStore {
   final Database db;
@@ -98,12 +107,40 @@ class PulseEpisodeStore {
         digest TEXT NOT NULL, origin TEXT NOT NULL, admitted_ms INTEGER NOT NULL,
         PRIMARY KEY(source,start_ms,end_ms,digest))''',
       '''CREATE TABLE IF NOT EXISTS pulse_source_complete (source TEXT PRIMARY KEY,through_ms INTEGER NOT NULL)''',
+      '''CREATE TABLE IF NOT EXISTS pulse_upgrade (
+        id INTEGER PRIMARY KEY CHECK(id=1), recorded_ms INTEGER NOT NULL)''',
+      '''CREATE TABLE IF NOT EXISTS pulse_upgrade_record (
+        source TEXT NOT NULL, ts_ms INTEGER NOT NULL,
+        PRIMARY KEY(source,ts_ms))''',
       'CREATE INDEX IF NOT EXISTS pulse_episode_time ON pulse_episode(start_ms,id)',
       'CREATE INDEX IF NOT EXISTS pulse_evidence_age ON pulse_evidence_chunk(created_ms)',
     ]) {
       await db.execute(sql);
     }
   }
+
+  /// CLAIM(pulse-upgrade): the immutable record-key snapshot and its completion
+  /// marker commit together before detection or delivery [pulse_upgrade_test].
+  /// Recording timestamps are identities, not a cutoff: a missing older key
+  /// delivered later remains new. Keeping keys after signal eviction also makes
+  /// restore and re-decoding of the same records historical forever.
+  Future<void> initializeUpgrade({required int nowMs}) => db.transaction((
+    txn,
+  ) async {
+    if ((await txn.query('pulse_upgrade', limit: 1)).isNotEmpty) return;
+    await txn.execute(
+      'INSERT OR IGNORE INTO pulse_upgrade_record(source,ts_ms) '
+      'SELECT device_id,ts_ms FROM decoded_rr',
+    );
+    // A prior pilot may already have episodes. Close their debt in the same
+    // transaction, before any delivery path can claim it.
+    await txn.rawUpdate(
+      "UPDATE pulse_episode_outbox SET state='sent',reason='before this version',"
+      "token=NULL,summary_key=NULL,at_ms=?",
+      [nowMs],
+    );
+    await txn.insert('pulse_upgrade', {'id': 1, 'recorded_ms': nowMs});
+  });
 
   /// An episode alerts by itself when the band synced the day it started on
   /// ([syncDays]); every other path, or no knowledge, takes [origin].
@@ -147,6 +184,7 @@ class PulseEpisodeStore {
     List<Map<String, dynamic>> heartRate = const [],
     PulseInputStamp? inputStamp,
     Set<String>? syncDays,
+    Set<String> beforeVersion = const {},
   }) async {
     final input = PulsePreparationInput(detection, heartRate);
     final preparation = await Isolate.run(
@@ -235,7 +273,11 @@ class PulseEpisodeStore {
           'status': 'active',
         }, conflictAlgorithm: ConflictAlgorithm.replace);
         // The id is live again: an old merge alias must not redirect it.
-        await txn.delete('pulse_episode_alias', where: 'alias = ?', whereArgs: [id]);
+        await txn.delete(
+          'pulse_episode_alias',
+          where: 'alias = ?',
+          whereArgs: [id],
+        );
         await txn.insert('pulse_episode_revision', {
           'episode_id': id,
           'revision': revision,
@@ -267,22 +309,37 @@ class PulseEpisodeStore {
             break;
           }
         }
+        final historical = beforeVersion.contains(episode.id);
         await txn.insert('pulse_episode_outbox', {
           'episode_id': id,
           'delivery_key': 'pulse-episode:$id',
           'revision': revision,
-          'state':
-              inherited?['state'] ??
-              (episode.alertEligible ? 'owed' : 'not_sent'),
-          'reason':
-              inherited?['reason'] ??
-              (episode.alertEligible ? null : 'recording quality'),
+          'state': historical
+              ? 'sent'
+              : inherited?['state'] ??
+                    (episode.alertEligible ? 'owed' : 'not_sent'),
+          'reason': historical
+              ? 'before this version'
+              : inherited?['reason'] ??
+                    (episode.alertEligible ? null : 'recording quality'),
           'at_ms': inherited?['at_ms'] ?? nowMs,
           'origin': _originOf(episode, origin, syncDays),
           'token': inherited?['token'],
           'summary_key': inherited?['summary_key'],
         }, conflictAlgorithm: ConflictAlgorithm.ignore);
-        if (inherited != null) {
+        if (historical) {
+          await txn.update(
+            'pulse_episode_outbox',
+            {
+              'state': 'sent',
+              'reason': 'before this version',
+              'token': null,
+              'summary_key': null,
+            },
+            where: 'episode_id=?',
+            whereArgs: [id],
+          );
+        } else if (inherited != null) {
           await txn.update(
             'pulse_episode_outbox',
             {

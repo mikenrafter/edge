@@ -152,6 +152,36 @@ void main() {
     expect(screen.episodeId, 'strap:123');
     expect(screenForRoute('/pulse-episodes'), isA<PulseEpisodesScreen>());
   });
+  // WHY/CLAIM(pulse-upgrade): both episode detail and the row used by
+  // Observations explain suppressed history instead of claiming an OS alert.
+  // catches: rendering a generic "Alert sent" when no notification was sent.
+  testWidgets('upgrade reason appears on episode and Observations row', (
+    tester,
+  ) async {
+    final base = (await tester.runAsync(() => fixture()))!;
+    final e = PulseEpisodeSnapshot({
+      ...base.row,
+      'alert_state': 'sent',
+      'alert_reason': 'before this version',
+    }, base.evidence);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(Brightness.dark),
+        home: Scaffold(body: PulseEpisodeRow(e)),
+      ),
+    );
+    expect(find.textContaining('before this version'), findsOneWidget);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(Brightness.dark),
+        home: PulseEpisodeScreen(episodeId: e.id, snapshot: e),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Already sent: before this version'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final mode in ['normal', 'partial', 'bpm', 'panned']) {
     // WHY/CLAIM(pulse-v3): actual Flutter screen renders all approved states without layout exceptions.
     testWidgets('dark episode $mode render and interactions', (tester) async {

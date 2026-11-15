@@ -27,6 +27,8 @@ void main() {
   });
   setUp(() async {
     await env.wipe();
+    // These cases exercise arrivals after the upgrade boundary.
+    await PulseEpisodeWorker.run([], processingContext: ProcessingContext.reanalysis);
     SharedPreferences.setMockInitialValues({'notif_quiet_enabled': false});
     shown.clear();
     PulseEpisodeWorker.probe = null;

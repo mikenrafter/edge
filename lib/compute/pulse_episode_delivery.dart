@@ -13,6 +13,7 @@ class PulseEpisodeDelivery {
   static Future<void> run({Duration grace = const Duration(minutes: 2)}) async {
     final store = PulseEpisodeStore(await LocalDb.instance);
     final now = DateTime.now().millisecondsSinceEpoch;
+    await store.initializeUpgrade(nowMs: now);
     await store.recoverClaims(beforeMs: now - grace.inMilliseconds);
     final owed = await store.owed();
     final individual = owed

@@ -59,6 +59,7 @@ class PulseEpisodeWorker {
       final db = await LocalDb.instance;
       final store = PulseEpisodeStore(db);
       final now = DateTime.now().millisecondsSinceEpoch;
+      await store.initializeUpgrade(nowMs: now);
       for (final day in ordered) {
         try {
           await _day(db, store, day, processingContext, now);
@@ -140,7 +141,9 @@ class PulseEpisodeWorker {
     );
     final revision = revisions.first['rev'] as int;
     final rows = await db.rawQuery(
-      '''SELECT device_id,ts_ms,rec_ts,beat_index,beat_ts_ms,rr_ms
+      '''SELECT device_id,ts_ms,rec_ts,beat_index,beat_ts_ms,rr_ms,
+        EXISTS(SELECT 1 FROM pulse_upgrade_record u
+          WHERE u.source=decoded_rr.device_id AND u.ts_ms=decoded_rr.ts_ms) AS before_version
         FROM decoded_rr WHERE rec_ts>=? AND rec_ts<? AND ${derivableSourceSql()}
         ORDER BY device_id,ts_ms,beat_index''',
       [readLo ~/ 1000, readHi ~/ 1000],
@@ -153,7 +156,7 @@ class PulseEpisodeWorker {
       orderBy: 'source',
     );
     final digest =
-        'rev:$revision:complete:$watermark:cert:${jsonEncode(certificates)}';
+        'upgrade:1:rev:$revision:complete:$watermark:cert:${jsonEncode(certificates)}';
     final checkpoint = await db.query(
       'pulse_input_arrival',
       where: 'source=? AND start_ms=? AND end_ms=? AND digest=?',
@@ -185,13 +188,11 @@ class PulseEpisodeWorker {
       evaluateTo: hi,
       sourceStarts: sourceStarts,
       sourceCompletions: certificates,
-      requireCertified:
-          processingContext.origin == ProcessingOrigin.recentSync,
+      requireCertified: processingContext.origin == ProcessingOrigin.recentSync,
     );
     await probe?.afterRead(day);
-    final detection = (await Isolate.run(
-      () => detectPulseEpisodesHeavy(input),
-    )).detection;
+    final result = await Isolate.run(() => detectPulseEpisodesHeavy(input));
+    final detection = result.detection;
     final hrRows = await db.rawQuery(
       '''SELECT device_id AS source,rec_ts/60*60000 AS time,AVG(hr) AS bpm,COUNT(*) AS count
         FROM decoded_onehz WHERE rec_ts>=? AND rec_ts<? AND hr BETWEEN 25 AND 230 AND ${derivableSourceSql()}
@@ -209,6 +210,7 @@ class PulseEpisodeWorker {
     };
     await store.reconcile(
       detection,
+      beforeVersion: result.beforeVersion,
       origin: 'bulk',
       syncDays: syncDays,
       nowMs: now,
@@ -261,7 +263,8 @@ class PulseDetectionInput {
 )
 class PulseDetectionResult {
   final ana.PulseDetection detection;
-  const PulseDetectionResult(this.detection);
+  final Set<String> beforeVersion;
+  const PulseDetectionResult(this.detection, this.beforeVersion);
 }
 
 @heavy
@@ -273,9 +276,13 @@ PulseDetectionResult detectPulseEpisodesHeavy(PulseDetectionInput input) {
   WorkerAudit.entered('detectPulseEpisodesHeavy');
   final rows = input.rows;
   final inputs = <ana.PulseBeatInput>[];
+  final historicalBeats = <String>{};
   var index = 0;
   for (final r in rows) {
     final source = r['device_id'] as String;
+    if (r['before_version'] == 1) {
+      historicalBeats.add('$source:${r['ts_ms']}:${r['beat_index']}');
+    }
     // Identity uses the durable record key, never the resettable counter.
     inputs.add(
       ana.PulseBeatInput(
@@ -309,5 +316,10 @@ PulseDetectionResult detectPulseEpisodesHeavy(PulseDetectionInput input) {
     windows.addAll(result.windows);
     episodes.addAll(result.episodes);
   }
-  return PulseDetectionResult(ana.PulseDetection(windows, episodes));
+  return PulseDetectionResult(ana.PulseDetection(windows, episodes), {
+    for (final e in episodes)
+      if (e.beats.isNotEmpty &&
+          e.beats.every((b) => historicalBeats.contains(b.id)))
+        e.id,
+  });
 }

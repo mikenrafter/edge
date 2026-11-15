@@ -333,6 +333,10 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
 
     // A half-written export is never handed back, and never left open.
     try {
+      // The boundary survives selected-day exports, including an interrupted
+      // first scan that has not created any episodes yet.
+      await copyRows('pulse_upgrade');
+      await copyRows('pulse_upgrade_record');
       for (final dayId in sorted) {
         final (startSec, endSec) = LocalDb._localDayWindow(dayId);
         await copyRawRange(startSec, endSec);

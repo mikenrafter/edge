@@ -1099,6 +1099,11 @@ Future<Database> _ldbPrivOpen() async {
         if (oldV < 88) {
           await PulseEpisodeStore.create(db);
         }
+        // v89 adds the durable phase 2 upgrade boundary; capture is deferred
+        // to the worker, so opening the DB never copies signal history.
+        if (oldV < 89) {
+          await PulseEpisodeStore.create(db);
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);
