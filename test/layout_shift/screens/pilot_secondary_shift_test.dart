@@ -119,8 +119,8 @@ void main() {
     final annotations = Completer<List<ChartAnnotation>>();
     final app = AppState.forTesting()..repo = repo;
     addTearDown(app.dispose);
-    await t.pumpWidget(pilotShot(perfApp(app, ExplorerView(
-      annotationLoader: (_, _) => annotations.future), brightness: Brightness.dark)));
+    await t.pumpWidget(pilotShot(perfApp(app, SingleChildScrollView(child: ExplorerView(
+      annotationLoader: (_, _) => annotations.future)), brightness: Brightness.dark)));
     final setup = ShiftRun(t);
     await landed(setup);
     final run = ShiftRun(t)..opened();

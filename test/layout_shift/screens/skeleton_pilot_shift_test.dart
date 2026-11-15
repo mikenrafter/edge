@@ -104,6 +104,15 @@ class _LateRepo extends GuideFakeRepo {
 
 }
 
+class _SourcesApp extends AppState {
+  _SourcesApp() : super.forTesting();
+  @override
+  List<Map<String, Object?>> get sensors => [
+    for (var i = 0; i < 2; i++) {'id': 'band-$i', 'label': 'Band $i',
+      'adapter_id': 'gen4', 'tier': 'wristOptical'},
+  ];
+}
+
 const _sleepSections = ['card:answer', 'section:night', 'card:stages', 'card:versus',
   'card:unusual', 'card:overnight', 'card:tonight'];
 final _captureKey = GlobalKey();
@@ -136,6 +145,7 @@ void main() {
     'sleep-tab': () => const SleepTab(),
     'metric-resting-hr': () => const MetricDetail('resting_hr'),
     'metric-steps': () => const MetricDetail('steps'),
+    'metric-sources': () => const MetricDetail('resting_hr'),
     'day-strain': () => const DayStrainDetail(),
     'heart-rate-zones': () => const ZonesDetail(),
     'day-review': () => const DayReviewEntry(moments: []),
@@ -157,7 +167,7 @@ void main() {
         phoneSurface(t);
         final rich = entry.key.startsWith('rich-');
         final repo = _LateRepo(rich: rich);
-        final app = AppState.forTesting()..repo = repo;
+        final app = (entry.key == 'metric-sources' ? _SourcesApp() : AppState.forTesting())..repo = repo;
         addTearDown(app.dispose);
         final run = ShiftRun(t);
         await t.pumpWidget(perfApp(app, Theme(data: buildTheme(Brightness.dark),
