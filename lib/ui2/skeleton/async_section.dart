@@ -147,6 +147,7 @@ class _RenderPending extends RenderProxyBox {
       element,
       fade: _fade,
       pulse: _pulse,
+      includeChartReadout: true,
     ).paint(context, content, offset, size);
   }
 }
@@ -160,6 +161,7 @@ class PendingRows extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ExcludeSemantics(
     child: Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         for (var i = 0; i < count; i++)
           SizedBox(

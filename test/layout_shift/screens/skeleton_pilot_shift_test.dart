@@ -355,7 +355,9 @@ void main() {
             await t.pumpAndSettle();
           }
           run.opened();
-          await run.frames([0, 16, delay]);
+          // Sample through debounce/fade rather than jumping directly to its first
+          // animation frame at 2.5 s; screenshots must show the painted pending state.
+          await run.frames(delay == 2500 ? [0, 16, 200, 216, 466, delay] : [0, 16, delay]);
           final spinners = find
               .byType(CircularProgressIndicator)
               .evaluate()

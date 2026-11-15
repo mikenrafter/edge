@@ -85,6 +85,14 @@ void main() {
     expect(find.byType(PendingRows), findsNothing);
   });
 
+  // WHY: bounded parents (Track editor/startup) must not stretch row skeletons
+  // into an empty full-screen card. The known rows determine their own height.
+  testWidgets('pending rows fit their contents inside a bounded centre', (t) async {
+    await t.pumpWidget(const MaterialApp(home: Scaffold(body: Center(
+      child: PendingRows(count: 5, rowHeight: 64)))));
+    expect(t.getSize(find.byType(PendingRows)).height, 320);
+  });
+
   // WHY: fast reads must never flash placeholders. Slow reads fade in after
   // 200 ms and pulse only value, with identical hue and saturation.
   // Proves CLAIM(pending-debounce). Changing 200 to 0 or removing fade fails.

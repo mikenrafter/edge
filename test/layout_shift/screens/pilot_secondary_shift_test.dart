@@ -150,7 +150,7 @@ void main() {
         pilotShot(perfApp(app, screen.value, brightness: Brightness.dark)),
       );
       run.opened();
-      await run.frames([0, 150, 2500]);
+      await run.frames([0, 150, 200, 216, 466, 2500]);
       await takePilotShot(
         t,
         screen.key == 'Explorer' ? 'explorer' : 'review-doorway',
@@ -205,7 +205,7 @@ void main() {
     final setup = ShiftRun(t);
     await landed(setup);
     final run = ShiftRun(t)..opened();
-    await run.frames([0, 150, 2500]);
+    await run.frames([0, 150, 200, 216, 466, 2500]);
     await takePilotShot(t, 'explorer-annotations');
     annotations.complete([
       ChartAnnotation(
@@ -280,7 +280,7 @@ void main() {
       final setup = ShiftRun(t);
       await landed(setup);
       final run = ShiftRun(t)..opened();
-      await run.frames([0, 150, 2500]);
+      await run.frames([0, 150, 200, 216, 466, 2500]);
       final spinners = find.byType(CircularProgressIndicator).evaluate().length;
       await takePilotShot(t, 'sleep-plan');
       expect(repo.insightsReads, 0);
@@ -325,7 +325,7 @@ void main() {
       ),
     );
     run.opened();
-    await run.frames([0, 150, 2500]);
+    await run.frames([0, 150, 200, 216, 466, 2500]);
     expect(find.byType(CircularProgressIndicator), findsNothing);
     await takePilotShot(t, 'wearable-day');
     ready.value = true;
@@ -346,7 +346,7 @@ void main() {
         ),
       );
       run.opened();
-      await run.frames([0, 150, 2500]);
+      await run.frames([0, 150, 200, 216, 466, 2500]);
       expect(find.byType(CircularProgressIndicator), findsNothing);
       await takePilotShot(t, 'legacy-review');
       await landed(run);

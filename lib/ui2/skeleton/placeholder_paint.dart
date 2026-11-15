@@ -3,7 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
-import '../grammar.dart' show ChartFrame;
+import '../grammar.dart' show ChartFrame, ChartKeyReadout;
 import '../theme.dart';
 import 'guide_plot.dart';
 import 'skeleton.dart';
@@ -33,6 +33,7 @@ class GuidePlaceholderPaint {
     Element unit, {
     required double fade,
     required double pulse,
+    bool includeChartReadout = false,
   }) {
     final paragraphs = <RenderParagraph>{};
     final inks = <RenderParagraph, Color>{};
@@ -61,7 +62,8 @@ class GuidePlaceholderPaint {
       }
       if (ro is RenderParagraph) {
         final frame = e.findAncestorWidgetOfExactType<ChartFrame>();
-        if (frame != null && ro.text.toPlainText() != frame.title) {
+        if (frame != null && ro.text.toPlainText() != frame.title &&
+            (!includeChartReadout || e.findAncestorWidgetOfExactType<ChartKeyReadout>() == null)) {
           hidden.add(ro);
           return;
         }

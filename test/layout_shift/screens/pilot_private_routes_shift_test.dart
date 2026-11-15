@@ -96,7 +96,7 @@ void main() {
         what: 'the historical bundle query has started',
       );
       final run = ShiftRun(t, skipCoveredRoutes: true)..opened();
-      await run.frames([0, 150, 2500]);
+      await run.frames([0, 150, 200, 216, 466, 2500]);
       final spinners = find.byType(CircularProgressIndicator).evaluate().length;
       expect(repo.workoutReads, 1);
       await takePilotShot(t, 'historical-workout');
@@ -132,7 +132,7 @@ void main() {
     await t.tap(trend);
     await t.pump(const Duration(milliseconds: 350));
     final run = ShiftRun(t, skipCoveredRoutes: true)..opened();
-    await run.frames([0, 150, 2500]);
+    await run.frames([0, 150, 200, 216, 466, 2500]);
     final spinners = find.byType(CircularProgressIndicator).evaluate().length;
     await takePilotShot(t, 'weight-trend');
     await landed(run);
@@ -187,7 +187,7 @@ void main() {
       await t.pump();
       await t.pump(const Duration(seconds: 1));
       final run = ShiftRun(t, skipCoveredRoutes: true)..opened();
-      await run.frames([0, 150, 2500]);
+      await run.frames([0, 150, 200, 216, 466, 2500]);
       await takePilotShot(t, 'alarm-capability');
       answer.complete(false);
       await landed(run);
@@ -223,7 +223,7 @@ void main() {
     await landed(setup);
     await t.pumpAndSettle(); // finish the setup scroll and initial trace read
     final run = ShiftRun(t, trackUnkeyed: false)..opened();
-    await run.frames([0, 150, 2500]);
+    await run.frames([0, 150, 200, 216, 466, 2500]);
     await takePilotShot(t, 'alarm-trace');
     await t.runAsync(() async {
       for (var i = 0; i < 5; i++) {

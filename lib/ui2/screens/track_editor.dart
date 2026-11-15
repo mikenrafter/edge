@@ -158,7 +158,9 @@ class _TrackEditorState extends State<TrackEditor> {
         ],
       ),
       body: _history == null
-          ? Center(
+          ? Padding(
+              padding: const EdgeInsets.all(S.x4),
+              child: Align(alignment: Alignment.topCenter,
               child: _failed
                   ? Column(
                       mainAxisSize: MainAxisSize.min,
@@ -170,7 +172,7 @@ class _TrackEditorState extends State<TrackEditor> {
                         ),
                       ],
                     )
-                  : const PendingContent(pending: true, child: Surface(child: PendingRows(count: 5))),
+                  : const PendingContent(pending: true, child: Surface(child: PendingRows(count: 5)))),
             )
           : ListView(
               padding: const EdgeInsets.all(S.x4),

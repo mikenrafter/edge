@@ -910,6 +910,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     final busy = _saving || _loading;
     return Surface(
       key: const ValueKey('card:window'),
+      pad: EdgeInsets.zero,
       child: _sectionViewport(c, Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Icon(rejected ? LucideIcons.undo2 : LucideIcons.moon,
@@ -1084,9 +1085,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     return [
       const SizedBox(height: S.x2),
       TextButton(
-        // `_loading` too: `_goDay` swaps `_day` and keeps the old `_d` on
-        // screen until `_load()` resolves, so a tap in that window would
-        // open naps for the day you just navigated away from.
+        // Keep the naps action inert while a different night is being read.
         onPressed:
             _saving || _loading ? null : () => go(c, NapsScreen(day: day)),
         child: Text(l?.sleepDetailEditNaps ?? 'Naps'),
@@ -1111,6 +1110,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       const SizedBox(height: S.x3),
       Surface(
         key: const ValueKey('card:window'),
+        pad: EdgeInsets.zero,
         child: _sectionViewport(c, Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Icon(mine ? LucideIcons.userCheck : LucideIcons.wandSparkles,
