@@ -62,6 +62,8 @@ in the same change that introduces it (AGENTS.md §6).
 - **ECG outcome** — what a saved reading is allowed to say, decided only by `ecgOutcome`: a band-reported rhythm, inconclusive, not readable, or partial. The band's own bytes (result code, average heart rate, reason mask) stay stored untouched.
 
 ## Layout shift
+
+- **Pending content**: the layout reserved for a read that has not returned. It paints bars and neutral plots, excludes values from accessibility and disables actions. It becomes explicit absence or a retry state when the read settles without data.
 - **Layout shift** — content moving, resizing, recolouring or being covered after it was painted; scored by `lib/layout_shift` (docs/LAYOUT_SHIFT.md).
 - **Interaction window** — the time after a user action in which a shift is expected and costs less.
 - **Intent pair** — an action's source element and the element it is meant to change (copy button → copied text).

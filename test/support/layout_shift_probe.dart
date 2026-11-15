@@ -14,6 +14,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/layout_shift/layout_shift.dart';
 import 'package:openstrap_edge/ui2/inline_loading.dart';
+import 'package:openstrap_edge/ui2/skeleton/async_section.dart';
 import 'package:openstrap_edge/ui2/skeleton/unit_paint.dart' show GuideUnitMark;
 
 class ShiftProbe {
@@ -103,6 +104,9 @@ class ShiftProbe {
       final seen0 = _clip(box, ShiftRect(o.dx, o.dy, box.size.width, box.size.height));
       if (seen0 == null) continue;
       final sub = _subtree(e);
+      if (k is! ValueKey<String> && _insidePendingPaint(e)) {
+        id = 'skeleton:$id';
+      }
       final focusEl = sub.where((x) => x.widget is Focus).firstOrNull;
       final node = focusEl == null ? null : _nodeOf(focusEl);
       final canFocus = node?.canRequestFocus ?? false;
@@ -116,7 +120,10 @@ class ShiftProbe {
       // twice doubled every chip's score.
       final at = '${seen0.left.round()},${seen0.top.round()},'
           '${seen0.width.round()},${seen0.height.round()}';
-      if (id.startsWith('~') && tracked.contains(at)) continue;
+      if (id.startsWith('~') && tracked.contains(at) &&
+          _synthKind(e.widget) != 'pending') {
+        continue;
+      }
       // One control = one element: InkWell, Semantics and Pressable wrappers
       // around the same button share a rect and label; keep the first.
       if (id.startsWith('~ctl|')) {
@@ -183,6 +190,7 @@ class ShiftProbe {
   /// Which unkeyed widgets are worth tracking: text, inputs, tappable
   /// controls and card/material surfaces.
   static String? _synthKind(Widget w) {
+    if (w is PendingContent && w.pending) return 'pending';
     if (w is Text) return 'text';
     if (w is EditableText) return 'input';
     if (w is ButtonStyleButton || w is InkResponse) return 'ctl';
@@ -345,8 +353,18 @@ class ShiftProbe {
   static FocusNode? _nodeOf(Element focusEl) {
     // Focus.maybeOf looks upward, so ask from the Focus's own child.
     FocusNode? n;
-    focusEl.visitChildren((c) => n ??= Focus.maybeOf(c, scopeOk: false));
+    focusEl.visitChildren((c) => n ??= Focus.maybeOf(c, scopeOk: false, createDependency: false));
     return n;
+  }
+
+  static bool _insidePendingPaint(Element e) {
+    var pending = false;
+    e.visitAncestorElements((a) {
+      final w = a.widget;
+      pending = w is PendingContent && w.pending;
+      return !pending;
+    });
+    return pending;
   }
 
   /// A loading stand-in: a 'skeleton:' key, or an InlineLoading in its
@@ -355,11 +373,12 @@ class ShiftProbe {
   static bool _isPlaceholder(Element e, List<Element> sub) {
     final k = e.widget.key;
     if (k is ValueKey<String> && k.value.startsWith('skeleton:')) return true;
-    if (sub.any((x) => x.widget is InlineLoading)) return true;
+    bool pending(Widget w) => w is InlineLoading || w is PendingContent && w.pending;
+    if (sub.any((x) => pending(x.widget))) return true;
     var inside = false;
     var depth = 0;
     e.visitAncestorElements((a) {
-      inside = a.widget is InlineLoading;
+      inside = pending(a.widget);
       return !inside && ++depth < 40;
     });
     return inside;

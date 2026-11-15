@@ -965,8 +965,9 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
               ),
             ),
           ),
-        if (lines.isNotEmpty)
-          Positioned(
+        // Keep the paint layer while the independent annotation read is empty.
+        // An empty painter draws nothing and preserves the plot's identity.
+        Positioned(
             left: 0,
             right: 0,
             top: header,

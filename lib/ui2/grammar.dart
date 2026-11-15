@@ -1046,8 +1046,11 @@ class ChartKeyReadout extends StatelessWidget {
   /// so bold text and accessibility spacing participate in their layout.
   final List<String> reserveTimes;
 
+  /// Keep every readout cell at its normal size while values arrive.
+  final bool stableCells;
+
   const ChartKeyReadout(
-      {super.key, required this.cells, this.time, this.scrubbed = false, this.stats = const [], this.restOlder, this.onOpen, this.nerdStats, this.timeSpan = const [], this.reserveTimes = const []});
+      {super.key, required this.cells, this.time, this.scrubbed = false, this.stats = const [], this.restOlder, this.onOpen, this.nerdStats, this.timeSpan = const [], this.reserveTimes = const [], this.stableCells = false});
 
   factory ChartKeyReadout.of(ChartReadout r) =>
       ChartKeyReadout(cells: r.cells, time: r.time, scrubbed: r.scrubbed);
@@ -1078,7 +1081,7 @@ class ChartKeyReadout extends StatelessWidget {
     }
     final slot = scrubbed && time != null ? timeSpan.indexOf(time!) : -1;
     final main = recorded.first;
-    final single = recorded.length == 1;
+    final single = !stableCells && recorded.length == 1;
     final mainColor = main.color!;
     final older = restOlder ?? (scrubbed ? [] : chartRestOlder(cells));
     final items = <Widget>[
@@ -3826,6 +3829,9 @@ class ChartFrame extends StatelessWidget {
   /// static label for the focused one. See chart_annotations.dart.
   final AnnotationSet? annotations;
 
+  /// Reserve the annotation lane before independent journal reads finish.
+  final bool reserveAnnotations;
+
   /// Where the finger is, 0…1 across the plot, for a chart whose scrubbing is
   /// not a [ChartScrub] (the frame reads a [ChartScrub]'s own position). The
   /// nearest annotation to it is the focused one.
@@ -3852,6 +3858,7 @@ class ChartFrame extends StatelessWidget {
     this.band,
     this.bandColor,
     this.annotations,
+    this.reserveAnnotations = false,
     this.annotationCursor,
     this.panel,
     this.nerdStats,
@@ -3879,7 +3886,7 @@ class ChartFrame extends StatelessWidget {
   Widget _annotated(
       _ChartHub hub, double inset, Widget plot, BuildContext context) {
     final set = annotations;
-    if (set == null || set.items.isEmpty) return plot;
+    if ((set == null || set.items.isEmpty) && !reserveAnnotations) return plot;
     // The label row follows the text scale (see ChartAnnotationLane.headerFor),
     // so the plot is pushed down by exactly what the lane reserves above it.
     final header = ChartAnnotationLane.headerFor(
@@ -3899,7 +3906,7 @@ class ChartFrame extends StatelessWidget {
             child: ListenableBuilder(
               listenable: hub,
               builder: (_, _) => ChartAnnotationLane(
-                set: set,
+                set: set ?? const AnnotationSet(items: [], domainStart: 0, domainEnd: 1),
                 cursor: hub.at ?? annotationCursor,
                 plotHeight: height,
               ),

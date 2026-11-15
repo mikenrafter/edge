@@ -22,9 +22,9 @@ void phoneSurface(WidgetTester t) {
 }
 
 class ShiftRun {
-  ShiftRun(this.t, {bool skipCoveredRoutes = false})
+  ShiftRun(this.t, {bool skipCoveredRoutes = false, bool trackUnkeyed = true})
       : probe = ShiftProbe(
-            trackUnkeyed: true,
+            trackUnkeyed: trackUnkeyed,
             visibleOnly: shiftViewport,
             skipCoveredRoutes: skipCoveredRoutes);
   final WidgetTester t;
