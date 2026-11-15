@@ -3935,12 +3935,9 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     if (!await current()) return;
     // The edit fence as this pass starts. If it has moved by the end, an
     // earlier night was edited meanwhile and this night's write was refused.
-    int? fence;
     try {
       await _deriveSleepDay(day,
           isCurrent: current,
-          onPassStart: () async =>
-              fence = await SleepEditStore.generation(upTo: day),
           onEdited: () async {
             if (await SleepEditStore.advance(job, SleepEditPhase.dependents) !=
                 SleepEditAdvance.applied) {
@@ -3960,6 +3957,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     final status = await SleepEditStore.status(day);
     if (status?['revision'] != job.revision) return; // a newer edit owns it
     if (status?['applied_revision'] != job.revision) {
+      final fence = _sleepEditPassFence;
       if (fence != null && await SleepEditStore.generation(upTo: day) != fence) {
         throw const SleepEditRequeue('an earlier night was edited meanwhile');
       }
@@ -3973,12 +3971,16 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     }
   }
 
+  /// The edit fence of the night being calculated, taken as its pass starts.
+  /// If it has moved when the pass ends, an earlier night was edited meanwhile.
+  int? _sleepEditPassFence;
+
   /// How long a sleep edit waits for a calculation already running before it
   /// requeues (not fails).
   @visibleForTesting
   Duration sleepEditWaitLimit = const Duration(minutes: 10);
 
-  Future<Map<String, Object?>> _deriveSleepDay(String day, {Future<bool> Function()? onEdited, Future<bool> Function()? isCurrent, Future<void> Function()? onPassStart}) async {
+  Future<Map<String, Object?>> _deriveSleepDay(String day, {Future<bool> Function()? onEdited, Future<bool> Function()? isCurrent}) async {
     // A pass that was already running prepared the edited day from the old
     // window and re-pins that night's readiness when it lands, after the
     // edit's own release. Release again once it is done, right before this
@@ -3989,7 +3991,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       if (isCurrent != null && !await isCurrent()) return {};
       await LocalDb.releaseFrozenHeadline(day);
     } while (_derive.running || reanalyzing);
-    await onPassStart?.call();
+    _sleepEditPassFence = await SleepEditStore.generation(upTo: day);
     reanalyzing = true;
     final recalcOwner = _deriveCoordinator.beginSleepEdit(day);
     notifyListeners();

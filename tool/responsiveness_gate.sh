@@ -20,6 +20,7 @@ files += ['test/backup/settings_audit_guard_test.dart', 'test/backup/prefs_round
           'test/step2/p22_bundle_store_read_test.dart','test/step2/p22_bundle_store_fencing_test.dart',
           'test/step2/p23_publish_gate_test.dart','test/wake_journal/wake_persistence_test.dart',
           'test/wake_journal/wake_timeline_test.dart']
+files += [str(p) for p in Path('test/guards').rglob('*test.dart')]
 assert all(Path(p).exists() for p in files)
 for i in range(2):
     Path(f'/tmp/responsiveness-files-{i}').write_text('\n'.join(files[i::2]))

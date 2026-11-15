@@ -18,6 +18,21 @@ class LoadTiming {
   };
 }
 
+/// Where the history is saved. An interface, not a callback, so a test can
+/// count writes and the heavy-work guard can resolve the call.
+abstract interface class LoadTimingsStore {
+  Future<void> save(String encoded);
+}
+
+class _SettingsStore implements LoadTimingsStore {
+  const _SettingsStore();
+  @override
+  Future<void> save(String encoded) => SettingsRepository.instance.update(
+        (d) => d.setString(LoadTimings.prefKey, encoded),
+        sections: const {},
+      );
+}
+
 /// Keeps a bounded local history of screen loads. OFF until the Developer
 /// switch turns it on: nobody opted in, so by default nothing is recorded and
 /// nothing is written. Samples taken inside a screen route live in their own
@@ -28,9 +43,9 @@ class LoadTimings {
   LoadTimings({
     bool? enabled,
     this.saveInterval = const Duration(seconds: 5),
-    Future<void> Function(String encoded)? persist,
+    LoadTimingsStore? store,
   })  : _enabledOverride = enabled,
-        _persist = persist;
+        _store = store ?? const _SettingsStore();
 
   static const prefKey = 'developer.load_timings.v1';
   static const enabledKey = 'developer.load_timings_enabled.v1';
@@ -41,7 +56,7 @@ class LoadTimings {
   static const _background = 'background';
   final Duration saveInterval;
   final bool? _enabledOverride;
-  final Future<void> Function(String encoded)? _persist;
+  final LoadTimingsStore _store;
   final _samples = <LoadTiming>[]; // screen loads, oldest first
   final _backgroundSamples = <LoadTiming>[];
   bool _restored = false, _changed = false;
@@ -122,15 +137,7 @@ class LoadTimings {
         final encoded = jsonEncode([
           for (final r in [..._backgroundSamples, ..._samples]) r.toJson(),
         ]);
-        final persist = _persist;
-        if (persist != null) {
-          await persist(encoded);
-        } else {
-          await SettingsRepository.instance.update(
-            (d) => d.setString(prefKey, encoded),
-            sections: const {},
-          );
-        }
+        await _store.save(encoded);
       }
     } catch (_) {
       /* Diagnostics never fail a read or commit. */
@@ -142,12 +149,11 @@ class LoadTimings {
     String phase,
     Future<T> Function() body,
   ) async {
-    if (!enabled) return body();
-    final clock = Stopwatch()..start();
+    final clock = enabled ? (Stopwatch()..start()) : null;
     try {
       return await body();
     } finally {
-      record(name, phase, clock.elapsedMicroseconds);
+      if (clock != null) record(name, phase, clock.elapsedMicroseconds);
     }
   }
 }

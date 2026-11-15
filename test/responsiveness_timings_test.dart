@@ -9,6 +9,13 @@ import 'package:openstrap_edge/data/load_timings.dart';
 import 'package:openstrap_edge/data/backup_extras.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 
+class _Writes implements LoadTimingsStore {
+  _Writes(this.writes);
+  final List<String> writes;
+  @override
+  Future<void> save(String encoded) async => writes.add(encoded);
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   // F8: nobody opted in, so nothing is recorded and nothing is written.
@@ -17,7 +24,7 @@ void main() {
     await Prefs.ensureLoaded();
     Prefs.setString(LoadTimings.prefKey, '[]');
     final writes = <String>[];
-    final timing = LoadTimings(persist: (e) async => writes.add(e));
+    final timing = LoadTimings(store: _Writes(writes));
     expect(timing.enabled, false, reason: 'nobody opted in');
     for (var i = 0; i < 1000; i++) {
       timing.record('read', 'reader query', i);
@@ -108,7 +115,7 @@ void main() {
   test('enabled: a thousand reads cost one preference write, not one each', () async {
     Prefs.setString(LoadTimings.prefKey, '[]');
     final writes = <String>[];
-    final timing = LoadTimings(enabled: true, persist: (e) async => writes.add(e));
+    final timing = LoadTimings(enabled: true, store: _Writes(writes));
     for (var i = 0; i < 1000; i++) {
       timing.record('read', 'reader query', i, route: 'Review#1');
       if (i % 100 == 0) await Future<void>.delayed(Duration.zero);
@@ -120,7 +127,7 @@ void main() {
 
   test('background traffic cannot push out a screen load\'s breakdown', () async {
     Prefs.setString(LoadTimings.prefKey, '[]');
-    final timing = LoadTimings(enabled: true, persist: (_) async {});
+    final timing = LoadTimings(enabled: true, store: _Writes([]));
     timing.record('Review', 'first usable rows', 9000, route: 'Review#1');
     for (var i = 0; i < 30; i++) {
       timing.record('Review read $i', 'reader query', i, route: 'Review#1');

@@ -2,7 +2,6 @@
 // refused or interrupted run is requeued, a failed one is retried in-process
 // with a backoff, and waiting on a long pass is not a failure [F1].
 // CLAIM(sleep-edit-retry).
-import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/data/db.dart';

@@ -59,11 +59,7 @@ class SleepEditRunner {
     return _active ??= _drain(restart).whenComplete(() {
       _active = null;
       if (_again && !_disposed) {
-        unawaited(
-          start().catchError((Object error) {
-            onError?.call(error);
-          }),
-        );
+        unawaited(start().catchError(_report));
       }
     });
   }
@@ -80,6 +76,7 @@ class SleepEditRunner {
         for (final job in jobs) {
           if (_disposed) break;
           Future<void>? work;
+          var changed = false; // the job's state moved without finishing
           try {
             work = run(job);
             await work.timeout(timeout);
@@ -96,7 +93,7 @@ class SleepEditRunner {
               await SleepEditStore.advance(job, SleepEditPhase.queued);
               _again = true;
             }
-            await publish();
+            changed = true;
           } catch (e) {
             anyFailed = true;
             await SleepEditStore.advance(
@@ -104,9 +101,12 @@ class SleepEditRunner {
               SleepEditPhase.failed,
               error: '$e',
             );
-            await publish();
-            // A timeout is not cancellation. Keep ownership until the actual
-            // worker exits, even though the saved controls remain available.
+            changed = true;
+          }
+          if (changed) await publish();
+          // A timeout is not cancellation. Keep ownership until the actual
+          // worker exits, even though the saved controls remain available.
+          if (changed && work != null) {
             try {
               await work;
             } catch (_) {}
@@ -123,6 +123,8 @@ class SleepEditRunner {
     }
   }
 
+  void _report(Object error) => onError?.call(error);
+
   void _scheduleRetry() {
     if (retryDelays.isEmpty) return;
     final delay = retryDelays[_retryStep.clamp(0, retryDelays.length - 1)];
@@ -131,9 +133,7 @@ class SleepEditRunner {
     _retry = Timer(delay, () {
       _retry = null;
       if (_disposed) return;
-      unawaited(start(restart: true).catchError((Object error) {
-        onError?.call(error);
-      }));
+      unawaited(start(restart: true).catchError(_report));
     });
   }
 
