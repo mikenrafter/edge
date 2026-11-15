@@ -713,14 +713,15 @@ class _PriorityOption extends StatelessWidget {
   const _PriorityOption({
     super.key,
     required this.label,
-    required this.semanticLabel,
+    this.semanticLabel,
     required this.selected,
     required this.onTap,
   });
   /// The drawn words, as before the pilot (pixels bar).
   final String label;
   /// What a screen reader says: the same words in the phone's language.
-  final String semanticLabel;
+  /// Null: the drawn words.
+  final String? semanticLabel;
   final bool selected;
   final VoidCallback onTap;
 
@@ -730,7 +731,7 @@ class _PriorityOption extends StatelessWidget {
     return Pressable(
         selected: selected,
         onTap: onTap,
-        semanticLabel: semanticLabel,
+        semanticLabel: semanticLabel ?? label,
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: S.x1),
