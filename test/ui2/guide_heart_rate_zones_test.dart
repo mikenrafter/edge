@@ -405,10 +405,8 @@ void main() {
           expect(skContains(frame, pill), isTrue, reason: 'pill $pill inside frame $frame');
           expect(skContains(outline, target), isTrue);
           expect(pill.overlaps(target), isFalse, reason: 'pill must not sit on the target');
-          expect(find.byKey(GuideStepView.scrollMarkerKey), i == 1 ? findsOneWidget : findsNothing);
-          if (i == 1) {
-            expect(skContains(frame, t.getRect(find.byKey(GuideStepView.scrollMarkerKey))), isTrue);
-          }
+          // M1: review and live indicators both disappear once the target is in view.
+          expect(find.byKey(GuideStepView.scrollMarkerKey), findsNothing);
           expect(find.byKey(GuideStepView.failureKey), findsNothing);
         }
       });
