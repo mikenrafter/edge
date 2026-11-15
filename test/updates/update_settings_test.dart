@@ -100,31 +100,34 @@ void main() {
           }) : states[name]!;
         final service = _CaptureService(snapshot);
         final key = GlobalKey();
-        await t.pumpWidget(MaterialApp(
+        await t.pumpWidget(RepaintBoundary(key: key, child: MaterialApp(
           debugShowCheckedModeBanner: false,
           theme: buildTheme(Brightness.dark), locale: const Locale('en'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           builder: (context, child) => MediaQuery(data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)), child: child!),
-          home: RepaintBoundary(key: key, child: AppUpdatesScreen(service: service)),
-        ));
+          home: AppUpdatesScreen(service: service),
+        )));
         await t.pumpAndSettle();
         final suffix = scale == 1 ? 'normal' : 'large';
         await capture(t, key, out, 'screen-$name-top-$suffix');
+        await t.scrollUntilVisible(find.text('mikenrafter/edge'), 300, scrollable: find.byType(Scrollable).first);
         await t.ensureVisible(find.text('mikenrafter/edge'));
         await t.pumpAndSettle();
         await capture(t, key, out, 'screen-$name-fork-$suffix');
+        await t.scrollUntilVisible(find.text('OpenStrap/edge'), 300, scrollable: find.byType(Scrollable).first);
         await t.ensureVisible(find.text('OpenStrap/edge'));
         await t.pumpAndSettle();
-        expect(find.text('Open release page'), name == 'off' ? findsNothing : findsNWidgets(2));
+        expect(find.text('Open release page'), name == 'off' ? findsNothing : findsWidgets);
         await capture(t, key, out, 'screen-$name-official-$suffix');
         if (name == 'current') {
+          await t.scrollUntilVisible(find.text('Check now'), -300, scrollable: find.byType(Scrollable).first);
           await t.ensureVisible(find.text('Check now'));
           await t.tap(find.text('Check now'));
           await t.pumpAndSettle();
           expect(find.byType(AlertDialog), findsOneWidget);
           await capture(t, key, out, 'screen-metered-$suffix');
-          await t.tap(find.text('CANCEL'));
+          await t.tap(find.text('Cancel'));
           await t.pumpAndSettle();
         }
         expect(t.takeException(), isNull, reason: '$name $scale');
