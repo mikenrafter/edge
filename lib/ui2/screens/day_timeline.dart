@@ -46,6 +46,7 @@ import '../../data/day_label.dart' show localDayStartSec, localDayEndSec, todayL
 import '../../data/water_moment.dart';
 import '../../data/assumed_water.dart' show AssumedGlass, AssumedState;
 import '../../data/db.dart';
+import '../../data/load_timings.dart';
 import '../../compute/findings.dart';
 import '../../data/read_paused.dart';
 import '../../wake/wake_timeline.dart';
@@ -907,12 +908,16 @@ class TimelineData {
   /// hrOverride: …)` without a second `getDayTimeline` call (M6 §7.3).
   final Map<String, dynamic>? raw;
 
+  static int _loadSequence = 0;
+
   static Future<TimelineData> load(
     LocalRepository repo, {
     String? want,
     AppLocalizations? l,
     void Function(Set<String>)? onPending,
+    FutureOr<void> Function(TimelineData)? onPrimary,
   }) async {
+    final route = 'Review#${++_loadSequence}';
     final pending = <String>{};
     final elapsed = Stopwatch()..start();
     final costs = <String, int>{};
@@ -920,7 +925,7 @@ class TimelineData {
       final timer = Stopwatch()..start();
       pending.add(name);
       onPending?.call(Set.unmodifiable(pending));
-      try { return await action(); }
+      try { return await LoadTimings.shared.scope(route, () => LoadTimings.shared.measure(name, 'read total', action)); }
       finally {
         costs[name] = timer.elapsedMilliseconds;
         pending.remove(name);
@@ -939,6 +944,14 @@ class TimelineData {
 
     // These are independent stored reads. Start them together so one slow
     // bundle does not delay every other source [structural review read test].
+    final primaryTimeline = read('primary timeline', () => repo.getDayTimeline(day));
+    final primaryWear = read('primary wear', () => repo.getDayWear(day));
+    final primary = (primaryTimeline, primaryWear).wait.then((rows) async {
+      final value = TimelineData(day: day, days: days, raw: rows.$1, graph: dayGraph(rows.$1),
+        moments: dayMoments(timeline: rows.$1, wear: rows.$2, l: l));
+      await onPrimary?.call(value);
+      LoadTimings.shared.record('Review', 'first usable rows', elapsed.elapsedMicroseconds, route: route);
+    });
     final flagsRead = read('resting heart rate flags', () async {
       try { return rhrChangeAnnotations(findingsHistory(await repo.getInsights()), l: l)
         .where((a) => a.id == 'rhr-shift:$day').toList(); }
@@ -946,19 +959,19 @@ class TimelineData {
     });
     final ((timeline, wear, fields, journal, meals, notes, momentLabels),
       (symptoms, definitions, doseRows, rawObservations, hrv, wake, assumed, water)) = await (
-      (read('heart rate, movement and sleep', () => repo.getDayTimeline(day)),
-       read('wear coverage', () => repo.getDayWear(day)),
+      (read('heart rate, movement and sleep', () => primaryTimeline),
+       read('wear coverage', () => primaryWear),
        read('journal fields', repo.getJournalFields),
        read('journal values', () => repo.getJournalMetrics(day)),
        read('meals', () => LocalDb.readerRun((db) => NutritionDb.entriesForDay(db, day))),
-       read('journal notes', () => LocalDb.journalRows(sinceDaysEpoch: day)),
+       read('journal notes', () => LocalDb.journalRows(date: day)),
        read('moment labels', () => LocalDb.momentLabels(date: day))).wait,
       (read('symptoms', () => LocalDb.symptomEntries(date: day)),
        read('medication definitions', () => LocalDb.readerRun((db) => MedDb.defs(db, activeOnly: false))),
        read('medication doses', () => LocalDb.readerRun((db) => MedDb.dosesForDay(db, day))),
        read('device observations', () => repo.getDayObservations(day)),
        read<Map<String, dynamic>>('calculation timestamp', () async {
-         try { return await repo.getDayHrv(day); } catch (_) { return {}; }
+         try { return {'computed_at': await LocalDb.dayComputedAtMs(day)}; } catch (_) { return {}; }
        }),
        read('wake timeline', () => repo.getWakeTimeline(day)),
        read('assumed water', () => LocalDb.assumedWater(date: day)),
@@ -990,6 +1003,8 @@ class TimelineData {
     // for a result newer than the Save. Unknown (no result) reads as not newer.
     final computedAtMs = (hrv['computed_at'] as num?)?.toInt();
 
+    await primary;
+    LoadTimings.shared.record('Review', 'all details ready', elapsed.elapsedMicroseconds, route: route);
     return TimelineData(
       day: day,
       days: days,
@@ -1388,7 +1403,14 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     final releasePrefetch = ReadPrefetch.shared.visibleRead('review-day');
     try {
       final reviewRead = _day != null && _review?.day != _day ? _readReview(_day!) : Future<void>.value();
-      final d = await TimelineData.load(repo, want: _day, l: l, onPending: (reads) {
+      final d = await TimelineData.load(repo, want: _day, l: l, onPrimary: (primary) async {
+        await reviewRead;
+        if (mounted && token == _loadToken && _review?.day != primary.day && primary.day != null) {
+          await _readReview(primary.day!);
+        }
+        if (mounted && token == _loadToken) setState(() { _d = primary; _loading = false; });
+        releasePrefetch();
+      }, onPending: (reads) {
         if (mounted && token == _loadToken) setState(() => _pendingReads = reads);
       });
       // A device's own HR curve needs HR of either cadence: a ring's 5-minute

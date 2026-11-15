@@ -910,7 +910,10 @@ class _BaselineHistoryCache {
   /// than blanket: a family seam that only makes a number noisier (RHR, RMSSD)
   /// stays in the window. Empty for a user who has never changed generation,
   /// which is why it moves no number today.
+  int sleepEditGeneration = 0;
+
   static Future<_BaselineHistoryCache> load() async {
+    final editGeneration = await SleepEditStore.generation();
     // Before anything is read: see [metricSeriesRevs].
     final metricRevs = await captureMetricSeriesRevs();
     final imported = await LocalDb.importedDates();
@@ -956,6 +959,7 @@ class _BaselineHistoryCache {
     return _BaselineHistoryCache({
       for (var i = 0; i < keys.length; i++) keys[i]: loaded[i],
     }, families)
+      ..sleepEditGeneration = editGeneration
       ..metricSeriesRevs = metricRevs;
   }
 

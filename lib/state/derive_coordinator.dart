@@ -284,6 +284,13 @@ class DeriveCoordinator {
   // reports its days (the baseline rescan included) reports its progress too.
   int _recalcScopeSize = 0;
 
+  int beginSleepEdit(String day) {
+    final owner = ++_recalcSeq;
+    _recalcScope(owner, [day]);
+    return owner;
+  }
+  void endSleepEdit(int owner) => _recalcClear(owner);
+
   void _recalcScope(int owner, List<String> days) {
     if (days.isEmpty) return;
     _recalcOwner = owner;

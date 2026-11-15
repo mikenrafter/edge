@@ -13,6 +13,7 @@ extension _EnginePrepare on DerivationEngine {
     // diagnostics (never a correctness issue for the derived VALUES — this
     // is telemetry-only). Each day now gets its own local accumulator,
     // merged into the shared running max exactly once, below.
+    final sleepEditGeneration = await SleepEditStore.generation();
     final stats = _PrepareStats();
     // The day's raw as it stands BEFORE anything below reads it: the input
     // signature of the calorie artifact this derive stores.
@@ -169,6 +170,7 @@ extension _EnginePrepare on DerivationEngine {
       inputFp: inputFp,
       inputRevs: inputRevs,
       inputStamp: inputStamp,
+      sleepEditGeneration: sleepEditGeneration,
       // A wearable's day is read whole from its own store: the checkpoint's
       // beat skip applies to the band's rows only, and the full-beat reload
       // after a stream refusal ([_withFullRr]) reads the band's table, which

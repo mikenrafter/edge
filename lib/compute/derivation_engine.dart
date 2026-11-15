@@ -54,6 +54,7 @@ import '../data/step_calibration.dart';
 import '../ble/adapters/signals.dart';
 import '../data/coverage_resolver.dart';
 import '../data/db.dart';
+import '../data/sleep_edit_store.dart';
 import '../sync/import_focus.dart';
 import '../data/day_label.dart';
 import '../data/series_codec.dart';
@@ -3451,11 +3452,12 @@ class DerivationEngine {
   /// score tomorrow against a window that still holds the night just edited.
   /// Days past raw retention cannot be recomputed and keep what they have.
   /// Returns the days derived; stops after the first pass if it failed.
-  Future<int> rederiveAfterSleepEdit(Profile profile, String day) async {
+  Future<int> rederiveAfterSleepEdit(Profile profile, String day, {Future<bool> Function()? onEdited}) async {
     // The profile first: the passes below stage with it.
     await _forgetBlankedNightsInSleepProfile();
     var done = await runDays(profile, {day}, force: true);
     if (_diag['last_error'] != null) return done;
+    if (onEdited != null && !await onEdited()) return done;
     final later = {
       for (final d in (await LocalDb.decodedRecTsMaxByDay()).keys)
         if (d.compareTo(day) > 0) d,

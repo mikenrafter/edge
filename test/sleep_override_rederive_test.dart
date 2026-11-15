@@ -34,7 +34,7 @@ void main() {
 
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  test('an edit made while another derive pass runs waits for it', () async {
+  test('an edit made during derive acknowledges its durable receipt', () async {
     final app = AppState.forTesting();
     addTearDown(app.dispose);
     DerivationEngine.debugRunning = true; // a drain pass / rescan in flight
@@ -46,13 +46,11 @@ void main() {
         .setSleepOverride(todayLabel(), DateTime(2026, 9, 30, 0, 30),
             DateTime(2026, 9, 30, 7))
         .then((_) => done = true);
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-    expect(done, isFalse,
-        reason: 'run() would have returned 0 and the edit was lost');
-
-    DerivationEngine.debugRunning = false;
     await edit;
-    expect(done, isTrue);
+    expect(done, isTrue, reason: 'saving waits only for the durable assertion and job');
+    expect(DerivationEngine().running, isTrue);
+    DerivationEngine.debugRunning = false;
+    await app.sleepEditRunner.start();
   });
 
   test('a pass already running when the edit lands can\'t re-pin the old night',
@@ -69,14 +67,14 @@ void main() {
       DateTime(2026, 9, 30, 0, 30),
       DateTime(2026, 9, 30, 7),
     );
-    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await edit;
     expect(await LocalDb.frozenHeadline(), isNull);
 
     // The in-flight pass prepared today from the old window and pins it as
     // it finishes; the force pass's nextFrozenHeadline would then hold it.
     await LocalDb.setFrozenHeadline(day, 45);
     DerivationEngine.debugRunning = false;
-    await edit;
+    await app.sleepEditRunner.start();
     expect(await LocalDb.frozenHeadline(), isNull);
   });
 
@@ -104,6 +102,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
     expect(done, isTrue, reason: 'the sleep sheet spins until the export ends');
+    await app.sleepEditRunner.start();
     expect(app.reanalyzing, isFalse);
 
     exporting.complete();

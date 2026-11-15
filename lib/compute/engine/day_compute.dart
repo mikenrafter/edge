@@ -967,6 +967,7 @@ extension _EngineDayCompute on DerivationEngine {
     final persistWatch = Stopwatch()..start();
     final committed = await LocalDb.putDayResult(
       dayId: day.date,
+      sleepEditGeneration: day.sleepEditGeneration == null ? null : math.min(day.sleepEditGeneration!, history.sleepEditGeneration),
       algoVersion: kAlgoVersion,
       // Held to the revisions the shared baseline history was loaded at.
       inputStamp: stampNotLaterThan(day.inputStamp, history.metricSeriesRevs),

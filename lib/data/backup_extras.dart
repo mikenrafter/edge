@@ -39,6 +39,7 @@ const String kBackupFilesTable = 'backup_files';
 
 /// Exact preference keys that stay on the device, each with the reason.
 const Map<String, String> kPrefsNotBackedUp = {
+  'developer.load_timings.v1': 'local performance diagnostics for this install',
   'install_device_id': 'identifies THIS install; a restore must not clone it',
   'paired_remote_id': 'BLE address of the band bonded to this phone',
   'consent_telemetry': 'consent is asked again on each install',

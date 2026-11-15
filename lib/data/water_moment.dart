@@ -80,12 +80,12 @@ abstract final class WaterMomentStore {
   }
 
   static Future<List<WaterMoment>> forDay(String date) async {
-    final rows = await (await LocalDb.instance).query(
+    final rows = await LocalDb.readerRun((db) => db.query(
       'water_moment',
       where: 'date = ?',
       whereArgs: [date],
       orderBy: 'at_min ASC, rowid ASC',
-    );
+    ), name: 'water moments');
     return [
       for (final r in rows)
         WaterMoment(

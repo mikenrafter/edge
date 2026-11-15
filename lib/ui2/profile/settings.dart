@@ -61,6 +61,7 @@ import 'device_lab.dart' show DeviceLab;
 import 'dev_logs_page.dart' show DevLogsPage;
 import 'devices.dart' show MyDevices;
 import 'gallery.dart';
+import 'load_timings_page.dart';
 import 'gesture_failures.dart';
 import 'gestures.dart';
 import 'haptics_settings.dart';
@@ -1089,6 +1090,9 @@ class MoreSettingsView extends StatelessWidget {
                     SetRow(LucideIcons.chartLine, C.blue, 'Data Explorer',
                         sub: 'Compare up to four metrics on one time axis',
                         onTap: onDataExplorer),
+                    SetRow(LucideIcons.timer, C.n500, 'Screen load timings',
+                        sub: 'Recent reads, transactions and bundle decoding',
+                        onTap: () => go(c, const LoadTimingsPage())),
                     SetRow(LucideIcons.timer, C.n500, 'Last calculation',
                         sub: lastCalculation, chevron: false),
                     // Default ON = today's behaviour. OFF holds the Discord and

@@ -77,7 +77,7 @@ class DbWakeJournal {
   }
 
   Future<WakeNightTimeline> forEpoch(int wakeEpochSec) async =>
-      _forEpoch(await LocalDb.instance, wakeEpochSec);
+      LocalDb.readerRun((db) => _forEpoch(db, wakeEpochSec), name: 'wake epoch');
 
   Future<WakeNightTimeline> _forEpoch(
     DatabaseExecutor db,
@@ -132,14 +132,14 @@ class DbWakeJournal {
         ? offset.toInt() + 10800000
         : onset.toInt() + 64800000;
     final fromSec = (onset / 1000).ceil(), throughSec = (end / 1000).floor();
-    final rows = await (await LocalDb.instance).rawQuery(
+    final rows = await LocalDb.readerRun((db) => db.rawQuery(
       'SELECT DISTINCT wake_epoch FROM wake_trace '
       'WHERE wake_epoch BETWEEN ? AND ? '
       'UNION SELECT ts AS wake_epoch FROM band_events '
       "WHERE device_id = '' AND event_id = 57 AND ts BETWEEN ? AND ? "
       'ORDER BY wake_epoch',
       [fromSec, throughSec, fromSec, throughSec],
-    );
+    ), name: 'wake day');
     final nights = <WakeNightTimeline>[];
     for (final row in rows) {
       final epoch = row['wake_epoch'] as int;

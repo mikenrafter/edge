@@ -125,7 +125,7 @@ const String kNoActiveWearable = 'none';
 Future<bool> wearableEnabled(String adapterId) async {
   InputReads.note('wearable_source', '');
   return adapterId != kCoros.id &&
-      await LocalDb.getCursor(wearableEnabledCursor(adapterId)) == '1';
+      await LocalDb.getCursor(wearableEnabledCursor(adapterId), onReader: true) == '1';
 }
 
 /// A paired device that can be the day's wearable: a non-primary

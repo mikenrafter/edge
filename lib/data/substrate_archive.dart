@@ -34,6 +34,8 @@ import 'package:sqflite/sqflite.dart';
 
 import 'substrate_archive_codec.dart';
 import 'import_perf.dart';
+import 'db.dart';
+import 'sleep_edit_store.dart';
 
 /// How long archived substrate is kept. Stored in `compute_freshness` so a
 /// headless engine reads the same policy as the foreground one.
@@ -334,11 +336,14 @@ abstract final class SubstrateArchive {
         }
         final failureKey = '$deviceId|$day';
         try {
-          deleted += await db.transaction((txn) async {
+          var sleepEditHeld = false;
+          deleted += await LocalDb.timedTransaction(db, 'archive bucket', (txn) async {
+            if (await SleepEditStore.hasOutstandingOn(txn)) { sleepEditHeld = true; return 0; }
             final n = await _archiveBucket(txn, deviceId, day, lo, hi);
             await onDeleted?.call(txn, hi);
             return n;
           });
+          if (sleepEditHeld) break;
           if (failures.remove(failureKey) != null) failuresChanged = true;
         } catch (e) {
           final pastHold = hardFloorSec != null && hi <= hardFloorSec;

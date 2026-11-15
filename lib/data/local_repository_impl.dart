@@ -57,6 +57,7 @@ import 'bundle_store.dart';
 import 'json_payload_lane.dart';
 import 'day_label.dart';
 import 'db.dart';
+import 'sleep_edit_store.dart';
 import 'read_paused.dart';
 import '../sync/import_focus.dart';
 import '../health/health_export.dart';
@@ -118,13 +119,13 @@ class LocalRepositoryImpl extends LocalRepository {
   @override
   Future<int> pendingActivityCount() async {
     _focusCheck('pendingActivityCount');
-    return ActivityStore(await LocalDb.instance).pendingCount();
+    return LocalDb.readerRun((db) => ActivityStore(db).pendingCount(), name: 'pending count');
   }
 
   @override
   Future<List<ActivitySuggestion>> pendingActivities() async {
     _focusCheck('pendingActivities');
-    return ActivityStore(await LocalDb.instance).pending();
+    return LocalDb.readerRun((db) => ActivityStore(db).pending(), name: 'pending activities');
   }
 
   @override
@@ -511,6 +512,7 @@ class LocalRepositoryImpl extends LocalRepository {
   /// own. Screens print it as "As of" while a newer result is being calculated,
   /// so it is never "now" and never another row's time.
   Future<_BundleAt> _bundleAtForDate(String date) async {
+    if (await SleepEditStore.dirty(date)) return const _BundleAt(null, null);
     final exact = await BundleStore.shared.read(BundleSource.day(date));
     if (exact is BundleOk) {
       return _BundleAt(await _withOlderValues(date, _dayMap(exact)), exact.asOfMs);
@@ -1595,6 +1597,21 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   Future<Map<String, dynamic>> _daySleep(String date) async {
+    final result = await _daySleepStored(date);
+    if (!await SleepEditStore.dirty(date)) return result;
+    final assertion = await LocalDb.getSleepOverride(date);
+    final job = await SleepEditStore.status(date);
+    return {
+      'has_sleep': false, 'recalculating': job?['phase'] != 'done',
+      if (job?['phase'] == 'failed') 'calculation_error': 'Recalculation failed. Your times are saved. Retry.',
+      'sleep_source': assertion?['source'] ?? 'auto',
+      if (assertion != null && assertion['source'] != 'rejected') ...{
+        'onset_ts': assertion['onset_ts'], 'wake_ts': assertion['offset_ts'],
+      },
+    };
+  }
+
+  Future<Map<String, dynamic>> _daySleepStored(String date) async {
     final _BundleAt(bundle: b, :computedAt) = await _bundleAtForDate(date);
     final assertion = await LocalDb.getSleepOverride(date);
     final asserted = assertion != null && assertion['source'] != 'rejected';
@@ -2788,6 +2805,12 @@ class LocalRepositoryImpl extends LocalRepository {
   @override
   Future<SleepPrimaryRead?> getSleepDetailPrimary(String day) async {
     _focusCheck('getSleepDetailPrimary');
+    if (await SleepEditStore.dirty(day)) {
+      return SleepPrimaryRead(bundle: SleepDetailBundle(
+        night: await getDaySleepV2(day), timeline: const {}, insights: const {},
+        charts: const {}, windows: const []), devices: const [],
+        wake: const WakeNightTimeline(), historyCount: 0);
+    }
     final (night, timeline, insights, devices, wake, rows) = await (
       getDaySleepV2(day),
       getDayTimeline(day),
@@ -2816,7 +2839,7 @@ class LocalRepositoryImpl extends LocalRepository {
         windows: const [],
         charts: {
           for (final row in rows)
-            if (row['key'] != 'history_count')
+            if (row['key'] != 'history_count' && night['recalculating'] != true)
               row['key'] as String: {
                 'points': [
                   {'t': noon, 'v': row['value']},
@@ -2902,14 +2925,14 @@ class LocalRepositoryImpl extends LocalRepository {
   /// left alone. One SQL read for the whole series, no payload decode.
   Future<(List<Map<String, dynamic>>, Map<String, int>)> _withOlderSeries(
       String key, List<Map<String, dynamic>> rows) async {
-    if (!_olderFallbackKeys.contains(key)) return (rows, const <String, int>{});
+    if (!_olderFallbackKeys.contains(key)) return (await SleepEditStore.visibleRows(rows), const <String, int>{});
     final have = {for (final r in rows) r['date'] as String};
     final olderAll = await LocalDb.olderScalarByDay(key);
     final missing = [
       for (final d in olderAll.keys)
         if (!have.contains(d)) d,
     ];
-    if (missing.isEmpty) return (rows, const <String, int>{});
+    if (missing.isEmpty) return (await SleepEditStore.visibleRows(rows), const <String, int>{});
     final imported = await LocalDb.importedDates();
     final notes = await LocalDb.servedAbsentNotes(key);
     final older = <String, int>{};
@@ -2924,7 +2947,7 @@ class LocalRepositoryImpl extends LocalRepository {
           'older_reason': notes[d] ?? 'unknown_cause'});
     }
     merged.sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
-    return (merged, older);
+    return (await SleepEditStore.visibleRows(merged), older);
   }
 
   Map<String, dynamic> _seriesChart({

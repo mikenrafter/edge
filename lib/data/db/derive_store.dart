@@ -163,7 +163,7 @@ Future<Map<String, int>?> _ldbNoteHeadlineShown(String day, int value) async =>
         : {'from': (cur['value'] as num).round(), 'to': value, 'at': now};
   });
 
-Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, required String payloadJson, required String windowJson, required bool finalized, required bool skipped, required bool partial, required double? rhr, required double? rmssd, required double? readiness, required Map<String, double?> series, required String? source, required ({String method, String family, String cls}) Function(String key)? seriesMethod, required String? deviceFamily, required String? coverageDevices, required String? priorityHash, required Set<String> blankKeys, required DayResultWrite reason, InputStamp? inputStamp}) async {
+Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, required String payloadJson, required String windowJson, required bool finalized, required bool skipped, required bool partial, required double? rhr, required double? rmssd, required double? readiness, required Map<String, double?> series, required String? source, required ({String method, String family, String cls}) Function(String key)? seriesMethod, required String? deviceFamily, required String? coverageDevices, required String? priorityHash, required Set<String> blankKeys, required DayResultWrite reason, InputStamp? inputStamp, int? sleepEditGeneration}) async {
     final db = await LocalDb.instance;
     final now = LocalDb.nowMs();
     // THE write seam for the compact curve format. All four callers
@@ -173,7 +173,16 @@ Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, 
     // SeriesCodec leaves anything it cannot encode exactly as it found it.
     String? storedPayload;
     var storedSeries = const <String, double?>{};
-    final accepted = await db.transaction((txn) async {
+    final accepted = await LocalDb.timedTransaction(db, 'day result', (txn) async {
+      // CLAIM(sleep-edit-fence): pre-edit workers cannot replace a new
+      // assertion's measurements [responsiveness_sleep_jobs_test].
+      if (sleepEditGeneration != null && sleepEditGeneration != await SleepEditStore.generationOn(txn)) return false;
+      final expected = inputStamp?['sleep_override']?[dayId];
+      if (expected != null) {
+        final actual = Sqflite.firstIntValue(await txn.rawQuery(
+          "SELECT rev FROM input_revision WHERE source = 'sleep_override' AND scope = ?", [dayId])) ?? 0;
+        if (expected != actual) return false;
+      }
       if (reason != DayResultWrite.userOverride) {
         final cur = await txn.query(
           'day_result',
@@ -296,6 +305,9 @@ Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, 
       // out of every later pass. Same transaction as the write.
       await txn.delete('compute_freshness',
           where: 'key = ?', whereArgs: ['${LocalDb._settledPrefix}$dayId']);
+      if (sleepEditGeneration != null && !partial) {
+        await txn.rawUpdate('UPDATE sleep_edit_job SET applied_revision = revision WHERE day_id = ?', [dayId]);
+      }
       return true;
     });
     // Shadow group rows: AFTER the commit, in their own small transaction.

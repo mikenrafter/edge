@@ -115,30 +115,28 @@ class ActivityStore {
       (nowTs ?? DateTime.now().millisecondsSinceEpoch ~/ 1000) -
       pendingShownForSec;
 
-  Future<List<ActivitySuggestion>> pending({int? nowTs}) async {
-    await migrateLegacy();
-    return [
-      for (final r in await db.query(
-        'activity_suggestions',
-        where: "status = 'pending' AND end_ts >= ?",
-        whereArgs: [_pendingFloorTs(nowTs)],
-        orderBy: 'start_ts DESC, id ASC',
-      ))
-        ActivitySuggestion.fromRow(r),
-    ];
-  }
+  /// One committed SELECT, including legacy proposals until preparation has
+  /// migrated them. A migration committing mid-read cannot duplicate a row.
+  Future<List<ActivitySuggestion>> pending({int? nowTs}) async => [
+    for (final row in await db.rawQuery('''
+      SELECT id, kind, start_ts, end_ts, revision, status, details_json
+      FROM activity_suggestions WHERE status = 'pending' AND end_ts >= ?
+      UNION ALL
+      SELECT w.id, 'workout', w.start_ts, w.end_ts, 0, 'pending',
+        json_object('id',w.id,'date',w.date,'start_ts',w.start_ts,'end_ts',w.end_ts,
+          'avg_bpm',w.avg_bpm,'peak_bpm',w.peak_bpm,'duration_min',w.duration_min,
+          'sport',w.sport,'dismissed',w.dismissed,'created_at',w.created_at)
+      FROM workout_suggestions w
+      WHERE w.dismissed = 0 AND w.end_ts > w.start_ts AND w.end_ts >= ?
+      AND NOT EXISTS (SELECT 1 FROM activity_suggestions a WHERE a.id = w.id)
+      AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.start_ts < w.end_ts
+        AND COALESCE(s.end_ts, ?) > w.start_ts)
+      ORDER BY start_ts DESC, id ASC''',
+      [_pendingFloorTs(nowTs), _pendingFloorTs(nowTs), nowTs ?? DateTime.now().millisecondsSinceEpoch ~/ 1000]))
+      ActivitySuggestion.fromRow(row),
+  ];
 
-  Future<int> pendingCount({int? nowTs}) async {
-    await migrateLegacy();
-    return Sqflite.firstIntValue(
-          await db.rawQuery(
-            "SELECT COUNT(*) FROM activity_suggestions "
-            "WHERE status = 'pending' AND end_ts >= ?",
-            [_pendingFloorTs(nowTs)],
-          ),
-        ) ??
-        0;
-  }
+  Future<int> pendingCount({int? nowTs}) async => (await pending(nowTs: nowTs)).length;
 
   Future<ActivitySuggestion?> get(String id) async {
     final rows = await db.query(
@@ -409,11 +407,24 @@ class ActivityStore {
     ActivitySuggestion expected,
     String done,
   ) async {
-    final rows = await tx.query(
-      'activity_suggestions',
-      where: 'id = ?',
-      whereArgs: [expected.id],
-    );
+    var rows = await tx.query(
+      'activity_suggestions', where: 'id = ?', whereArgs: [expected.id]);
+    if (rows.isEmpty) {
+      final legacy = await tx.query('workout_suggestions', where: 'id = ?', whereArgs: [expected.id]);
+      if (legacy.isNotEmpty) {
+        final r = legacy.single;
+        final start = r['start_ts'] as int, end = r['end_ts'] as int;
+        await tx.insert('activity_suggestions', {
+          'id': r['id'], 'kind': 'workout', 'day_id': r['date'],
+          'start_ts': start, 'end_ts': end, 'detection_start': start, 'detection_end': end,
+          'details_json': jsonEncode(r), 'revision': 0,
+          'status': end <= start || (await _overlappingSessions(tx, start, end)).isNotEmpty
+            ? 'superseded' : r['dismissed'] == 1 ? 'discarded' : 'pending',
+          'created_at': r['created_at'], 'updated_at': r['created_at'],
+        });
+        rows = await tx.query('activity_suggestions', where: 'id = ?', whereArgs: [expected.id]);
+      }
+    }
     if (rows.isEmpty) {
       throw const ActivityReviewException(
         'This suggestion is no longer available.',

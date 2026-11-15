@@ -141,6 +141,8 @@ void main() {
       store = ActivityStore(db);
       expect(await db.getVersion(), LocalDb.schemaVersion);
       expect(await store.pending(), isEmpty);
+      // Preparation is explicit: opening Review is now a pure SELECT.
+      await store.migrateLegacy();
       expect(
         (await store.get('legacy-upgrade'))!.status,
         ActivityReviewStatus.discarded,

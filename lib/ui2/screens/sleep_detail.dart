@@ -389,7 +389,8 @@ class SleepData {
   }) async {
     // Stored read: the night to open is all this needs from `getToday`, and
     // the freshness refresh behind it must not hold the first paint.
-    final today = await repo.getTodayStored();
+    final exact = want != null && localDayEndSec(want) != null;
+    final today = exact ? <String, dynamic>{} : await repo.getTodayStored();
     if (ImportFocus.active.value && (want == null || want == todayLabel())) {
       final published = ImportFocus.days.value[todayLabel()]?['getToday'];
       final sleep = published is Map ? published['sleep'] : null;
@@ -411,7 +412,7 @@ class SleepData {
     // off overnight and the card said "7h 04m" while this screen answered "No
     // night to show" about the same tap.
     final days = await repo.availableDays();
-    final day = pickDay(
+    final day = exact ? want : pickDay(
         days,
         want,
         heldOverNightOf(today) ??
@@ -618,7 +619,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   bool _loading = true;
   bool _paused = false;
   String? _day;
-  bool _saving = false; // an override write + its forced re-derive is in flight
+  bool _saving = false; // a durable assertion write is in flight
+  int _editSeq = 0;
   double? _scrub; // Epoch seconds shared by full-night and zoomed charts.
 
   double? _scrubFraction(Map<String, dynamic> n) {
@@ -864,6 +866,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   Widget build(BuildContext c) {
     final d = _d ?? SleepData(day: _day ?? widget.day ?? todayLabel());
     final l = AppLocalizations.of(c);
+    final recalculating = d.night['recalculating'] == true;
     final title = l?.sleepDetailNavTitle ?? 'Sleep';
 
     if (_paused) {
@@ -894,7 +897,10 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       return _frame(c, title, [
         ..._dayNav(d),
         ..._nightControls(d, recalc: false),
-        _answer(c, p, d, d.night),
+        if (d.night['calculation_error'] case final String error) StatusCard('Sleep calculation', error),
+        if (recalculating) const PendingContent(pending: true, child: StatusCard(
+          'Recalculating this night', 'Your times are saved. Measurements will appear when ready.'))
+        else _answer(c, p, d, d.night),
         const SizedBox(height: S.x3),
         _nightAccordion(c, [
         _night(c, p, d, d.night,
@@ -919,10 +925,14 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         else
           // Saved times, but too little recorded inside them to score.
           StatusCard(
-            userSet
+            recalculating
+                ? 'Recalculating this night'
+                : userSet
                 ? (l?.sleepDetailUserWindowTitle ?? 'Your times are saved')
                 : (l?.sleepDetailNoNightTitle ?? 'No night to show'),
-            userSet
+            recalculating
+                ? 'Your times are saved. You can keep editing.'
+                : userSet
                 ? (l?.sleepDetailUserWindowBody ??
                     'The band recorded too little inside your times to score '
                         'this night.')
@@ -931,7 +941,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             icon: LucideIcons.moon,
           ),
         if (_saving)
-          Text(l?.sleepDetailReanalysing ?? 'Re-analysing the night…',
+          Text('Saving times…',
               style: F.cap.copyWith(color: P.of(c).ink3)),
         // A day with no main-sleep window can still have naps — worn all
         // day, off overnight, or a rejected night — so this door to the naps
@@ -1027,7 +1037,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       {required bool rejected}) {
     final l = AppLocalizations.of(c);
     final day = d.day;
-    final busy = _saving || _loading;
     return Surface(
       key: const ValueKey('card:window'),
       pad: EdgeInsets.zero,
@@ -1052,17 +1061,17 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           // "Not sleep": one more answer would contradict the reason above.
           if (rejected && day != null)
             TextButton(
-              onPressed: _saving ? null : () => _clearWindow(day),
+              onPressed: () => _clearWindow(day),
               child: Text(
                   l?.sleepDetailUndoRejection ?? 'Undo — go back to automatic'),
             )
           else ...[
             TextButton(
-              onPressed: busy || day == null ? null : () => _addWindow(day),
+              onPressed: day == null ? null : () => _addWindow(day),
               child: Text(l?.sleepDetailIWasAsleep ?? 'I was asleep'),
             ),
             TextButton(
-              onPressed: busy || day == null ? null : () => _rejectWindow(day),
+              onPressed: day == null ? null : () => _rejectWindow(day),
               child: Text(l?.sleepDetailNotSleep ?? 'Not sleep'),
             ),
           ],
@@ -1212,7 +1221,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       TextButton(
         // Keep the naps action inert while a different night is being read.
         onPressed:
-            _saving || _loading ? null : () => go(c, NapsScreen(day: day)),
+            () => go(c, NapsScreen(day: day)),
         child: Text(l?.sleepDetailEditNaps ?? 'Naps'),
       ),
     ];
@@ -1230,7 +1239,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     final fallback = source == 'auto_fallback';
     final vendor = source == 'vendor_staged';
 
-    final busy = _saving;
     return [
       const SizedBox(height: S.x3),
       Surface(
@@ -1302,18 +1310,18 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             _recalculateButton(day),
             if (fallback)
               TextButton(
-                onPressed: busy ? null : () => _confirmWindow(day),
+                onPressed: () => _confirmWindow(day),
                 child: Text(l?.sleepDetailConfirmTimes ?? 'These times are right'),
               ),
             TextButton(
-              onPressed: busy ? null : () => _editWindow(day, t0, t1),
+              onPressed: () => _editWindow(day, t0, t1),
               child: Text(mine
                   ? (l?.sleepDetailChangeTimes ?? 'Change the times')
                   : (l?.sleepDetailSetTimesMyself ?? 'Set the times myself')),
             ),
             if (mine)
               TextButton(
-                onPressed: busy ? null : () => _clearWindow(day),
+                onPressed: () => _clearWindow(day),
                 child:
                     Text(l?.sleepDetailBackToAutomatic ?? 'Back to automatic'),
               ),
@@ -1321,15 +1329,10 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             // already have a reject action (sleep_nap source='rejected');
             // a whole-night main-sleep session didn't (edge#248).
             TextButton(
-              onPressed: busy ? null : () => _rejectWindow(day),
+              onPressed: () => _rejectWindow(day),
               child: Text(l?.sleepDetailNotSleep ?? 'Not sleep'),
             ),
           ]),
-          if (busy) ...[
-            const SizedBox(height: S.x2),
-            Text(l?.sleepDetailReanalysing ?? 'Re-analysing the night…',
-                style: F.cap.copyWith(color: p.ink3)),
-          ],
 
         if (_overrideFailed case final error?)
           StatusCard('Sleep calculation', error, icon: LucideIcons.triangleAlert),
@@ -1426,7 +1429,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   Widget _recalculateButton(String day) {
     AppState? app;
     try { app = context.read<AppState>(); } on ProviderNotFoundException { /* pure view */ }
-    return TextButton(onPressed: _saving || app == null ? null : () =>
+    return TextButton(onPressed: app == null ? null : () =>
       _runOverride(day, () => app!.recalculateSleep(day), timesSaved: false),
       child: const Text('Recalculate this night'));
   }
@@ -1447,22 +1450,16 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     ];
   }
 
-  /// Every override path is the same shape: write it, wait for the forced
-  /// re-derive, then reload the screen from what the engine produced. The
-  /// screen must not keep drawing the old night's numbers under a new window.
-  ///
-  /// The write's [SleepOperationResult] says whether it failed. [applied]
-  /// reads the reloaded night and says whether the edit took; without it the
-  /// result is the test. [timesSaved] is false for actions that are not about
-  /// a window ("Not sleep", recalculate, back to automatic): "Times saved…"
-  /// would be a lie.
+  /// Acknowledge the durable receipt; calculation publishes independently.
+  /// The repository withholds measurements until the edited revision is ready.
   Future<void> _runOverride(
     String day,
     Future<dynamic> Function() write, {
     bool Function(Map<String, dynamic> night)? applied,
     bool timesSaved = true,
   }) async {
-    if (_saving) return;
+    final edit = ++_editSeq;
+    var queued = false;
     setState(() {
       _saving = true;
       _overrideFailed = null;
@@ -1473,6 +1470,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       if (result is SleepOperationResult) {
         if (!result.success) {
           failed = result.error ?? 'Sleep calculation failed. Try again.';
+        } else if (result.recalculating) {
+          queued = true;
+          note = timesSaved ? 'Times saved. Recalculating this night.' : 'Recalculating this night.';
         } else if (!result.metricsAvailable && timesSaved) {
           note = 'Times saved. Sleep numbers stay blank for times you set.';
         }
@@ -1480,17 +1480,19 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     } catch (e) {
       failed = '$e';
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted && edit == _editSeq) setState(() => _saving = false);
     }
-    if (mounted) await _load();
-    if (!mounted) return;
+    if (!mounted || edit != _editSeq) return;
+    if (_d?.day == day) _day = day;
+    await _load();
+    if (!mounted || edit != _editSeq) return;
     // A write can report success and still leave the night on screen
     // unchanged, indistinguishable from a correction that worked, so the
     // reloaded night is checked against what the edit asked for.
     // The user stepped to another night meanwhile: the reloaded night is not
     // the one edited, so it cannot say whether the edit took.
     if (failed == null && _d?.day != day) return;
-    final took = applied?.call(_d?.night ?? const <String, dynamic>{}) ?? true;
+    final took = queued || (applied?.call(_d?.night ?? const <String, dynamic>{}) ?? true);
     if (failed != null || !took) {
       final l = AppLocalizations.of(context);
       setState(() => _overrideFailed = failed ??

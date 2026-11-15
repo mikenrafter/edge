@@ -152,3 +152,9 @@ in the same change that introduces it (AGENTS.md §6).
 - **Hop** — one real navigation action towards a step: Back, a shell tab, a sub-tab, or a page entry. Virtual grouping nodes do not add a hop.
 - **Layout sibling** — the previous or next unit in the target's enclosing vertical layout; transforms and viewport clipping do not change this relation.
 - **Placeholder** — replacement text bars or a muted plot sine, painted without replacing its existing surface. Icons, images and card titles keep their source paint.
+
+## Interactive calculation
+
+- **Sleep edit receipt**: the committed sleep assertion, its revision and its dirty job, stored atomically by `SleepEditStore`. It acknowledges saved times, not finished measurements.
+- **Sleep edit job**: durable remaining work for one edited night. The latest revision replaces queued intent; the edited night publishes before dependent days. Failed work retains the assertion and can be retried.
+- **Load timing**: a bounded local diagnostic sample identifying a stored read, reader acquisition, writer queue, transaction or decode span. Elapsed parallel reads overlap and are never summed into load time.

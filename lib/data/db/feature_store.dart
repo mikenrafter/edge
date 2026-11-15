@@ -444,7 +444,7 @@ Future<void> _ldbPutVendorSleepEpochs(List<VendorEpoch> epochs, {required String
 
 Future<List<VendorNight>> _ldbVendorSleepNights(int fromSec, int toSec) async {
     InputReads.note('vendor_sleep_epoch', '');
-    final db = await LocalDb.instance;
+    return LocalDb.readerRun((db) async {
     final rows = await db.rawQuery(
       'SELECT * FROM vendor_sleep_epoch '
       'WHERE night_onset_ts >= ? AND night_onset_ts < ? '
@@ -478,6 +478,7 @@ Future<List<VendorNight>> _ldbVendorSleepNights(int fromSec, int toSec) async {
       }
     }
     return out;
+    }, name: 'device nights');
   }
 
 Future<void> _ldbPutSleepOverride({required String dayId, required int onsetTs, required int offsetTs, required String source}) async {
@@ -485,7 +486,7 @@ Future<void> _ldbPutSleepOverride({required String dayId, required int onsetTs, 
     // One transaction: a user window edit reopens the night, so the confirmation
     // goes with it (otherwise a crash between the two leaves an edit the next
     // pass would still truncate).
-    await db.transaction((txn) async {
+    await LocalDb.timedTransaction(db, 'sleep edit receipt', (txn) async {
       await txn.insert('sleep_override', {
         'day_id': dayId,
         'onset_ts': onsetTs,
@@ -495,12 +496,12 @@ Future<void> _ldbPutSleepOverride({required String dayId, required int onsetTs, 
       }, conflictAlgorithm: ConflictAlgorithm.replace);
       await txn.delete('wake_confirmation',
           where: 'day_id = ?', whereArgs: [dayId]);
+      await SleepEditStore.enqueue(txn, dayId);
     });
-    await LocalDb.releaseFrozenHeadline(dayId);
   }
 
 Future<List<MomentLabel>> _ldbMomentLabels({required String? date, required String? sinceDate}) async {
-    final db = await LocalDb.instance;
+    return LocalDb.readerRun((db) async {
     final rows = await db.query(
       'moment_label',
       where: date != null
@@ -516,6 +517,7 @@ Future<List<MomentLabel>> _ldbMomentLabels({required String? date, required Stri
       orderBy: 'date ASC, hhmm ASC',
     );
     return [for (final r in rows) _ldbPrivMomentLabel(r)];
+    }, name: 'MomentLabels');
   }
 
 MomentLabel _ldbPrivMomentLabel(Map<String, Object?> r) => MomentLabel(
@@ -871,13 +873,14 @@ Future<int> _ldbPutObservations(List<Observation> rows, {required String deviceI
   }
 
 Future<List<Map<String, Object?>>> _ldbObservationsForDay(String date) async {
-    final db = await LocalDb.instance;
+    return LocalDb.readerRun((db) async {
     return db.query(
       'observation',
       where: 'date = ?',
       whereArgs: [date],
       orderBy: 'attribution ASC, COALESCE(vendor_key, key) ASC',
     );
+    }, name: 'ObservationsForDay');
   }
 
 Future<Map<int, num>> _ldbDeviceObservationValues(String deviceId, String key, {required int fromMs}) async {
@@ -1010,7 +1013,7 @@ Future<bool> _ldbLogAssumedWater({required String date, required int atMin, requ
   }
 
 Future<List<AssumedGlass>> _ldbAssumedWater({required String? date, required String? sinceDate, required bool includeRemoved}) async {
-    final db = await LocalDb.instance;
+    return LocalDb.readerRun((db) async {
     final where = <String>[];
     final args = <Object?>[];
     if (date != null) {
@@ -1042,6 +1045,7 @@ Future<List<AssumedGlass>> _ldbAssumedWater({required String? date, required Str
           loggedAtMs: (r['logged_at'] as num).toInt(),
         ),
     ];
+    }, name: 'AssumedWater');
   }
 
 Future<bool> _ldbRemoveAssumedWater(AssumedGlass g, {Transaction? transaction, bool onlyUnreviewed = false}) async {
@@ -1097,7 +1101,7 @@ Map<String, Object?> _ldbPrivSymptomRow(StoredSymptom s) {
   }
 
 Future<List<StoredSymptom>> _ldbSymptomEntries({required String? date, required String? sinceDate}) async {
-    final db = await LocalDb.instance;
+    return LocalDb.readerRun((db) async {
     final rows = await db.query('symptom_entry',
         where: date != null
             ? 'date = ?'
@@ -1140,6 +1144,7 @@ Future<List<StoredSymptom>> _ldbSymptomEntries({required String? date, required 
       ));
     }
     return out;
+    }, name: 'SymptomEntries');
   }
 
 Future<void> _ldbPutJournalMetrics(String date, Map<String, JournalMetricValue> fields) async {
@@ -1205,7 +1210,7 @@ Future<Map<String, Map<String, JournalMetricValue>>> _ldbJournalMetricsByDay({re
   }
 
 Future<List<JournalFieldSpec>> _ldbJournalFieldDefs() async {
-    final db = await LocalDb.instance;
+    return LocalDb.readerRun((db) async {
     final rows = await db.query('journal_field_def', orderBy: 'label ASC');
     return [
       for (final r in rows)
@@ -1226,6 +1231,7 @@ Future<List<JournalFieldSpec>> _ldbJournalFieldDefs() async {
           custom: true,
         ),
     ];
+    }, name: 'JournalFieldDefs');
   }
 
 Future<void> _ldbPutJournalFieldDef(JournalFieldSpec spec) async {

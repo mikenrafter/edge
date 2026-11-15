@@ -1887,6 +1887,7 @@ Future<Map<String, List<int>>> _ldbPrivSessionHrSamplesSql(int fromTs, int toTs)
 
 Future<int> _ldbPruneDecodedBeforeRecTs(int cutoffSec, {required String? cursorName, required SubstrateArchivePolicy? archive, required int? hardFloorSec, required void Function(String message)? log, required bool Function()? shouldYield, required int? maxArchiveBuckets, required int? expectedRevSum}) async {
     final db = await LocalDb.instance;
+    if (await SleepEditStore.hasOutstandingOn(db)) return 0;
     final policy = archive ?? await LocalDb.substrateArchivePolicy();
     // `deleted` used to just stay 0 forever - none of the txn.delete() calls'
     // return values (rows actually deleted) were ever added to it, so the
@@ -1931,6 +1932,7 @@ Future<int> _ldbPruneDecodedBeforeRecTs(int cutoffSec, {required String? cursorN
     final decodedWhere = policy.enabled ? 'rec_ts <= 0' : 'rec_ts < ?';
     final decodedArgs = policy.enabled ? const <Object?>[] : [cutoffSec];
     await db.transaction((txn) async {
+      if (await SleepEditStore.hasOutstandingOn(txn)) { skipped = true; return; }
       if (expectedAfterArchive != null &&
           await LocalDb._revSumBefore(txn, cutoffSec) != expectedAfterArchive) {
         skipped = true;

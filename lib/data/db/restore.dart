@@ -374,6 +374,8 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
         await copyRows('moment_label', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('food_entry', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('notifications', where: 'date = ?', whereArgs: [dayId]);
+        await copyRows('sleep_override', where: 'day_id = ?', whereArgs: [dayId]);
+        await copyRows('sleep_edit_job', where: 'day_id = ?', whereArgs: [dayId]);
         await copyRows(
           'sleep_session_candidates',
           where: 'day_id = ?',
@@ -679,6 +681,7 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
       await deleteByIn(txn, 'cycle_symptom', 'date', sorted);
       await deleteByIn(txn, 'workout_suggestions', 'date', sorted);
       await deleteByIn(txn, 'sleep_override', 'day_id', sorted);
+      for (final day in sorted) { await SleepEditStore.cancel(txn, day); }
       await deleteByIn(txn, 'wake_confirmation', 'day_id', sorted);
       await deleteByIn(txn, 'sleep_nap', 'day_id', sorted);
       await deleteByIn(txn, 'activity_suggestions', 'day_id', sorted);
@@ -818,7 +821,7 @@ ImportStage _ldbPrivImportStageOf(String table) => switch (table) {
         'imported_workout' ||
         'imported_measurement' =>
           ImportStage.workouts,
-        'sleep_override' || 'sleep_nap' || 'vendor_sleep_epoch' =>
+        'sleep_override' || 'sleep_edit_job' || 'sleep_nap' || 'vendor_sleep_epoch' =>
           ImportStage.sleep,
         'samples' ||
         'decoded_onehz' ||
@@ -1703,6 +1706,15 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                     if (cols.contains(e.key)) e.key: e.value,
                 };
                 if (row.isEmpty) continue;
+                if (t == 'sleep_edit_job') {
+                  // Foreign revision counters never become local identities.
+                  // Recreate only unfinished intent against the restored edit.
+                  if (row['phase'] != 'done' || row['applied_revision'] != row['revision']) {
+                    await SleepEditStore.enqueue(txn, row['day_id'] as String);
+                  }
+                  copied++;
+                  continue;
+                }
                 if (t == 'sleep_nap' || t == 'sessions' || t == 'moment_label') {
                   var keepLocalDecision = false;
                   final link = t == 'sleep_nap'

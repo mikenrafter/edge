@@ -323,8 +323,13 @@ class DeriveScheduler {
 
   /// Anything that keeps a pass from starting, bar the power hold: what the
   /// Eager plug-in sweep (which is not the scheduler's own pass) also waits on.
+  bool _sleepEditHeld = false;
+  void setSleepEditHeld(bool held) {
+    _sleepEditHeld = held;
+    if (held) { _timer?.cancel(); } else { _arm(); }
+  }
   bool get heldBesidesPower =>
-      _offloadActive || _background || _workoutHeld || _manualHeld;
+      _offloadActive || _background || _workoutHeld || _manualHeld || _sleepEditHeld;
 
   void dispose() {
     _disposed = true;

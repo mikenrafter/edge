@@ -104,6 +104,7 @@ class PreparedDerivationDay {
   /// from older inputs is never labelled with newer ones. Null on the import
   /// path: stored as unpinned.
   final InputStamp? inputStamp;
+  final int? sleepEditGeneration;
 
   /// Non-null when [daySub] / [napSub] carry only the beats after the
   /// checkpoint (see [DayRrResume]). Null: every beat of the day is present.
@@ -133,6 +134,7 @@ class PreparedDerivationDay {
     this.inputFp,
     this.inputRevs,
     this.inputStamp,
+    this.sleepEditGeneration,
     this.rrResume,
     this.isWearable = false,
   }) : napSub = napSub ?? daySub;
@@ -160,10 +162,12 @@ class PreparedDerivationDay {
     inputFp: inputFp,
     inputRevs: inputRevs,
     inputStamp: inputStamp,
+    sleepEditGeneration: sleepEditGeneration,
     isWearable: isWearable,
   );
 
   Map<String, dynamic> toJson() => {
+    'sleep_edit_generation': sleepEditGeneration,
     'date': date,
     'end_sec': endSec,
     'confidence': confidence,
@@ -192,6 +196,7 @@ class PreparedDerivationDay {
       ((m['day_sub'] as Map?) ?? const {}).cast<String, dynamic>(),
     );
     return PreparedDerivationDay(
+      sleepEditGeneration: (m['sleep_edit_generation'] as num?)?.toInt(),
       date: m['date'] as String? ?? '',
       endSec: (m['end_sec'] as num?)?.toInt() ?? 0,
       confidence: (m['confidence'] as num?)?.toDouble() ?? 0,
@@ -361,6 +366,7 @@ class SleepSessionCandidate {
     String? inputFp,
     Map<int, int>? inputRevs,
     InputStamp? inputStamp,
+    int? sleepEditGeneration,
     DayRrResume? rrResume,
     bool isWearable = false,
   }) => PreparedDerivationDay(
@@ -392,6 +398,7 @@ class SleepSessionCandidate {
     inputFp: inputFp,
     inputRevs: inputRevs,
     inputStamp: inputStamp,
+    sleepEditGeneration: sleepEditGeneration,
     rrResume: rrResume,
     isWearable: isWearable,
   );

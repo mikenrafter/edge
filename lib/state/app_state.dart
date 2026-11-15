@@ -125,6 +125,9 @@ import '../ui2/profile/devices.dart' show HealthSource, liveSources, rankSources
 import '../ui2/sources/source_views.dart' show SourceViews;
 import '../data/db/input_revision_store.dart' show bumpInputRev;
 import '../data/db.dart';
+import '../data/sleep_edit_store.dart';
+import '../data/activity_store.dart';
+import 'sleep_edit_runner.dart';
 import '../ecg/ble_ecg_transport.dart';
 import '../ecg/ecg_controller.dart';
 import '../ecg/ecg_cues.dart' show kEcgCueRule;
@@ -3259,6 +3262,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     gestureSettings.dispose();
     navRequest.dispose();
     syncOperations.dispose();
+    sleepEditRunner.dispose();
     sleepOperations.dispose();
     screenRequest.dispose();
     super.dispose();
@@ -3885,7 +3889,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   late final SleepCoordinator sleepOperations = SleepCoordinator(
     persist: (day, start, end) => LocalDb.putSleepOverride(
       dayId: day, onsetTs: start, offsetTs: end, source: 'manual'),
-    derive: _deriveSleepDay,
+    derive: (day) async {
+      unawaited(sleepEditRunner.start().catchError((Object e) => _log('[sleep edit] $e')));
+      return {'recalculating': true};
+    },
     saveSchedule: (json) async {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('expected_sleep_schedule_v1', jsonEncode(json));
@@ -3914,20 +3921,47 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     notifyListeners();
   }
 
-  Future<Map<String, Object?>> _deriveSleepDay(String day) async {
+  late final SleepEditRunner sleepEditRunner = SleepEditRunner(
+    run: _runSleepEdit,
+    onError: (error) => _log('[sleep edit] $error'),
+    publish: () => _deriveCoordinator.publishNow(),
+    hold: (held) => _deriveScheduler.setSleepEditHeld(held),
+  );
+
+  Future<void> _runSleepEdit(SleepEditJob job) async {
+    final day = job.day;
+    if ((await SleepEditStore.status(day))?['revision'] != job.revision) return;
+    await _deriveSleepDay(day, isCurrent: () async =>
+      (await SleepEditStore.status(day))?['revision'] == job.revision, onEdited: () async {
+      if (await SleepEditStore.advance(job, SleepEditPhase.dependents) != SleepEditAdvance.applied) return false;
+      await _deriveCoordinator.publishNow();
+      return true;
+    });
+    final status = await SleepEditStore.status(day);
+    if (status?['revision'] == job.revision && status?['applied_revision'] != job.revision &&
+        (await LocalDb.decodedRecTsMaxByDay()).containsKey(day)) {
+      throw StateError('The edited night is incomplete. Your times are saved. Retry.');
+    }
+    if (await SleepEditStore.advance(job, SleepEditPhase.done) == SleepEditAdvance.applied) await _deriveCoordinator.publishNow();
+  }
+
+  Future<Map<String, Object?>> _deriveSleepDay(String day, {Future<bool> Function()? onEdited, Future<bool> Function()? isCurrent}) async {
     // A pass that was already running prepared the edited day from the old
     // window and re-pins that night's readiness when it lands, after the
     // edit's own release. Release again once it is done, right before this
     // derive takes over (no await between the last check and the latch).
     do {
       await _waitForDerivation();
+      if (_disposed) throw StateError('Sleep worker closed');
+      if (isCurrent != null && !await isCurrent()) return {};
       await LocalDb.releaseFrozenHeadline(day);
     } while (_derive.running || reanalyzing);
     reanalyzing = true;
+    final recalcOwner = _deriveCoordinator.beginSleepEdit(day);
     notifyListeners();
     try {
       // The edited night, then the later nights scored against it.
-      await _derive.rederiveAfterSleepEdit(_profile, day);
+      await _derive.rederiveAfterSleepEdit(_profile, day, onEdited: onEdited);
       final error = _derive.snapshot()['last_error'];
       if (error != null) throw StateError('$error');
       // A finalized day behind the export cursor is never re-written, so the
@@ -3940,7 +3974,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       }));
       await _deriveCoordinator.publishNow();
       return await repo?.getDaySleep(day) ?? <String, Object?>{};
-    } finally { reanalyzing = false; notifyListeners(); }
+    } finally { _deriveCoordinator.endSleepEdit(recalcOwner); reanalyzing = false; notifyListeners(); }
   }
 
   /// The Sources read seam over the sources that exist right now. Reads only:
@@ -3985,7 +4019,8 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     }
   }
 
-  Future<SleepOperationResult> recalculateSleep(String day) => sleepOperations.recalculate(day);
+  Future<SleepOperationResult> recalculateSleep(String day) =>
+      sleepOperations.mutate(day, () => SleepEditStore.recalculate(day));
 
   Future<SleepOperationResult> setSleepOverride(String date, DateTime onset, DateTime offset,
       {String source = 'manual', bool useSchedule = false}) {
@@ -3993,7 +4028,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       return _setConfirmedSleep(date, onset, offset, source);
     }
     return sleepOperations.setOverride(date, onset, offset, useSchedule: useSchedule).then((result) async {
-      if (useSchedule) await _refreshHighFreqWakeWindow();
+      if (useSchedule) unawaited(_refreshHighFreqWakeWindow());
       return result;
     });
   }
@@ -4362,6 +4397,8 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     // In the background: its re-derive must not hold the shell's launch.
     unawaited(adoptWeighing().catchError(
         (Object e) => debugPrint('[AppState] adoptWeighing failed: $e')));
+    unawaited(ActivityStore(await LocalDb.instance).migrateLegacy().catchError((Object e) => _log('[activity migration] $e')));
+    unawaited(sleepEditRunner.start(restart: true).catchError((Object e) => _log('[sleep edit restart] $e')));
     await _deriveScheduler.init();
     // After the scheduler: the power hold re-arms it on release. A failure here
     // leaves the calm default (balanced, nothing held) and must not fail init.
@@ -8666,6 +8703,6 @@ class _NapExtendsSleep implements MainSleepExtendedListener {
   final AppState app;
   @override
   Future<void> mainSleepExtended(String day) async {
-    await app.sleepOperations.recalculate(day);
+    await app.recalculateSleep(day);
   }
 }

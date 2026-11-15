@@ -59,7 +59,7 @@ void main() {
       final repo = _Reads();
       final future = TimelineData.load(repo, want: '2026-11-13');
       await Future<void>.delayed(const Duration(milliseconds: 30));
-      expect(repo.started, {'timeline', 'wear', 'hrv'});
+      expect(repo.started, {'timeline', 'wear'}); // Timestamp is now a narrow DB metadata read.
       repo.gate.complete();
       final data = await future;
       expect(data.day, '2026-11-13');

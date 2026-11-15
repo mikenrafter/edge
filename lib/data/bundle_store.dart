@@ -39,6 +39,8 @@ import '../util/worker_entries.dart' show Dispatcher;
 import '../util/worker_init.dart';
 import '../compute/derive_perf.dart' show payloadNodeCount, utf8Length;
 import 'db.dart';
+import 'load_timings.dart';
+import 'sleep_edit_store.dart';
 import 'day_payload_read.dart';
 import 'series_codec.dart';
 
@@ -1019,6 +1021,8 @@ class BundleStore {
   int get debugCacheBytes => _fullBytes;
 
   Future<_Prepared?> _prepare(BundleSource source, ProjectionId projection) async {
+    if (source.kind == 'day_result' && await SleepEditStore.dirty(source.k1)) return null;
+
     Map<String, dynamic>? meta;
     if (source.kind == 'day_result') {
       meta = await LocalDb.dayResultMeta(source.k1, onReader: true);
@@ -1192,10 +1196,13 @@ class BundleStore {
         _activeBytes += sourceBytes;
         try {
           debugDecodeDispatches += batch.length;
-          final decoded = await _lane.decode(DecodeChunkInput(
+          for (final f in batch) {
+            LoadTimings.shared.record('bundle', 'decode queue', f.queued.elapsedMicroseconds, route: f.route);
+          }
+          final decoded = await LoadTimings.shared.measure('bundle', 'decode execution', () => _lane.decode(DecodeChunkInput(
             payloadJson: [for (final f in batch) f.payload],
             projections: [for (final f in batch) f.source.key.projection.name],
-          ));
+          )));
           if (decoded.graphs.length != batch.length || decoded.estimatedBytes.length != batch.length) {
             throw StateError('BundleDecodeLane returned a malformed chunk');
           }
@@ -1343,6 +1350,8 @@ final class _BundleFlight {
   final String payload;
   final bool warm;
   final bool cacheResult;
+  final route = LoadTimings.currentRoute;
+  final queued = Stopwatch()..start();
   final Completer<BundleRead> done = Completer<BundleRead>();
   int get sourceBytes => payload.length;
 }

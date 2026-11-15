@@ -1068,6 +1068,9 @@ Future<Database> _ldbPrivOpen() async {
           // Empty deleted-day marker table; nothing is inferred for old deletes.
           await createTrackTables(db);
         }
+        if (oldV < 87) {
+          await SleepEditStore.create(db);
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);

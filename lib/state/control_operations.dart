@@ -873,16 +873,19 @@ class ExpectedSleepSchedule {
 
 class SleepOperationResult {
   final bool success, metricsAvailable;
+  final bool recalculating;
   final String? error;
   const SleepOperationResult({
     required this.success,
     this.metricsAvailable = false,
+    this.recalculating = false,
     this.error,
   });
 }
 
-/// Serialize edits including their persistence, so each accepted assertion is
-/// derived before another edit replaces it. Absent measurements are success.
+/// Serialize durable assertions. In AppState, [derive] wakes the durable job
+/// runner and returns its receipt; the worker future never enters this queue.
+/// Absent measurements are a successful save.
 class SleepCoordinator extends ChangeNotifier {
   final Future<void> Function(String, int, int) persist;
   final Future<Map<String, Object?>> Function(String) derive;
@@ -929,7 +932,7 @@ class SleepCoordinator extends ChangeNotifier {
         const SleepOperationResult(
           success: false,
           error:
-              'Sleep calculation timed out. Your saved times are unchanged. Retry.',
+              'Saving timed out. Reopen this night to check your saved times.',
         ),
       ),
     );
@@ -972,6 +975,7 @@ class SleepCoordinator extends ChangeNotifier {
     return SleepOperationResult(
       success: true,
       metricsAvailable: metrics['duration_min'] != null,
+      recalculating: metrics['recalculating'] == true,
     );
   });
   Future<SleepOperationResult> recalculate(String day) => _queue(() async {
@@ -979,6 +983,7 @@ class SleepCoordinator extends ChangeNotifier {
     return SleepOperationResult(
       success: true,
       metricsAvailable: metrics['duration_min'] != null,
+      recalculating: metrics['recalculating'] == true,
     );
   });
   Future<SleepOperationResult> setOverride(
@@ -1009,6 +1014,7 @@ class SleepCoordinator extends ChangeNotifier {
     return SleepOperationResult(
       success: true,
       metricsAvailable: metrics['duration_min'] != null,
+      recalculating: metrics['recalculating'] == true,
     );
   });
 }

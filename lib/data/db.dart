@@ -61,6 +61,8 @@ import 'assumed_water.dart';
 import 'water_moment.dart';
 import 'day_label.dart';
 import 'activity_store.dart';
+import 'load_timings.dart';
+import 'sleep_edit_store.dart';
 import 'nap_resolution.dart';
 import '../models/activity_suggestion.dart';
 import '../compute/accepted_naps.dart';
@@ -82,7 +84,6 @@ import 'live_coverage_policy.dart';
 import 'step_calibration.dart';
 import 'med_store.dart';
 import 'tracks_schema.dart';
-import 'track_model.dart';
 import 'moment_label.dart';
 import '../ecg/ecg_models.dart' show EcgReading;
 import '../ecg/ecg_result.dart' show ecgJoinTargetId;
@@ -422,6 +423,7 @@ class LocalDb {
     'cycle_log',
     'cycle_symptom',
     'sleep_override',
+    'sleep_edit_job',
     'sleep_nap',
     // Typed or answered by hand; notif_fired keeps old alerts from firing again.
     'alarm_schedule',
@@ -665,13 +667,28 @@ class LocalDb {
   /// closed-database error. When the handle we used is closed after the
   /// failure, retry ONCE on the writer. Any other failure is the caller's.
   /// Every reader call site goes through here; [body] must be a read.
-  static Future<T> readerRun<T>(Future<T> Function(Database db) body) async {
-    final db = await reader; // reader-acquire
+  static Future<T> readerRun<T>(Future<T> Function(Database db) body, {String name = 'stored read'}) async {
+    final db = await LoadTimings.shared.measure(name, 'reader acquire', () => reader); // reader-acquire
     try {
-      return await body(db);
+      return await LoadTimings.shared.measure(name, identical(db, _db) ? 'writer fallback' : 'reader query', () => body(db));
     } catch (_) {
       if (db.isOpen || identical(db, _db)) rethrow;
-      return body(await instance);
+      return LoadTimings.shared.measure(name, 'closed reader fallback', () async => body(await instance));
+    }
+  }
+
+  static Future<T> timedTransaction<T>(Database db, String name,
+      Future<T> Function(Transaction tx) body) async {
+    final queued = Stopwatch()..start();
+    Stopwatch? held;
+    try {
+      return await db.transaction((tx) async {
+        LoadTimings.shared.record(name, 'writer queue', queued.elapsedMicroseconds);
+        held = Stopwatch()..start();
+        return body(tx);
+      });
+    } finally {
+      if (held != null) LoadTimings.shared.record(name, 'transaction through commit', held!.elapsedMicroseconds);
     }
   }
 
@@ -713,7 +730,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 86;
+  static const int schemaVersion = 87;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1860,6 +1877,7 @@ class LocalDb {
       int fromSec, int toSec) => _ldbVendorSleepNights(fromSec, toSec);
 
   static Future<void> _createSleepOverride(Database db) async {
+    await SleepEditStore.create(db);
     await db.execute('''
       CREATE TABLE IF NOT EXISTS sleep_override (
         day_id TEXT PRIMARY KEY,
@@ -2349,8 +2367,11 @@ class LocalDb {
   /// Remove the override for [dayId] (revert to auto detection).
   static Future<void> deleteSleepOverride(String dayId) async {
     final db = await instance;
-    await db.delete('sleep_override', where: 'day_id = ?', whereArgs: [dayId]);
-    await releaseFrozenHeadline(dayId);
+    await timedTransaction(db, 'sleep edit receipt', (tx) async {
+      await tx.delete('sleep_override', where: 'day_id = ?', whereArgs: [dayId]);
+      await tx.delete('wake_confirmation', where: 'day_id = ?', whereArgs: [dayId]);
+      await SleepEditStore.enqueue(tx, dayId);
+    });
   }
 
   /// Every day that currently has a user override — these must be force-derived
@@ -2518,15 +2539,15 @@ class LocalDb {
     String id = kPrimaryDeviceId,
   ]) async {
     InputReads.note('wearing', '');
-    final db = await instance;
-    final r = await db.query('device', where: 'id = ?', whereArgs: [id]);
-    return r.isEmpty ? null : r.first;
+    return readerRun((db) async {
+      final r = await db.query('device', where: 'id = ?', whereArgs: [id]);
+      return r.isEmpty ? null : r.first;
+    }, name: 'device attribution');
   }
 
   /// Every device this phone knows about, most recently seen first.
   static Future<List<Map<String, Object?>>> deviceRows() async {
-    final db = await instance;
-    return db.query('device', orderBy: 'last_seen DESC');
+    return readerRun((db) => db.query('device', orderBy: 'last_seen DESC'), name: 'devices');
   }
 
   /// Forget one device. The MEASUREMENTS it wrote are untouched — "this
@@ -3114,7 +3135,8 @@ class LocalDb {
   }) => _ldbPrivToggleSpans(loSec, hiSec, onId: onId, offId: offId, deviceId: deviceId);
 
   /// Read a sync-cursor value (null if unset).
-  static Future<String?> getCursor(String name, {DatabaseExecutor? txn}) async {
+  static Future<String?> getCursor(String name, {DatabaseExecutor? txn, bool onReader = false}) async {
+    if (txn == null && onReader) return readerRun((db) => getCursor(name, txn: db), name: 'cursor read');
     final db = txn ?? await instance;
     final rows = await db.query(
       'sync_cursor',
@@ -5121,7 +5143,8 @@ class LocalDb {
     // The input revisions captured BEFORE the inputs were read (design 06 1d);
     // null for writers that did not (imports, backfills): stored as unpinned.
     InputStamp? inputStamp,
-  }) => _ldbPutDayResult(dayId: dayId, algoVersion: algoVersion, payloadJson: payloadJson, windowJson: windowJson, finalized: finalized, skipped: skipped, partial: partial, rhr: rhr, rmssd: rmssd, readiness: readiness, series: series, source: source, seriesMethod: seriesMethod, deviceFamily: deviceFamily, coverageDevices: coverageDevices, priorityHash: priorityHash, blankKeys: blankKeys, reason: reason, inputStamp: inputStamp);
+    int? sleepEditGeneration,
+  }) => _ldbPutDayResult(dayId: dayId, algoVersion: algoVersion, payloadJson: payloadJson, windowJson: windowJson, finalized: finalized, skipped: skipped, partial: partial, rhr: rhr, rmssd: rmssd, readiness: readiness, series: series, source: source, seriesMethod: seriesMethod, deviceFamily: deviceFamily, coverageDevices: coverageDevices, priorityHash: priorityHash, blankKeys: blankKeys, reason: reason, inputStamp: inputStamp, sleepEditGeneration: sleepEditGeneration);
 
   /// True when a stored or incoming payload is an import snapshot. An
   /// unreadable payload is not one: it is refused like any real row.
@@ -5336,6 +5359,12 @@ class LocalDb {
   /// Payload-free read of the served `day_result` row for [dayId]: every column
   /// except `payload_json`, plus `rev` (`COALESCE(row_rev.rev, 0)`), under
   /// [_servedAlgoCeiling]. Null when absent.
+  static Future<int?> dayComputedAtMs(String day) => readerRun((db) async {
+    final rows = await db.rawQuery('SELECT r.computed_at FROM day_result r $_servedDayJoin '
+      'WHERE r.day_id = ? LIMIT 1', [day]);
+    return rows.firstOrNull?['computed_at'] as int?;
+  }, name: 'day calculation timestamp');
+
   static Future<Map<String, dynamic>?> dayResultMeta(
     String dayId, {
     bool onReader = false,
@@ -5547,7 +5576,7 @@ class LocalDb {
 
   /// One day's stored `window_json` (see [sleepWindowRows]), or null.
   static Future<String?> sleepWindowJsonFor(String dayId) async {
-    final db = await instance;
+    return LocalDb.readerRun((db) async {
     final rows = await db.rawQuery(
       'SELECT r.window_json AS window_json '
       'FROM day_result r '
@@ -5556,6 +5585,7 @@ class LocalDb {
       [dayId],
     );
     return rows.isEmpty ? null : rows.first['window_json'] as String?;
+    }, name: 'sleepWindowJsonFor');
   }
 
   /// Every day_id that has a `day_result` row at its LATEST algo_version, newest
@@ -5955,6 +5985,7 @@ class LocalDb {
       // skipped these would silently reinstate every nap the user had deleted
       // and lose every one they logged.
       'sleep_override',
+      'sleep_edit_job',
       'sleep_nap',
       // A night the wearer confirmed awake (it makes that night final), the
       // wake settings (snooze, the Smart Wake upgrade acknowledgement) and
@@ -7168,9 +7199,11 @@ class LocalDb {
   /// an optional inclusive lower bound on `date`.
   static Future<List<Map<String, dynamic>>> journalRows({
     String? sinceDaysEpoch,
+    String? date,
   }) async {
     InputReads.note('journal', '');
-    final db = await instance;
+    return LocalDb.readerRun((db) async {
+    if (date != null) return db.query('journal', where: 'date = ?', whereArgs: [date]);
     if (sinceDaysEpoch != null) {
       return db.query(
         'journal',
@@ -7180,6 +7213,7 @@ class LocalDb {
       );
     }
     return db.query('journal', orderBy: 'date DESC');
+    }, name: 'journalRows');
   }
 
   /// Replace one day's numeric journal fields.
@@ -7200,7 +7234,7 @@ class LocalDb {
   static Future<Map<String, JournalMetricValue>> journalMetricsForDay(
     String date,
   ) async {
-    final db = await instance;
+    return LocalDb.readerRun((db) async {
     final rows = await db.query(
       'journal_metric',
       where: 'date = ?',
@@ -7213,6 +7247,7 @@ class LocalDb {
           atMinuteOfDay: (r['at_min'] as num?)?.toInt(),
         ),
     };
+    }, name: 'journalMetricsForDay');
   }
 
   /// Numeric journal fields per day, oldest first, for the correlation pass.
