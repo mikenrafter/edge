@@ -216,11 +216,14 @@ class _RenderGuideNudge extends RenderTransform {
 /// [Skeletonize] paints, so the two cannot disagree on what is covered
 /// [guide_view_test 'the tap pill never covers legible text'; guide #1 step 1
 /// 'pill overlaps no legible text or visual'].
-List<Rect> legibleContent(Element root, {required List<Rect> keep}) {
+///
+/// [textOut], when given, receives the text rects alone (paragraphs; icon glyphs only inside what is
+/// kept): the label slides clear of those while it may lie over a plain background.
+List<Rect> legibleContent(Element root, {required List<Rect> keep, List<Rect>? textOut}) {
   final rootBox = laidOutBox(root);
   if (rootBox == null) return const [];
   final plan = skeletonPlan(root, keep: keep, chrome: defaultSkeletonChrome(root));
-  final found = <Rect>[];
+  final found = <Rect>[], text = <Rect>[];
   for (final e in onstageElements(root)) {
     final ro = e is RenderObjectElement ? e.renderObject : null;
     if (ro is RenderParagraph && ro.hasSize) {
@@ -243,6 +246,7 @@ List<Rect> legibleContent(Element root, {required List<Rect> keep}) {
         final r = rectInRoot(ro, rootBox, local).intersect(visible);
         if (icon && !keep.any((k) => k.overlaps(r))) continue;
         found.add(r);
+        text.add(r);
       }
       continue;
     }
@@ -250,6 +254,7 @@ List<Rect> legibleContent(Element root, {required List<Rect> keep}) {
       found.add(rectInRoot(ro, rootBox).intersect(visibleBoundsInRoot(ro, rootBox)));
     }
   }
+  textOut?.addAll([for (final r in text) if (!r.isEmpty && !plan.any((s) => s.rect.overlaps(r))) r]);
   return [
     for (final r in found)
       if (!r.isEmpty && !plan.any((s) => s.rect.overlaps(r))) r,

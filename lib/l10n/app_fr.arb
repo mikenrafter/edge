@@ -3833,6 +3833,7 @@
   "guideRemoveTitle": "Où supprimer une sieste ou une séance qui n’était pas réelle",
   "guideRemoveStep1": "Dans l’onglet **{tab}**, touchez la carte **{card}**. Elle n’apparaît que lorsque quelque chose attend votre réponse.",
   "guideRemoveStep2": "Chaque élément a son propre **{discard}**. Touchez-le sur la sieste ou la séance qui n’a pas eu lieu ; la surbrillance montre les choix.",
+  "guideRemoveStep2Still": "Chaque élément a son propre **{discard}**. Touchez-le sur la sieste ou la séance qui n’a pas eu lieu ; le contour marque le premier.",
   "guideRemoveSavedTitle": "Déjà enregistrée ?",
   "guideRemoveSavedBody": "Ouvrez l’onglet **{sleep}** et touchez **{naps}**. Touchez **{notNap}** sur une sieste trouvée par le bracelet, ou **{delete}** sur une que vous avez enregistrée vous-même.",
   "guideRemoveMissingTitle": "Vous ne voyez pas « {card} » ?",

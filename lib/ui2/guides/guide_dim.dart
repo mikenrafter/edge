@@ -62,6 +62,10 @@ abstract interface class GuideKeepsControls {
   bool keepsControl(Element e);
 }
 
+class _HoverBindings extends ChangeNotifier {
+  void announce() => notifyListeners();
+}
+
 /// Holds the current [GuideUnitLooks] and tells the components when it changes.
 class GuideDimController extends ChangeNotifier {
   GuideUnitLooks? _looks;
@@ -76,13 +80,20 @@ class GuideDimController extends ChangeNotifier {
   Object? _hoverOwner;
   GuideHover? hoverOf(RenderBox unit) => _hovers[unit];
 
+  final _bindings = _HoverBindings();
+
+  /// Tells the components that a hover was bound or unbound. Apart from the plan's listeners: a
+  /// binding change is a few components' business, never a repaint of every component.
+  /// CLAIM(hover-binding-own-listenable) [guide_r7_fix1_test F1].
+  Listenable get hoverBindings => _bindings;
+
   /// Bind once after layout. Only the target's own render layer paints hover.
   void setHovers(Map<RenderBox, GuideHover> hovers, {Object? owner}) {
     if (_disposed) return;
     _hoverOwner = owner;
     final old = _hovers.values.toSet();
     _hovers..clear()..addAll(hovers);
-    notifyListeners();
+    _bindings.announce();
     for (final hover in old.difference(hovers.values.toSet())) { hover.dispose(); }
   }
 
@@ -102,6 +113,7 @@ class GuideDimController extends ChangeNotifier {
     _looks = null;
     for (final hover in _hovers.values.toSet()) { hover.dispose(); }
     _hovers.clear();
+    _bindings.dispose();
     _pulse.dispose();
     super.dispose();
   }

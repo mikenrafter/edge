@@ -62,6 +62,8 @@ Guide get removeDetectedGuide => Guide(
             multi: const GuideMultiTarget(targets: ReviewRowButtons()),
             action: GuideAction.tap,
             caption: GuideCopy.removeCaptionDiscard,
+            // Reduced motion draws the outline, not the highlight the moving caption names.
+            stillCaption: GuideCopy.removeCaptionDiscardStill,
           ),
           GuideStep(
             id: 'save',

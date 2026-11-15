@@ -160,6 +160,29 @@ class PickerGroupHeaders implements GuideContent {
   }
 }
 
+/// The headers of the picker's open groups (the chevron has turned): resolves to something exactly while
+/// a group is open, whether or not the header is in view. Read from the widgets' state, not from geometry,
+/// so a group that is still opening counts.
+class PickerOpenGroup implements GuideContent {
+  const PickerOpenGroup();
+
+  static bool _turned(Element e) {
+    final w = e.widget;
+    return w is AnimatedRotation && w.turns != 0;
+  }
+
+  @override
+  List<TargetFound> resolve(Element root, AppLocalizations l) {
+    final rootBox = laidOutBox(root);
+    if (rootBox == null) return const [];
+    return [
+      for (final e in onstageElements(root))
+        if (e.widget is Pressable && onstageElements(e).any(_turned))
+          if (laidOutBox(e) case final RenderBox box) TargetFound(rectInRoot(box, rootBox), renderObject: box),
+    ];
+  }
+}
+
 /// The first [count] activity rows the picker shows (those of the open group).
 class PickerRows implements GuideContent {
   final int count;

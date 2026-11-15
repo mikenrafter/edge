@@ -35,7 +35,7 @@ abstract interface class GuideHandEvents {
 
 /// A ripple that left the fingertip [ageMs] ago.
 class GuideRipple {
-  final Offset at;
+  Offset at;
   double ageMs;
   GuideRipple(this.at, this.ageMs);
 }
@@ -113,6 +113,9 @@ final class _Sweep extends _Phase {
   Offset? from;
   double k = 0;
   GuideHandPath? path;
+
+  /// How far the targets have moved (a scroll) since [path] was sampled.
+  Offset shift = Offset.zero;
 }
 
 final class _Press extends _Phase {
@@ -132,6 +135,7 @@ final class _Drift extends _Phase {
   final int to;
   _Drift(this.to) : super(1100);
   GuideHandPath? path;
+  Offset shift = Offset.zero;
 }
 
 /// The hand's motion. Feed it the elapsed time and the current rects of the visiting set (in
@@ -170,22 +174,24 @@ class GuideHandMachine {
     return GuideHandPath(a, b, bend);
   });
 
+  /// Takes the visiting set's rects of this frame. Segments are sampled when a sweep begins and
+  /// reused while the geometry holds. A scroll moves every rect by the same amount: the hand moves
+  /// with them (its loop keeps its phase) instead of finishing the sweep at the old place.
   void _targets(List<Rect> rects) {
     if (identical(rects, _rects) || listEquals(rects, _rects)) return;
+    final old = _rects;
     _rects = rects;
     _paths.clear();
     _drifts.clear();
-    // All neighbour/reversal paths are sampled once for this geometry. Initial
-    // arrival and a mode transition may add one segment from the current tip.
-    for (final a in rects) {
-      for (final b in rects) {
-        for (final amp in [10.0, 14.0, 24.0, 26.0]) {
-          for (final sign in [-1.0, 1.0]) {
-            _path(a.center, b.center, guideWaveBend(a.center, b.center, sign, amp: amp));
-          }
-        }
-      }
+    if (old.length != rects.length || old.isEmpty) return;
+    final d = rects.first.topLeft - old.first.topLeft;
+    for (var i = 0; i < rects.length; i++) {
+      if (rects[i].size != old[i].size || (rects[i].topLeft - old[i].topLeft - d).distance > .01) return;
     }
+    tip += d;
+    final phase = _phase;
+    if (phase is _Sweep) { phase.shift += d; } else if (phase is _Drift) { phase.shift += d; }
+    for (final r in ripples) { r.at += d; }
   }
 
 
@@ -208,8 +214,13 @@ class GuideHandMachine {
     _queue.clear();
   }
 
+  /// How many times the loop was restarted (for tests: a scroll must not restart it).
+  @visibleForTesting
+  int restartCount = 0;
+
   /// Restarts from the beginning of the current mode.
   void restart() {
+    restartCount++;
     ripples.clear();
     _queue.clear();
     _phase = null;
@@ -331,7 +342,7 @@ class GuideHandMachine {
         tip = c + Offset(p.dx, p.dy);
         press = 1;
       case _Sweep():
-        tip = p.path!.at(_ease(s));
+        tip = p.path!.at(_ease(s)) + p.shift;
       case _Press():
         press = p.down ? 1 - .14 * s : .86 + .14 * s;
         if (p.down && s >= 1) {
@@ -341,12 +352,14 @@ class GuideHandMachine {
       case _Along():
         tip = _center(0) + _backVector * (p.inward ? 1 - _ease(s) : _ease(s));
       case _Drift():
-        tip = p.path!.at(_ease(s));
+        tip = p.path!.at(_ease(s)) + p.shift;
     }
   }
 
   void _end(_Phase p) {
     if (p is _Press && !p.down) press = 1;
+    // Land exactly on the centre: the next sweep's cache key then matches its neighbours'.
+    if (p is _Sweep) tip = _center(p.to);
   }
 
   /// Phases still queued (for tests).

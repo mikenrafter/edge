@@ -58,7 +58,15 @@ class GuideMultiTarget {
 
   /// The visiting set once [opens] has opened (null: [targets]).
   final GuideContent? afterOpen;
-  const GuideMultiTarget({required this.targets, this.label, this.visit = GuideVisit.row, this.opens, this.afterOpen});
+
+  /// Resolves to something while [opens]'s control is already open (the user opened it): the guide
+  /// then skips its own press, which would toggle it shut.
+  final GuideContent? alreadyOpen;
+
+  /// What the label sits above once [opens] has opened (null: the visiting set), so it does not
+  /// cover the rows of an open list.
+  final GuideContent? labelAfterOpen;
+  const GuideMultiTarget({required this.targets, this.label, this.visit = GuideVisit.row, this.opens, this.afterOpen, this.alreadyOpen, this.labelAfterOpen});
 }
 
 class GuideStep {
@@ -86,6 +94,13 @@ class GuideStep {
   final GuideAction action;
   final GuideText caption;
 
+  /// The caption under reduced motion, when the step's aid differs from the animated one
+  /// (a step whose caption mentions the moving highlight); null: [caption] serves both.
+  final GuideText? stillCaption;
+
+  /// The caption to show: [stillCaption] when [still] and there is one.
+  GuideText captionFor({required bool still}) => still ? stillCaption ?? caption : caption;
+
   /// Several choices visited by the moving hand; any can perform the step.
   final GuideMultiTarget? multi;
 
@@ -99,6 +114,7 @@ class GuideStep {
     this.alsoRead = const [],
     required this.action,
     required this.caption,
+    this.stillCaption,
     this.multi,
   });
 

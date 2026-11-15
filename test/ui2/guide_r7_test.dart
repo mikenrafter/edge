@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ui2/guides/guide_catalogue.dart';
+import 'package:openstrap_edge/ui2/guides/guide_dim.dart' show GuideUnitLook;
 import 'package:openstrap_edge/ui2/guides/guide_hand.dart';
 import 'package:openstrap_edge/ui2/guides/guide_markers.dart';
 import 'package:openstrap_edge/ui2/guides/help_screen.dart';
@@ -31,9 +32,15 @@ void main() {
         expect(overlay.targetRect, isNotNull, reason: scene.id);
         expect(find.byKey(LiveGuideOverlay.handKey), findsOneWidget, reason: '${scene.id}: target=${overlay.targetRect} hover=${overlay.handTargets.map((t) => t.rect)} reveal=${overlay.revealProgress}');
         expect(find.byKey(LiveGuideOverlay.outlineKey), findsNothing, reason: scene.id);
+        // Every target, not any one: each has its own component bound to a hover, and none of them is drawn as
+        // placeholders (paint returned before the hover there). Review F5.
         final marks = find.byType(GuideUnitMark).evaluate().map((e) => e.renderObject).whereType<RenderGuideUnit>()
             .where((o) => o.hover != null).toList();
         expect(marks, isNotEmpty, reason: '${scene.id}: target has no component hover painter');
+        expect(marks.length, overlay.handTargets.length, reason: '${scene.id}: ${overlay.handTargets.length} targets, ${marks.length} hovers');
+        for (final mark in marks) {
+          expect(mark.paintedLook, isNot(GuideUnitLook.skeleton), reason: '${scene.id}: a hover on a placeholder is never drawn');
+        }
         expect(overlay.handActive, isTrue, reason: scene.id);
         if (m.run.currentStep!.multi == null) expect(overlay.hand.mode, GuideHandMode.single, reason: scene.id);
       } finally { await disposeR2(t, m); }
@@ -76,7 +83,14 @@ void main() {
       final union = targets.reduce((a, b) => a.expandToInclude(b));
       final pill = find.byKey(LiveGuideOverlay.tapPillKey);
       expect(t.widget<GuideMarkerPill>(pill).color, C.blue);
-      expect(t.getRect(pill).center.dx, closeTo(union.center.dx, 1));
+      // Centred over the choices unless that would cover legible text; then slid along them, never off them.
+      final centred = Rect.fromCenter(center: Offset(union.center.dx, t.getRect(pill).center.dy), width: t.getRect(pill).width, height: t.getRect(pill).height);
+      expect(t.getRect(pill).center.dx > union.left && t.getRect(pill).center.dx < union.right, isTrue);
+      if (!overlay.legibleTextRects.any((r) => centred.overlaps(r.deflate(1)))) {
+        expect(t.getRect(pill).center.dx, closeTo(union.center.dx, 1));
+      } else {
+        expect(t.getRect(pill).center.dx, isNot(closeTo(union.center.dx, 1)), reason: 'moved only because text was in the way');
+      }
       expect(t.getRect(pill).bottom, lessThanOrEqualTo(union.top));
       final caption = m.run.currentStep!.caption.of(r2Locale);
       expect(caption, contains('**Discard**'));

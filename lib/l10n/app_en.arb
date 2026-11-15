@@ -18932,6 +18932,16 @@
       }
     }
   },
+  "guideRemoveStep2Still": "Every item has its own **{discard}**. Tap it on the nap or workout that didn't happen; the outline marks the first one.",
+  "@guideRemoveStep2Still": {
+    "description": "Step 2 caption under reduced motion, where the outline (not the moving highlight) marks the first item. {discard} is the in-app name of the Discard button.",
+    "placeholders": {
+      "discard": {
+        "type": "String",
+        "description": "Name of the Discard button"
+      }
+    }
+  },
   "guideRemoveSavedTitle": "Already saved?",
   "@guideRemoveSavedTitle": {
     "description": "Footer card title: the nap or workout was already accepted earlier."

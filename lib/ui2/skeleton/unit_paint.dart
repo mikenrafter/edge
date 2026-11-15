@@ -93,6 +93,29 @@ class GuideUnitMark extends SingleChildRenderObjectWidget {
   }
 }
 
+/// The component that paints the hover for [target]: its own (or one inside it) as big as it is;
+/// a loose labelled control can use its enclosing component. Resolved with layout, never per frame.
+RenderGuideUnit? guideHoverMark(RenderBox target) {
+  RenderGuideUnit? found;
+  void visit(RenderObject object) {
+    if (found != null) return;
+    if (object is RenderGuideUnit && object.hasSize && object.size == target.size) {
+      found = object;
+      return;
+    }
+    object.visitChildren(visit);
+  }
+  visit(target);
+  if (found != null) return found;
+  // Never above the target's own scrollable: such a component does not scroll with the target and the
+  // viewport does not clip it, so its hover rect would drift (the overlay rect the owner rejected).
+  for (RenderObject? parent = target.parent; parent != null; parent = parent.parent) {
+    if (parent is RenderGuideUnit) return parent;
+    if (parent is RenderAbstractViewport || parent is RenderSliver) return null;
+  }
+  return null;
+}
+
 /// Paints the child, then the component's own look over it.
 class RenderGuideUnit extends RenderProxyBox {
   RenderGuideUnit(this._component, this._controller);
@@ -108,7 +131,7 @@ class RenderGuideUnit extends RenderProxyBox {
 
   set controller(GuideDimController? value) {
     if (identical(_controller, value)) return;
-    if (attached) _controller?.removeListener(_planChanged);
+    if (attached) _unlisten();
     _pulse.stop();
     _controller = value;
     if (attached) _listen();
@@ -146,12 +169,17 @@ class RenderGuideUnit extends RenderProxyBox {
     _hover = next;
     _hover?.addListener(_hoverChanged);
     if (wasBoundary != isRepaintBoundary) markNeedsCompositingBitsUpdate();
+    markNeedsPaint();
   }
 
   void _hoverChanged() { markNeedsPaint(); }
 
   @visibleForTesting
   GuideHover? get hover => _hover;
+
+  /// The look this component paints now (what [paint] reads from the plan).
+  @visibleForTesting
+  GuideUnitLook? get paintedLook => _component.mounted ? _controller?.looks?.lookOf(_component) : null;
 
   @override
   void performLayout() {
@@ -168,13 +196,23 @@ class RenderGuideUnit extends RenderProxyBox {
 
   void _listen() {
     final c = _controller;
-    if (c != null && !c.isDisposed) c.addListener(_planChanged);
+    if (c != null && !c.isDisposed) {
+      c.addListener(_planChanged);
+      c.hoverBindings.addListener(_followHover);
+    }
     _followHover();
+  }
+
+  void _unlisten() {
+    final c = _controller;
+    if (c == null) return;
+    c.removeListener(_planChanged);
+    if (!c.isDisposed) c.hoverBindings.removeListener(_followHover);
   }
 
   @override
   void detach() {
-    _controller?.removeListener(_planChanged);
+    _unlisten();
     _hover?.removeListener(_hoverChanged);
     _hover = null;
     _pulse.stop();
@@ -209,23 +247,11 @@ class RenderGuideUnit extends RenderProxyBox {
       GuidePlaceholderPaint.of(_component, fade: _controller?.fade ?? 1, pulse: _controller?.pulse ?? 1,
           keeps: looks is GuideKeepsControls ? looks as GuideKeepsControls : null)
           .paint(context, child!, offset, size);
+      _paintHover(context, offset);
       return;
     }
     super.paint(context, offset);
-    final hover = _hover;
-    if (hover != null && hover.value > .004) {
-      final rr = RRect.fromRectAndRadius(hover.rect.shift(offset), Radius.circular(hover.radius));
-      final canvas = context.canvas;
-      // Filled outer blur takes a rectangular fast path on large targets and
-      // adds a second tint inside. Blurring only the border keeps the centre
-      // uniform. CLAIM(hover-in-target-tree) [guide_r7_hover_test RGB check].
-      canvas.drawRRect(rr, Paint()..color = hover.color.withValues(alpha: .55 * hover.value)
-        ..style = PaintingStyle.stroke..strokeWidth = 2
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7));
-      canvas.drawRRect(rr, Paint()..color = hover.color.withValues(alpha: .26 * hover.value));
-      canvas.drawRRect(rr.deflate(.5), Paint()..color = hover.color.withValues(alpha: .55 * hover.value)
-        ..style = PaintingStyle.stroke..strokeWidth = 1);
-    }
+    _paintHover(context, offset);
     if (look == null) return;
     final canvas = context.canvas;
     switch (look) {
@@ -240,6 +266,25 @@ class RenderGuideUnit extends RenderProxyBox {
         }
       case GuideUnitLook.skeleton:
         break;
+    }
+  }
+
+  /// The guide's hover highlight on this component, in its own coordinates (so it follows scroll and
+  /// stretch), over its content and over its placeholders alike.
+  void _paintHover(PaintingContext context, Offset offset) {
+    final hover = _hover;
+    if (hover != null && hover.value > .004) {
+      final rr = RRect.fromRectAndRadius(hover.rect.shift(offset), Radius.circular(hover.radius));
+      final canvas = context.canvas;
+      // Filled outer blur takes a rectangular fast path on large targets and
+      // adds a second tint inside. Blurring only the border keeps the centre
+      // uniform. CLAIM(hover-in-target-tree) [guide_r7_hover_test RGB check].
+      canvas.drawRRect(rr, Paint()..color = hover.color.withValues(alpha: .55 * hover.value)
+        ..style = PaintingStyle.stroke..strokeWidth = 2
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7));
+      canvas.drawRRect(rr, Paint()..color = hover.color.withValues(alpha: .26 * hover.value));
+      canvas.drawRRect(rr.deflate(.5), Paint()..color = hover.color.withValues(alpha: .55 * hover.value)
+        ..style = PaintingStyle.stroke..strokeWidth = 1);
     }
   }
 }

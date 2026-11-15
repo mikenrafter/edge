@@ -3851,6 +3851,7 @@
   "guideRemoveTitle": "Dónde quitar una siesta o una sesión que no fue real",
   "guideRemoveStep1": "En la pestaña **{tab}**, toca la tarjeta **{card}**. Solo aparece mientras haya algo esperando tu respuesta.",
   "guideRemoveStep2": "Cada elemento tiene su propio **{discard}**. Tócalo en la siesta o la sesión que no ocurrió; el resaltado muestra las opciones.",
+  "guideRemoveStep2Still": "Cada elemento tiene su propio **{discard}**. Tócalo en la siesta o la sesión que no ocurrió; el contorno marca el primero.",
   "guideRemoveSavedTitle": "¿Ya la guardaste?",
   "guideRemoveSavedBody": "Abre la pestaña **{sleep}** y toca **{naps}**. Toca **{notNap}** en una siesta que encontró la banda, o **{delete}** en una que registraste tú.",
   "guideRemoveMissingTitle": "¿No ves «{card}»?",

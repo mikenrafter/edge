@@ -51,6 +51,8 @@ Guide get startStopWorkoutGuide => Guide(
               visit: GuideVisit.list,
               opens: FirstOf(PickerGroupHeaders()),
               afterOpen: ContentList([TargetContent(_search), PickerRows(3)]),
+              alreadyOpen: PickerOpenGroup(),
+              labelAfterOpen: PickerRows(3),
             ),
             action: GuideAction.tap,
             caption: GuideCopy.startWorkoutCaptionChooseActivity,
