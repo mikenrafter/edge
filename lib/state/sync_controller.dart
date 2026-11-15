@@ -1339,6 +1339,7 @@ class SyncController {
       _deriveScheduler.markManualDeriveStarted(hold);
       int? scoped;
       await _deriveCoordinator.afterDrain(
+        processingContext: await _deriveScheduler.pendingProcessingContext(),
         heavy: true,
         changedOnly: true,
         onScope: (total) {

@@ -1068,6 +1068,18 @@ Future<Database> _ldbPrivOpen() async {
           // Empty deleted-day marker table; nothing is inferred for old deletes.
           await createTrackTables(db);
         }
+        if (oldV < 87) {
+          // Delivery provenance only. Existing jobs default to silent reanalysis.
+          await LocalDb._createComputeState(db);
+          // An already flagged day with a legacy medical claim has already
+          // spent its daily interruption. Preserve that across the key split;
+          // never claim an unflagged day or an unrelated future day.
+          await db.execute("INSERT OR IGNORE INTO notif_fired(key, fired_at) "
+              "SELECT s.date || ':irregular-pulse', f.fired_at "
+              "FROM metric_series s JOIN notif_fired f "
+              "ON f.key = s.date || ':exception:medical' "
+              "WHERE s.key = 'irregular_rhythm_flag' AND s.value = 1");
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);
@@ -2381,6 +2393,10 @@ Future<void> _ldbPrivCreateComputeState(Database db) async {
         updated_at INTEGER NOT NULL
       )
     ''');
+    final jobColumns = await db.rawQuery('PRAGMA table_info(compute_jobs)');
+    if (!jobColumns.any((c) => c['name'] == 'processing_context')) {
+      await db.execute('ALTER TABLE compute_jobs ADD COLUMN processing_context TEXT');
+    }
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_compute_jobs_state_pri ON compute_jobs(state, priority DESC, updated_at ASC)',
     );

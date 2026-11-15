@@ -103,6 +103,7 @@ import 'day_tail_fold.dart';
 import 'minute_bills.dart';
 import 'step_cadence.dart';
 import 'profile.dart';
+import 'processing_context.dart';
 import 'substrate.dart';
 import 'substrate_retention.dart';
 import 'union_cut_heavy.dart';
@@ -2656,6 +2657,7 @@ class DerivationEngine {
   /// step runs, so a screen can tell which results are still on the way.
   Future<int> run(
     Profile profile, {
+    ProcessingContext processingContext = ProcessingContext.reanalysis,
     bool heavy = false,
     bool force = false,
     bool changedOnly = false,
@@ -2888,6 +2890,22 @@ class DerivationEngine {
         if (!noData) await _pruneOldDecoded(scope.rawDays, dataNowSec);
         return rescored;
       }
+      final previousPulseResults = <String, ({int version, bool imported})>{};
+      if (!force && processingContext.origin == ProcessingOrigin.recentSync) {
+        for (final day in processingContext.pulseDays.keys) {
+          final previous = await LocalDb.dayResult(day);
+          if (previous != null) {
+            previousPulseResults[day] = (
+              version: (previous['algo_version'] as num).toInt(),
+              imported: RegExp(r'"imported"\s*:\s*true')
+                  .hasMatch(previous['payload_json'] as String? ?? ''),
+            );
+          }
+        }
+      }
+      final pulseContext = processingContext.forDerivation(
+          forced: force, algoVersion: kAlgoVersion, previous: previousPulseResults);
+      final pulseCommitted = <String>{};
       _diag['todo_days'] = todoDays.length;
       onScope?.call(todoDays.length);
       onScopeDays?.call(todoDays.reversed.toList());
@@ -2973,6 +2991,7 @@ class DerivationEngine {
               }
               reportDone = false;
             } else if (committed == DayDerive.committed) {
+              if (pulseContext.pulseDays.containsKey(dayId)) pulseCommitted.add(dayId);
               done++;
               _diag['done_days'] = done;
               await _recordDerivedFingerprint(dayId, dayFp[dayId], committed: true);
@@ -3063,7 +3082,7 @@ class DerivationEngine {
         }
         _diag['stage'] = 'notifications';
         _calcStage('Notifications');
-        await _runNotifications();
+        await _runNotifications(processingContext: pulseContext.onlyDays(pulseCommitted));
       }
       // 5. Prune raw — never for a day still inside its raw window / not finalized.
       // Runs on EVERY derive, not just a full restage: `rawRetentionDays` is
@@ -4359,6 +4378,7 @@ class DerivationEngine {
     void Function(String day)? onDayDone,
   }) async {
     if (sub.isEmpty || dates.isEmpty) return 0;
+    await LocalDb.invalidatePulseDelivery();
     // Under the SAME lock as run()/runDays(): this writes day_result rows, and
     // an import racing a background derive of the same day is exactly the
     // partial-overwrites-complete case the lock exists for.
@@ -5592,11 +5612,13 @@ class DerivationEngine {
   @visibleForTesting
   /// [today] pins the day the pass runs on, so a test's seed and the pass
   /// agree even across a real midnight.
-  Future<void> runNotificationsForTest({String? today}) =>
-      _runNotifications(today: today);
+  Future<void> runNotificationsForTest({String? today,
+    ProcessingContext processingContext = ProcessingContext.reanalysis}) =>
+      _runNotifications(today: today, processingContext: processingContext);
 
-  Future<void> _runNotifications({String? today}) =>
-      perf.stage('notifications', () => _runNotificationsUntimed(today: today));
+  Future<void> _runNotifications({String? today,
+    ProcessingContext processingContext = ProcessingContext.reanalysis}) =>
+      perf.stage('notifications', () => _runNotificationsUntimed(today: today, processingContext: processingContext));
 
 
   /// Decode a stored day bundle, normalizing the compact curve format back to

@@ -33,6 +33,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 
 import '../../data/db.dart';
+import '../../compute/processing_context.dart';
 import '../../data/models.dart';
 import '../../sync/import_gate.dart';
 import '_registry.dart' show DeviceCategory, TimeAnchor;
@@ -644,6 +645,7 @@ class BandHost {
         deviceFamily: deviceFamily,
         deviceId: deviceId,
         onCheckpoint: onLog,
+        processingOrigin: ProcessingOrigin.recentSync,
       );
     } catch (e) {
       onLog('[${adapter.id}] native commit failed: $e');

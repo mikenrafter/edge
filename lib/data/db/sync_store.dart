@@ -291,7 +291,7 @@ Future<List<List<int>>> _ldbPrivToggleSpans(int loSec, int hiSec, {required int 
     return spans;
   }
 
-Future<void> _ldbCommitSyncBatch(List<RawRecord> raws, List<Sample?> samples, {required String? trimToken, required Map<String, String>? extraCursors, required List<ArchiveRecord>? archives, required List<NeutralSample>? neutrals, required List<EcgRawPacket>? ecgRawPackets, required void Function(String)? onCheckpoint, required String? deviceFamily, required String deviceId, required Map<String, int>? coverageToleranceSec}) =>
+Future<void> _ldbCommitSyncBatch(List<RawRecord> raws, List<Sample?> samples, {required String? trimToken, required Map<String, String>? extraCursors, required List<ArchiveRecord>? archives, required List<NeutralSample>? neutrals, required List<EcgRawPacket>? ecgRawPackets, required void Function(String)? onCheckpoint, required String? deviceFamily, required String deviceId, required Map<String, int>? coverageToleranceSec, required ProcessingOrigin processingOrigin}) =>
       LocalDb._withCommitGate(() => LocalDb._commitSyncBatchLocked(
             raws,
             samples,
@@ -304,9 +304,10 @@ Future<void> _ldbCommitSyncBatch(List<RawRecord> raws, List<Sample?> samples, {r
             deviceFamily: deviceFamily,
             deviceId: deviceId,
             coverageToleranceSec: coverageToleranceSec,
+            processingOrigin: processingOrigin,
           ));
 
-Future<void> _ldbPrivCommitSyncBatchLocked(List<RawRecord> raws, List<Sample?> samples, {required String? trimToken, required Map<String, String>? extraCursors, required List<ArchiveRecord>? archives, required List<NeutralSample>? neutrals, required List<EcgRawPacket>? ecgRawPackets, required void Function(String)? onCheckpoint, required String? deviceFamily, required String deviceId, required Map<String, int>? coverageToleranceSec}) async {
+Future<void> _ldbPrivCommitSyncBatchLocked(List<RawRecord> raws, List<Sample?> samples, {required String? trimToken, required Map<String, String>? extraCursors, required List<ArchiveRecord>? archives, required List<NeutralSample>? neutrals, required List<EcgRawPacket>? ecgRawPackets, required void Function(String)? onCheckpoint, required String? deviceFamily, required String deviceId, required Map<String, int>? coverageToleranceSec, required ProcessingOrigin processingOrigin}) async {
     // NEUTRAL ROWS BELONG TO A NON-PRIMARY DEVICE. "" is the primary band
     // permanently (see kPrimaryDeviceId); a neutral-sample writer is by
     // definition a band with no framed record, which the primary is not.
@@ -333,6 +334,7 @@ Future<void> _ldbPrivCommitSyncBatchLocked(List<RawRecord> raws, List<Sample?> s
       }
     }
 
+    var pulseContext = ProcessingContext.reanalysis;
     final db = await LocalDb.instance;
     // POWER-LOSS DURABILITY WINDOW. This is the ACK-gating commit: once it
     // returns, the caller writes the BLE batch-ACK and the band trims its flash.
@@ -391,6 +393,15 @@ Future<void> _ldbPrivCommitSyncBatchLocked(List<RawRecord> raws, List<Sample?> s
     }
     try {
       await db.transaction((txn) async {
+        if (processingOrigin == ProcessingOrigin.recentSync && deviceId == LocalDb.kPrimaryDeviceId) {
+          // Read novelty before REPLACE, inside the same serialized transaction.
+          // A replay or correction of an existing second cannot authorize an alert.
+          try {
+            pulseContext = await _pulseArrivalContext(txn, raws, samples);
+          } catch (_) {
+            // Delivery metadata must never prevent raw capture or ACK.
+          }
+        }
         // Read the existing high-water THROUGH the txn — never via the global db
         // handle, which would deadlock against this same open transaction.
         final kCounter = LocalDb.cursorKeyFor('counter_hw', deviceId);
@@ -558,6 +569,7 @@ Future<void> _ldbPrivCommitSyncBatchLocked(List<RawRecord> raws, List<Sample?> s
         // the rows is the correct failure mode (rolls back with them).
         await LocalDb._writeCaptureFreshness(txn, raws);
       });
+      await _queuePulseArrival(pulseContext);
     } finally {
       // ALWAYS restore NORMAL — even if the commit threw — so a leaked FULL does
       // not fsync every subsequent write on this connection. Non-fatal.
@@ -1485,10 +1497,14 @@ Future<Map<String, dynamic>> _ldbBandSignalsStats() async {
     };
   }
 
-Future<void> _ldbInsertRecordsBatch(List<RawRecord> raws, List<Sample?> samples) async {
+Future<void> _ldbInsertRecordsBatch(List<RawRecord> raws, List<Sample?> samples, {ProcessingOrigin processingOrigin = ProcessingOrigin.historical}) async {
     if (raws.isEmpty) return;
     final db = await LocalDb.instance;
+    var pulseContext = ProcessingContext.reanalysis;
     await db.transaction((txn) async {
+      if (processingOrigin == ProcessingOrigin.recentSync) {
+        try { pulseContext = await _pulseArrivalContext(txn, raws, samples); } catch (_) {}
+      }
       final batch = txn.batch();
       for (var i = 0; i < raws.length; i++) {
         final raw = raws[i];
@@ -1497,6 +1513,7 @@ Future<void> _ldbInsertRecordsBatch(List<RawRecord> raws, List<Sample?> samples)
       }
       await batch.commit(noResult: true);
     });
+    await _queuePulseArrival(pulseContext);
   }
 
 Future<void> _ldbUpsertSyncLedgerEntry({required String chunkId, required String kind, required String status, required int? ackedAt, required String? lastError, required Map<String, dynamic>? metaPatch, required DatabaseExecutor? txn}) async {
@@ -2047,3 +2064,45 @@ Future<int?> _ldbLastDecodedRecTs() async {
     );
   }
 
+
+// Bounded to the incoming pulse-bearing records; no history-wide scan.
+Future<ProcessingContext> _pulseArrivalContext(DatabaseExecutor txn,
+    List<RawRecord> raws, List<Sample?> samples) async {
+  final candidates = <int, int>{};
+  final now = LocalDb.nowMs();
+  for (var i = 0; i < raws.length && i < samples.length; i++) {
+    final raw = raws[i];
+    if (samples[i]?.rrIntervalsMs.isEmpty ?? true) continue;
+    final ts = raw.recTs;
+    if (ts == null || ts <= 0) continue;
+    final latency = raw.capturedAt - ts * 1000;
+    if (latency < 0 || latency > kPulseAlertArrivalBudget.inMilliseconds ||
+        raw.capturedAt > now || now - raw.capturedAt > kPulseAlertArrivalBudget.inMilliseconds) {
+      continue;
+    }
+    candidates[ts] = raw.capturedAt;
+  }
+  final seconds = candidates.keys.toList();
+  for (var start = 0; start < seconds.length; start += 400) {
+    final end = start + 400 < seconds.length ? start + 400 : seconds.length;
+    final part = seconds.sublist(start, end);
+    final rows = await txn.rawQuery(
+        'SELECT rec_ts FROM decoded_onehz WHERE device_id = ? AND rec_ts IN (${List.filled(part.length, '?').join(',')}) '
+        'UNION SELECT rec_ts FROM decoded_rr WHERE device_id = ? AND rec_ts IN (${List.filled(part.length, '?').join(',')})',
+        [LocalDb.kPrimaryDeviceId, ...part, LocalDb.kPrimaryDeviceId, ...part]);
+    for (final row in rows) { candidates.remove((row['rec_ts'] as num).toInt()); }
+  }
+  return ProcessingContext.arrival([
+    for (final e in candidates.entries) (recordedMs: e.key * 1000, arrivedMs: e.value),
+  ], historyRevision: await LocalDb._pulseHistoryRevisionVia(txn));
+}
+
+Future<void> _queuePulseArrival(ProcessingContext context) async {
+  if (context.pulseDays.isEmpty) return;
+  try {
+    await LocalDb.enqueueDeriveJob(type: 'derive_light',
+        reason: 'recent_pulse_sync', processingContext: context);
+  } catch (_) {
+    // Delivery intent is optional; the raw commit must still succeed.
+  }
+}

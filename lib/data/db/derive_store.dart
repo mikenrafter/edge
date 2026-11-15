@@ -1464,7 +1464,7 @@ Future<void> _ldbPrivComputeAndWriteFreshness() async {
     );
   }
 
-Future<void> _ldbEnqueueDeriveJob({required String type, required String reason}) async {
+Future<void> _ldbEnqueueDeriveJob({required String type, required String reason, required ProcessingContext processingContext}) async {
     final db = await LocalDb.instance;
     final now = LocalDb.nowMs();
     await db.transaction((txn) async {
@@ -1473,29 +1473,38 @@ Future<void> _ldbEnqueueDeriveJob({required String type, required String reason}
       // than be absorbed into a pass that cannot see it.
       final active = await txn.query(
         'compute_jobs',
-        columns: ['id', 'type', 'state'],
-        where: 'scope = ? AND state = ?',
-        whereArgs: ['derive', 'queued'],
+        columns: ['id', 'type', 'state', 'processing_context'],
+        where: "scope = ? AND state = ? AND COALESCE(json_extract(processing_context, '\$.origin'), 'reanalysis') = ?",
+        whereArgs: ['derive', 'queued', processingContext.origin.name],
       );
-      bool hasType(String t) =>
-          active.any((row) => row['type']?.toString() == t);
-      if (type == 'derive_light') {
-        if (hasType('derive_light') || hasType('derive_heavy')) return;
-      } else if (type == 'derive_heavy') {
-        if (hasType('derive_heavy')) return;
+      final existing = active.where((r) => r['type'] == type ||
+          (type == 'derive_light' && r['type'] == 'derive_heavy')).firstOrNull;
+      if (existing != null) {
+        await txn.update('compute_jobs', {
+          'processing_context': ProcessingContext.decode(existing['processing_context'])
+              .merge(processingContext).encode(),
+        }, where: 'id = ?', whereArgs: [existing['id']]);
+        return;
+      }
+      if (type == 'derive_heavy') {
+        for (final row in active) {
+          processingContext = processingContext.merge(ProcessingContext.decode(row['processing_context']));
+        }
         await txn.delete(
           'compute_jobs',
-          where: 'scope = ? AND state = ? AND type = ?',
-          whereArgs: ['derive', 'queued', 'derive_light'],
+          where: "scope = ? AND state = ? AND type = ? AND COALESCE(json_extract(processing_context, '\$.origin'), 'reanalysis') = ?",
+          whereArgs: ['derive', 'queued', 'derive_light', processingContext.origin.name],
         );
       }
       await txn.insert('compute_jobs', {
         'id': 'derive_${type}_${now}_${++LocalDb._deriveJobSeq}',
         'type': type,
         'scope': 'derive',
-        'priority': type == 'derive_heavy' ? 200 : 100,
+        'priority': processingContext.origin == ProcessingOrigin.recentSync
+            ? 300 : type == 'derive_heavy' ? 200 : 100,
         'state': 'queued',
         'reason': reason,
+        'processing_context': processingContext.encode(),
         'depends_on': null,
         'input_from_ts': null,
         'input_to_ts': null,

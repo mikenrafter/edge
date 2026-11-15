@@ -13416,7 +13416,7 @@
   "@supplementYourBandHasnTSynced0a4dfd": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
-  "supplementYourBeatToBeatPatternfed8f0": "Your beat-to-beat pattern looked irregular today. This is a screen, not a diagnosis — see a clinician if you have symptoms.",
+  "supplementYourBeatToBeatPatternfed8f0": "We have not measured how often this rule is right or how often it misses a rhythm problem. Movement, sensor fit, and extra beats can produce a similar pattern. It cannot identify atrial fibrillation (AF), and an unflagged recording cannot rule out a rhythm problem. A clinician can use an ECG to assess your heart rhythm. If flags repeat, consider clinician follow-up even without symptoms.",
   "@supplementYourBeatToBeatPatternfed8f0": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
@@ -16662,9 +16662,15 @@
   "@findingTitleTemp": {
     "description": "Design 04 cardio transparency: Skin temperature elevated"
   },
-  "findingTitleIrregularRhythm": "Irregular pulse pattern flagged",
+  "findingTitleIrregularRhythm": "Irregular pulse pattern flagged on {day}",
   "@findingTitleIrregularRhythm": {
-    "description": "Design 04 cardio transparency: Irregular pulse pattern flagged"
+    "description": "Daily pulse flag wording. day is the recorded local calendar date, never the processing date.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "Thu 12 Nov 2026"
+      }
+    }
   },
   "findingTitleRhrShift": "Resting heart rate changed",
   "@findingTitleRhrShift": {
@@ -16678,9 +16684,15 @@
   "@findingDetailTemp": {
     "description": "Design 04 cardio transparency: Sustained rise above your baseline, which can be a sign of illness."
   },
-  "findingDetailIrregularRhythm": "Your beat-to-beat pulse timing looked irregular today. This screen uses the wrist pulse, which can't show the heart's electrical activity, and is not a diagnosis. See a clinician if you have symptoms.",
+  "findingDetailIrregularRhythm": "On {day}, the timing between the wrist sensor's pulse readings matched our irregularity rule. We have not measured how often this rule is right or how often it misses a rhythm problem. Movement, sensor fit, and extra beats can produce a similar pattern. It cannot identify atrial fibrillation (AF), and an unflagged recording cannot rule out a rhythm problem. A clinician can use an ECG to assess your heart rhythm. If flags repeat, consider clinician follow-up even without symptoms.",
   "@findingDetailIrregularRhythm": {
-    "description": "Design 04 cardio transparency: Your beat-to-beat pulse timing looked irregular today. This screen uses the wrist pulse, which can't show the "
+    "description": "Daily pulse flag wording. day is the recorded local calendar date, never the processing date.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "Thu 12 Nov 2026"
+      }
+    }
   },
   "findingDetailRhrShiftRisen": "Your resting heart rate is above your usual.",
   "@findingDetailRhrShiftRisen": {
@@ -16703,11 +16715,11 @@
   "@investigateFlagNotScreened": {
     "description": "Design 04 cardio transparency: not screened"
   },
-  "investigateConfidence24h": "Confidence, 24 h",
+  "investigateConfidence24h": "Data sufficiency, 24 h",
   "@investigateConfidence24h": {
     "description": "Design 04 cardio transparency: Confidence, 24 h"
   },
-  "investigateConfidenceSleep": "Confidence, sleep",
+  "investigateConfidenceSleep": "Data sufficiency, sleep",
   "@investigateConfidenceSleep": {
     "description": "Design 04 cardio transparency: Confidence, sleep"
   },
@@ -16763,7 +16775,7 @@
       }
     }
   },
-  "investigatePrvArtifactShare": "Beats the band misread (fixed or dropped), {scope}",
+  "investigatePrvArtifactShare": "Beats corrected or dropped by cleaning, {scope}",
   "@investigatePrvArtifactShare": {
     "description": "Design 04 PRV diagnostics: Share of beats classified as artifacts (corrected or dropped), {scope}",
     "placeholders": {
@@ -16869,7 +16881,7 @@
       }
     }
   },
-  "investigatePrvWhyArtifact": "Too many misread beats: {seen}, limit {allowed}",
+  "investigatePrvWhyArtifact": "Too many beats needed correction or removal to screen this recording. {seen} / {allowed}",
   "@investigatePrvWhyArtifact": {
     "description": "Design 04 PRV diagnostics: Too much artifact: {seen} of beats classified as artifacts (corrected or dropped), {allowed} allowed",
     "placeholders": {
@@ -19347,5 +19359,15 @@
     }
   },
   "guideTapsBack": "{count, plural, one{1 tap back} other{{count} taps back}}",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}}
+  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "findingNotificationIrregularRhythm": "Pulse timing recorded on {day} matched our irregularity rule. We have not measured its accuracy or how often it misses a rhythm problem. Tap to read the limits.",
+  "@findingNotificationIrregularRhythm": {
+    "description": "Daily pulse flag wording. day is the recorded local calendar date, never the processing date.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "Thu 12 Nov 2026"
+      }
+    }
+  }
 }

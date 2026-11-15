@@ -22,6 +22,7 @@ import '../compute/derive_outcome.dart';
 import '../compute/derive_scheduler.dart';
 import '../compute/periodic_calculation_policy.dart';
 import '../compute/profile.dart';
+import '../compute/processing_context.dart';
 import '../data/bundle_store.dart';
 import '../data/local_repository.dart';
 import '../data/local_repository_impl.dart';
@@ -162,6 +163,7 @@ class DeriveCoordinator {
       heavy: kind == DeriveJobKind.heavy,
       changedOnly: kind == DeriveJobKind.light,
       automatic: true,
+      processingContext: scheduler.runningContext,
     );
     final rescan = _rescanRun;
     _rescanRun = null;
@@ -632,6 +634,7 @@ class DeriveCoordinator {
     bool heavy = false,
     bool changedOnly = false,
     bool automatic = false,
+    ProcessingContext processingContext = ProcessingContext.reanalysis,
     void Function(int total)? onScope,
     void Function(String day, int index, int total)? onDay,
   }) async {
@@ -653,6 +656,7 @@ class DeriveCoordinator {
       // not only at the end (a multi-day backfill can be many days of work).
       var scopeTotal = -1;
       outcome = await TelemetryService.instance.traced<DeriveOutcome>('derive_$mode', () => _deriveRun(
+        processingContext: processingContext,
         heavy: heavy,
         changedOnly: changedOnly,
         onScope: (total) {
@@ -805,6 +809,7 @@ class DeriveCoordinator {
   }
 
   Future<DeriveOutcome> _deriveRun({
+    required ProcessingContext processingContext,
     required bool heavy,
     required bool changedOnly,
     void Function(int total)? onScope,
@@ -828,6 +833,7 @@ class DeriveCoordinator {
         await _calculationPolicy.select(heavy: heavy, forced: false);
     final n = await _derive.run(
       _profile,
+      processingContext: processingContext,
       heavy: heavy,
       changedOnly: changedOnly,
       calculationMode: calculationMode,

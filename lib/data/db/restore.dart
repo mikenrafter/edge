@@ -848,6 +848,7 @@ ImportStage _ldbPrivImportStageOf(String table) => switch (table) {
       };
 
 Future<Map<String, int>> _ldbPrivMergeFromDbFile(String path, {required List<String>? only, required bool tolerant, required void Function(ImportProgress p)? onProgress, ImportRun? run}) async {
+    await LocalDb.invalidatePulseDelivery();
     final committedBefore = LocalDb._mergePagesCommitted;
     try {
       return await LocalDb._mergeFromDbFileBody(path,

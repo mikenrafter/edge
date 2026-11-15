@@ -6,7 +6,7 @@
 //        sleep path and the streaming path. Verdicts are unchanged.
 //  P2-b  `1 - cleanFraction` counts CORRECTED beats too, and those stay in the
 //        analysed series: the screen must not call the share "rejected". The
-//        share row says the beats were misread and "fixed or dropped" in every
+//        share row says the beats were corrected or dropped by cleaning in every
 //        locale; the abstention explanation just never says "rejected".
 //  P2-c  a day from before v103 has a verdict but no diagnostics (and no sleep
 //        pnn_pct): Export PRV log is still offered; the log says "not recorded".
@@ -146,12 +146,12 @@ void main() {
     // Per locale: what the new strings must say, and the old wording that must
     // be gone.
     const must = {
-      'en': 'fixed or dropped',
-      'de': 'korrigiert oder verworfen',
-      'es': 'corregidos o descartados',
-      'fr': 'corrigés ou écartés',
-      'hi': 'ठीक की गईं या हटाई गईं',
-      'zh': '已修正或已丢弃',
+      'en': 'corrected or dropped',
+      'de': 'korrigierte oder entfernte',
+      'es': 'corregidos o eliminados',
+      'fr': 'corrigés ou supprimés',
+      'hi': 'सुधारी या हटाई गई',
+      'zh': '修正或丢弃',
     };
     const gone = {
       'en': 'rejected',
@@ -167,9 +167,8 @@ void main() {
           'and no longer say rejected', () {
         final arb = jsonDecode(File('lib/l10n/app_$loc.arb').readAsStringSync())
             as Map<String, dynamic>;
-        // The share row keeps the fixed-or-dropped wording; the abstention
-        // reason is the shorter "misread beats" line (copy pass, batch A) and
-        // only has to stay free of the old "rejected" wording.
+        // Cleaning classifies and edits beats; it does not establish that
+        // the sensor misread them. Keep both correction and removal visible.
         final share = arb['investigatePrvArtifactShare'] as String;
         expect(share, contains(must[loc]!), reason: '$loc share');
         for (final k in ['investigatePrvArtifactShare', 'investigatePrvWhyArtifact']) {
@@ -189,7 +188,8 @@ void main() {
           'diagnostics': _diag(abstain: 'artifact'),
         },
       });
-      expect(text, contains('misread'));
+      expect(text, contains('correction or removal'));
+      expect(text, isNot(contains('misread')));
       expect(text.toLowerCase(), isNot(contains('rejected')));
       expect(text, contains('45.0 %'));
     });

@@ -315,13 +315,14 @@ extension _EngineCrossDayPrune on DerivationEngine {
     return days;
   }
 
-  Future<void> _runNotificationsUntimed({String? today}) async {
+  Future<void> _runNotificationsUntimed({String? today,
+    ProcessingContext processingContext = ProcessingContext.reanalysis}) async {
     try {
       final cdRow = await LocalDb.baseline('crossday');
       final cd = DerivationEngine._decodeBundle(cdRow?['payload_json']);
       if (cd == null) return;
-      // The whole decision is `planExceptionNotices` (findings.dart), pure
-      // and tested; this only reads its inputs and emits what it returns.
+      // The cross-day decision is `planExceptionNotices` (findings.dart).
+      // Pulse notices additionally require the intake provenance below.
       today ??= LocalDb.localDayLabelNow();
       final anchor = exceptionAnchor(cd);
       // Only a pin taken on the anchor day's own night (LocalDb.headlinePinFor).
@@ -330,14 +331,27 @@ extension _EngineCrossDayPrune on DerivationEngine {
       final notices = planExceptionNotices(
         cd,
         today: today,
-        irregularFlag: anchor == null
-            ? null
-            : await LocalDb.metricValueOn(anchor.date, 'irregular_rhythm_flag'),
         pin: pinValue == null ? null : (day: anchor!.date, value: pinValue),
         storedReadiness: anchor == null
             ? null
             : await LocalDb.metricValueOn(anchor.date, 'readiness'),
       );
+
+      // Pulse findings have their own day identity, independent of the newest
+      // cross-day anchor and of the shared medical escalation slot.
+      final pulseNotices = <ExceptionNotice>[];
+      for (final day in processingContext.pulseDays.keys) {
+        if (!processingContext.allowsPulseDay(day, DateTime.now())) continue;
+        if (await LocalDb.metricValueOn(day, 'irregular_rhythm_flag') == 1.0) {
+          pulseNotices.add(ExceptionNotice(day, [Finding(FindingKind.irregularRhythm, day)]));
+        }
+      }
+
+      // Read AFTER the flags: an import invalidates before its first history
+      // write, so a flag read from replaced history cannot borrow an old job.
+      if (processingContext.historyRevision == await LocalDb.pulseHistoryRevision()) {
+        notices.addAll(pulseNotices);
+      }
 
       // One notice per day the findings are ABOUT. The key's date is that
       // day, so a night fires at most once however many passes see it.
@@ -375,7 +389,7 @@ extension _EngineCrossDayPrune on DerivationEngine {
             route: '/heart',
           ),
         );
-        if (notice.medical && fired) {
+        if (notice.medical && !notice.pulse && fired) {
           await const FiredKeyStore().recordFired('${notice.date}:exception');
         }
       }

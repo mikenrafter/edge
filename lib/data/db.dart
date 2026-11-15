@@ -24,6 +24,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../compute/processing_context.dart';
 import '../compute/substrate.dart' show beatTimesMs;
 import '../compute/groups/input_catalogue.dart' show InputKind, kInputCatalogue;
 import 'db/input_read_tracker.dart';
@@ -713,7 +714,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 86;
+  static const int schemaVersion = 87;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -3324,7 +3325,8 @@ class LocalDb {
     // the host supplies it; a signal absent from the map defaults to
     // 2*kBucket (120s) inside [_extendCoverageVia].
     Map<String, int>? coverageToleranceSec,
-  }) => _ldbCommitSyncBatch(raws, samples, trimToken: trimToken, extraCursors: extraCursors, archives: archives, neutrals: neutrals, ecgRawPackets: ecgRawPackets, onCheckpoint: onCheckpoint, deviceFamily: deviceFamily, deviceId: deviceId, coverageToleranceSec: coverageToleranceSec);
+    ProcessingOrigin processingOrigin = ProcessingOrigin.historical,
+  }) => _ldbCommitSyncBatch(raws, samples, trimToken: trimToken, extraCursors: extraCursors, archives: archives, neutrals: neutrals, ecgRawPackets: ecgRawPackets, onCheckpoint: onCheckpoint, deviceFamily: deviceFamily, deviceId: deviceId, coverageToleranceSec: coverageToleranceSec, processingOrigin: processingOrigin);
 
   static Future<void> _commitSyncBatchLocked(
     List<RawRecord> raws,
@@ -3344,7 +3346,8 @@ class LocalDb {
     // WHICH PHYSICAL DEVICE these rows belong to (see [kPrimaryDeviceId]).
     String deviceId = kPrimaryDeviceId,
     Map<String, int>? coverageToleranceSec,
-  }) => _ldbPrivCommitSyncBatchLocked(raws, samples, trimToken: trimToken, extraCursors: extraCursors, archives: archives, neutrals: neutrals, ecgRawPackets: ecgRawPackets, onCheckpoint: onCheckpoint, deviceFamily: deviceFamily, deviceId: deviceId, coverageToleranceSec: coverageToleranceSec);
+    ProcessingOrigin processingOrigin = ProcessingOrigin.historical,
+  }) => _ldbPrivCommitSyncBatchLocked(raws, samples, trimToken: trimToken, extraCursors: extraCursors, archives: archives, neutrals: neutrals, ecgRawPackets: ecgRawPackets, onCheckpoint: onCheckpoint, deviceFamily: deviceFamily, deviceId: deviceId, coverageToleranceSec: coverageToleranceSec, processingOrigin: processingOrigin);
 
   // ── DERIVED STORE (permanent, rich) ────────────────────────────────────────
   // The on-device analytics output, keyed by physiological day (wake-to-wake;
@@ -4670,15 +4673,22 @@ class LocalDb {
     return decodeRecTs(raw.hex, fallbackSec: raw.capturedAt ~/ 1000);
   }
 
-  static Future<bool> insertRecord(RawRecord raw, Sample? sample) async {
+  static Future<bool> insertRecord(RawRecord raw, Sample? sample, {
+    ProcessingOrigin processingOrigin = ProcessingOrigin.historical,
+  }) async {
     final db = await instance;
     var inserted = false;
+    var pulseContext = ProcessingContext.reanalysis;
     await db.transaction((txn) async {
+      if (processingOrigin == ProcessingOrigin.recentSync) {
+        try { pulseContext = await _pulseArrivalContext(txn, [raw], [sample]); } catch (_) {}
+      }
       final batch = txn.batch();
       _queueDecodedOneHz(batch, raw, sample);
       await batch.commit(noResult: true);
       inserted = true;
     });
+    await _queuePulseArrival(pulseContext);
     return inserted;
   }
 
@@ -4689,8 +4699,9 @@ class LocalDb {
   /// table. Raw-first is preserved — callers flush this before ACKing a sync batch.
   static Future<void> insertRecordsBatch(
     List<RawRecord> raws,
-    List<Sample?> samples,
-  ) => _ldbInsertRecordsBatch(raws, samples);
+    List<Sample?> samples, {
+    ProcessingOrigin processingOrigin = ProcessingOrigin.historical,
+  }) => _ldbInsertRecordsBatch(raws, samples, processingOrigin: processingOrigin);
 
   static Future<void> putSyncLedger(Map<String, dynamic> row) async {
     final db = await instance;
@@ -6883,10 +6894,33 @@ class LocalDb {
   // right behind the claim of the job it follows); `id` is the primary key.
   static int _deriveJobSeq = 0;
 
+  /// Owner of pulse delivery invalidation. Imports invalidate queued AND running
+  /// contexts before changing history; this never touches raw or analytics rows.
+  static Future<void> invalidatePulseDelivery() async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      final revision = await _pulseHistoryRevisionVia(txn);
+      await txn.insert('compute_freshness', {
+        'key': 'pulse_delivery_revision', 'payload_json': '${revision + 1}',
+        'updated_at': nowMs(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+  }
+
+  static Future<int> pulseHistoryRevision() async =>
+      _pulseHistoryRevisionVia(await instance);
+
+  static Future<int> _pulseHistoryRevisionVia(DatabaseExecutor txn) async {
+    final rows = await txn.query('compute_freshness', columns: ['payload_json'],
+        where: 'key = ?', whereArgs: ['pulse_delivery_revision'], limit: 1);
+    return rows.isEmpty ? 0 : int.tryParse(rows.single['payload_json'] as String) ?? 0;
+  }
+
   static Future<void> enqueueDeriveJob({
     required String type,
     required String reason,
-  }) => _ldbEnqueueDeriveJob(type: type, reason: reason);
+    ProcessingContext processingContext = ProcessingContext.reanalysis,
+  }) => _ldbEnqueueDeriveJob(type: type, reason: reason, processingContext: processingContext);
 
   static Future<Map<String, dynamic>?> takeNextComputeJob() => _ldbTakeNextComputeJob();
 
