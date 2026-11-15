@@ -45,6 +45,8 @@ void main() {
                               key: ValueKey('chrome-icon'),
                             ),
                             const InlineMetrics([('RESTING HR', '57', C.red)]),
+                            detailLinkRow(c, Icons.schedule, 'Body clock',
+                                'Your schedule', () {}),
                           ],
                         ),
                       ),
@@ -84,6 +86,7 @@ void main() {
           .first;
       final regions = [
         t.getRect(date), t.getRect(find.text('RESTING HR')),
+        t.getRect(find.text('Body clock')), t.getRect(find.text('Your schedule')),
         t.getRect(find.byKey(const ValueKey('chrome-icon'))),
         // A strip of the Surface's own background, beside all its content.
         Rect.fromLTWH(
