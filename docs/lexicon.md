@@ -152,6 +152,8 @@ in the same change that introduces it (AGENTS.md §6).
 - **Hop** — one real navigation action towards a step: Back, a shell tab, a sub-tab, or a page entry. Virtual grouping nodes do not add a hop.
 - **Layout sibling** — the previous or next unit in the target's enclosing vertical layout; transforms and viewport clipping do not change this relation.
 - **Placeholder** — replacement text bars or a muted plot sine, painted without replacing its existing surface. Icons, images and card titles keep their source paint.
+- **Hover highlight** — a translucent tint and glow painted by a guide target's own component layer. Its opacity follows the moving fingertip's distance; scrolling and stretch carry it with the target.
+- **Moving hand** — the guide's pointing cursor, which taps a single target repeatedly or travels through a multi-target step's choices. Reduced motion uses the static label hand.
 
 ## Pulse flag delivery
 
@@ -171,3 +173,6 @@ in the same change that introduces it (AGENTS.md §6).
   metadata is excluded from restore, and does not version analytics output.
   Schema 87 also carries legacy medical claims for already flagged pulse days
   into their dedicated daily delivery keys.
+
+## Guides
+- **Accordion hop**: a user tap that expands the outermost closed section containing the pending guide target. Nested closed sections each add one hop.

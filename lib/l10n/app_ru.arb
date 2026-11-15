@@ -9246,6 +9246,8 @@
   },
   "guideTapMarker": "нажать",
   "guideScrollMarker": "листать",
+  "guideTapOneOf": "коснитесь одного",
+  "guideSearchOrPick": "поиск или выбор",
   "guideStepUnavailable": "Этот шаг сейчас нельзя показать.",
   "guideNoVariantBody": "Эта инструкция пока не подходит для вашего браслета. Подходит для: {bands}.",
   "guideHrZonesTitle": "Где найти зоны пульса",
@@ -9324,7 +9326,7 @@
   "helpEmpty": "Для вашего браслета пока нет инструкций.",
   "guideAnotherWayInTitle": "Другой путь",
   "guideAlarmTitle": "Где поставить будильник или задать своё время на каждый день",
-  "guideAlarmStep1": "На вкладке **{tab}** прокрутите вниз до **{section}** и нажмите **{row}**.",
+  "guideAlarmStep1": "На вкладке **{tab}** нажмите **{row}**.",
   "guideAlarmStep2": "Нажмите на вкладку нужного дня, например **{day}**, затем на первую строку под вкладками, чтобы включить этот день.",
   "guideAlarmStep3": "Затем нажмите **{wake}** под этим днём и выберите время. У каждого дня может быть своё время.",
   "guideAlarmAltBody": "Откройте **{settings}**, затем нажмите **{alarm}**.",
@@ -9339,7 +9341,8 @@
   "guideAddNapRulesBody": "Дневной сон длится от 5 минут до 6 часов, должен уже закончиться и не может пересекаться с другим дневным сном или с основным сном.",
   "guideRemoveTitle": "Где убрать дневной сон или тренировку, которых не было",
   "guideRemoveStep1": "На вкладке **{tab}** нажмите на карточку **{card}**. Она есть, только пока что-то ждёт вашего ответа.",
-  "guideRemoveStep2": "У каждого пункта своя кнопка **{discard}**. Нажмите её у дневного сна или тренировки, которых не было; рамка отмечает первый пункт.",
+  "guideRemoveStep2": "У каждого пункта своя кнопка **{discard}**. Нажмите её у дневного сна или тренировки, которых не было; подсветка показывает варианты.",
+  "guideRemoveStep2Still": "У каждого пункта своя кнопка **{discard}**. Нажмите её у дневного сна или тренировки, которых не было; рамка отмечает первый пункт.",
   "guideRemoveSavedTitle": "Уже сохранено?",
   "guideRemoveSavedBody": "Откройте вкладку **{sleep}** и нажмите **{naps}**. Нажмите **{notNap}** у сна, найденного браслетом, или **{delete}** у записанного вами.",
   "guideRemoveMissingTitle": "Не видите «{card}»?",
@@ -9504,7 +9507,7 @@
     }
   },
   "@guideRemoveStep2": {
-    "description": "Step 2 caption. {discard} is the in-app name of the Discard button; every pending item has its own and the outline marks the first.",
+    "description": "Step 2 caption. {discard} is the in-app name of the Discard button; every pending item has its own and the highlight shows the choices.",
     "placeholders": {
       "discard": {
         "type": "String",
@@ -9795,6 +9798,7 @@
       }
     }
   },
+  "guideExpandAccordion": "Развернуть {title}",
   "deriveDailyLabel": "Расчёт сна, восстановления и нагрузки",
   "deriveDailyProgress": "Расчёт сна, восстановления и нагрузки · день {index} из {total}",
   "deriveDailyProgressOn": "Расчёт сна, восстановления и нагрузки · день {index} из {total} · {day}",

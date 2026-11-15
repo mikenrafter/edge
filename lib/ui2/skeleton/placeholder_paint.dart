@@ -3,8 +3,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import '../guides/guide_accordion.dart';
 import '../grammar.dart' show ChartFrame, ChartKeyReadout;
 import '../theme.dart';
+import '../guides/guide_dim.dart' show GuideKeepsControls;
 import 'guide_plot.dart';
 import 'pending_scope.dart';
 import 'skeleton.dart';
@@ -49,6 +51,7 @@ class GuidePlaceholderPaint {
     Element unit, {
     required double fade,
     required double pulse,
+    GuideKeepsControls? keeps,
     bool includeChartReadout = false,
     bool preserveChrome = false,
   }) {
@@ -63,7 +66,11 @@ class GuidePlaceholderPaint {
     void visit(Element e) {
       final w = e.widget;
       if (preserveChrome && w is PendingStatic) return;
+      if (w is GuideNavigationHeader || isGuideChromeWidget(w)) return;
       if (w is Icon || w is ImageIcon || w is Image || w is RawImage) return;
+      // A control the guide keeps real (the previous or next step's target and the buttons beside
+      // it) keeps its own labels inside a placeholder card [guide_r5_scenes_test R5-7].
+      if (!identical(e, unit) && keeps != null && keeps.keepsControl(e)) return;
       if (isGuideCard(w)) card = true;
       final ro = e is RenderObjectElement ? e.renderObject : null;
       if (ro is RenderCustomPaint &&

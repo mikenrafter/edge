@@ -339,6 +339,11 @@ class GuideNavigation {
   /// A shell tab restores its retained branch, rather than its default branch.
   /// Read only mounted identities: an unvisited lazy tab keeps the default path.
   static GuideNode? parkedLocation(Element page, GuideNode tab) {
+    final branch = parkedPage(page, tab);
+    return branch == null ? null : location(branch, includeOffstage: true);
+  }
+
+  static Element? parkedPage(Element page, GuideNode tab) {
     final shell = onstageElements(page).where((e) => e.widget is AppShell).firstOrNull;
     final index = tabIndex(tab);
     if (shell == null || index == null) return null;
@@ -349,7 +354,7 @@ class GuideNavigation {
     final branches = <Element>[];
     raw?.visitChildren(branches.add);
     if (index >= branches.length) return null;
-    return location(branches[index], includeOffstage: true);
+    return branches[index];
   }
 
   static int? tabIndex(GuideNode node) => switch (tabOf(node)) {
