@@ -1019,7 +1019,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           }),
         );
 
-  // Embedded tab composition owns the five cards. The pushed night detail keeps
+  // Embedded tab composition owns the timeline and four cards. The pushed night detail keeps
   // its own navigation; no extra plan/driver read can block the tab's primary.
   List<Widget> _tabBody(BuildContext c, P p, SleepData d) {
     final l =
@@ -1057,33 +1057,26 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     Widget link(IconData icon, String name, String sub, Widget target) =>
         detailLinkRow(c, icon, name, sub, () => go(c, target));
     return [
-      Surface(
+      Column(
         key: const ValueKey('sleep-tab:timeline'),
-        semanticLabel: l.sleepTabTimelineCardTitle,
-        child: InsideCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              title(l.sleepTabTimelineCardTitle),
-              const SizedBox(height: S.x3),
-              ..._dayNav(d),
-              _answer(c, p, d, n),
-              if (_deviceNight(d) case final dn?)
-                _night(c, p, d, dn, device: dn)
-              else
-                _night(c, p, d, n),
-              ...?window,
-              if (window == null)
-                _emptyWindowCard(
-                  c,
-                  p,
-                  d,
-                  rejected: n['sleep_source'] == 'rejected',
-                ),
-              ..._napsButton(c, l, d.day),
-            ],
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+        ..._dayNav(d),
+        _answer(c, p, d, n),
+        if (_deviceNight(d) case final dn?)
+          _night(c, p, d, dn, device: dn)
+        else
+          _night(c, p, d, n),
+        ...?window,
+        if (window == null)
+          _emptyWindowCard(
+            c,
+            p,
+            d,
+            rejected: n['sleep_source'] == 'rejected',
           ),
-        ),
+        ..._napsButton(c, l, d.day),
+        ],
       ),
       const SizedBox(height: S.x3),
       _accordion(
