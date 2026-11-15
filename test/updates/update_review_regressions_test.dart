@@ -50,7 +50,7 @@ void main() {
     await store.initialize();
     now = DateTime.utc(2026, 11, 15, 12);
     requests = [];
-    SharedPreferences.setMockInitialValues({'locale': 'en'});
+    SharedPreferences.setMockInitialValues({'locale_override': 'en'});
     await const NotificationPrefs(quietEnabled: false).save();
     center.updateStore = () async => store;
     center.updatePermission = () async => true;
@@ -127,7 +127,7 @@ void main() {
     }
   });
 
-  for (final kind in ['missing', 'json', 'schema']) {
+  for (final kind in ['missing', 'missing-file', 'json', 'schema']) {
     final malformed = kind != 'missing';
     for (final newer in [false, true]) {
       // WHY: old pre-contract or broken releases must not poison new good ones;
@@ -138,6 +138,7 @@ void main() {
         final bad = forkRelease(badTag, id: 3, metadata: malformed);
         if (malformed) ((bad['assets'] as List).first as Map)['id'] = 43;
         respond = (r) async {
+          if (r.url.path.endsWith('/assets/43') && kind == 'missing-file') return http.Response('', 404);
           if (r.url.path.endsWith('/assets/43')) return http.Response(kind == 'json' ? '{malformed' : jsonEncode({...manifest(badTag), 'repository': 'evil/edge'}), 200);
           if (r.url.path.endsWith('/assets/42')) return http.Response(jsonEncode(manifest('next-2026.11.15', code: 79)), 200);
           return http.Response(jsonEncode(r.url.path.contains('mikenrafter') ? [bad, forkRelease('next-2026.11.15')] : []), 200);
