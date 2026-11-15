@@ -19,12 +19,15 @@ class _HeldStrainRepo extends LocalRepository {
     strainStarted = true;
     return strain.future;
   }
+
   @override
   Future<Map<String, dynamic>> getInsights() async => const {};
 }
 
 void main() {
-  testWidgets('strain starts while the wear estimate is still pending', (t) async {
+  testWidgets('strain starts while the wear estimate is still pending', (
+    t,
+  ) async {
     final repo = _HeldStrainRepo();
     final app = AppState.forTesting()..repo = repo;
     addTearDown(app.dispose);
