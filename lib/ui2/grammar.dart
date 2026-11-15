@@ -665,6 +665,10 @@ class ChartScrub extends StatefulWidget {
   final int? slots;
   final bool slotBars;
 
+  /// Categorical charts keep the cursor on their actual slot centre.
+  final bool snapToSlots;
+  final ValueChanged<double>? onChanged;
+
   /// The position a slot reads at: the bar's centre, or the sample itself.
   static double slotPosition(int i, int n, {bool bars = false}) =>
       bars ? (i + .5) / n : (n < 2 ? 0.0 : i / (n - 1));
@@ -794,6 +798,8 @@ class ChartScrub extends StatefulWidget {
     this.step = .05,
     this.slots,
     this.slotBars = false,
+    this.snapToSlots = false,
+    this.onChanged,
     this.nerdStats,
   });
 
@@ -893,8 +899,17 @@ class _ChartScrubState extends State<ChartScrub> {
   }
 
   void _place(double x) {
+    final slots = widget.slots;
+    if (widget.snapToSlots && slots != null && slots > 0) {
+      x = ChartScrub.slotPosition(
+        ChartScrub.slotAt(slots, x, bars: widget.slotBars),
+        slots,
+        bars: widget.slotBars,
+      );
+    }
     setState(() => _at = x);
     _hub?.setAt(x);
+    widget.onChanged?.call(x);
   }
 
   @override
