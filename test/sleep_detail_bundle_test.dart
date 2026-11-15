@@ -19,7 +19,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common/sqflite_logger.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import 'package:openstrap_edge/compute/derivation_engine.dart' show kAlgoVersion;
+import 'package:openstrap_edge/compute/derivation_engine.dart'
+    show kAlgoVersion;
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
@@ -44,7 +45,10 @@ Future<void> _put(String day, int at, Map<String, double?> series) async {
   await LocalDb.putDayResult(
     dayId: day,
     algoVersion: kAlgoVersion,
-    payloadJson: jsonEncode({'date': day, 'scalars': {'rmssd': 55.0}}),
+    payloadJson: jsonEncode({
+      'date': day,
+      'scalars': {'rmssd': 55.0},
+    }),
     windowJson: '{}',
     series: series,
   );
@@ -140,40 +144,75 @@ void main() {
 
     // CLAIM sleep-primary-provenance: the fast publication must abstain from
     // the same estimated/unavailable series as the historical read.
-    test('primary scalars and history count keep the own-series filter', () async {
-      final db=await LocalDb.instance;
-      await db.insert('metric_method',{'date':'2026-08-02','key':'tst_min','class':'estimated','method':'test','family':'test'});
-      await db.insert('metric_method',{'date':'2026-08-05','key':'sol_min','class':'unavailable','method':'test','family':'test'});
-      final primary=(await repo.getSleepDetailPrimary('2026-08-05'))!;
-      expect(primary.historyCount,3);
-      expect(primary.bundle.charts['sol_min'],isNull);
-      expect(primary.bundle.charts['unobserved_min'],isNotNull);
-    });
+    test(
+      'primary scalars and history count keep the own-series filter',
+      () async {
+        final db = await LocalDb.instance;
+        await db.insert('metric_method', {
+          'date': '2026-08-02',
+          'key': 'tst_min',
+          'class': 'estimated',
+          'method': 'test',
+          'family': 'test',
+        });
+        await db.insert('metric_method', {
+          'date': '2026-08-05',
+          'key': 'sol_min',
+          'class': 'unavailable',
+          'method': 'test',
+          'family': 'test',
+        });
+        final primary = (await repo.getSleepDetailPrimary('2026-08-05'))!;
+        expect(primary.historyCount, 3);
+        expect(primary.bundle.charts['sol_min'], isNull);
+        expect(primary.bundle.charts['unobserved_min'], isNotNull);
+      },
+    );
 
     test('bundle charts equal what getChart returns, key for key', () async {
       final expected = {for (final k in _keys) k: await repo.getChart(k)};
-      final b = await repo.getSleepDetailBundle('2026-08-05',
-          chartKeys: _keys, windowDays: 29);
+      final b = await repo.getSleepDetailBundle(
+        '2026-08-05',
+        chartKeys: _keys,
+        windowDays: 29,
+      );
       expect(jsonEncode(b.charts), jsonEncode(expected));
       // The absent cases survive: no deep on day 3, no sol_min before day 5.
       expect(b.charts['deep']!['points'], hasLength(4));
       expect(b.charts['sol_min']!['points'], hasLength(1));
     });
 
-    test('bundle night, timeline, insights and windows equal their readers',
-        () async {
-      final b = await repo.getSleepDetailBundle('2026-08-05',
-          chartKeys: _keys, windowDays: 29);
-      expect(jsonEncode(b.night), jsonEncode(await repo.getDaySleepV2('2026-08-05')));
-      expect(jsonEncode(b.timeline),
-          jsonEncode(await repo.getDayTimeline('2026-08-05')));
-      expect(jsonEncode(b.insights), jsonEncode(await repo.getInsights()));
-      expect(jsonEncode(b.windows), jsonEncode(await repo.sleepWindows(days: 29)));
-    });
+    test(
+      'bundle night, timeline, insights and windows equal their readers',
+      () async {
+        final b = await repo.getSleepDetailBundle(
+          '2026-08-05',
+          chartKeys: _keys,
+          windowDays: 29,
+        );
+        expect(
+          jsonEncode(b.night),
+          jsonEncode(await repo.getDaySleepV2('2026-08-05')),
+        );
+        expect(
+          jsonEncode(b.timeline),
+          jsonEncode(await repo.getDayTimeline('2026-08-05')),
+        );
+        expect(jsonEncode(b.insights), jsonEncode(await repo.getInsights()));
+        expect(
+          jsonEncode(b.windows),
+          jsonEncode(await repo.sleepWindows(days: 29)),
+        );
+      },
+    );
 
     test('bundle windows with before: equal sleepWindows(before:)', () async {
-      final b = await repo.getSleepDetailBundle('2026-08-05',
-          chartKeys: _keys, windowDays: 28, before: '2026-08-05');
+      final b = await repo.getSleepDetailBundle(
+        '2026-08-05',
+        chartKeys: _keys,
+        windowDays: 28,
+        before: '2026-08-05',
+      );
       final want = await repo.sleepWindows(days: 28, before: '2026-08-05');
       expect(jsonEncode(b.windows), jsonEncode(want));
       expect(want.map((w) => w['date']), isNot(contains('2026-08-05')));
@@ -210,42 +249,59 @@ void main() {
       await SleepData.load(repo, want: '2026-08-05');
       int count(bool Function(String) f) => sql.where(f).length;
       if (sql.isEmpty) fail("no statements were logged");
-      expect(count((l) => l.contains('metric_series_version')), 1,
-          reason: 'versions are one statement, not one per chart');
       expect(
-          count((l) => l.contains('metric_series') &&
+        count((l) => l.contains('metric_series_version')),
+        1,
+        reason: 'versions are one statement, not one per chart',
+      );
+      expect(
+        count(
+          (l) =>
+              l.contains('metric_series') &&
               !l.contains('metric_series_version') &&
-              l.contains('worn_min')),
-          1,
-          reason: 'worn_min rides in the one metric_series read');
+              l.contains('worn_min'),
+        ),
+        1,
+        reason: 'worn_min rides in the one metric_series read',
+      );
       expect(
-          count((l) => l.contains('FROM metric_series') &&
-              !l.contains('metric_series_version')),
-          1,
-          reason: 'every chart key comes from ONE metric_series statement');
+        count(
+          (l) =>
+              l.contains('FROM metric_series') &&
+              !l.contains('metric_series_version'),
+        ),
+        1,
+        reason: 'every chart key comes from ONE metric_series statement',
+      );
     });
   });
 
   group('fakes', () {
-    test('SleepData.load makes exactly one repository call for the night',
-        () async {
-      final repo = _BundleOnlyRepo();
-      final d = await SleepData.load(repo, want: '2026-08-05');
-      expect(repo.bundleCalls, 1);
-      // The windows before the night come in the bundle (`before: day`), not
-      // as a second read beside it.
-      expect(repo.windowCalls, 0);
-      expect(repo.bundleBefore, '2026-08-05');
-      expect(d.day, '2026-08-05');
-      expect(d.night['duration_min'], 443);
-      expect(d.tstHistory, [401.0, 402.0]);
-      expect(d.deepHistory, <double>[]); // absent chart stays empty, not zeros
-      expect(d.solMin, 12.0);
-      expect(d.awakenings, isNull);
-    });
+    test(
+      'SleepData.load makes exactly one repository call for the night',
+      () async {
+        final repo = _BundleOnlyRepo();
+        final d = await SleepData.load(repo, want: '2026-08-05');
+        expect(repo.bundleCalls, 1);
+        // The windows before the night come in the bundle (`before: day`), not
+        // as a second read beside it.
+        expect(repo.windowCalls, 0);
+        expect(repo.bundleBefore, '2026-08-05');
+        expect(d.day, '2026-08-05');
+        expect(d.night['duration_min'], 443);
+        expect(d.tstHistory, [401.0, 402.0]);
+        expect(
+          d.deepHistory,
+          <double>[],
+        ); // absent chart stays empty, not zeros
+        expect(d.solMin, 12.0);
+        expect(d.awakenings, isNull);
+      },
+    );
 
-    testWidgets('the screen shows its content after the one bundle call',
-        (t) async {
+    testWidgets('the screen shows its content after the one bundle call', (
+      t,
+    ) async {
       phoneSurface(t);
       final repo = _BundleOnlyRepo();
       final app = AppState.forTesting()..repo = repo;
@@ -265,8 +321,9 @@ class _BundleOnlyRepo extends LocalRepository {
   int bundleCalls = 0;
 
   @override
-  Future<Map<String, dynamic>> getToday() async =>
-      {'status': {'today_day': '2026-08-05'}};
+  Future<Map<String, dynamic>> getToday() async => {
+    'status': {'today_day': '2026-08-05'},
+  };
   @override
   Future<List<String>> availableDays() async => ['2026-08-05', '2026-08-04'];
 
@@ -275,24 +332,29 @@ class _BundleOnlyRepo extends LocalRepository {
   int windowCalls = 0;
   String? bundleBefore;
   @override
-  Future<List<Map<String, dynamic>>> sleepWindows(
-      {int days = 60, String? before}) async {
+  Future<List<Map<String, dynamic>>> sleepWindows({
+    int days = 60,
+    String? before,
+  }) async {
     windowCalls++;
     return const [];
   }
 
   @override
-  Future<SleepDetailBundle> getSleepDetailBundle(String day,
-      {required List<String> chartKeys,
-      required int windowDays,
-      String? before}) async {
+  Future<SleepDetailBundle> getSleepDetailBundle(
+    String day, {
+    required List<String> chartKeys,
+    required int windowDays,
+    String? before,
+  }) async {
     bundleCalls++;
     bundleBefore = before;
-    int noon(int d) =>
-        DateTime(2026, 8, d, 12).millisecondsSinceEpoch ~/ 1000;
+    int noon(int d) => DateTime(2026, 8, d, 12).millisecondsSinceEpoch ~/ 1000;
     Map<String, dynamic> pts(List<(int, double)> l) => {
-          'points': [for (final (d, v) in l) {'t': noon(d), 'v': v}],
-        };
+      'points': [
+        for (final (d, v) in l) {'t': noon(d), 'v': v},
+      ],
+    };
     return SleepDetailBundle(
       night: const {'duration_min': 443, 'in_bed_min': 486, 'efficiency': .91},
       timeline: const {},

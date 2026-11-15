@@ -2794,14 +2794,9 @@ class LocalRepositoryImpl extends LocalRepository {
       getInsights(),
       getDeviceNights(day),
       getWakeTimeline(day),
-      LocalDb.readerRun(
-        (db) => db.rawQuery(
-          'SELECT key, value, date FROM metric_series WHERE date = ? '
-          "AND key IN ('unobserved_min','awakenings','longest_sleep_min','sol_min') "
-          "UNION ALL SELECT 'history_count', COUNT(*), ? FROM metric_series "
-          "WHERE key = 'tst_min' AND value IS NOT NULL AND date < ?",
-          [day, day, day],
-        ),
+      LocalDb.ownMetricSeriesDayWithHistoryCount(
+        day, const ['unobserved_min', 'awakenings', 'longest_sleep_min', 'sol_min'],
+        historyKey: 'tst_min',
       ),
     ).wait;
     final date = DateTime.parse(day);
