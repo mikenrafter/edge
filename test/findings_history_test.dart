@@ -53,7 +53,7 @@ void main() {
     ]);
     // Detection, never diagnosis — the screen wording carries it.
     expect(f[4].score, 21);
-    expect(findingDetail(AppLocalizationsEn(), f[3]), contains('not a diagnosis'));
+    expect(findingDetail(AppLocalizationsEn(), f[3]), contains('cannot identify atrial fibrillation'));
   });
 
   test('newest day first', () {

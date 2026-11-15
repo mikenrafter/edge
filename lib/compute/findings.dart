@@ -34,6 +34,8 @@ import 'package:openstrap_analytics/onehz.dart' as ana;
 
 import '../data/day_label.dart' show dayLabelBefore;
 import '../l10n/app_localizations.dart';
+import '../l10n/date_text.dart';
+import 'pulse_alert_record.dart';
 
 /// The headline composite's band cut-offs — its OWN quantiles (see the long
 /// note on `readinessBand`): p=.05 → 26, p=.20 → 37, p=.75 → 61. The ring,
@@ -58,7 +60,7 @@ enum FindingKind {
 
 @immutable
 class Finding {
-  const Finding(this.kind, this.date, {this.risen, this.score});
+  const Finding(this.kind, this.date, {this.risen, this.score, this.alert});
 
   final FindingKind kind;
 
@@ -72,6 +74,10 @@ class Finding {
 
   /// The readiness the ring showed, for [FindingKind.lowReadiness] only.
   final int? score;
+
+  /// What became of this day's alert, for [FindingKind.irregularRhythm] only.
+  /// Null when the day has not been through a delivery pass yet.
+  final PulseAlertRecord? alert;
 
   /// DETECTION-class, the ones the design sanctions interrupting for. It picks
   /// the notification's dedupe key and marks the entry in the log; it never
@@ -124,6 +130,8 @@ Finding? lowReadinessFinding(String date, double? readiness) =>
 /// already computed, so nothing is re-detected here except the resting-HR
 /// change points, which need the whole series at once.
 ///
+/// [alerts] carries each flagged day's alert record, for the small note under it.
+///
 /// [readiness] and [irregularDays] come from `metric_series` — the one store
 /// that keeps a value per day for as long as the day exists — because neither
 /// is in `recent[]`. Absent, those two kinds simply do not appear; they are
@@ -139,6 +147,7 @@ List<Finding> findingsHistory(
   Map<String, dynamic> cd, {
   Map<String, double> readiness = const {},
   Set<String> irregularDays = const {},
+  Map<String, PulseAlertRecord> alerts = const {},
 }) {
   final recent = cd['recent'];
   if (recent is! List) return const [];
@@ -181,7 +190,7 @@ List<Finding> findingsHistory(
     if (r['anomaly'] == true) out.add(Finding(FindingKind.anomaly, date));
     if (r['temp'] == true) out.add(Finding(FindingKind.tempElevated, date));
     if (irregularDays.contains(date)) {
-      out.add(Finding(FindingKind.irregularRhythm, date));
+      out.add(Finding(FindingKind.irregularRhythm, date, alert: alerts[date]));
     }
     final low = lowReadinessFinding(date, readiness[date]);
     if (low != null) out.add(low);
@@ -233,11 +242,11 @@ class ExceptionNotice {
   final List<Finding> findings;
 
   bool get medical => findings.any((f) => f.medical);
+  bool get pulse => findings.length == 1 && findings.single.kind == FindingKind.irregularRhythm;
 
-  /// Same key grammar as before ('$date:exception' / '$date:exception:medical'),
-  /// keyed on the day the findings are ABOUT — so a night fires at most once.
+  /// Pulse days own a separate key so a prior medical notice cannot hide them.
   String get dedupeKey =>
-      medical ? '$date:exception:medical' : '$date:exception';
+      pulse ? '$date:irregular-pulse' : medical ? '$date:exception:medical' : '$date:exception';
 
   /// The notification title, in [l]'s language (no English in this type:
   /// every word comes from the ARBs through [findingTitle]).
@@ -245,7 +254,9 @@ class ExceptionNotice {
       ? findingTitle(l, findings.first)
       : l.findingsAggregateTitle(findings.length);
 
-  String body(AppLocalizations l) => findings.length == 1
+  String body(AppLocalizations l) => pulse
+      ? l.findingNotificationIrregularRhythm(_findingDay(l, findings.single))
+      : findings.length == 1
       ? findingDetail(l, findings.first)
       : findings
           .map((f) => '• ${findingTitle(l, f)} — ${findingDetail(l, f)}')
@@ -271,11 +282,10 @@ List<ExceptionNotice> dueExceptionNotices(
   return [for (final d in dates) ExceptionNotice(d, byDate[d]!)];
 }
 
-/// Every health-exception notice one notification pass should present: the
-/// whole decision `DerivationEngine._runNotifications` makes, minus the I/O.
-/// The engine reads the three inputs below and emits what this returns.
+/// The cross-day notices. Daily pulse notices require separate intake provenance
+/// and are added by `DerivationEngine._runNotificationsUntimed`.
 ///
-/// [irregularFlag] and [storedReadiness] are the `metric_series` values for
+/// [storedReadiness] is the `metric_series` value for
 /// the ANCHOR day (the rollup's newest row, [exceptionAnchor]); [pin] is the
 /// frozen morning headline, whatever day it is pinned to.
 ///
@@ -302,7 +312,6 @@ List<ExceptionNotice> dueExceptionNotices(
 List<ExceptionNotice> planExceptionNotices(
   Map<String, dynamic> cd, {
   required String today,
-  double? irregularFlag,
   ({String day, int value})? pin,
   double? storedReadiness,
 }) {
@@ -310,12 +319,6 @@ List<ExceptionNotice> planExceptionNotices(
   final anchor = exceptionAnchor(cd);
   if (anchor != null && isRecentFindingDate(anchor.date, today: today)) {
     final date = anchor.date;
-    // 24/7 irregular-rhythm SCREEN (not a diagnosis). Not a night's verdict,
-    // so it does not wait for the night to settle: a day with no detected
-    // sleep never settles, and waiting would lose the screen entirely.
-    if (irregularFlag == 1.0) {
-      findings.add(Finding(FindingKind.irregularRhythm, date));
-    }
     // LOW READINESS — the ring's number, judged the way the log judges it.
     // Only on a SETTLED anchor row: before the overnight is complete the live
     // composite still moves (the reason the morning headline freezes at all),
@@ -369,30 +372,22 @@ List<ExceptionNotice> planExceptionNotices(
   }
   return dueExceptionNotices(findings, today: today);
 }
-/// A finding's title from the ARBs (all locales), so a notification and the
-/// log say it the same way. The irregular-rhythm one is "Irregular pulse
-/// pattern flagged": the screen reads the wrist pulse, which cannot show the
-/// heart's electrical activity (design 04 R5). Illness and low readiness use
-/// upstream's copy (its accumulated-RHR illness rule and the recovery score),
-/// merge log D16/D17.
+/// Shared, localized titles. A pulse flag always names its recorded day.
 String findingTitle(AppLocalizations l, Finding f) => switch (f.kind) {
   FindingKind.illness => l.findingIllnessTitle,
   FindingKind.anomaly => l.findingTitleAnomaly,
   FindingKind.tempElevated => l.findingTitleTemp,
-  FindingKind.irregularRhythm => l.findingTitleIrregularRhythm,
+  FindingKind.irregularRhythm => l.findingTitleIrregularRhythm(_findingDay(l, f)),
   FindingKind.lowReadiness => l.findingLowReadinessTitle,
   FindingKind.rhrShift => l.findingTitleRhrShift,
 };
 
-/// A finding's one-sentence explanation from the ARBs. The irregular-rhythm one
-/// begins "Your beat-to-beat pulse timing looked irregular today. This screen
-/// uses the wrist pulse, which can't show the heart's electrical activity, and
-/// is not a diagnosis."
+/// Shared explanation for the day row, detail and notification.
 String findingDetail(AppLocalizations l, Finding f) => switch (f.kind) {
   FindingKind.illness => l.findingIllnessDetail,
   FindingKind.anomaly => l.findingDetailAnomaly,
   FindingKind.tempElevated => l.findingDetailTemp,
-  FindingKind.irregularRhythm => l.findingDetailIrregularRhythm,
+  FindingKind.irregularRhythm => l.findingDetailIrregularRhythm(_findingDay(l, f)),
   FindingKind.lowReadiness => f.score == null
       ? l.findingLowReadinessDetail
       : l.findingLowReadinessScoredDetail(f.score!),
@@ -401,3 +396,6 @@ String findingDetail(AppLocalizations l, Finding f) => switch (f.kind) {
         ? l.findingDetailRhrShiftFallen
         : l.findingDetailRhrShiftRisen,
 };
+
+String _findingDay(AppLocalizations l, Finding f) =>
+    localizedDate(DateTime.parse(f.date), l.localeName, withDayOfWeek: true);

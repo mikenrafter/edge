@@ -10,6 +10,7 @@
 //   not paired → Pairing (LOCAL device pref)
 //   else       → main Shell (auto-connect saved band, drain, go live)
 
+import '../compute/processing_context.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -2983,7 +2984,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       // to LocalDb, so it bypasses every check AppState makes.
       onRecordsBatch: (raws, samples) async {
         if (_resetting) return; // see [_resetting]
-        await LocalDb.insertRecordsBatch(raws, samples);
+        await LocalDb.insertRecordsBatch(raws, samples, processingOrigin: ProcessingOrigin.recentSync);
       },
       // RESUMABLE SYNC: atomic commit of decoded rows + continuation cursor
       // before the HISTORY_END ACK, and a reader to seed the offload frontier
@@ -4848,7 +4849,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     // thing the line must not do. `insertRecord` returns false rather than
     // throwing if it ever stops committing; today it can only return true or
     // throw, and reading the result costs nothing to keep that honest.
-    final inserted = await LocalDb.insertRecord(raw, sample);
+    final inserted = await LocalDb.insertRecord(raw, sample, processingOrigin: ProcessingOrigin.recentSync);
     if (inserted && ts != null && ts > 0 && ts > (_lastRecTs ?? 0)) {
       _lastRecTs = ts;
     }

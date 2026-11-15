@@ -224,6 +224,7 @@ Future<Database> _ldbPrivOpen() async {
         await ActivityStore.create(db);
         await LocalDb._createWorkoutRoute(db);
         await LocalDb._createNotifFired(db);
+        await LocalDb._createPulseAlert(db);
         await LocalDb._createNotifSlots(db);
         await LocalDb._createAlarmSchedule(db);
         await LocalDb._createWakeTables(db);
@@ -1068,6 +1069,32 @@ Future<Database> _ldbPrivOpen() async {
           // Empty deleted-day marker table; nothing is inferred for old deletes.
           await createTrackTables(db);
         }
+        if (oldV < 87) {
+          // Delivery provenance only. Existing jobs default to a summary path.
+          await LocalDb._createComputeState(db);
+          // An install old enough may predate either table, and this step reads
+          // both: create them here, not only on the repair that runs after.
+          await LocalDb._createNotifFired(db);
+          await LocalDb._createPulseAlert(db);
+          // A flagged day that already spent its legacy medical claim was
+          // alerted: record it so it never alerts a second time. Every other
+          // flagged day is announced, once, in the first summary.
+          final hasSeries = (await db.rawQuery(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'metric_series'",
+          )).isNotEmpty;
+          if (hasSeries) {
+            await db.execute("INSERT OR IGNORE INTO pulse_alert(day, state, at_ms) "
+                "SELECT s.date, 'earlier', f.fired_at "
+                "FROM metric_series s JOIN notif_fired f "
+                "ON f.key = s.date || ':exception:medical' "
+                "WHERE s.key = 'irregular_rhythm_flag' AND s.value = 1");
+            await db.execute("INSERT OR IGNORE INTO notif_fired(key, fired_at) "
+                "SELECT s.date || ':irregular-pulse', f.fired_at "
+                "FROM metric_series s JOIN notif_fired f "
+                "ON f.key = s.date || ':exception:medical' "
+                "WHERE s.key = 'irregular_rhythm_flag' AND s.value = 1");
+          }
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);
@@ -1158,6 +1185,7 @@ Future<void> _ldbPrivRepairOpenSchema(Database db) async {
     await LocalDb._ensureDayResultSkippedColumn(db);
     await LocalDb._ensureDayResultPartialColumn(db);
     await LocalDb._createNotifFired(db);
+    await LocalDb._createPulseAlert(db);
     await LocalDb._createNotifSlots(db);
     await LocalDb._createAlarmSchedule(db);
     // CREATE TABLE IF NOT EXISTS on the every-open repair path, no schema
@@ -2381,6 +2409,10 @@ Future<void> _ldbPrivCreateComputeState(Database db) async {
         updated_at INTEGER NOT NULL
       )
     ''');
+    final jobColumns = await db.rawQuery('PRAGMA table_info(compute_jobs)');
+    if (!jobColumns.any((c) => c['name'] == 'processing_context')) {
+      await db.execute('ALTER TABLE compute_jobs ADD COLUMN processing_context TEXT');
+    }
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_compute_jobs_state_pri ON compute_jobs(state, priority DESC, updated_at ASC)',
     );

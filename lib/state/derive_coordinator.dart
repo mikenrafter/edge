@@ -22,6 +22,7 @@ import '../compute/derive_outcome.dart';
 import '../compute/derive_scheduler.dart';
 import '../compute/periodic_calculation_policy.dart';
 import '../compute/profile.dart';
+import '../compute/processing_context.dart';
 import '../data/bundle_store.dart';
 import '../data/local_repository.dart';
 import '../data/local_repository_impl.dart';
@@ -87,6 +88,7 @@ class DeriveCoordinator {
     required Future<void> Function() maybeReclaimDiskSpace,
     PeriodicCalculationPolicy? calculationPolicy,
     PublishGate? publishGate,
+    Duration? schedulerSettle,
     this.reminderSleep,
   })  : _engine = engine,
         _profileOf = profile,
@@ -103,7 +105,8 @@ class DeriveCoordinator {
         _healthShareConsent = healthShareConsent,
         _maybeReclaimDiskSpace = maybeReclaimDiskSpace,
         _policyOverride = calculationPolicy,
-        _publishGateOverride = publishGate;
+        _publishGateOverride = publishGate,
+        _schedulerSettle = schedulerSettle;
 
   // The engine is resolved on use: AppState builds it lazily (it reads the
   // `_background` flag both of its constructors have set by then).
@@ -128,6 +131,10 @@ class DeriveCoordinator {
   final Future<void> Function() _maybeReclaimDiskSpace;
   final PeriodicCalculationPolicy? _policyOverride;
   final PublishGate? _publishGateOverride;
+
+  /// Tests only: the scheduler's settle window for both job kinds. Null keeps
+  /// the production defaults.
+  final Duration? _schedulerSettle;
 
   /// P2.3 stub: the serialised publish loop every freshness write and revision
   /// bump goes through.
@@ -162,6 +169,7 @@ class DeriveCoordinator {
       heavy: kind == DeriveJobKind.heavy,
       changedOnly: kind == DeriveJobKind.light,
       automatic: true,
+      processingContext: scheduler.runningContext,
     );
     final rescan = _rescanRun;
     _rescanRun = null;
@@ -197,6 +205,8 @@ class DeriveCoordinator {
     run: _runScheduled,
     log: _log,
     onChanged: _schedulerChanged,
+    lightSettle: _schedulerSettle ?? const Duration(seconds: 8),
+    heavySettle: _schedulerSettle ?? const Duration(seconds: 2),
     // Measurement only: queue wait and hold reasons for DerivePerf.
     onQueued: () => _derive.perf.enqueued(),
     onWaiting: ({required settling}) {
@@ -638,6 +648,7 @@ class DeriveCoordinator {
     bool heavy = false,
     bool changedOnly = false,
     bool automatic = false,
+    ProcessingContext processingContext = ProcessingContext.reanalysis,
     void Function(int total)? onScope,
     void Function(String day, int index, int total)? onDay,
   }) async {
@@ -659,6 +670,7 @@ class DeriveCoordinator {
       // not only at the end (a multi-day backfill can be many days of work).
       var scopeTotal = -1;
       outcome = await TelemetryService.instance.traced<DeriveOutcome>('derive_$mode', () => _deriveRun(
+        processingContext: processingContext,
         heavy: heavy,
         changedOnly: changedOnly,
         onScope: (total) {
@@ -811,6 +823,7 @@ class DeriveCoordinator {
   }
 
   Future<DeriveOutcome> _deriveRun({
+    required ProcessingContext processingContext,
     required bool heavy,
     required bool changedOnly,
     void Function(int total)? onScope,
@@ -834,6 +847,7 @@ class DeriveCoordinator {
         await _calculationPolicy.select(heavy: heavy, forced: false);
     final n = await _derive.run(
       _profile,
+      processingContext: processingContext,
       heavy: heavy,
       changedOnly: changedOnly,
       calculationMode: calculationMode,

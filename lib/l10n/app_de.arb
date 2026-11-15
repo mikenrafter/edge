@@ -2908,11 +2908,11 @@
   "ecgScreenerIntro": "Dies ist ein Screening, kein medizinischer Test.\n\nEin Ergebnis ohne Markierung bedeutet nicht, dass Sie als unbedenklich eingestuft wurden, und das Screening kann nichts ausschließen. Ein Ergebnis, das nicht untersucht wurde, sagt gar nichts aus.\n\nDas Ergebnis stammt vom Band selbst. Die App liest die Kurve nicht selbst und hat die Qualität der Aufzeichnung nicht geprüft; sie hält ein Rhythmusergebnis nur zurück, wenn das Band ein Problem meldet. Ein Armband zeichnet nur eine einzige Ableitung auf.\n\nBei Beschwerden lassen Sie sich ärztlich untersuchen.",
   "findingTitleAnomaly": "Ungewöhnliche Werte über Nacht",
   "findingTitleTemp": "Hauttemperatur erhöht",
-  "findingTitleIrregularRhythm": "Unregelmäßiges Pulsmuster markiert",
+  "findingTitleIrregularRhythm": "Unregelmäßiges Pulsmuster am {day} markiert",
   "findingTitleRhrShift": "Ruhepuls hat sich verändert",
   "findingDetailAnomaly": "Ihre Werte über Nacht liegen außerhalb Ihres üblichen Bereichs.",
   "findingDetailTemp": "Ihre Hauttemperatur liegt anhaltend über Ihrem üblichen Wert.",
-  "findingDetailIrregularRhythm": "Ihr Pulsabstand von Schlag zu Schlag wirkte heute unregelmäßig. Dieses Screening nutzt den Puls am Handgelenk, der die elektrische Aktivität des Herzens nicht zeigen kann, und ist keine Diagnose. Bei Beschwerden suchen Sie ärztlichen Rat.",
+  "findingDetailIrregularRhythm": "Am {day} entsprachen die Zeitabstände zwischen den Pulsmessungen des Handgelenksensors unserer Unregelmäßigkeitsregel. Wir haben nicht gemessen, wie oft diese Regel richtig liegt oder eine Herzrhythmusstörung übersieht. Bewegung, der Sitz des Sensors und zusätzliche Herzschläge können ähnliche Muster verursachen. Die Regel kann Vorhofflimmern (VHF) nicht erkennen, und eine Aufzeichnung ohne Markierung kann eine Herzrhythmusstörung nicht ausschließen. Eine Ärztin oder ein Arzt kann Ihren Herzrhythmus mit einem EKG beurteilen. Bei wiederholten Markierungen sollten Sie auch ohne Beschwerden ärztlichen Rat erwägen. Bei Beschwerden wie Brustschmerzen, Ohnmacht oder starker Atemnot holen Sie sofort ärztliche Hilfe.",
   "findingDetailRhrShiftRisen": "Ihr Ruhepuls liegt über Ihrem üblichen Wert.",
   "findingDetailRhrShiftFallen": "Ihr Ruhepuls liegt unter Ihrem üblichen Wert.",
   "findingsAggregateTitle": "{count, plural, =1{1 Hinweis zum Ansehen} other{{count} Hinweise zum Ansehen}}",
@@ -2922,8 +2922,8 @@
   "findingLowReadinessDetail": "Die Erholung war niedrig. Die Signale dieser Nacht lagen deutlich unter Ihrem üblichen Wert.",
   "findingLowReadinessScoredDetail": "Die Erholung lag bei {score}, deutlich unter Ihrem üblichen Wert.",
   "investigateFlagNotScreened": "nicht untersucht",
-  "investigateConfidence24h": "Konfidenz, 24 Std.",
-  "investigateConfidenceSleep": "Konfidenz, Schlaf",
+  "investigateConfidence24h": "Datenlage, 24 h",
+  "investigateConfidenceSleep": "Datenlage, Schlaf",
   "investigateCleanFractionSleep": "Anteil der nach der Bereinigung behaltenen Schläge, Schlaf",
   "investigatePrvEvidenceTitle": "Belege zum Unregelmäßigkeits-Screening",
   "investigatePrvScopeSleep": "Schlaf",
@@ -2932,7 +2932,7 @@
   "investigatePrvBeatsCorrected": "Korrigierte Schläge, {scope}",
   "investigatePrvBeatsDropped": "Verworfene Schläge, {scope}",
   "investigatePrvBeatsAnalysed": "Analysierte Schläge, {scope}",
-  "investigatePrvArtifactShare": "Vom Band falsch gelesene Schläge (korrigiert oder verworfen), {scope}",
+  "investigatePrvArtifactShare": "Durch Bereinigung korrigierte oder entfernte Schläge, {scope}",
   "investigatePrvWindowsTotal": "Fenster insgesamt, {scope}",
   "investigatePrvWindowsValid": "Fenster mit genug Schlägen für die Wertung, {scope}",
   "investigatePrvWindowsFlagged": "Markierte Fenster, {scope}",
@@ -2944,7 +2944,7 @@
   "investigatePrvPnnSleep": "Aufeinanderfolgende Intervalle über 70 ms, Schlaf",
   "investigatePrvWhy": "Warum nicht untersucht, {scope}",
   "investigatePrvWhyTooFew": "Zu wenige brauchbare Schläge: {have} von {need} nötig",
-  "investigatePrvWhyArtifact": "Zu viele falsch gelesene Schläge: {seen}, Grenze {allowed}",
+  "investigatePrvWhyArtifact": "Zu viele Schläge mussten korrigiert oder entfernt werden, um diese Aufzeichnung zu prüfen. {seen} / {allowed}",
   "investigatePrvWhyNoPairs": "Keine aufeinanderfolgenden brauchbaren Schläge zum Vergleichen",
   "investigatePrvWhyNoVariability": "Zu wenig Schwankung, um ein Verhältnis zu berechnen",
   "investigatePrvExport": "PRV-Protokoll exportieren",
@@ -3989,7 +3989,14 @@
   "guideAddNapMissingTitle": "„{naps}“ nicht zu sehen?",
   "guideAddNapMissingBody": "**{naps}** steht unter deiner Nacht. Ist dieser Teil, **{night}**, eingeklappt, tippe auf seinen Titel, um ihn zu öffnen.",
   "guideTapsBack": "{count, plural, one{1 Tipp zurück} other{{count} Tipps zurück}}",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "@guideTapsBack": {
+    "description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "deriveDailyLabel": "Schlaf, Erholung und Belastung werden berechnet",
   "deriveDailyProgress": "Schlaf, Erholung und Belastung werden berechnet · Tag {index} von {total}",
   "deriveDailyProgressOn": "Schlaf, Erholung und Belastung werden berechnet · Tag {index} von {total} · {day}",
@@ -4049,5 +4056,16 @@
   "sleepTabThePlanCardTitle": "Der Plan",
   "pendingSectionLoading": "Wird geladen, {name}",
   "pendingSectionLoaded": "Geladen, {name}",
-  "pendingSectionContent": "Inhalt"
+  "pendingSectionContent": "Inhalt",
+  "findingNotificationIrregularRhythm": "Die am {day} aufgezeichneten Pulsabstände entsprachen unserer Unregelmäßigkeitsregel. Ihre Genauigkeit und wie oft sie Herzrhythmusstörungen übersieht, wurden nicht gemessen. Tippen Sie, um die Grenzen zu lesen.",
+  "pulseSummaryTitle": "{count, plural, =1{Unregelmäßiges Pulsmuster an 1 Tag markiert} other{Unregelmäßige Pulsmuster an {count} Tagen markiert}}",
+  "pulseSummaryBody": "{count, plural, =1{{days}. Die Pulsabstände an diesem Tag entsprachen unserer Unregelmäßigkeitsregel. Ihre Genauigkeit und wie oft sie Herzrhythmusstörungen übersieht, wurden nicht gemessen. Tippen Sie, um die Grenzen zu lesen.} other{{days}. Die Pulsabstände an diesen Tagen entsprachen unserer Unregelmäßigkeitsregel. Ihre Genauigkeit und wie oft sie Herzrhythmusstörungen übersieht, wurden nicht gemessen. Tippen Sie, um die Grenzen zu lesen.}}",
+  "pulseSummaryDaysMore": "{days} und {more} weitere",
+  "pulseAlertSent": "Hinweis gesendet {when}",
+  "pulseAlertInSummary": "In einem Sammelhinweis enthalten {when}",
+  "pulseAlertOff": "Kein Hinweis: Benachrichtigungen waren aus",
+  "pulseAlertNotPermitted": "Kein Hinweis: Benachrichtigungen waren nicht erlaubt",
+  "pulseAlertUnknown": "Hinweis wurde möglicherweise gesendet {when}",
+  "pulseAlertQuiet": "Kein Hinweis: wegen Ruhezeiten zurückgehalten",
+  "pulseAlertEarlier": "Von einer früheren Version der App gemeldet {when}"
 }

@@ -424,7 +424,7 @@ class _InvestigateState extends State<Investigate> {
         case 'artifact':
           return l?.investigatePrvWhyArtifact(
                   pct(beats['artifact_fraction']), pct(th['max_artifact'])) ??
-              'Too many misread beats: ${pct(beats['artifact_fraction'])}, '
+              'Too many beats needed correction or removal: ${pct(beats['artifact_fraction'])}, '
                   'limit ${pct(th['max_artifact'])}';
         case 'no_successive_pairs':
           return l?.investigatePrvWhyNoPairs ??
@@ -469,7 +469,7 @@ class _InvestigateState extends State<Investigate> {
         (l?.investigatePrvBeatsAnalysed(scope) ?? 'Beats analysed, $scope',
             n(beats['nn_kept'])),
         (l?.investigatePrvArtifactShare(scope) ??
-            'Beats the band misread (fixed or dropped), $scope',
+            'Beats corrected or dropped by cleaning, $scope',
             pct(beats['artifact_fraction'])),
         ...extra,
         (l?.investigatePrvWindowsTotal(scope) ?? 'Windows, all, $scope',
@@ -735,9 +735,9 @@ class _InvestigateState extends State<Investigate> {
         // The stored evidence behind those two verdicts, read from the day
         // bundle as persisted (design 04 R4: display only, nothing recomputed).
         // An unpersisted value has no row: never a 0 or a 0 %.
-        (l?.investigateConfidence24h ?? 'Confidence, 24 h',
+        (l?.investigateConfidence24h ?? 'Data sufficiency, 24 h',
             plain(irr24Confidence)),
-        (l?.investigateConfidenceSleep ?? 'Confidence, sleep',
+        (l?.investigateConfidenceSleep ?? 'Data sufficiency, sleep',
             plain(irr['confidence'])),
         (l?.investigateCleanFractionSleep ??
             'Share of beats kept after cleaning, sleep',
