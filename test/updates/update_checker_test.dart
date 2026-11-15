@@ -349,7 +349,8 @@ void main() {
   // WHY: an upstream server or proxy cannot expand a small metadata request without bound.
   // catches: reading an unlimited response, or treating a connectivity error as current.
   test('oversize bodies and transport failures are explicit errors', () async {
-    respond = (_) async => http.Response(' ' * 2097153, 200);
+    respond = (_) async =>
+        http.Response(' ' * 2097152 + jsonEncode([release('v0.11.4')]), 200);
     await service.check(manual: true);
     expect(
       service.snapshot.sources[ReleaseSource.official]!.error,

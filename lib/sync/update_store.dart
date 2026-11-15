@@ -49,6 +49,10 @@ class UpdateStore {
       'CREATE TABLE IF NOT EXISTS update_sources (source TEXT PRIMARY KEY, json TEXT NOT NULL)',
     );
     await db.execute(
+      'CREATE TABLE IF NOT EXISTS update_manifests '
+      '(key TEXT PRIMARY KEY, json TEXT NOT NULL)',
+    );
+    await db.execute(
       'CREATE TABLE IF NOT EXISTS update_notifications (identity TEXT PRIMARY KEY)',
     );
   }
@@ -94,7 +98,10 @@ class UpdateStore {
       'lease_until=0, next_at=0 WHERE id=1',
       [enabled ? 1 : 0],
     );
-    if (!enabled) await txn.delete('update_sources');
+    if (!enabled) {
+      await txn.delete('update_sources');
+      await txn.delete('update_manifests');
+    }
   });
 
   Future<void> setOfficialPrereleases(bool enabled) => db.transaction((
@@ -166,6 +173,41 @@ class UpdateStore {
     }, conflictAlgorithm: ConflictAlgorithm.replace);
     return true;
   });
+  Future<Map<String, dynamic>?> manifest(String key) async {
+    final rows = await db.query(
+      'update_manifests',
+      where: 'key=?',
+      whereArgs: [key],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    try {
+      return Map<String, dynamic>.from(
+        jsonDecode(rows.single['json'] as String) as Map,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // CLAIM(update-manifest-cache): only validated, allowlisted fields are saved
+  // under the current batch generation [update_manifest_cache_test].
+  Future<bool> saveManifest(
+    UpdateLease lease,
+    String key,
+    Map<String, dynamic> metadata,
+  ) => db.transaction((txn) async {
+    final row = (await txn.query('update_state')).single;
+    if (row['generation'] != lease.generation || row['token'] != lease.token) {
+      return false;
+    }
+    await txn.insert('update_manifests', {
+      'key': key,
+      'json': jsonEncode(metadata),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    return true;
+  });
+
   Future<bool> valid(UpdateLease lease) async {
     final row = (await db.query('update_state')).single;
     return row['generation'] == lease.generation && row['token'] == lease.token;

@@ -28,7 +28,9 @@ installed version, ABI, package, identifier, credentials or telemetry is sent.
 GitHub sees the IP address, request time and resource. Release listings use
 `GET /repos/{source}/releases?per_page=100`, with at most three pages and 2 MiB per
 response. Fork manifests use the API's numeric asset endpoint, at most eight
-manifests and 256 KiB each. Each request has a 12-second timeout. List redirects
+new manifests and 256 KiB each. Validated manifest fields are cached by release,
+asset ID and API modification time; a large cold catalog makes progress across
+checks. Cache entries are revalidated against the current asset list before use. Each request has a 12-second timeout. List redirects
 are refused. Manifest redirects are restricted to HTTPS
 `release-assets.githubusercontent.com`, at most three hops; their URLs are not
 cached. No APK URL is ever requested. A bound that prevents a complete result

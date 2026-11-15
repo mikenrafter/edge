@@ -403,6 +403,7 @@ class UpdateService extends ChangeNotifier {
         inspectedPage = ReleasePage.forRelease(source, knownTags.first);
       }
       final manifests = <int, Map<String, dynamic>>{};
+      var fetchedManifests = 0;
       if (source == ReleaseSource.fork) {
         for (final release in releases) {
           if (release['draft'] != false ||
@@ -416,27 +417,69 @@ class UpdateService extends ChangeNotifier {
               .toList();
           if (manifest.length > 1) throw const FormatException();
           if (manifest.isEmpty) continue;
-          if (manifests.length >= 8) {
-            throw const _UpdateFailure(UpdateError.incomplete);
-          }
           final id = manifest.single['id'];
-          if (id is! int || id <= 0) throw const FormatException();
-          final response = await request(
-            Uri.https(
-              'api.github.com',
-              '/repos/${source.repository}/releases/assets/$id',
-            ),
-            manifest: true,
-          );
-          if (response.status == 403 || response.status == 429) {
-            return _rateLimit(response, previous);
+          final releaseId = release['id'];
+          if (id is! int || id <= 0 || releaseId is! int || releaseId <= 0) {
+            throw const FormatException();
           }
-          if (response.status != 200) {
-            throw const _UpdateFailure(UpdateError.badMetadata);
+          final updatedAt = manifest.single['updated_at'];
+          final stamp = updatedAt == null
+              ? null
+              : DateTime.tryParse(updatedAt as String);
+          if (updatedAt != null && stamp == null) throw const FormatException();
+          final key = jsonEncode([
+            source.name,
+            releaseId,
+            release['tag_name'],
+            id,
+            stamp?.toUtc().toIso8601String(),
+          ]);
+          var content = await store.manifest(key);
+          if (content != null) {
+            try {
+              selectRelease(
+                source,
+                [release],
+                installed,
+                manifests: {releaseId: content},
+              );
+            } catch (_) {
+              content = null;
+            }
           }
-          manifests[release['id'] as int] = Map<String, dynamic>.from(
-            jsonDecode(response.body) as Map,
-          );
+          if (content == null) {
+            if (fetchedManifests >= 8) {
+              throw const _UpdateFailure(UpdateError.incomplete);
+            }
+            fetchedManifests++;
+            final response = await request(
+              Uri.https(
+                'api.github.com',
+                '/repos/${source.repository}/releases/assets/$id',
+              ),
+              manifest: true,
+            );
+            if (response.status == 403 || response.status == 429) {
+              return _rateLimit(response, previous);
+            }
+            if (response.status != 200) {
+              throw const _UpdateFailure(UpdateError.badMetadata);
+            }
+            final decoded = Map<String, dynamic>.from(
+              jsonDecode(response.body) as Map,
+            );
+            selectRelease(
+              source,
+              [release],
+              installed,
+              manifests: {releaseId: decoded},
+            );
+            content = _manifestMetadata(decoded);
+            if (!await store.saveManifest(lease, key, content)) {
+              throw const _UpdateFailure(UpdateError.network);
+            }
+          }
+          manifests[releaseId] = content;
         }
       }
       final selected = selectRelease(
@@ -622,6 +665,24 @@ class _UpdateFailure implements Exception {
   const _UpdateFailure(this.error);
   final UpdateError error;
 }
+
+// The manifest cache never retains arbitrary remote fields or redirect URLs.
+Map<String, dynamic> _manifestMetadata(Map<String, dynamic> decoded) => {
+  'formatVersion': decoded['formatVersion'],
+  'repository': decoded['repository'],
+  'tag': decoded['tag'],
+  'sourceSha': decoded['sourceSha'],
+  'versionCode': decoded['versionCode'],
+  'artifacts': [
+    for (final artifact in decoded['artifacts'] as List)
+      {
+        'name': artifact['name'],
+        'mode': artifact['mode'],
+        'package': artifact['package'],
+        'abis': (artifact['abis'] as List).cast<String>().toSet().toList(),
+      },
+  ],
+};
 
 List<Map<String, dynamic>> _assets(Map<String, dynamic> release) =>
     (release['assets'] as List)
