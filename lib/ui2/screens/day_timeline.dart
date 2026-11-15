@@ -37,7 +37,7 @@ import '../../compute/inputs/measurement_inputs.dart'
     show bmiScalesOf, nearWeight;
 import '../../compute/profile.dart' show bmiOf;
 import '../../data/coverage_resolver.dart' show OwnedSpan, coverageFromJson, spanAt;
-import '../../data/day_label.dart' show localDayEndSec;
+import '../../data/day_label.dart' show localDayEndSec, todayLabel;
 import '../../data/water_moment.dart';
 import '../../data/assumed_water.dart' show AssumedGlass, AssumedState;
 import '../../data/db.dart';
@@ -66,7 +66,7 @@ import 'investigate.dart' show Investigate;
 import 'log_workout.dart' show LogWorkout, bumpInsights;
 import 'naps.dart' show NapsScreen;
 import 'home_screen.dart' show clockOfTs, go, repoOf;
-import 'metric_detail.dart' show dayNavRow, pickDay;
+import 'metric_detail.dart' show DayNav, pickDay;
 
 /// One thing that happened, at a time it is known to have happened at.
 @immutable
@@ -1033,8 +1033,9 @@ String observationValue(num v) =>
 
 class DayTimelineScreen extends StatefulWidget {
   const DayTimelineScreen({super.key, this.day, this.data,
-      this.reviewMoments, this.reviewService, this.reviewEditor, this.focusId, this.reviewActivities});
+      this.reviewMoments, this.reviewService, this.reviewEditor, this.focusId, this.reviewActivities, this.resolving = false, this.reviewEntry = false});
 
+  final bool resolving, reviewEntry;
   final String? focusId;
   final List<ActivitySuggestion>? reviewActivities;
 
@@ -1090,7 +1091,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     }
   }
 
-  void _loadReview(String day) {
+  Future<void> _loadReview(String day) async {
     final repo = repoOf(context);
     if (repo == null) return;
     _review?.removeListener(_onReview);
@@ -1103,7 +1104,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         enabledSince: context.read<AppState>().gestureSettings.followUpMoments
             ? context.read<AppState>().gestureSettings.followUpMomentsSince : null);
     _review!.addListener(_onReview);
-    unawaited(_review!.load());
+    await _review!.load();
   }
 
   Future<bool> _canLeave() async {
@@ -1291,6 +1292,15 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   }
 
   @override
+  void didUpdateWidget(DayTimelineScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.resolving && !widget.resolving) {
+      _day = widget.day;
+      _load();
+    }
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     // `code` alone misses a SYSTEM locale change while it is null (no
@@ -1311,6 +1321,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   }
 
   Future<void> _load() async {
+    if (widget.resolving) return;
     final token = ++_loadToken;
     _deviceToken++;
     final repo = repoOf(context);
@@ -1327,7 +1338,8 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
           ? _anyHrCandidates(context, context.read<AppState>())
           : const <DeviceOption>[];
       if (mounted && token == _loadToken) {
-        if (_review?.day != d.day && d.day != null) _loadReview(d.day!);
+        if (_review?.day != d.day && d.day != null) await _loadReview(d.day!);
+        if (!mounted || token != _loadToken) return;
         _review?.reconcileSettled(d.computedAtMs);
         setState(() => (
           _d = d,
@@ -1486,9 +1498,8 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
           ? a.row.moment.at.compareTo(b.row.moment.at)
           : a.rank.compareTo(b.rank));
     final rows = [for (final e in ranked) e.row];
-    final reviewing = review?.reviewing == true;
-    final title = reviewing
-        ? '${l?.homeReviewActivities ?? 'Review activities'} · ${review!.ids.length}'
+    final title = widget.reviewEntry
+        ? (l?.homeReviewActivities ?? 'Review activities')
         : (l?.dayTimelineTitle ?? 'Breakdown of your day');
     return PopScope(
       canPop: _allowPop || (review?.hasChanges != true && review?.busy != true),
@@ -1504,7 +1515,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
           // (every pending row prints its own Discard, so that label is ambiguous)
           // [guide_remove_detected.dart; guide_conformance_test 'review keys'].
           NavBar(title,
-              key: reviewing ? const ValueKey('day-review-nav') : null,
+              key: widget.reviewEntry ? const ValueKey('day-review-nav') : null,
               onBack: _leave),
           // The chart scrolls with the page, as it did before review existed.
           // The Save bar is a sibling BELOW the list, so no row sits behind it.
@@ -1515,14 +1526,15 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
               child: Padding(padding: const EdgeInsets.symmetric(horizontal: S.x4),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                ...dayNavRow(_day ?? d.day, d.days, _goDay),
+                PendingContent(pending: _loading && _d == null,
+                  child: DayNav(day: _day ?? d.day ?? todayLabel(), days: d.days,
+                    onDay: _goDay, alwaysShow: true)),
+                const SizedBox(height: S.x3),
                 TextButton(onPressed: () => go(c, const TypicalDayScreen()),
                   child: Text(l?.typicalDayTitle ?? 'Typical day')),
-                DayReviewNotices(controller: review, reloader: this),
                 if (_loading) ...[
                   const SizedBox(height: S.x4),
-                  InlineLoading(status: l?.loadingDayTimeline ??
-                      "Reading this day's timeline"),
+                  const PendingContent(pending: true, child: Surface(child: PendingRows(count: 8))),
                 ] else ...[
                   if (_candidates.length >= 2)
                     DeviceFilter(options: _candidates, selected: _device,
@@ -1570,7 +1582,17 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                 ],
                 ]))),
           )),
-          DayReviewSaveBar(controller: review),
+          SizedBox(
+            key: review != null && !review.loading && (review.hasChanges || review.busy)
+              ? const ValueKey('apk2-review-savebar') : null,
+            height: (80 * MediaQuery.textScalerOf(c).scale(1)).clamp(0.0, box.maxHeight * .22),
+            // Failures share the already reserved footer. They must not push
+            // the graph/rows down when a queue or follow-up read fails.
+            child: SingleChildScrollView(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                DayReviewNotices(controller: review, reloader: this),
+                DayReviewSaveBar(controller: review),
+              ]))),
         ]))),
         // Cupertino suppresses its route gesture while PopScope guards a
         // batch. Keep the leading-edge swipe as a request for confirmation.

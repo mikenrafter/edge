@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/day_label.dart' show dayLabelBefore;
 import 'package:openstrap_edge/layout_shift/layout_shift.dart';
 import '../../backup/backup_support.dart';
 import 'package:openstrap_edge/state/app_state.dart';
@@ -53,9 +54,9 @@ class _LateRepo extends GuideFakeRepo {
   @override
   Future<Map<String, dynamic>> getToday() => late(super.getToday);
   @override
-  Future<List<String>> availableDays() => late(() async => [for (var i = 0; i < 28; i++)
-      DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day - i)
-        .toIso8601String().substring(0, 10)]);
+  Future<List<String>> availableDays() => late(
+    () async => [for (var i = 0; i < 28; i++) dayLabelBefore(todayId, i)!],
+  );
   @override
   Future<Map<String, dynamic>> getDaySleepV2(String day) => late(
     () => rich ? SleepRepo().getDaySleepV2(day) : super.getDaySleepV2(day),

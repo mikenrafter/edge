@@ -81,11 +81,10 @@ class _DayReviewEntryState extends State<DayReviewEntry> {
     }
   }
   @override
-  Widget build(BuildContext c) => _day == null
-      ? Scaffold(body: Center(child: Text(AppLocalizations.of(c)?.loadingActivitiesToReview ??
-          'Reading activities to review')))
-      : DayTimelineScreen(day: _day, focusId: widget.focusId, reviewActivities: widget.activities, reviewMoments: _moments,
-          reviewService: widget.service, reviewEditor: widget.editor);
+  Widget build(BuildContext c) => DayTimelineScreen(
+      reviewEntry: true, resolving: _day == null, day: _day, focusId: widget.focusId,
+      reviewActivities: widget.activities, reviewMoments: _moments,
+      reviewService: widget.service, reviewEditor: widget.editor);
 }
 
 class DayReviewController extends ChangeNotifier {
@@ -691,7 +690,7 @@ class DayReviewActions extends StatelessWidget {
   }
 }
 
-/// Load, save and follow-up problems, at the top of the list.
+/// Load, save and follow-up problems, inside the reserved footer.
 class DayReviewNotices extends StatelessWidget {
   const DayReviewNotices({super.key, required this.controller, this.reloader});
   final DayReviewController? controller;
@@ -728,7 +727,6 @@ class DayReviewSaveBar extends StatelessWidget {
     }
     final n = r.stagedCount;
     return Container(
-      key: const ValueKey('apk2-review-savebar'),
       decoration: BoxDecoration(color: p.card,
           border: Border(top: BorderSide(color: p.line)),
           boxShadow: [for (final s in p.el(3)) BoxShadow(color: s.color,

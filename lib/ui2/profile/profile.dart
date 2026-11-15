@@ -29,6 +29,7 @@ class SetRow extends StatelessWidget {
   final Color color;
   final String title, sub, value;
   final bool danger, chevron;
+  final CrossAxisAlignment crossAxisAlignment;
 
   /// A row that does not apply right now stays in the list, dimmed and
   /// inert, rather than appearing and disappearing with another setting. Say
@@ -52,6 +53,7 @@ class SetRow extends StatelessWidget {
       this.value = '',
       this.danger = false,
       this.chevron = true,
+      this.crossAxisAlignment = CrossAxisAlignment.center,
       this.trailing,
       this.replacement,
       this.enabled = true,
@@ -64,6 +66,7 @@ class SetRow extends StatelessWidget {
       this.value = '',
       this.danger = false,
       this.chevron = true,
+      this.crossAxisAlignment = CrossAxisAlignment.center,
       this.enabled = true,
       this.onTap})
       : icon = null,
@@ -92,7 +95,7 @@ class SetRow extends StatelessWidget {
       semanticLabel: sub.isEmpty ? title : '$title. $sub',
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: S.x3),
-        child: Row(children: [
+        child: Row(crossAxisAlignment: crossAxisAlignment, children: [
           Container(
             width: 32,
             height: 32,

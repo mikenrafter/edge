@@ -24,6 +24,7 @@ import 'package:openstrap_analytics/onehz.dart' show journalFieldLagDays;
 import 'package:provider/provider.dart';
 
 import '../../data/db.dart';
+import '../../data/local_repository.dart';
 import '../../data/read_paused.dart';
 import '../../data/day_label.dart';
 import '../../data/journal_fields.dart';
@@ -100,6 +101,7 @@ class _WellnessScreenState extends State<WellnessScreen>
   /// midnight and habit ticks would land on yesterday's date.
   String get _date => todayLabel();
   bool _loading = true;
+  bool _planFailed = false;
   bool _paused = false;
 
   /// One journal write at a time. `putJournalMetrics` deletes the day and
@@ -179,18 +181,67 @@ class _WellnessScreenState extends State<WellnessScreen>
   }
 
   Future<void> _load() async {
+    if (widget.sleepPlanOnly && _planFailed && mounted) {
+      setState(() { _planFailed = false; _loading = true; });
+    }
     try {
       await _loadToday();
     } on ReadPaused {
       // An import has the database: today is not readable yet, and not wrong.
       if (mounted) setState(() => (_loading = false, _paused = true));
+    } catch (_) {
+      if (!widget.sleepPlanOnly) rethrow;
+      if (mounted) setState(() { _loading = false; _planFailed = true; });
     }
+  }
+
+  Future<List<DriverFacts>> _readDrivers(LocalRepository repo,
+      Map<String, dynamic> insights, String day) async {
+      // `readiness_glassbox.breakdown`, NOT `.drivers` — drivers is already
+      // filtered to the inputs that cleared the smallest-worthwhile-change
+      // gate, so an input that sat inside its usual spread was never in it and
+      // the screen could not say "and this one did nothing". Same array
+      // ReadinessDetail renders, so the two agree by construction.
+      final gb = envValue(insights['readiness_glassbox']);
+      final bd = gb?['breakdown'];
+      // The baselines block: centre, spread, delta and MDC per input. Written
+      // on every derive since long before anything read it.
+      final heart = await repo.getDayHeart(day);
+      final charts = <String, Object?>{};
+      for (final k in driverChartKeys) {
+        charts[k] = await repo.getChart(k);
+      }
+      return driverFacts(
+        breakdown: [
+          for (final r in (bd is List ? bd : const []))
+            if (r is Map) r.cast<String, dynamic>(),
+        ],
+        baselines: heart['baselines'] is Map
+            ? (heart['baselines'] as Map).cast<String, dynamic>()
+            : null,
+        charts: charts,
+      );
   }
 
   Future<void> _loadToday() async {
     final t = beginRead(#wellness);
     final app = context.read<AppState>();
     final repo = app.repo;
+    if (widget.sleepPlanOnly) {
+      // The Sleep tab has no medication or journal dependency. Publish its
+      // own reads without waiting for unrelated tables or phone operations.
+      final day = _date;
+      final stress = await repo?.getDayStress(day) ?? <String, dynamic>{};
+      final insights = await repo?.getInsights() ?? <String, dynamic>{};
+      final drivers = repo == null ? const <DriverFacts>[]
+          : await _readDrivers(repo, insights, day);
+      if (!stillNewest(#wellness, t)) return;
+      setState(() {
+        _stress = stress; _insights = insights; _drivers = drivers;
+        _loading = false; _paused = false; _planFailed = false;
+      });
+      return;
+    }
     final db = await LocalDb.instance;
 
     final meds = await MedDb.defs(db);
@@ -206,30 +257,7 @@ class _WellnessScreenState extends State<WellnessScreen>
     if (repo != null) {
       stress = await repo.getDayStress(_date);
       insights = await repo.getInsights();
-      // `readiness_glassbox.breakdown`, NOT `.drivers` — drivers is already
-      // filtered to the inputs that cleared the smallest-worthwhile-change
-      // gate, so an input that sat inside its usual spread was never in it and
-      // the screen could not say "and this one did nothing". Same array
-      // ReadinessDetail renders, so the two agree by construction.
-      final gb = envValue(insights['readiness_glassbox']);
-      final bd = gb?['breakdown'];
-      // The baselines block: centre, spread, delta and MDC per input. Written
-      // on every derive since long before anything read it.
-      final heart = await repo.getDayHeart(_date);
-      final charts = <String, Object?>{};
-      for (final k in driverChartKeys) {
-        charts[k] = await repo.getChart(k);
-      }
-      driverRows = driverFacts(
-        breakdown: [
-          for (final r in (bd is List ? bd : const []))
-            if (r is Map) r.cast<String, dynamic>(),
-        ],
-        baselines: heart['baselines'] is Map
-            ? (heart['baselines'] as Map).cast<String, dynamic>()
-            : null,
-        charts: charts,
-      );
+      driverRows = await _readDrivers(repo, insights, _date);
       fields = await repo.getJournalMetrics(_date);
       specs = await repo.getJournalFields();
     }
@@ -269,13 +297,21 @@ class _WellnessScreenState extends State<WellnessScreen>
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c);
     if (widget.sleepPlanOnly) {
+      // Advice and driver counts are unknown until the bundle arrives. Keep
+      // the next Sleep accordion in place, including on absence or retry.
+      Widget frame(Widget? content) => AsyncListSection<Widget>(
+        items: content == null ? null : [content], visibleRows: 5, rowHeight: 112,
+        itemBuilder: (_, child) => child,
+        emptyBuilder: (_) => const SizedBox.shrink());
       return _paused
-          ? const PausedToday()
-          : _loading
-          ? InlineLoading(
-              status: l?.loadingWellness ??
-                  "Reading today's journal and medications")
-          : _recovery(c);
+          ? frame(const PausedToday())
+          : AsyncSection<bool>(pending: _loading, failed: _planFailed,
+              value: _loading || _planFailed ? null : true,
+              pendingBuilder: (_) => frame(null),
+              builder: (c, _) => frame(_recovery(c)),
+              failureBuilder: (_) => frame(StatusCard(
+                l?.healthReadFailedBody ?? 'Could not load your data. Nothing was deleted.', '',
+                fix: l?.homeTryAgain ?? 'Try again', onFix: _load)));
     }
     final last = _breathing.isEmpty ? null : _breathing.first;
     // `select`, not `watch`: AppState ticks at ~1 Hz during a live session and
@@ -1729,41 +1765,27 @@ class _JournalFindingsState extends State<JournalFindings> {
         Padding(
             padding: const EdgeInsets.only(bottom: S.x2),
             child: AsOfLabel(at: at)),
-      if (!_rowsReady)
-        InlineLoading(
-            status: l?.loadingJournalComparison ??
-                'Comparing 90 days of journal entries')
-      else if (_rows.isEmpty)
-        StatusCard(
-          l?.wellnessNothingSeparatedTitle ?? 'Nothing separated itself yet',
-          l?.wellnessNothingSeparatedBody ?? 'No clear links found yet.',
-          icon: LucideIcons.scatterChart,
-        )
-      else ...[
-        if (habits.isNotEmpty)
-          Section(
-            l?.wellnessTheDaysYouDidIt ?? 'The days you did it',
-            _list(c, habits),
-          ),
-        if (doses.isNotEmpty)
-          Section(
-            l?.wellnessHowMuchAndWhatFollowed ?? 'How much, and what followed',
-            _list(c, doses),
-          ),
-        const SizedBox(height: S.x2),
-        Text(
-          l?.wellnessLinkNeverCause ??
-              'A link in your own days, not proof of a cause.',
-          style: F.over.copyWith(color: p.ink3, height: 1.5),
-        ),
-      ],
+      KeyedSubtree(key: const ValueKey('journal-comparisons'),
+        child: AsyncListSection<Widget>(
+          items: !_rowsReady ? null : [
+            if (_rows.isEmpty)
+              StatusCard(l?.wellnessNothingSeparatedTitle ?? 'Nothing separated itself yet',
+                l?.wellnessNothingSeparatedBody ?? 'No clear links found yet.', icon: LucideIcons.scatterChart)
+            else ...[
+              if (habits.isNotEmpty) Section(l?.wellnessTheDaysYouDidIt ?? 'The days you did it', _list(c, habits)),
+              if (doses.isNotEmpty) Section(l?.wellnessHowMuchAndWhatFollowed ?? 'How much, and what followed', _list(c, doses)),
+              Text(l?.wellnessLinkNeverCause ?? 'A link in your own days, not proof of a cause.',
+                style: F.over.copyWith(color: p.ink3, height: 1.5)),
+            ],
+          ],
+          itemBuilder: (_, child) => child, emptyBuilder: (_) => const SizedBox.shrink())),
       Section(
         l?.wellnessWhichDayOfWeek ?? 'Which day of the week',
-        _weekdayReady
+        SizedBox(key: const ValueKey('journal-weekday'),
+          height: 320 * MediaQuery.textScalerOf(c).scale(1),
+          child: SingleChildScrollView(child: _weekdayReady
             ? _weekdayCard(c)
-            : InlineLoading(
-                status: l?.loadingWeekdays ??
-                    'Comparing your days of the week'),
+            : PendingChart(title: l?.wellnessWhichDayOfWeek ?? 'Which day of the week'))),
       ),
     ]);
   }

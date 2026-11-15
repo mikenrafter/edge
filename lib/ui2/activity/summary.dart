@@ -45,6 +45,7 @@ import '../profile/profile.dart';
 import '../screens/home_screen.dart' show unitsOf;
 import '../screens/log_workout.dart' show bumpInsights;
 import '../theme.dart';
+import '../skeleton/async_section.dart';
 import 'catalogue.dart';
 import 'picker.dart';
 // The share card and this screen describe the same session, so they draw its
@@ -708,6 +709,9 @@ class SessionStats extends StatelessWidget {
 class ActivitySummary extends StatefulWidget {
   final ActivityResult result;
 
+  /// Known session metadata is laid out while the detail bundle is pending.
+  final bool pending;
+
   /// Body weight, for the calorie note. Null when the profile has none.
   final double? weightKg;
 
@@ -730,6 +734,7 @@ class ActivitySummary extends StatefulWidget {
   const ActivitySummary(this.result,
       {super.key,
       this.weightKg,
+      this.pending = false,
       this.onRetrySave,
       this.justFinished = false,
       this.asOf});
@@ -1052,7 +1057,7 @@ class _ActivitySummaryState extends State<ActivitySummary> {
                   Pressable(
                     semanticLabel:
                         l?.activitySummaryChangeType ?? 'Change activity type',
-                    onTap: () => _changeType(c),
+                    onTap: widget.pending ? null : () => _changeType(c),
                     child: Icon(LucideIcons.pencil, size: 18, color: p.ink2),
                   ),
                   const SizedBox(width: S.x3),
@@ -1063,7 +1068,7 @@ class _ActivitySummaryState extends State<ActivitySummary> {
                             a.displayName(context).toLowerCase(),
                           ) ??
                           'Share this ${a.name.toLowerCase()}',
-                  onTap: () => Navigator.of(c).push(MaterialPageRoute(
+                  onTap: widget.pending ? null : () => Navigator.of(c).push(MaterialPageRoute(
                       builder: (_) => ShareSheet(r))),
                       child: Icon(LucideIcons.share2, size: 19, color: p.ink2),
                     ),
@@ -1120,11 +1125,11 @@ class _ActivitySummaryState extends State<ActivitySummary> {
               padding: const EdgeInsets.fromLTRB(S.x4, S.x4, S.x4, S.x10),
               // By NAME: the tab list is shorter for the archetypes that have
               // no splits, so index 1 is not always the same tab.
-              children: switch (_tabs[tab]) {
+              children: (switch (_tabs[tab]) {
                 'Overview' => _overview(c, p),
                 'Splits' => _splits(c, p),
                 _ => _graphs(c, p),
-              },
+              }).map((child) => PendingContent(pending: widget.pending, child: child)).toList(),
               ),
             ),
           ],
@@ -1657,6 +1662,7 @@ class _ActivitySummaryState extends State<ActivitySummary> {
   /// Check-band button, which is a false reason and a fix for a problem the
   /// user does not have.
   Widget _noHrCard(BuildContext c) {
+    if (widget.pending) return Surface(child: _hrFrame(P.of(c)));
     final l = AppLocalizations.of(c);
     return r.hr.any((v) => v != null)
         ? StatusCard(

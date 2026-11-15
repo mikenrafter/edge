@@ -95,13 +95,12 @@ class _TypicalDayScreenState extends State<TypicalDayScreen> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final d = _data;
+    final d = _data ?? const TypicalDayData();
     return detailScaffold(context, l?.typicalDayTitle ?? 'Typical day', [
       if (_failed) ...[
         Text(l?.typicalLoadFailed ?? 'Could not read your day. Try again.'),
         TextButton(onPressed: _load, child: Text(l?.typicalRetry ?? 'Try again')),
-      ] else if (d == null) const Center(child: CircularProgressIndicator())
-      else ...[
+      ] else ...[
         TextButton(onPressed: () => go(context, const TracksScreen()),
           child: Text(l?.tracksTitle ?? 'Tracks')),
         TextButton(onPressed: () => go(context, const AlarmScreen()),
@@ -130,7 +129,8 @@ class _TypicalDayScreenState extends State<TypicalDayScreen> {
         const SizedBox(height: S.x3),
         _caffeine(context, d.caffeine),
       ],
-    ]);
+    ].map((child) => PendingContent(pending: _data == null && !_failed,
+      child: child)).toList());
   }
   String _window(ClockWindow? w) => w == null ? '—' : '${clock(w.startMinute)}–${clock(w.endMinute)}';
 

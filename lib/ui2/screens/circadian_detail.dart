@@ -376,13 +376,12 @@ class _CircadianDetailState extends State<CircadianDetail>
       if (_paused && _d == null) ...[
         const SizedBox(height: S.x4),
         const PausedOlderDays(),
-      ] else if (_loading && _d == null) ...[
-        const SizedBox(height: S.x4),
-        InlineLoading(
-            status: l?.loadingCircadian ?? 'Reading your daily rhythm'),
       ] else ...[
         // Chronotype, jet lag, regularity and the rhythm battery all come off
         // the cross-day rollup, so the label follows that step, not a day.
+        SizedBox(height: 24 * MediaQuery.textScalerOf(c).scale(1),
+          child: SingleChildScrollView(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (_cachedAt case final at?)
           Padding(
               padding: const EdgeInsets.only(bottom: S.x2),
@@ -399,6 +398,7 @@ class _CircadianDetailState extends State<CircadianDetail>
                 padding: const EdgeInsets.only(bottom: S.x2),
                 child: AsOfLabel(at: at)),
           ),
+          ]))),
         if (advanced) ...[
         if (drawn == 0)
           StatusCard(
@@ -484,7 +484,11 @@ class _CircadianDetailState extends State<CircadianDetail>
         // rather than two permanent rows.
         Section(
           l?.circadianDetailYourRhythm ?? 'Your rhythm',
-          _rhythm(c, p, d),
+          AsyncListSection<Widget>(
+            items: _loading && _d == null ? null : [_rhythm(c, p, d)],
+            visibleRows: 6, rowHeight: 56,
+            itemBuilder: (_, child) => child,
+            emptyBuilder: (_) => const SizedBox.shrink()),
           action: d.sriPairs.isEmpty || d.regularity.value == null
               ? null
               : (_showNights
@@ -512,7 +516,8 @@ class _CircadianDetailState extends State<CircadianDetail>
 
         ],
       ],
-    ]);
+    ].map((child) => PendingContent(pending: _loading && _d == null,
+      child: child)).toList());
   }
 
   String _hm(num hours) {
@@ -726,7 +731,8 @@ class _CircadianDetailState extends State<CircadianDetail>
               l?.circadianDetailRhythmNotEstablished ??
                   'Your rhythm is not established yet',
               d.regularity) ??
-          const SizedBox.shrink();
+          StatusCard(l?.circadianDetailRhythmNotEstablished ?? 'Your rhythm is not established yet',
+            l?.metricDetailNoRecordLabel ?? 'No record', icon: LucideIcons.moon);
     }
 
     if (!showNights) return _table(p, rows);

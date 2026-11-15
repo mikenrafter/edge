@@ -50,6 +50,7 @@
 //   carry the null era, which is most of this database.
 
 import 'package:flutter/material.dart';
+import '../../data/day_label.dart' show todayLabel;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../data/journal_fields.dart' show formatMinuteOfDay;
@@ -463,18 +464,26 @@ class _BeatsState extends State<Beats>
       c,
       l?.beatsTitle ?? 'Beats',
       [
-        _asOf(d),
-        ...dayNavRow(_day ?? d.day, d.days, _goDay),
+        SizedBox(height: 24 * MediaQuery.textScalerOf(c).scale(1),
+        child: SingleChildScrollView(child: _asOf(d))),
+        PendingContent(pending: _loading || _beatsPending,
+          child: DayNav(day: _day ?? d.day ?? todayLabel(), days: d.days,
+            onDay: _goDay, alwaysShow: true)),
+        const SizedBox(height: S.x3),
         if (_paused)
           const Padding(
             padding: EdgeInsets.only(top: S.x4),
             child: PausedOlderDays(),
           )
-        else if (_loading)
+        else if (_loading || _beatsPending)
           Padding(
             padding: const EdgeInsets.only(top: S.x4),
-            child: InlineLoading(
-                status: l?.loadingSleepNight ?? 'Reading the night'),
+            child: Column(children: [
+              PendingChart(title: l?.beatsPoincareSection ?? 'Every beat against the one before it', height: 260),
+              const SizedBox(height: S.x5),
+              PendingChart(title: l?.beatsNightOf(prettyDay(_day, l)) ?? 'Through the night'),
+              const PendingContent(pending: true, child: PendingRows(count: 3)),
+            ]),
           )
         else if (d.day == null)
           StatusCard(
@@ -488,8 +497,8 @@ class _BeatsState extends State<Beats>
           if (_beatsPending)
             Section(
               l?.beatsPoincareSection ?? 'Every beat against the one before it',
-              InlineLoading(
-                  status: l?.loadingBeats ?? "Reading the night's beats"),
+              PendingChart(title: l?.beatsScatterTitle ??
+                'Each interval, plotted against the previous one', height: 260, unit: 'ms'),
             )
           else if (!_beatsFailed)
             _poincare(c, d),
@@ -505,7 +514,7 @@ class _BeatsState extends State<Beats>
       // this one night; saying so once at the top is what lets them sit
       // together without each having to date itself.
       sub: d.day == null
-          ? ''
+          ? '\u00a0'
           : (l?.beatsNightOf(prettyDay(d.day, l)) ??
               'Night of ${prettyDay(d.day, l)}'),
     );

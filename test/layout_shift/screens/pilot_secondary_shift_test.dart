@@ -51,12 +51,24 @@ class _LatePlanRepo extends GuideFakeRepo {
   @override
   Future<Map<String, dynamic>> getInsights() async {
     await gate.future;
-    return {'sleep_coach': {
-      'need': {'value': {'need_sec': 28800}},
-      'bedtime': {'value': {'bedtime_min_of_day': 1320}},
-      'wake': {'value': {'wake_min_of_day': 420}},
-      'nap_credit_min': {'value': 20}, 'strain_bonus_min': {'value': 30},
-    }, 'sleep_debt': {'value': {'debt_hours': 1}}};
+    return {
+      'sleep_coach': {
+        'need': {
+          'value': {'need_sec': 28800},
+        },
+        'bedtime': {
+          'value': {'bedtime_min_of_day': 1320},
+        },
+        'wake': {
+          'value': {'wake_min_of_day': 420},
+        },
+        'nap_credit_min': {'value': 20},
+        'strain_bonus_min': {'value': 30},
+      },
+      'sleep_debt': {
+        'value': {'debt_hours': 1},
+      },
+    };
   }
 }
 
@@ -146,8 +158,10 @@ void main() {
         final semantics = t.ensureSemantics();
         try {
           await t.pump();
-          announcedBreakdown = find.bySemanticsLabel(RegExp('Breakdown of your day'))
-              .evaluate().isNotEmpty;
+          announcedBreakdown = find
+              .bySemanticsLabel(RegExp('Breakdown of your day'))
+              .evaluate()
+              .isNotEmpty;
         } finally {
           semantics.dispose();
         }
@@ -156,8 +170,11 @@ void main() {
       await landed(run);
       check(run, screen.key);
       expect(spinners, 0);
-      expect(announcedBreakdown, isFalse,
-        reason: 'unknown counts must not announce zero pending items');
+      expect(
+        announcedBreakdown,
+        isFalse,
+        reason: 'unknown counts must not announce zero pending items',
+      );
       await t.pumpWidget(const SizedBox());
       await t.pump(const Duration(seconds: 3));
     });
@@ -232,30 +249,49 @@ void main() {
     await t.pumpWidget(const SizedBox());
   });
 
-  testWidgets('Sleep plan advice arrives late in the tab list without moving its next section', (t) async {
-    phoneSurface(t);
-    final repo = _LatePlanRepo();
-    final app = AppState.forTesting()..repo = repo;
-    addTearDown(app.dispose);
-    await t.pumpWidget(pilotShot(perfApp(app, ListView(children: const [
-      Section('Your sleep plan', WellnessScreen(sleepPlanOnly: true)),
-      Text('Alarm and body clock', key: ValueKey('plan-next-section')),
-    ]), brightness: Brightness.dark)));
-    final setup = ShiftRun(t);
-    await landed(setup);
-    final run = ShiftRun(t)..opened();
-    await run.frames([0, 150, 2500]);
-    final spinners = find.byType(CircularProgressIndicator).evaluate().length;
-    await takePilotShot(t, 'sleep-plan');
-    repo.gate.complete();
-    await landed(run);
-    expect(find.textContaining('Turn in by'), findsOneWidget);
-    expect(find.byWidgetPredicate((w) => w is PendingContent && w.pending), findsNothing);
-    check(run, 'Sleep plan');
-    expect(spinners, 0);
-    await t.pumpWidget(const SizedBox());
-    await t.pump(const Duration(seconds: 3));
-  });
+  testWidgets(
+    'Sleep plan advice arrives late in the tab list without moving its next section',
+    (t) async {
+      phoneSurface(t);
+      final repo = _LatePlanRepo();
+      final app = AppState.forTesting()..repo = repo;
+      addTearDown(app.dispose);
+      await t.pumpWidget(
+        pilotShot(
+          perfApp(
+            app,
+            ListView(
+              children: const [
+                Section('Your sleep plan', WellnessScreen(sleepPlanOnly: true)),
+                Text(
+                  'Alarm and body clock',
+                  key: ValueKey('plan-next-section'),
+                ),
+              ],
+            ),
+            brightness: Brightness.dark,
+          ),
+        ),
+      );
+      final setup = ShiftRun(t);
+      await landed(setup);
+      final run = ShiftRun(t)..opened();
+      await run.frames([0, 150, 2500]);
+      final spinners = find.byType(CircularProgressIndicator).evaluate().length;
+      await takePilotShot(t, 'sleep-plan');
+      repo.gate.complete();
+      await landed(run);
+      expect(find.textContaining('Turn in by'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate((w) => w is PendingContent && w.pending),
+        findsNothing,
+      );
+      check(run, 'Sleep plan');
+      expect(spinners, 0);
+      await t.pumpWidget(const SizedBox());
+      await t.pump(const Duration(seconds: 3));
+    },
+  );
 
   testWidgets('wearable day has a full pending body before cells arrive', (
     t,

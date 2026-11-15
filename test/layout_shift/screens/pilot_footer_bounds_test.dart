@@ -15,10 +15,23 @@ void main() {
     addTearDown(t.view.reset);
     final app = AppState.forTesting();
     addTearDown(app.dispose);
-    await t.pumpWidget(perfApp(app, Builder(builder: (c) => MediaQuery(
-      data: MediaQuery.of(c).copyWith(textScaler: const TextScaler.linear(3.1)),
-      child: const MomentReviewEditor(preloaded: [], preloadedAssumed: []))),
-      brightness: Brightness.dark));
+    await t.pumpWidget(
+      perfApp(
+        app,
+        Builder(
+          builder: (c) => MediaQuery(
+            data: MediaQuery.of(
+              c,
+            ).copyWith(textScaler: const TextScaler.linear(3.1)),
+            child: const MomentReviewEditor(
+              preloaded: [],
+              preloadedAssumed: [],
+            ),
+          ),
+        ),
+        brightness: Brightness.dark,
+      ),
+    );
     await t.pump();
     expect(t.takeException(), isNull);
     await t.pumpWidget(const SizedBox());

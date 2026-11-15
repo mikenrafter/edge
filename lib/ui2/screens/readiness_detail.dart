@@ -263,10 +263,8 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload i
     // can no longer BE that night — a date up here now would be labelling
     // today's number with somebody else's day.
     return detailScaffold(c, l?.readinessDetailTitle ?? 'Recovery', [
-      if (_loading && _d == null) ...[
-        const SizedBox(height: S.x4),
-        InlineLoading(status: l?.loadingRecovery ?? 'Reading your recovery'),
-      ] else ...[
+      PendingContent(pending: _loading && _d == null,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         AsOfHold(
           shown: d,
           day: d.asOfDay,
@@ -277,14 +275,14 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload i
               padding: const EdgeInsets.only(bottom: S.x2),
               child: AsOfLabel(at: at)),
         ),
-        if (d.day != null) ...[
+        ...[
           Text(
-              l?.healthNightOf(prettyDay(d.day, l)) ??
-                  'Night of ${prettyDay(d.day, l)}',
+              d.day == null ? '\u00a0' : (l?.healthNightOf(prettyDay(d.day, l)) ??
+                  'Night of ${prettyDay(d.day, l)}'),
               style: F.cap.copyWith(color: p.ink2)),
           const SizedBox(height: S.x3),
         ],
-        if (v == null && d.refreshPending)
+        if (v == null && (d.refreshPending || _loading && _d == null))
           // The stored row is another day's and today's score is still being
           // worked out, so this is not yet an absence to explain. It holds the
           // landed ring's exact box (an empty track and a dash, never another
@@ -396,7 +394,7 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload i
               ),
             ]),
           ),
-        ] else if (v != null || d.refreshPending)
+        ] else if (v != null || d.refreshPending || _loading && _d == null)
           // Pending too: the breakdown comes from the cross-day insights, not
           // from today's score, so "none yet" is true before the refresh lands
           // and the section is already in place when it does.
@@ -424,7 +422,7 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload i
                 )
               : Surface(child: _history(c, d)),
         ),
-      ],
+      ])),
     ]);
   }
 

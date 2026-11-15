@@ -1064,17 +1064,18 @@ class _WeightTrendState extends State<_WeightTrend> {
     final l = AppLocalizations.of(c);
     final title = l?.journalComposeWeightLabel ?? 'Weight';
     if (_loading) {
-      return detailScaffold(c, title, [
+      return _frame(c, title, [
         const SizedBox(height: S.x2),
-        InlineLoading(
-            status: l?.loadingWeightEntries ?? 'Reading your weight entries'),
+        PendingChart(title: l?.journalComposeSevenDayTrend ?? 'Seven-day trend',
+          height: 140, unit: unitsOf(c)?.isImperial == true ? 'lb' : 'kg'),
+        const PendingContent(pending: true, child: PendingRows(count: 2, rowHeight: 52)),
       ]);
     }
     final p = P.of(c);
     final u = unitsOf(c);
     final trend = weightTrendEwma(_byDay);
     if (trend.length < 2) {
-      return detailScaffold(c, title, [
+      return _frame(c, title, [
         const SizedBox(height: S.x2),
         StatusCard(
           l?.journalComposeNotEnoughEntriesTitle ?? 'Not enough entries for a trend',
@@ -1104,7 +1105,7 @@ class _WeightTrendState extends State<_WeightTrend> {
     final present = <double>[for (final v in vals) ?v];
     final axis = AxisSpec.of(present, format: axisFixed);
 
-    return detailScaffold(c, title, [
+    return _frame(c, title, [
       const SizedBox(height: S.x2),
       Surface(
         child: ChartFrame(
@@ -1156,6 +1157,13 @@ class _WeightTrendState extends State<_WeightTrend> {
       ),
     ]);
   }
+
+  Widget _frame(BuildContext c, String title, List<Widget> children) =>
+      detailScaffold(c, title, [PendingContent(pending: _loading,
+        child: SizedBox(key: const ValueKey('weight-trend-body'),
+          height: 420 * MediaQuery.textScalerOf(c).scale(1),
+          child: SingleChildScrollView(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch, children: children))))]);
 
   /// The trend value on one calendar day, or null. Nulls are what draw the gaps
   /// — there is no nearest-neighbour lookup here on purpose.

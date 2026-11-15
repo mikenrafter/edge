@@ -268,19 +268,19 @@ class _DetectedActivitiesCardState extends State<DetectedActivitiesCard>
     if (!_failed && n <= 0) {
       return Padding(
         padding: const EdgeInsets.only(bottom: S.x3),
-        child: ActionCard(
+        child: PendingContent(pending: _count == null && !_failed, child: ActionCard(
           l?.homeBreakdownTitle ?? 'Breakdown of your day',
           l?.homeBreakdownSubtitle ?? 'Hour by hour',
           l?.homeBreakdownOpen ?? 'Open',
           LucideIcons.radar,
           C.n500,
           onTap: () => go(c, DayTimelineScreen(day: widget.day)),
-        ),
+        )),
       );
     }
     return Padding(
       padding: const EdgeInsets.only(bottom: S.x3),
-      child: ActionCard(
+      child: PendingContent(pending: _count == null && !_failed, child: ActionCard(
         l?.homeReviewActivities ?? 'Review activities',
         _failed
             ? (l?.activityLoadFailed ?? 'Could not load activities. Try again.')
@@ -289,7 +289,7 @@ class _DetectedActivitiesCardState extends State<DetectedActivitiesCard>
         LucideIcons.radar,
         C.domHome,
         onTap: () => go(c, const DayReviewEntry()),
-      ),
+      )),
     );
   }
 }

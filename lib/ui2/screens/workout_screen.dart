@@ -44,14 +44,12 @@ import '../charts.dart';
 import '../older_version.dart';
 import '../profile/profile.dart' show ProfileAvatar, openProfile;
 import '../grammar.dart';
-import '../inline_loading.dart';
 import '../last_result_cache.dart';
 import '../revision.dart';
 import '../status_line.dart' show HeaderRows;
 import '../theme.dart';
-import '../../data/day_label.dart' show calendarDaysBetween, dayLabelOf;
-import 'home_screen.dart' show ChartPoint, pointsOf, prettyDay;
-import 'metric_detail.dart' show detailScaffold;
+import '../../data/day_label.dart' show calendarDaysBetween;
+import 'home_screen.dart' show ChartPoint, pointsOf;
 import 'log_workout.dart';
 import 'metric_detail.dart' show MetricDetail, detailLinkRow;
 import 'nutrition_screen.dart';
@@ -1173,17 +1171,8 @@ class _PastSummaryState extends State<_PastSummary> {
     if (r != null) {
       return ActivitySummary(r, weightKg: widget.weightKg, asOf: _cachedAt);
     }
-    final w = widget.w;
-    return detailScaffold(
-      c,
-      w.title(c),
-      [
-        InlineLoading(
-            status: AppLocalizations.of(c)?.loadingWorkout ??
-                'Reading this workout'),
-      ],
-      sub: prettyDay(dayLabelOf(w.start), AppLocalizations.of(c)),
-    );
+    return ActivitySummary(widget.w.toResult(), weightKg: widget.weightKg,
+      pending: true);
   }
 }
 

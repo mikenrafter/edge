@@ -29,7 +29,6 @@ import '../../models/metric.dart' show whyFromNote;
 import '../screens/home_screen.dart' show repoOf;
 import '../screens/metric_detail.dart' show detailScaffold;
 import '../ui2.dart';
-import '../older_version.dart';
 import 'catalogue.dart' show zonesWhy;
 import 'zones.dart' show ZonesDetail;
 
@@ -229,16 +228,16 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
       c,
       l?.dayStrainTitle ?? 'Day strain',
       [
-        if (_loading && _d == null) ...[
-          const SizedBox(height: S.x4),
-          InlineLoading(
-              status: l?.loadingDayStrain ?? "Reading today's strain"),
-        ] else ...[
+        PendingContent(pending: _loading && _d == null,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ..._trace(p, l, d),
-          ..._zones(p, l, d),
+          if (_loading && _d == null)
+            Section(l?.dayStrainTimeInZonesSection ?? 'Time in zones',
+              const Surface(child: PendingRows(count: 5, rowHeight: 52)))
+          else ..._zones(p, l, d),
           Section(l?.dayStrainInputsSection ?? 'What this is made of',
               _inputs(p, l, d)),
-        ],
+        ])),
       ],
       sub: sub,
     );
@@ -391,7 +390,9 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
     return Surface(
       elevation: 0,
       color: p.card2,
-      child: Text(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: MediaQuery.textScalerOf(context).scale(F.cap.fontSize!) * F.cap.height! * 6),
+        child: Text(
         [
           l?.dayStrainInputsBase ??
               'How hard your heart worked while awake, by minutes in each heart-rate zone, on a 0–21 scale.',
@@ -400,7 +401,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
                 'Based on an estimated maximum of ${max.round()} bpm.',
         ].join(' '),
         style: F.cap.copyWith(color: p.ink3, height: 1.5),
-      ),
+      )),
     );
   }
 }

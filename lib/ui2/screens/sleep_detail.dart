@@ -511,6 +511,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     final l = AppLocalizations.of(c);
     // Keep the research warning visible in every state and outside remembered
     // accordions, including the Sleep tab's embedded detail.
+    body = [for (final child in body)
+      PendingContent(pending: _loading && _d == null, child: child)];
     body = [
       Padding(
         padding: const EdgeInsets.only(bottom: S.x3),
@@ -525,7 +527,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     ];
     if (!widget.embedded) return detailScaffold(c, title, body, sub: sub);
     final p = P.of(c);
-    return RefreshIndicator(
+    return RefreshIndicator.noSpinner(
       onRefresh: _load,
       child: tabRootList(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -548,6 +550,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
 
   SleepData? _d;
   bool _loading = true;
+  bool _roughPending = false;
   bool _paused = false;
   String? _day;
   bool _saving = false; // an override write + its forced re-derive is in flight
@@ -662,6 +665,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
 
   Future<void> _load() async {
     final gen = ++_loadGen;
+    _roughPending = false;
     final repo = repoOf(context);
     if (repo == null) {
       if (mounted && gen == _loadGen) setState(() => _loading = false);
@@ -674,12 +678,14 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       // back through the record would either drop that half or invent it.
       // Stepping back is also not the moment to ask about a night, which is the
       // stronger half of the reason.
-      final rough = d.day == todayLabel() &&
-              Prefs.getString(kRoughNightDismissed, '') != d.day
-          ? await _roughOrNull(repo, d.day!)
-          : null;
+      final readRough = d.day == todayLabel() &&
+          Prefs.getString(kRoughNightDismissed, '') != d.day;
       if (mounted && gen == _loadGen) {
-        setState(() => (_d = d, _rough = rough, _loading = false, _paused = false));
+        // The night is usable now. The optional insight gets its own slot,
+        // so a separate SQL read cannot hold the entire Sleep tab hostage.
+        setState(() => (_d = d, _rough = null, _roughPending = readRough,
+          _loading = false, _paused = false));
+        if (readRough) unawaited(_loadRough(repo, d.day!, gen));
         _refresh.afterPaint(repo, d.refreshPending).then((landed) {
           if (landed && mounted) _load();
         });
@@ -690,6 +696,15 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       }
     } catch (_) {
       if (mounted && gen == _loadGen) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadRough(LocalRepository repo, String day, int gen) async {
+    try {
+      final rough = await _roughOrNull(repo, day);
+      if (mounted && gen == _loadGen) setState(() => _rough = rough);
+    } finally {
+      if (mounted && gen == _loadGen) setState(() => _roughPending = false);
     }
   }
 
@@ -737,7 +752,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
 
   @override
   Widget build(BuildContext c) {
-    final d = _d ?? const SleepData();
+    final d = _d ?? SleepData(day: _day ?? widget.day ?? todayLabel());
     final l = AppLocalizations.of(c);
     final title = l?.sleepDetailNavTitle ?? 'Sleep';
 
@@ -746,12 +761,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       return _frame(c, title, [
         const SizedBox(height: S.x4),
         today ? const PausedToday() : const PausedOlderDays(),
-      ]);
-    }
-    if (_loading && _d == null) {
-      return _frame(c, title, [
-        const SizedBox(height: S.x4),
-        InlineLoading(status: l?.loadingSleepNight ?? 'Reading the night'),
       ]);
     }
 
@@ -773,11 +782,13 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       // the night, the window, the stages and the sections under them. Only
       // what is inside each card differs.
       return _frame(c, title, [
+        SizedBox(height: 24 * MediaQuery.textScalerOf(c).scale(1)),
         ..._dayNav(d),
         ..._nightControls(d, recalc: false),
         _answer(c, p, d, d.night),
         const SizedBox(height: S.x3),
         _nightAccordion(c, [
+        SizedBox(height: 48 * MediaQuery.textScalerOf(c).scale(1)),
         _night(c, p, d, d.night,
             reason: windowCard != null
                 ? null
@@ -830,8 +841,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     // one night on disk there is no stepper, and then the subtitle is the only
     // thing that dates the screen.
     return _frame(c, title,
-        sub: d.days.length < 2 ? (d.day ?? '').toUpperCase() : '', [
-      _asOf(d),
+        [
+      SizedBox(height: 24 * MediaQuery.textScalerOf(c).scale(1),
+        child: SingleChildScrollView(child: _asOf(d))),
       ..._dayNav(d),
       ..._nightControls(d),
 
@@ -843,8 +855,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       _nightAccordion(c, [
       // Ours, or any paired device's own staging of the same night — shown
       // side by side as alternatives, never merged.
-      if (d.deviceNights.isNotEmpty) ...[
-        DeviceFilter(
+      SizedBox(height: 48 * MediaQuery.textScalerOf(c).scale(1),
+        child: d.deviceNights.isEmpty ? null : DeviceFilter(
           allLabel: 'OpenStrap',
           showWithOne: true,
           options: [
@@ -861,9 +873,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             _staging = id;
             _scrub = null;
           }),
-        ),
-        const SizedBox(height: S.x2),
-      ],
+        )),
       if (_deviceNight(d) case final dn?)
         _night(c, p, d, dn, device: dn)
       else
@@ -905,7 +915,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     final busy = _saving || _loading;
     return Surface(
       key: const ValueKey('card:window'),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: _sectionViewport(c, Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Icon(rejected ? LucideIcons.undo2 : LucideIcons.moon,
               size: 16, color: p.ink3),
@@ -941,22 +951,19 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             ),
           ],
         ]),
-      ]),
+        if (_overrideFailed case final error?)
+          StatusCard('Sleep calculation', error, icon: LucideIcons.triangleAlert),
+      ]), height: 240),
     );
   }
 
   /// The night stepper. On the tab it is always drawn (dimmed with fewer than
   /// two nights), so the second night arriving does not push the screen down.
-  List<Widget> _dayNav(SleepData d) => widget.embedded
-      ? [
-          DayNav(
-              day: _day ?? d.day,
-              days: d.days,
-              onDay: _goDay,
-              alwaysShow: true),
-          const SizedBox(height: S.x3),
-        ]
-      : dayNavRow(_day ?? d.day, d.days, _goDay);
+  List<Widget> _dayNav(SleepData d) => [
+    DayNav(day: _day ?? d.day, days: d.days, onDay: _goDay,
+      alwaysShow: true),
+    const SizedBox(height: S.x3),
+  ];
 
   /// Everything under the window: stages, the comparison, what stood out, the
   /// overnight signals, tonight and the door to the numbers. ONE list for a
@@ -966,7 +973,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   List<Widget> _sections(
       BuildContext c, P p, SleepData d, Map<String, dynamic> n) {
     final l = AppLocalizations.of(c);
-    final unusual = _unusual(c, p, d, n);
     return [
       // ── 3 · WHAT IT WAS MADE OF ──
       _accordion(l?.sleepDetailStagesSection ?? 'Stages', 'stages',
@@ -976,7 +982,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       // ── 4 · AGAINST THE USER'S OWN NIGHTS ──
       if (_versusUsual(c, p, d, n) case final versus?)
         _accordion(l?.sleepDetailVersusUsualSection ?? 'Against your usual',
-            'versus', versus,
+            'versus', _sectionViewport(c, versus, height: 420),
             key: const ValueKey('card:versus')),
 
       // ── 5 · WHAT STOOD OUT ──
@@ -992,29 +998,34 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           // than dropping the section (which moved everything under it) or
           // reassuring from no evidence.
           'unusual',
-          unusual ??
-              StatusCard(
-                l?.sleepDetailNotEnoughNightsTitle ??
-                    'Not enough nights to compare',
-                '',
-                fix: l?.sleepDetailNightsSoFar(
-                        d.tstHistory.length, _recordNights) ??
-                    '${d.tstHistory.length} of $_recordNights nights so far',
-                icon: LucideIcons.chartNoAxesColumn,
-              ),
+          AsyncListSection<Widget>(items: _roughPending ? null : [
+            _unusual(c, p, d, n) ?? StatusCard(
+              l?.sleepDetailNotEnoughNightsTitle ?? 'Not enough nights to compare', '',
+              fix: l?.sleepDetailNightsSoFar(d.tstHistory.length, _recordNights) ??
+                '${d.tstHistory.length} of $_recordNights nights so far',
+              icon: LucideIcons.chartNoAxesColumn),
+          ], visibleRows: 3, rowHeight: 96,
+            itemBuilder: (_, child) => child, emptyBuilder: (_) => const SizedBox.shrink()),
           key: const ValueKey('card:unusual')),
 
       // ── 6 · THE SIGNALS UNDERNEATH ──
       _accordion(l?.sleepDetailOvernightSection ?? 'Overnight signals',
-          'overnight', _overnight(c, p, d),
+          'overnight', _sectionViewport(c, _overnight(c, p, d), height: 420),
           key: const ValueKey('card:overnight')),
 
       // ── 7 · ONE TAKEAWAY ──
       _accordion(l?.sleepDetailTonightSection ?? 'Tonight', 'tonight',
-          _tonight(c, p, d),
+          _sectionViewport(c, _tonight(c, p, d), height: 180),
           key: const ValueKey('card:tonight')),
     ];
   }
+
+  // These sections have unknown signal/insight counts. A bounded viewport
+  // preserves the next section and the wearer's scroll position on refresh;
+  // longer explanations remain scrollable, including with large text.
+  Widget _sectionViewport(BuildContext c, Widget child, {required double height}) =>
+      SizedBox(height: height * MediaQuery.textScalerOf(c).scale(1),
+        child: SingleChildScrollView(child: child));
 
   /// Total sleep, when it ran, and the two ratios that qualify it. Everything
   /// here is measured; nothing is a judgement.
@@ -1055,22 +1066,21 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         InlineMetrics([
           (l?.sleepDetailInBed ?? 'IN BED', inBed == null ? '—' : hm(inBed),
               C.indigo),
-          if (watched != null)
-            (l?.sleepDetailWatched ?? 'WATCHED', hm(watched), C.sky),
+          (watched == null ? '' : (l?.sleepDetailWatched ?? 'WATCHED'),
+              watched == null ? '' : hm(watched), C.sky),
           (watched == null
               ? (l?.sleepDetailAsleepOfThat ?? 'ASLEEP OF THAT')
               : (l?.sleepDetailAsleep ?? 'ASLEEP'),
               eff == null ? '—' : _pct(eff * 100), C.green),
         ]),
-        if (watched != null) ...[
-          const SizedBox(height: S.x3),
-          Text(
+        const SizedBox(height: S.x3),
+        SizedBox(height: MediaQuery.textScalerOf(c).scale(F.over.fontSize!) * 1.5 * 3,
+          child: SingleChildScrollView(child: watched == null ? null : Text(
             l?.sleepDetailWatchedExplain(hm(watched), hm(inBed!)) ??
                 'The band covered ${hm(watched)} of your ${hm(inBed!)} in bed. '
                     'Sleep and stage figures use only that time.',
             style: F.over.copyWith(color: p.ink3, height: 1.5),
-          ),
-        ],
+          ))),
       ]),
     );
   }
@@ -1126,7 +1136,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       const SizedBox(height: S.x3),
       Surface(
         key: const ValueKey('card:window'),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        child: _sectionViewport(c, Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Icon(mine ? LucideIcons.userCheck : LucideIcons.wandSparkles,
                 size: 16, color: p.ink3),
@@ -1221,7 +1231,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
                 style: F.cap.copyWith(color: p.ink3)),
           ],
 
-        ]),
+        if (_overrideFailed case final error?)
+          StatusCard('Sleep calculation', error, icon: LucideIcons.triangleAlert),
+        ]), height: 240),
       ),
     ];
   }
@@ -1331,8 +1343,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     final day = _day ?? d.day ?? todayLabel();
     return [
       if (recalc && !_hasWindowCard(d)) _recalculateButton(day),
-      if (_overrideFailed case final error?)
-        StatusCard('Sleep calculation', error, icon: LucideIcons.triangleAlert),
+
     ];
   }
 
@@ -1468,7 +1479,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           math.max(33.0, scaler.scale(F.over.fontSize!) * F.over.height! + 8);
       return Surface(
         key: const ValueKey('card:night'),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        child: _sectionViewport(c, Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           ChartFrame(
             title: l?.sleepDetailThroughTheNight ?? 'Through the night',
             unit: l?.sleepDetailUnitStage ?? 'stage',
@@ -1480,7 +1491,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
                 n[k] is num ? clockOfTs((n[k] as num).round()) : '\u00A0',
             ],
             annotations: annotations,
-            child: const SizedBox.expand(),
+            child: _loading && _d == null ? const PendingPlot() : const SizedBox.expand(),
           ),
           interval,
           _scrubPanel(c, p, d, n),
@@ -1491,7 +1502,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
               reason ??
                   l?.sleepDetailNoHypnogramTitle ??
                   'No hypnogram for this night'),
-        ]),
+        ]), height: 620),
       );
     }
     final t0 = (n['onset_ts'] as num?)?.round();
@@ -1504,7 +1515,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     final totals = _stageTotals(device ?? n, device: device != null);
     return Surface(
       key: const ValueKey('card:night'),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: _sectionViewport(c, Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         // The hypnogram's own scrub panel below carries the Nerd stats action;
         // a second one here would put two on the card.
         ChartFrame(
@@ -1554,7 +1565,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
                 key: ValueKey('sleep-staging-note-$i'),
                 style: F.over.copyWith(color: p.ink3, height: 1.5)),
           ],
-      ]),
+      ]), height: 620),
     );
   }
 
@@ -1813,6 +1824,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         // Not wrapped in ExcludeSemantics: the readout already hides its own
         // cells, and the Nerd stats action must stay reachable.
         child: ChartKeyReadout(
+          stableCells: true,
           nerdStats: this,
           cells: cells,
           time: time,
@@ -2404,6 +2416,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   // ── OVERNIGHT SIGNALS ─────────────────────────────────────────────────────
 
   Widget _overnight(BuildContext c, P p, SleepData d) {
+    if (_loading && _d == null) {
+      return PendingChart(title: AppLocalizations.of(c)?.sleepDetailThroughTheNight ?? 'Through the night', height: 196);
+    }
     final loc = AppLocalizations.of(c);
     /// One lane as `(timestamp, value)`. The timestamp is the point — the
     /// signals arrive on different cadences.

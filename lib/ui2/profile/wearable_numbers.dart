@@ -1100,7 +1100,10 @@ class WearableDayView extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
               children: [
                 if (!loaded)
-                  const SizedBox.shrink()
+                  PendingContent(pending: true,
+                    child: Column(children: [for (var i = 0; i < 5; i++)
+                      const Padding(padding: EdgeInsets.only(bottom: S.x3),
+                        child: Surface(child: PendingRows(count: 2, rowHeight: 40)))]))
                 else if (!active)
                   StatusCard(l.wearableNotActiveTitle, l.wearableNotActiveWhy,
                       fix: onUse == null ? '' : l.wearableUseThis,

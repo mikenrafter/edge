@@ -184,13 +184,10 @@ class _WhatChangedScreenState extends State<WhatChangedScreen> with PausedReadRe
       if (_paused) ...[
         const SizedBox(height: S.x4),
         const PausedOlderDays(),
-      ] else if (_loading) ...[
-        const SizedBox(height: S.x4),
-        InlineLoading(
-            status: l?.loadingWhatChanged ??
-                'Comparing this day with your history'),
       ] else
-        ...whatChangedBody(c, d),
+        AsyncListSection<Widget>(items: _loading && _d == null ? null : whatChangedBody(c, d),
+          visibleRows: 5, rowHeight: 100,
+          itemBuilder: (_, child) => child, emptyBuilder: (_) => const SizedBox.shrink()),
     ]);
   }
 }

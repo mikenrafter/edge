@@ -223,10 +223,13 @@ class AsyncListSection<T> extends StatelessWidget {
       child: rows == null
           ? PendingContent(
               pending: true,
-              child: PendingRows(
-                count: visibleRows,
-                rowHeight:
-                    rowHeight * MediaQuery.textScalerOf(context).scale(1),
+              child: SingleChildScrollView(
+                physics: const NeverScrollableScrollPhysics(),
+                child: PendingRows(
+                  count: visibleRows,
+                  rowHeight:
+                      rowHeight * MediaQuery.textScalerOf(context).scale(1),
+                ),
               ),
             )
           : SingleChildScrollView(

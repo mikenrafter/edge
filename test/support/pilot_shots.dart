@@ -17,6 +17,8 @@ Future<void> takePilotShot(WidgetTester tester, String name) async {
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
       await Directory(dir).create(recursive: true);
       await File('$dir/$name.png').writeAsBytes(data!.buffer.asUint8List());
-    } finally { image.dispose(); }
+    } finally {
+      image.dispose();
+    }
   });
 }

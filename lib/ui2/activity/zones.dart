@@ -309,13 +309,13 @@ class _ZonesDetailState extends State<ZonesDetail> {
     final l = AppLocalizations.of(c);
     final d = _d ?? const ZonesData();
     return detailScaffold(c, l?.activityZonesTitle ?? 'Heart-rate zones', [
-      if (_loading && _d == null) ...[
-        const SizedBox(height: S.x4),
-        InlineLoading(
-            status: l?.loadingZones ?? 'Reading your heart-rate zones'),
-      ] else ...[
+      PendingContent(pending: _loading && _d == null,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _ceiling(p, l, d),
-        Section(l?.activityZonesYourZonesSection ?? 'Your zones', _zones(p, l, d)),
+        Section(l?.activityZonesYourZonesSection ?? 'Your zones',
+          _loading && _d == null
+            ? const Surface(child: PendingRows(count: 5, rowHeight: 64))
+            : _zones(p, l, d)),
         const SizedBox(height: S.x2),
         Pressable(
           onTap: () => _editManualZones(context, d),
@@ -331,7 +331,7 @@ class _ZonesDetailState extends State<ZonesDetail> {
           ),
         ),
         ..._distribution(p, l, d),
-      ],
+      ])),
     ]);
   }
 

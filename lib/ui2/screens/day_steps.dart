@@ -304,11 +304,12 @@ class _DayStepsDetailState extends State<DayStepsDetail> implements NerdStatsLis
     // Same rule as Sleep: the stepper names the day, so the nav bar only does
     // when there is no stepper.
     return detailScaffold(c, l?.dayStepsTitle ?? 'Steps',
-        sub: d.days.length < 2 ? dayNavLabel(d.day).toUpperCase() : '', [
+        [
       ...dayNavRow(_day ?? d.day, d.days, _goDay),
       if (_loading && _d == null) ...[
         const SizedBox(height: S.x4),
-        InlineLoading(status: l?.loadingDaySteps ?? "Reading this day's steps"),
+        PendingChart(title: l?.dayStepsChartTitle ?? 'When they were counted', unit: 'steps'),
+        const PendingContent(pending: true, child: PendingRows(count: 3)),
       ] else if (d.spans.isEmpty)
         _absent(c, d)
       else ...[

@@ -217,14 +217,17 @@ class _AlarmScreenState extends State<AlarmScreen> {
   /// Android will not let the app set exact alarms (so the snooze backstop is
   /// inexact). Asked once when the screen opens.
   bool _exactUnavailable = false;
+  bool _exactPending = true;
 
   @override
   void initState() {
     super.initState();
     final app = context.read<AppState>();
     app.snoozeExactTiming().then((exact) {
-      if (mounted && exact == false) setState(() => _exactUnavailable = true);
-    }, onError: (Object _) {});
+      if (mounted) setState(() { _exactUnavailable = exact == false; _exactPending = false; });
+    }, onError: (Object _) {
+      if (mounted) setState(() => _exactPending = false);
+    });
   }
 
   /// The plain-words decision trace for the armed wake. Reloaded when the armed
@@ -286,6 +289,9 @@ class _AlarmScreenState extends State<AlarmScreen> {
             onSnoozeSettings: app.setSnoozeSettings,
             snoozeUnsupportedReason: caps.of(Feature.alarmSnooze).reason,
             snoozeExactTimingUnavailable: _exactUnavailable,
+            snoozeExactTimingPending: _exactPending,
+            wakeTracePending: trace.connectionState == ConnectionState.waiting && !trace.hasData,
+            reserveExactTimingStatus: true,
           ),
         );
       },
@@ -360,7 +366,7 @@ class AlarmScreenView extends StatefulWidget {
   final String? snoozeUnsupportedReason;
 
   /// Android will not let the app set exact alarms: the snooze settings say so.
-  final bool snoozeExactTimingUnavailable;
+  final bool snoozeExactTimingUnavailable, snoozeExactTimingPending, wakeTracePending, reserveExactTimingStatus;
 
   const AlarmScreenView({
     super.key,
@@ -386,6 +392,9 @@ class AlarmScreenView extends StatefulWidget {
     this.onSnoozeSettings,
     this.snoozeUnsupportedReason,
     this.snoozeExactTimingUnavailable = false,
+    this.snoozeExactTimingPending = false,
+    this.wakeTracePending = false,
+    this.reserveExactTimingStatus = false,
   });
 
   @override
@@ -794,8 +803,9 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
                               settings: w.snoozeSettings!,
                               onChanged: w.onSnoozeSettings,
                               unsupportedReason: w.snoozeUnsupportedReason,
-                              exactTimingUnavailable:
-                                  w.snoozeExactTimingUnavailable,
+                              exactTimingUnavailable: w.snoozeExactTimingUnavailable,
+                              exactTimingPending: w.snoozeExactTimingPending,
+                              reserveExactTimingStatus: w.reserveExactTimingStatus,
                             ),
                           ),
                         const SizedBox(height: S.x4),
@@ -1148,7 +1158,10 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
         value: at == null ? '—' : AlarmScreenView._dayAndTime(c, at),
         chevron: false,
       ),
-      SetRow(
+      SizedBox(key: const ValueKey('alarm-trace-slot'),
+        height: 160 * MediaQuery.textScalerOf(c).scale(1),
+        child: SingleChildScrollView(child: PendingContent(pending: w.wakeTracePending,
+          child: SetRow(
         LucideIcons.listChecks,
         C.indigo,
         'Last wake decision',
@@ -1158,7 +1171,8 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
             ? 'Nothing recorded: no alarm is armed'
             : 'Nothing recorded for this wake yet',
         chevron: false,
-      ),
+        crossAxisAlignment: CrossAxisAlignment.start,
+      )))),
     ];
   }
 
