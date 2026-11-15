@@ -60,6 +60,29 @@ void main(){
     expect(within('plan',find.text('Alarm')),findsOneWidget);
     await t.pumpWidget(const SizedBox());
   });
+  // CLAIM sleep-pending-actions: cold loading cannot assert a different action
+  // from the scored-night action that replaces it.
+  testWidgets('cold night uses the loaded edit label from its first frame', (t) async {
+    skTallView(t);
+    final repo = OrderedSleepRepo()..held = Completer<void>();
+    final app = AppState.forTesting()..repo = repo;
+    addTearDown(app.dispose);
+    try {
+      await t.pumpWidget(perfApp(app, const SleepTab()));
+      await t.pump();
+      expect(find.text('Set the times myself'), findsOneWidget);
+      expect(find.text('I was asleep'), findsNothing);
+      repo.held!.complete();
+      for (var i = 0; i < 12; i++) {
+        await t.pump(const Duration(milliseconds: 20));
+      }
+      expect(find.text('Set the times myself'), findsOneWidget);
+      expect(find.text('I was asleep'), findsNothing);
+    } finally {
+      if (!repo.held!.isCompleted) repo.held!.complete();
+      await t.pumpWidget(const SizedBox());
+    }
+  });
   testWidgets('late cards keep the visible loading layout within the normal budget', (t) async {
     phoneSurface(t);final repo=OrderedSleepRepo()..held=Completer<void>();final app=AppState.forTesting()..repo=repo;addTearDown(app.dispose);
     final run=ShiftRun(t);await t.pumpWidget(perfApp(app,const SleepTab()));await t.pump();
