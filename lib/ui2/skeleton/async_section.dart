@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 
 import 'placeholder_paint.dart';
 import '../grammar.dart' show Surface, ChartFrame;
@@ -50,105 +51,117 @@ class PendingContent extends StatefulWidget {
   State<PendingContent> createState() => _PendingContentState();
 }
 
+// One clock while any visible pending region exists. Render objects listen
+// directly: pulse frames repaint their own layer without rebuilding the page.
+class _PendingPulse extends ChangeNotifier {
+  static final shared = _PendingPulse();
+  late final Ticker _ticker = Ticker((elapsed) {
+    final phase = elapsed.inMicroseconds / 1100000 % 2;
+    value = .78 + .22 * (phase <= 1 ? phase : 2 - phase);
+    notifyListeners();
+  });
+  double value = .78;
+  int users = 0;
+  void join(VoidCallback listener) {
+    addListener(listener);
+    if (users++ == 0) _ticker.start();
+  }
+  void leave(VoidCallback listener) {
+    removeListener(listener);
+    if (--users == 0) _ticker.stop();
+  }
+}
+
 class _PendingContentState extends State<PendingContent>
-    with TickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(
-    vsync: this, duration: const Duration(milliseconds: 1100));
+    with SingleTickerProviderStateMixin {
   late final AnimationController _fade = AnimationController(vsync: this,
     duration: const Duration(milliseconds: 250));
   Timer? _delay;
   bool _visible = false;
-
   @override
   void initState() { super.initState(); _start(); }
-
   void _start() {
     if (!widget.pending) return;
-    // CLAIM(pending-debounce): layout exists immediately; paint starts only
-    // after 200 ms [structural spec 4b; async_section_test].
     _delay = Timer(const Duration(milliseconds: 200), () {
       if (!mounted || !widget.pending) return;
       setState(() => _visible = true);
-      _pulse.repeat(reverse: true);
       _fade.forward(from: 0);
     });
   }
-
   @override
   void didUpdateWidget(PendingContent old) {
     super.didUpdateWidget(old);
     if (old.pending == widget.pending) return;
-    _delay?.cancel();
-    _pulse.stop();
-    _fade.reset();
-    _visible = false;
-    _start();
+    _delay?.cancel(); _fade.reset(); _visible = false; _start();
   }
-
   @override
-  void dispose() { _delay?.cancel(); _pulse.dispose(); _fade.dispose(); super.dispose(); }
-
+  void dispose() { _delay?.cancel(); _fade.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => Focus(
-    canRequestFocus: false,
-    skipTraversal: true,
+    canRequestFocus: false, skipTraversal: true,
     descendantsAreFocusable: !widget.pending,
     descendantsAreTraversable: !widget.pending,
-    child: ExcludeSemantics(
-      excluding: widget.pending,
-      child: IgnorePointer(
-        ignoring: widget.pending,
-        child: AnimatedBuilder(animation: Listenable.merge([_pulse, _fade]), child: widget.child,
-          builder: (_, child) => PendingTone(pulse: .78 + .22 * _pulse.value,
+    child: ExcludeSemantics(excluding: widget.pending,
+      child: IgnorePointer(ignoring: widget.pending,
+        child: AnimatedBuilder(animation: _fade, child: widget.child,
+          builder: (_, child) => PendingTone(pulse: _PendingPulse.shared.value,
             fade: _fade.value, child: _PendingPaint(pending: widget.pending,
-              visible: _visible, fade: _fade.value, pulse: .78 + .22 * _pulse.value, child: child!))),
-      ),
-    ),
-  );
+              visible: _visible, fade: _fade.value, child: child!))))));
 }
 
 class _PendingPaint extends SingleChildRenderObjectWidget {
-  const _PendingPaint({required this.pending, required this.visible, required this.pulse, required this.fade, required super.child});
+  const _PendingPaint({required this.pending, required this.visible, required this.fade, required super.child});
   final bool pending, visible;
-  final double pulse, fade;
+  final double fade;
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      _RenderPending(context as Element, pending, visible, pulse, fade);
+      _RenderPending(context as Element, pending, visible, fade);
   @override
   void updateRenderObject(BuildContext context, _RenderPending renderObject) {
-    renderObject..pending = pending..visible = visible..pulse = pulse..fade = fade;
+    renderObject..pending = pending..visible = visible..fade = fade;
   }
 }
 
 class _RenderPending extends RenderProxyBox {
-  _RenderPending(this.element, this._pending, this._visible, this._pulse, this._fade);
-  bool _visible;
-  double _pulse, _fade;
-  set fade(double value) { if (_fade == value) return; _fade = value; markNeedsPaint(); }
-  set visible(bool value) { if (_visible == value) return; _visible = value; markNeedsPaint(); }
-  set pulse(double value) { if (_pulse == value) return; _pulse = value; markNeedsPaint(); }
+  _RenderPending(this.element, this._pending, this._visible, this._fade);
   final Element element;
-  bool _pending;
-  set pending(bool value) {
-    if (_pending == value) return;
-    _pending = value;
-    markNeedsPaint();
+  bool _pending, _visible, _listening = false;
+  double _fade;
+  GuidePlaceholderPaint? _plan;
+  @override
+  bool get isRepaintBoundary => true;
+  set fade(double value) { if (_fade == value) return; _fade = value; markNeedsPaint(); }
+  set visible(bool value) { if (_visible == value) return; _visible = value; _listen(); markNeedsPaint(); }
+  set pending(bool value) { if (_pending == value) return; _pending = value; _listen(); markNeedsPaint(); }
+  void _listen() {
+    final wanted = attached && _pending && _visible;
+    if (wanted == _listening) return;
+    _listening = wanted;
+    if (wanted) { _PendingPulse.shared.join(markNeedsPaint); }
+    else { _PendingPulse.shared.leave(markNeedsPaint); }
   }
-
+  @override
+  void attach(PipelineOwner owner) { super.attach(owner); _listen(); }
+  @override
+  void detach() {
+    if (_listening) { _PendingPulse.shared.leave(markNeedsPaint); _listening = false; }
+    super.detach();
+  }
+  @override
+  void performLayout() { super.performLayout(); _plan = null; }
   @override
   void paint(PaintingContext context, Offset offset) {
     final content = child;
-    if (!_pending || content == null) {
-      super.paint(context, offset);
-      return;
-    }
-    if (!_visible) return;
-    GuidePlaceholderPaint.of(
-      element,
-      fade: _fade,
-      pulse: _pulse,
-      includeChartReadout: true,
-    ).paint(context, content, offset, size);
+    if (!_pending || content == null) { super.paint(context, offset); return; }
+    if (!_visible || _fade <= 0) return;
+    final plan = _plan ??= GuidePlaceholderPaint.of(element,
+      fade: 1, pulse: 1, includeChartReadout: true);
+    plan.pulse = _PendingPulse.shared.value;
+    // Fade the entire placeholder, including backgrounds, dividers and icons.
+    // Guide dimming remains separate and its placeholder ink never fades.
+    context.pushOpacity(offset, (255 * _fade).round(), (context, offset) {
+      plan.paint(context, content, offset, size);
+    });
   }
 }
 
@@ -330,7 +343,7 @@ class PendingTone extends InheritedWidget {
   static Color colorOf(BuildContext context, Color color) {
     final tone = context.dependOnInheritedWidgetOfExactType<PendingTone>();
     if (tone == null) return color;
-    return Color.from(alpha: color.a * tone.fade,
+    return Color.from(alpha: color.a,
       red: color.r * tone.pulse, green: color.g * tone.pulse,
       blue: color.b * tone.pulse);
   }

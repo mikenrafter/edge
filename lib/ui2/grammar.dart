@@ -2504,7 +2504,7 @@ class StatusCard extends StatelessWidget {
         if (fix.isNotEmpty) presentationText(AppLocalizations.of(c), fix),
       ].join('. '),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
@@ -2889,7 +2889,9 @@ class MetricRow extends StatelessWidget {
 /// Related numbers that belong on one line, not in four cards.
 class InlineMetrics extends StatelessWidget {
   final List<(String, String, Color)> items;
-  const InlineMetrics(this.items, {super.key});
+  final int? labelLines;
+  final int? columns;
+  const InlineMetrics(this.items, {super.key, this.labelLines, this.columns});
 
   /// The least space two neighbouring readouts keep between them.
   static const double _gap = 8;
@@ -2903,7 +2905,9 @@ class InlineMetrics extends StatelessWidget {
     Widget cell(String label, String value, Color color) => Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: F.over.copyWith(color: p.ink3)),
+            if (labelLines == null) Text(label, style: F.over.copyWith(color: p.ink3))
+            else ConstrainedBox(constraints: BoxConstraints(minHeight: scaler.scale(F.over.fontSize!) * F.over.height! * labelLines!),
+              child: Text(label, style: F.over.copyWith(color: p.ink3))),
             const SizedBox(height: S.x1),
             // scaleDown, NOT ellipsis. These are measurements sharing
             // one row, so the slot is a third of a card and a two-digit
@@ -2943,12 +2947,13 @@ class InlineMetrics extends StatelessWidget {
       // so two values can never run into each other.
       final cellW = items.isEmpty || !box.maxWidth.isFinite
           ? double.infinity
-          : box.maxWidth / items.length;
+          : box.maxWidth / (columns ?? items.length);
       final fits = items.every((e) => natural(e.$2, F.n17) <= cellW - 4);
       if (fits) {
         return Row(
           children: [
             for (final e in items) Expanded(child: cell(e.$1, e.$2, e.$3)),
+            for (var i = items.length; i < (columns ?? items.length); i++) const Expanded(child: SizedBox.shrink()),
           ],
         );
       }

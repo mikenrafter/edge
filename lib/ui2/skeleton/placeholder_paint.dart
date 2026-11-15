@@ -18,7 +18,10 @@ class GuidePlaceholderPaint {
   final Set<RenderCustomPaint> framePaint;
   final RenderParagraph? title;
   final P palette;
-  final double fade, pulse;
+  final double fade;
+  double pulse;
+  final paragraphShapes = <RenderParagraph, List<SkeletonShape>>{};
+  final blocks = <RenderDecoratedBox>{};
   GuidePlaceholderPaint._(
     this.paragraphs,
     this.inks,
@@ -43,6 +46,7 @@ class GuidePlaceholderPaint {
     final hidden = <RenderParagraph>{};
     final plots = <RenderCustomPaint>{};
     final framePaint = <RenderCustomPaint>{};
+    final blocks = <RenderDecoratedBox>{};
     var card = isGuideCard(unit.widget);
     void visit(Element e) {
       final w = e.widget;
@@ -63,6 +67,9 @@ class GuidePlaceholderPaint {
               !guideKeepsPainter(ro.foregroundPainter))) {
         framePaint.add(ro);
       }
+      if (ro is RenderDecoratedBox && (e.findAncestorWidgetOfExactType<SkeletonBar>() != null || e.findAncestorWidgetOfExactType<SkeletonBlock>() != null)) {
+        blocks.add(ro); return;
+      }
       if (ro is RenderParagraph) {
         final frame = e.findAncestorWidgetOfExactType<ChartFrame>();
         if (frame != null && ro.text.toPlainText() != frame.title &&
@@ -78,7 +85,7 @@ class GuidePlaceholderPaint {
     }
 
     visit(unit);
-    return GuidePlaceholderPaint._(
+    final plan = GuidePlaceholderPaint._(
       paragraphs,
       inks,
       hidden,
@@ -89,6 +96,8 @@ class GuidePlaceholderPaint {
       fade,
       pulse,
     );
+    plan.blocks.addAll(blocks);
+    return plan;
   }
 
   factory GuidePlaceholderPaint.paragraphs(
@@ -148,6 +157,14 @@ class _PlaceholderContext extends PaintingContext {
   @override
   void paintChild(RenderObject child, Offset offset) {
     final t = treatment;
+    if (child is RenderDecoratedBox && t.blocks.contains(child)) {
+      final decoration = child.decoration as BoxDecoration;
+      final radius = decoration.borderRadius?.resolve(TextDirection.ltr) ?? BorderRadius.zero;
+      final color = t.palette.line;
+      canvas.drawRRect(radius.toRRect(offset & child.size), Paint()..color = Color.from(
+        alpha: color.a, red: color.r * t.pulse, green: color.g * t.pulse, blue: color.b * t.pulse));
+      return;
+    }
     if (child is RenderParagraph && t.hidden.contains(child)) return;
     if (child is RenderParagraph && t.paragraphs.contains(child)) {
       if (identical(child, t.title)) {
@@ -159,7 +176,7 @@ class _PlaceholderContext extends PaintingContext {
         canvas.restore();
       } else {
         final pigment = t.inks[child] ?? placeholderBarColor(t.palette.bg);
-        final shapes = skeletonOfParagraph(child, t.palette.bg);
+        final shapes = t.paragraphShapes.putIfAbsent(child, () => skeletonOfParagraph(child, t.palette.bg));
         canvas.save();
         canvas.translate(offset.dx, offset.dy);
         paintSkeletonShapes(

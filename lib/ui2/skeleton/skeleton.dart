@@ -765,10 +765,10 @@ const kPlaceholderStrength = .14;
 /// the review overlay ([Skeletonize]) and the components that paint themselves.
 /// A heading is the REAL text: the surface fills leave a hole at its line and a
 /// veil dims it. An icon is a hole in every fill. [fade] (0..1) scales the dim
-/// layers' alpha and placeholder ink as the pending state fades in.
-void paintSkeletonShapes(Canvas canvas, Iterable<SkeletonShape> shapes, P palette, {double fade = 1, double pulse = 1}) {
+/// layers only. Guide ink appears at once; [inkFade] is separate.
+void paintSkeletonShapes(Canvas canvas, Iterable<SkeletonShape> shapes, P palette, {double fade = 1, double inkFade = 1, double pulse = 1}) {
   Color pulsed(Color color) {
-    return Color.from(alpha: color.a * fade, red: color.r * pulse,
+    return Color.from(alpha: color.a * inkFade, red: color.r * pulse,
       green: color.g * pulse, blue: color.b * pulse);
   }
   final headings = [for (final s in shapes) if (s.kind == SkeletonKind.heading) s.rect];

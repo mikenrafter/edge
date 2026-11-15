@@ -15,7 +15,7 @@ import 'support/skeleton_fixture.dart';
 void main() {
   testWidgets('F1 answer uses watched denominator and zero gaps stay silent', (t) async {
     skTallView(t);
-    Future<void> show(double gap) => t.pumpWidget(skHost(SleepDetail(data: SleepData(
+    Future<void> show(double gap) => t.pumpWidget(skHost(SleepDetail(key: ValueKey(gap), data: SleepData(
       unobservedMin: gap, night: const {'duration_min': 350, 'in_bed_min': 486, 'efficiency': .92}))));
     await show(106);
     final answer = find.byKey(const ValueKey('card:answer'));
@@ -57,6 +57,7 @@ void main() {
     await t.pump(const Duration(milliseconds: 200));
     await t.pump(const Duration(milliseconds: 300));
     final built = GuidePlaceholderPaint.planBuilds;
+    expect(built, greaterThan(0), reason: 'the counting check must observe actual paint');
     for (var i = 0; i < 10; i++) { await t.pump(const Duration(milliseconds: 50)); }
     expect(GuidePlaceholderPaint.planBuilds, built);
     final RenderObject render = t.renderObject(find.byType(PendingContent));
