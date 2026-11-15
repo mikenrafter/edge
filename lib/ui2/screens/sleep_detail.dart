@@ -2517,10 +2517,16 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         PendingContent(
           key: const ValueKey('sleep-unusual-pending'),
           pending: true,
-          child: InsightCard(
-            l?.sleepDetailUnusualLastNight ?? 'Unusual last night',
-            '—',
-            icon: LucideIcons.moon,
+          // The heading is already the accordion's. Match the one-row empty
+          // verdict here; any real findings follow at the section's tail.
+          child: Surface(
+            color: p.card2,
+            elevation: 0,
+            child: Row(children: [
+              Icon(LucideIcons.moon, size: 16, color: p.ink2),
+              const SizedBox(width: S.x3),
+              Expanded(child: Text('—', style: F.cap.copyWith(color: p.ink2, height: 1.5))),
+            ]),
           ),
         ));
     }

@@ -10,37 +10,65 @@ import 'package:openstrap_edge/ui2/skeleton/load_memory.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  test('presentation memory is bounded, isolated by user, durable and excluded from exports', () async {
-    SharedPreferences.setMockInitialValues({});
-    await Prefs.ensureLoaded();
-    var user='a';
-    final memory=LoadMemory(userKey:()=>user,limit:4);
-    memory.record('section',100);memory.record('other',200);
-    user='b';expect(memory.estimate('section'),isNull);memory.record('section',300);
-    user='a';expect(memory.estimate('section'),100);
-    memory.record('third',400);memory.record('fourth',500);
-    expect(memory.estimate('section'),isNull,reason:'the oldest key must be evicted');
-    await Future<void>.value();
-    await SettingsRepository.instance.update((_) {}, sections: const {});
-    final restored=LoadMemory(userKey:()=>user,limit:4);
-    expect(restored.estimate('third'),400);
-    expect(prefsKeyBackedUp(LoadMemory.prefKey),isFalse);
-  });
+  test(
+    'presentation memory is bounded, isolated by user, durable and excluded from exports',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      await Prefs.ensureLoaded();
+      var user = 'a';
+      final memory = LoadMemory(userKey: () => user, limit: 4);
+      memory.record('section', 100);
+      memory.record('other', 200);
+      user = 'b';
+      expect(memory.estimate('section'), isNull);
+      memory.record('section', 300);
+      user = 'a';
+      expect(memory.estimate('section'), 100);
+      memory.record('third', 400);
+      memory.record('fourth', 500);
+      expect(
+        memory.estimate('section'),
+        isNull,
+        reason: 'the oldest key must be evicted',
+      );
+      await Future<void>.value();
+      await SettingsRepository.instance.update((_) {}, sections: const {});
+      final restored = LoadMemory(userKey: () => user, limit: 4);
+      expect(restored.estimate('third'), 400);
+      expect(prefsKeyBackedUp(LoadMemory.prefKey), isFalse);
+    },
+  );
   // CLAIM known-shape-first: an estimate must not clip labels/rows whose new
   // size is already known. Memory only fills the genuinely unknown tail.
-  testWidgets('remembered height never clips a larger known loading shape', (t) async {
+  testWidgets('remembered height never clips a larger known loading shape', (
+    t,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     await Prefs.ensureLoaded();
-    Widget show(bool pending,double height) => MaterialApp(home: Align(
-      alignment: Alignment.topLeft, child: SizedBox(width:200,
-        child: RememberedLayout(id:'known-loading-shape',pending:pending,
-          child:SizedBox(height:height,child:const Text('Known label'))))));
-    await t.pumpWidget(show(false,40));await t.pump();
-    await t.pumpWidget(show(true,100));
-    expect(t.getSize(find.byType(RememberedLayout)).height,100);
-    await t.pumpWidget(show(false,55));await t.pump();
-    expect(t.getSize(find.byType(RememberedLayout)).height,55,
-      reason:'settled content always fits naturally');
+    Widget show(bool pending, double height) => MaterialApp(
+      home: Align(
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+          width: 200,
+          child: RememberedLayout(
+            id: 'known-loading-shape',
+            pending: pending,
+            child: SizedBox(height: height, child: const Text('Known label')),
+          ),
+        ),
+      ),
+    );
+    await t.pumpWidget(show(false, 40));
+    await t.pump();
+    await t.pumpWidget(show(true, 100));
+    expect(t.getSize(find.byType(RememberedLayout)).height, 100);
+    await t.pumpWidget(show(false, 55));
+    await t.pump();
+    expect(
+      t.getSize(find.byType(RememberedLayout)).height,
+      55,
+      reason: 'settled content always fits naturally',
+    );
     await t.pumpWidget(const SizedBox());
   });
   test(

@@ -205,7 +205,10 @@ class _SizeMemory extends RenderProxyBox implements PendingFillRender {
     final actual = size;
     if (config.pending) {
       if (config.height case final height?) {
-        size = constraints.constrain(Size(size.width, height));
+        // A remembered tail cannot clip rows or labels already known now.
+        size = constraints.constrain(
+          Size(size.width, math.max(size.height, height)),
+        );
       }
     } else if (_last != actual || _lastId != config.id) {
       _last = actual;
