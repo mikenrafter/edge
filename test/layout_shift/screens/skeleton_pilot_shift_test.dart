@@ -53,7 +53,9 @@ class _LateRepo extends GuideFakeRepo {
   @override
   Future<Map<String, dynamic>> getToday() => late(super.getToday);
   @override
-  Future<List<String>> availableDays() => late(super.availableDays);
+  Future<List<String>> availableDays() => late(() async => [for (var i = 0; i < 28; i++)
+      DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day - i)
+        .toIso8601String().substring(0, 10)]);
   @override
   Future<Map<String, dynamic>> getDaySleepV2(String day) => late(
     () => rich ? SleepRepo().getDaySleepV2(day) : super.getDaySleepV2(day),
@@ -167,7 +169,8 @@ class _LateRepo extends GuideFakeRepo {
   Future<Map<String, dynamic>> getWeekdayEffect({String key = 'readiness'}) =>
       late(() async => const {});
   @override
-  Future<String?> artifactSignature(String key) => late(() async => key == 'circadian' ? 'pilot-circadian' : null);
+  Future<String?> artifactSignature(String key) =>
+      late(() async => key == 'circadian' ? 'pilot-circadian' : null);
   @override
   Future<Map<String, dynamic>> getDayHrv(String day) =>
       late(() async => const {});
@@ -300,11 +303,21 @@ void main() {
             app.debugArtifactSource = FakeArtifactSource()
               ..sigs['circadian'] = 'pilot-circadian'
               ..results['circadian'] = {
-                'chronotype': {'value': {'type_label': 'Intermediate'}},
-                'social_jetlag': {'value': {'abs_hours': 1.2,
-                  'mid_sleep_free_h': 4.5, 'mid_sleep_work_h': 3.3,
-                  'n_free': 8, 'n_work': 20}},
-                'regularity': {'value': {'sri': 76}},
+                'chronotype': {
+                  'value': {'type_label': 'Intermediate'},
+                },
+                'social_jetlag': {
+                  'value': {
+                    'abs_hours': 1.2,
+                    'mid_sleep_free_h': 4.5,
+                    'mid_sleep_work_h': 3.3,
+                    'n_free': 8,
+                    'n_work': 20,
+                  },
+                },
+                'regularity': {
+                  'value': {'sri': 76},
+                },
               };
           }
           addTearDown(app.dispose);
