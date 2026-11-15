@@ -931,9 +931,13 @@ class TimelinePill extends StatelessWidget {
                 Icon(icon, size: 12, color: p.on(accent)),
                 const SizedBox(width: S.x1),
               ],
-              Text(label,
-                  style: F.cap.copyWith(
-                      color: on ? p.on(C.blue) : p.ink, fontWeight: FontWeight.w600)),
+              Flexible(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: F.cap.copyWith(
+                        color: on ? p.on(C.blue) : p.ink, fontWeight: FontWeight.w600)),
+              ),
             ]),
           ),
         ),
@@ -955,12 +959,17 @@ class TimelineTitleRow extends StatelessWidget {
     return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: F.head.copyWith(color: p.ink)),
+          Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: F.head.copyWith(color: p.ink)),
           if (subtitle != null)
-            Text(subtitle!, style: F.over.copyWith(color: p.ink3)),
+            Text(subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: F.over.copyWith(color: p.ink3)),
         ]),
       ),
-      Wrap(spacing: S.x2, children: pills),
+      const SizedBox(width: S.x2),
+      Flexible(
+        child: Wrap(spacing: S.x2, alignment: WrapAlignment.end, children: pills),
+      ),
     ]);
   }
 }

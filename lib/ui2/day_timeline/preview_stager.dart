@@ -92,7 +92,7 @@ class PreviewTotals {
 PreviewTotals previewTotals(List<SleepStage?> stages, int domainStart, SleepBlock b) {
   final e0 = ((b.start - domainStart) / kPreviewEpochSec).floor().clamp(0, stages.length);
   final e1 = ((b.end - domainStart) / kPreviewEpochSec).ceil().clamp(0, stages.length);
-  var deep = 0, rem = 0, light = 0, awake = 0, wakeUps = 0;
+  var deep = 0, rem = 0, light = 0, wakeUps = 0;
   SleepStage? prev;
   for (var e = e0; e < e1; e++) {
     final s = stages[e];
@@ -101,7 +101,6 @@ PreviewTotals previewTotals(List<SleepStage?> stages, int domainStart, SleepBloc
       case SleepStage.rem: rem++;
       case SleepStage.light: light++;
       case SleepStage.awake:
-        awake++;
         if (prev != null && prev != SleepStage.awake) wakeUps++;
       case null: break;
     }

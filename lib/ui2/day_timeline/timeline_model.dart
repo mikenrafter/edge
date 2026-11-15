@@ -196,8 +196,9 @@ class SleepBlock {
       SleepBlock(id, kind, start ?? this.start, end ?? this.end);
   bool contains(double t) => t >= start && t < end;
   @override
-  bool operator ==(Object o) =>
-      o is SleepBlock && o.id == id && o.kind == kind && o.start == start && o.end == end;
+  bool operator ==(Object other) =>
+      other is SleepBlock && other.id == id && other.kind == kind &&
+      other.start == start && other.end == end;
   @override
   int get hashCode => Object.hash(id, kind, start, end);
   @override
