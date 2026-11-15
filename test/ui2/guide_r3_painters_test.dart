@@ -9,7 +9,7 @@ import 'package:openstrap_edge/ui2/theme.dart';
 import '../support/guide_r2_pixels.dart';
 
 final _declaration = RegExp(r'class\s+(\w+)\s+extends\s+CustomPainter\b([^{]*)\{');
-final _classes = RegExp(r'\b(GuidePlot|GuideRing|GuideDecoration|GuidePlotOverlay)\b');
+final _classes = RegExp(r'\b(GuidePlot|GuideRing|GuideBars|GuideSteps|GuideScatter|GuideBand|GuideDecoration|GuidePlotOverlay)\b');
 
 /// The painters of [source] that declare no placeholder treatment.
 List<String> _unclassified(String source) => [
@@ -52,7 +52,7 @@ void main() {
       'IntervalLadder', '_SideStrip', 'PosterMap', 'HapticScorePainter', 'BreathRing', 'LineChart', 'Bars', 'Ring'];
     final all = _painters();
     for (final name in data) {
-      expect(all[name], matches(RegExp(r'GuidePlot|GuideRing')), reason: name);
+      expect(all[name], matches(RegExp(r'GuidePlot|GuideRing|GuideBars|GuideSteps|GuideScatter|GuideBand')), reason: name);
     }
   });
 

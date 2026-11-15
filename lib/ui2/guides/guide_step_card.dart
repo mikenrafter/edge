@@ -27,6 +27,7 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../theme.dart';
+import '../remembered_expansion.dart';
 import '../grammar.dart' show Pressable;
 import 'guide_markers.dart';
 
@@ -93,18 +94,8 @@ class GuideStepCard extends StatefulWidget {
   State<GuideStepCard> createState() => _GuideStepCardState();
 }
 
-class _GuideStepCardState extends State<GuideStepCard> {
-  bool _expanded = false;
-
-  @override
-  void didUpdateWidget(GuideStepCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    final old = oldWidget.model;
-    final now = widget.model;
-    if (old is! GuideCardOnStep || now is! GuideCardOnStep || old.number != now.number || old.caption != now.caption) {
-      _expanded = false;
-    }
-  }
+class _GuideStepCardState extends State<GuideStepCard> with RememberedExpansion<GuideStepCard> {
+  bool get _expanded => expandedSection('guide_missing_help');
 
   @override
   Widget build(BuildContext context) {
@@ -165,18 +156,27 @@ class _GuideStepCardState extends State<GuideStepCard> {
           content.add(footer(model.footers[i], GuideStepCard.footerKey(i)));
         }
     }
-    final actions = <Widget>[];
+    // The bottom row: the card's own link at the left (when it has one) and Exit ALWAYS at the
+    // right edge, in the accent colour, so Exit never moves between states
+    // [guide_r5_test R5-5]. CLAIM(exit-one-place).
+    final links = <Widget>[];
     if (model is GuideCardOnStep && model.missingHelp != null) {
-      actions.add(Flexible(child: Pressable(key: GuideStepCard.dontSeeItKey, expanded: _expanded, onTap: () => setState(() => _expanded = !_expanded),
-          child: Text(l.guideDontSeeIt, style: F.cap.copyWith(color: p.on(C.blue))))));
+      links.add(Flexible(child: Pressable(
+        key: GuideStepCard.dontSeeItKey, expanded: _expanded,
+        onTap: () => toggleSection('guide_missing_help'),
+        child: Text(l.guideDontSeeIt, style: F.cap.copyWith(color: p.on(C.blue))),
+      )));
     }
     if (model is GuideCardOffPath && widget.onBackToGuide != null) {
-      actions.add(Flexible(child: Pressable(key: GuideStepCard.backToGuideKey,
+      links.add(Flexible(child: Pressable(key: GuideStepCard.backToGuideKey,
         onTap: widget.onBackToGuide, child: Text(l.guideBackToGuide, style: F.cap.copyWith(color: p.on(C.blue))))));
     }
-    actions.add(Semantics(container: true, label: l.guideExitLabel, button: true, onTap: widget.onExit,
-      child: ExcludeSemantics(child: Pressable(key: GuideStepCard.exitKey, onTap: widget.onExit,
-        child: Text(l.guideExit, style: F.cap.copyWith(color: p.ink2))))));
+    final actions = <Widget>[
+      Expanded(child: Align(alignment: AlignmentDirectional.centerStart, child: Row(mainAxisSize: MainAxisSize.min, children: links))),
+      Semantics(container: true, label: l.guideExitLabel, button: true, onTap: widget.onExit,
+        child: ExcludeSemantics(child: Pressable(key: GuideStepCard.exitKey, onTap: widget.onExit,
+          child: Text(l.guideExit, style: F.cap.copyWith(color: p.on(C.blue)))))),
+    ];
     return Material(
       key: GuideStepCard.cardKey, color: p.card, borderRadius: R.rLg, elevation: 6, shadowColor: p.shadow,
       child: DecoratedBox(
@@ -187,7 +187,7 @@ class _GuideStepCardState extends State<GuideStepCard> {
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: content),
             )),
             const SizedBox(height: S.x1),
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: actions),
+            Row(children: actions),
           ])),
       ),
     );

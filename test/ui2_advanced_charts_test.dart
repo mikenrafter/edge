@@ -27,7 +27,9 @@ void main() {
     await t.ensureVisible(find.text(text));
     await t.pumpAndSettle();
     await t.tap(find.text(text));
-    await t.pumpAndSettle();
+    // Build the route, then finish its transition; a skeleton keeps pulsing.
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 500));
   }
 
   testWidgets('Health vitals opens the Advanced screen, and it opens both '

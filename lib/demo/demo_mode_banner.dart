@@ -73,10 +73,7 @@ class _DemoModeBannerState extends State<DemoModeBanner> {
                 ? SizedBox(
                     width: 16,
                     height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: p.on(C.orange),
-                    ),
+                    child: PendingMark(),
                   )
                 : Pressable(
                     onTap: _exit,

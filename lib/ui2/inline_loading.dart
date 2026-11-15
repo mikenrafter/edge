@@ -1,17 +1,8 @@
-// The loading state of ONE part of a page: a card with a small spinner in it,
-// standing where the content that is still being read will go. The rest of the
-// page (title, header, whatever was cheap to read) is already drawn around it.
-//
-// A page-wide spinner in place of the whole body is what this replaces. It hid
-// everything, including what had already arrived, until the slowest read ended.
-//
-// Every spinner says what is happening now ([status]), optionally with a
-// second live line ([detail], e.g. the calculation's day count). [height]
-// reserves the loaded content's height, so the content landing fills the
-// space instead of pushing the page down.
+// A pending section keeps its status visible and delays placeholder paint.
 import 'package:flutter/material.dart';
 
 import 'grammar.dart';
+import 'skeleton/async_section.dart';
 import 'theme.dart';
 
 class InlineLoading extends StatelessWidget {
@@ -59,7 +50,7 @@ class InlineLoading extends StatelessWidget {
         const SizedBox(
           width: 15,
           height: 15,
-          child: CircularProgressIndicator(strokeWidth: 2),
+          child: PendingMark(),
         ),
         const SizedBox(width: S.x2),
         Expanded(
@@ -81,11 +72,7 @@ class InlineLoading extends StatelessWidget {
     final body = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const SizedBox(
-          width: 22,
-          height: 22,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
+        const PendingContent(pending: true, child: PendingRows(count: 2, rowHeight: 30)),
         const SizedBox(height: S.x2),
         // A live region ONLY for user-started work ([announce]): a screen
         // reader then says the status when it changes. The spinner is silent.

@@ -3,9 +3,9 @@
 // calculated.
 //
 // Contracts the brief leaves open:
-//  - dayIndex 0 with a known total reads 'Calculating…', the same rule as
+//  - dayIndex 0 with a known total reads 'Calculating sleep, recovery and strain', the same rule as
 //    syncStatusLine (a count appears once a day has finished).
-//  - waiting is 'Waiting for another calculation' (no download fallback;
+//  - waiting is 'Waiting to calculate sleep, recovery and strain' (no download fallback;
 //    that belongs to the sync sheet's sentence, not a screen's detail).
 
 import 'package:flutter_test/flutter_test.dart';
@@ -34,31 +34,31 @@ void main() {
         calcProgressLine(_state('deriving',
             const SyncCalculateDetail(
                 dayIndex: 3, dayTotal: 12, day: '2026-03-14'))),
-        'Calculating · day 3 of 12 · 2026-03-14');
+        'Calculating sleep, recovery and strain · day 3 of 12 · 2026-03-14');
   });
 
   test('deriving with counts, no day', () {
     expect(
         calcProgressLine(_state(
             'deriving', const SyncCalculateDetail(dayIndex: 3, dayTotal: 12))),
-        'Calculating · day 3 of 12');
+        'Calculating sleep, recovery and strain · day 3 of 12');
   });
 
   test('deriving before any count', () {
     expect(calcProgressLine(_state('deriving', const SyncCalculateDetail())),
-        'Calculating…');
-    expect(calcProgressLine(_state('deriving', null)), 'Calculating…');
+        'Calculating sleep, recovery and strain');
+    expect(calcProgressLine(_state('deriving', null)), 'Calculating sleep, recovery and strain');
     expect(
         calcProgressLine(_state(
             'deriving', const SyncCalculateDetail(dayIndex: 0, dayTotal: 12))),
-        'Calculating…');
+        'Calculating sleep, recovery and strain');
   });
 
   test('waiting for the lock', () {
     expect(
         calcProgressLine(_state(
             'deriving', const SyncCalculateDetail(waiting: true))),
-        'Waiting for another calculation');
+        'Waiting to calculate sleep, recovery and strain');
   });
 
   test('not deriving => null', () {
@@ -81,6 +81,10 @@ void main() {
   // deriveProgressLine: the same line from AppState.deriveProgress, which every
   // derive pass feeds (sync or not), so a post-import pass shows too.
   group('deriveProgressLine', () {
+    // WHY: the cross-day step is trends, not another daily score.
+    test('cross-day calculation names trends', () {
+      expect(deriveProgressLine(const DeriveProgress(crossDay: true)), 'Rebuilding trends');
+    });
     test('no pass running => null', () {
       expect(deriveProgressLine(null), isNull);
     });
@@ -88,22 +92,22 @@ void main() {
       expect(
           deriveProgressLine(const DeriveProgress(
               dayIndex: 3, dayTotal: 12, day: '2026-03-14')),
-          'Calculating · day 3 of 12 · 2026-03-14');
+          'Calculating sleep, recovery and strain · day 3 of 12 · 2026-03-14');
     });
     test('day count without a day', () {
       expect(
           deriveProgressLine(const DeriveProgress(dayIndex: 3, dayTotal: 12)),
-          'Calculating · day 3 of 12');
+          'Calculating sleep, recovery and strain · day 3 of 12');
     });
-    test('no finished day yet, or no count => Calculating…', () {
+    test('no finished day yet, or no count => Calculating sleep, recovery and strain', () {
       expect(
           deriveProgressLine(const DeriveProgress(dayIndex: 0, dayTotal: 12)),
-          'Calculating…');
-      expect(deriveProgressLine(const DeriveProgress()), 'Calculating…');
+          'Calculating sleep, recovery and strain');
+      expect(deriveProgressLine(const DeriveProgress()), 'Calculating sleep, recovery and strain');
     });
     test('waiting', () {
       expect(deriveProgressLine(const DeriveProgress(waiting: true)),
-          'Waiting for another calculation');
+          'Waiting to calculate sleep, recovery and strain');
     });
   });
 }

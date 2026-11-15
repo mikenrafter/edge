@@ -32,10 +32,14 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../l10n/app_localizations.dart';
+import '../compute/findings.dart';
+import '../data/day_label.dart' show localDayStartSec;
 import '../wake/wake_timeline.dart';
 import '../data/day_label.dart' show dayLabelOf;
 import '../models/chart_point.dart' show ChartOlder;
 import 'grammar.dart' show Pressable;
+import 'finding_presentation.dart';
+import 'screens/home_screen.dart' show prettyDay;
 import 'theme.dart';
 import './skeleton/guide_plot.dart';
 
@@ -62,10 +66,12 @@ enum AnnotationKind {
   review,
   journal,
   algoVersion,
+  rhrShift,
 }
 
 /// The glyph for [k]. Unique per kind.
 IconData annotationIcon(AnnotationKind k) => switch (k) {
+      AnnotationKind.rhrShift => LucideIcons.trendingUp,
       AnnotationKind.wake => LucideIcons.sunrise,
       AnnotationKind.water => LucideIcons.glassWater,
       AnnotationKind.assumedWater => LucideIcons.droplet,
@@ -81,6 +87,7 @@ IconData annotationIcon(AnnotationKind k) => switch (k) {
 
 /// The pigment for [k]. Unique per kind; a range's shade is this at low alpha.
 Color annotationColor(AnnotationKind k) => switch (k) {
+      AnnotationKind.rhrShift => C.blue,
       AnnotationKind.wake => C.green,
       AnnotationKind.water => C.sky,
       AnnotationKind.assumedWater => C.blueSoft,
@@ -113,6 +120,7 @@ class ChartAnnotation {
     this.icon,
     this.groupId,
     this.wakeKind,
+    this.finding,
   });
   final String id;
   final AnnotationKind kind;
@@ -125,6 +133,17 @@ class ChartAnnotation {
   /// Wake epoch, retained when the chart projection becomes a list row.
   final int? groupId;
   final WakeNightEventKind? wakeKind;
+  final Finding? finding;
+
+  ChartAnnotation localized(AppLocalizations? l) {
+    final f = finding;
+    if (f == null || l == null) return this;
+    return ChartAnnotation(id: id, kind: kind, at: at, until: until,
+      icon: icon, groupId: groupId, wakeKind: wakeKind, finding: f,
+      label:
+          '${prettyDay(f.date, l)} · ${findingTitle(l, f)}. ${findingDetail(l, f)}',
+    );
+  }
 }
 
 /// One glyph per observed wake kind, shared by chart and list projections.
@@ -170,6 +189,20 @@ List<ChartAnnotation> wakeAnnotations(
       label: wakeEventLabel(e, l),
     ),
 ];
+
+/// Date-axis transport for daily findings. Never attach these points to an
+/// intraday plot: use DayRhrNotice outside its time axis instead.
+List<ChartAnnotation> rhrChangeAnnotations(Iterable<Finding> findings, {AppLocalizations? l}) {
+  final locale = l ?? lookupAppLocalizations(const Locale('en'));
+  return [for (final f in findings)
+    if (f.kind == FindingKind.rhrShift && localDayStartSec(f.date) != null)
+      ChartAnnotation(id: 'rhr-shift:${f.date}', kind: AnnotationKind.rhrShift,
+        at: localDayStartSec(f.date)!.toDouble(), finding: f,
+        icon: findingIcon(f),
+          label:
+              '${prettyDay(f.date, locale)} · ${findingTitle(locale, f)}. ${findingDetail(locale, f)}',
+        )];
+}
 
 /// Domain-to-pixel scale of one chart plus the footprint of one icon.
 @immutable
@@ -684,6 +717,7 @@ List<ChartAnnotation> dailyAnnotations(
       icon: a.icon,
       groupId: a.groupId,
       wakeKind: a.wakeKind,
+      finding: a.finding,
       at: s.toDouble(),
       until: e != null && e > s ? e.toDouble() : null,
       label: a.label,
@@ -898,7 +932,11 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
   @override
   Widget build(BuildContext context) {
     final p = P.of(context);
-    final set = widget.set;
+    final source = widget.set;
+    final l = AppLocalizations.of(context);
+    final set = AnnotationSet(items: [for (final a in source.items) a.localized(l)],
+      domainStart: source.domainStart, domainEnd: source.domainEnd,
+      reach: source.reach, listener: source.listener);
     final labelH = ChartAnnotationLane.labelRowHeight(
         MediaQuery.textScalerOf(context), Directionality.of(context));
     final header = labelH + ChartAnnotationLane.iconSize;
@@ -965,8 +1003,9 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
               ),
             ),
           ),
-        if (lines.isNotEmpty)
-          Positioned(
+        // Keep the paint layer while the independent annotation read is empty.
+        // An empty painter draws nothing and preserves the plot's identity.
+        Positioned(
             left: 0,
             right: 0,
             top: header,

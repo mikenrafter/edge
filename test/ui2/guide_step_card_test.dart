@@ -5,6 +5,8 @@
 import 'dart:ui' show Tristate;
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:openstrap_edge/state/prefs.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/ui2/guides/guide.dart';
@@ -75,6 +77,19 @@ Color _dotColor(WidgetTester t, int i) {
 }
 
 void main() {
+  var firstTest = true;
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    await Prefs.ensureLoaded();
+    if (!firstTest) await Prefs.setBoolAcked('accordion_guide_missing_help', false);
+    firstTest = false;
+  });
+  testWidgets('first launch expands contextual help before any saved choice', (t) async {
+    SharedPreferences.setMockInitialValues({});
+    await Prefs.ensureLoaded();
+    await _pumpCard(t, _withHelp());
+    expect(find.byKey(GuideStepCard.missingHelpKey), findsOneWidget);
+  });
   group('on a step: content and order', () {
     testWidgets('badge, caption, dots, then "Don\'t see it?" and Exit, top to bottom', (t) async {
       // why: spec "red step badge + caption, progress dots, Don't see it? link,
@@ -181,7 +196,7 @@ void main() {
       expect(find.byKey(GuideStepCard.exitKey), findsOneWidget);
     });
 
-    testWidgets('the help collapses when the step changes', (t) async {
+    testWidgets('the saved help choice survives a step change', (t) async {
       // why: help for step 2\'s missing target must not stay open over step 3.
       await _pumpCard(t, _withHelp());
       await t.tap(find.byKey(GuideStepCard.dontSeeItKey));
@@ -198,7 +213,7 @@ void main() {
         ),
       )));
       await t.pump();
-      expect(find.byKey(GuideStepCard.missingHelpKey), findsNothing);
+      expect(find.byKey(GuideStepCard.missingHelpKey), findsOneWidget);
     });
   });
 

@@ -434,7 +434,9 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
     if (!force && _ann.containsKey(key)) return;
     final t = beginRead(#exploreAnnotations);
     final load = widget.annotationLoader ??
-        ((a, b) => loadAnnotations(a, b, l: AppLocalizations.of(context)));
+        ((a, b) => loadAnnotations(a, b, l: AppLocalizations.of(context),
+          repo: repoOf(context),
+        ));
     Future.sync(() => load(from, to)).then((items) {
       if (!stillNewest(#exploreAnnotations, t)) return;
       setState(() => _ann[key] = items);
@@ -717,10 +719,6 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
         ]),
       );
     }
-    if (_loading && !paused) {
-      return InlineLoading(
-          status: l?.loadingExplorer ?? 'Reading the metrics you picked');
-    }
 
     final lines = <ExplorePlotLine>[
       for (final m in picked)
@@ -731,7 +729,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
               m.line!.normalised(
                   z: !_day && _z.contains(m.key) ? m.baseline : null)),
     ];
-    if (lines.isEmpty && !paused) {
+    if (lines.isEmpty && !paused && !_loading) {
       return _message(
           p,
           _day
@@ -847,13 +845,14 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
               reach: _annReach);
     }
 
-    return Surface(
+    return PendingContent(pending: _loading && !paused, child: Surface(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         ChartFrame(
           title: title,
           unit: l?.exploreUnitNormalised ?? 'Normalised',
           height: 200,
           annotations: marks,
+          reserveAnnotations: true,
           xLabels: xLabels,
           legend: [
             for (final m in picked) (m.label, p.on(m.color)),
@@ -905,7 +904,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
             style: F.over.copyWith(color: p.ink3, height: 1.5)),
         ...notes,
       ]),
-    );
+    ));
   }
 
   /// The algoVersion ranges of every picked series over the daily [w]: its

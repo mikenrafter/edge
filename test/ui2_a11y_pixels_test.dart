@@ -1,8 +1,10 @@
 // WHY: the screen-reader pilot changes the semantics tree, not the pixels
 // (owner bar "pixels unchanged" 7). These goldens were rendered on the BASE
-// commit (integrate/next 77d19df82, before any a11y change) and must still
+// commit (integrate/next b3eacf0c6, before merging the a11y pilot) and must still
 // match after it. A diff here is a bug in the pilot, unless the report lists
-// the change as one a fix needs (error-text contrast).
+// the change as one a fix needs (error-text contrast). Refreshed base-first
+// after the integrate/next merge; see edge.research/a11y-pilot-report.md,
+// "Merge with integrate/next" for provenance and comparisons.
 //
 // CLAIM(a11y-pixels-unchanged): the shared widgets the pilot touches, the four
 // tab roots and Sleep detail paint the same pixels as on the base commit.
@@ -10,7 +12,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart' show SettingsAccordion;
-import 'package:openstrap_edge/ui2/screens/metric_detail.dart' show DayNav;
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 

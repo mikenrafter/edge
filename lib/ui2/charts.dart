@@ -506,7 +506,7 @@ class LineChart extends CustomPainter implements GuidePlot {
 ///
 /// [d] is dense like [LineChart.d]: a `null` bucket was never measured and no
 /// bar is drawn for it, which is a hole in the row rather than a zero.
-class Bars extends CustomPainter implements GuidePlot {
+class Bars extends CustomPainter implements GuideBars {
   @override
   Color get guideLineColor => color;
   final List<double?> d;
@@ -806,7 +806,7 @@ extension SleepStageX on SleepStage {
 ///
 /// [stages] is one entry per epoch, in order. It comes from the stager; this
 /// painter has no opinion about what a night looks like.
-class Hypnogram extends CustomPainter implements GuidePlot {
+class Hypnogram extends CustomPainter implements GuideSteps {
   @override
   Color get guideLineColor => cols(p)[SleepStage.light]!;
   final List<SleepStage> stages;
@@ -1114,7 +1114,7 @@ class ZoneRows extends StatelessWidget {
 /// mirror image of the rows. It used to read correctly only because the
 /// noon-anchored formatter the one caller passes is symmetric at three ticks —
 /// at five it printed 6 AM against the 6 PM row.
-class Actogram extends CustomPainter implements GuidePlot {
+class Actogram extends CustomPainter implements GuideSteps {
   @override
   Color get guideLineColor => color;
   final List<List<double>?> days;
@@ -1152,7 +1152,7 @@ class Actogram extends CustomPainter implements GuidePlot {
 /// seven, which is the only thing that stopped this painter from being the
 /// three-row month grid as well: same cells, same absence rule, same file. A
 /// column of seven lays out exactly as it always did.
-class HeatMap extends CustomPainter implements GuidePlot {
+class HeatMap extends CustomPainter implements GuideSteps {
   @override
   Color get guideLineColor => color;
   final List<List<double?>> weeks;
@@ -1219,7 +1219,7 @@ class HeatMap extends CustomPainter implements GuidePlot {
 /// visual reading off it would be wrong. It draws its own gridlines at the
 /// axis ticks for the same reason: `ChartFrame` rules the full width, and the
 /// square is narrower than that.
-class Poincare extends CustomPainter implements GuidePlot {
+class Poincare extends CustomPainter implements GuideScatter {
   @override
   Color get guideLineColor => color;
   final List<double> nn;
@@ -1302,7 +1302,7 @@ class Poincare extends CustomPainter implements GuidePlot {
 /// lanes had different rates or different coverage. Resample every lane onto
 /// the night's grid before handing it over; nothing here can recover the
 /// mapping afterwards.
-class NightStack extends CustomPainter implements GuidePlot {
+class NightStack extends CustomPainter implements GuideBars {
   @override
   Color get guideLineColor => colors.isEmpty ? C.domSleep : colors.first;
   final List<List<double?>> series;
@@ -1386,7 +1386,7 @@ class NightStack extends CustomPainter implements GuidePlot {
 /// minute that was watched and was still keeps the hairline at the foot of the
 /// movement strip. Without that line an hour sitting at a desk and an hour
 /// with the band on the charger drew identically.
-class DayLanes extends CustomPainter implements GuidePlot {
+class DayLanes extends CustomPainter implements GuideSteps {
   @override
   Color get guideLineColor => work.isNotEmpty ? work.first.$3 : rest.isNotEmpty ? rest.first.$3 : C.domMove;
   /// Stretches with nothing recorded in them, as (from, to) fractions.

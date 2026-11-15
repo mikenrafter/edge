@@ -27,12 +27,14 @@ class SnoozeSettingsRows extends StatelessWidget {
     required this.onChanged,
     this.unsupportedReason,
     this.exactTimingUnavailable = false,
+    this.exactTimingPending = false,
+    this.reserveExactTimingStatus = false,
   });
 
   /// Android will not let the app set exact alarms: the snooze's phone backstop
   /// is then inexact, and a line under the switch says so (only while snooze is
   /// on).
-  final bool exactTimingUnavailable;
+  final bool exactTimingUnavailable, exactTimingPending, reserveExactTimingStatus;
 
   /// Non-null when this band cannot drive a snooze (it does not report how the
   /// alarm was stopped): the rows stay, dimmed and inert, and this is said
@@ -110,14 +112,15 @@ class SnoozeSettingsRows extends StatelessWidget {
           enabled: (unsupported == null || settings.enabled) &&
               onChanged != null,
         ),
-        if (settings.enabled && exactTimingUnavailable)
-          Padding(
-            padding: const EdgeInsets.only(bottom: S.x2),
-            child: Text(
-                l?.snoozeExactNote ?? 'Exact timing needs the alarm permission',
-                key: const ValueKey('snooze-exact-note'),
-                style: F.cap.copyWith(color: p.ink2)),
-          ),
+        if (settings.enabled && (reserveExactTimingStatus || exactTimingUnavailable || exactTimingPending))
+          Padding(padding: const EdgeInsets.only(bottom: S.x2),
+            child: PendingContent(pending: exactTimingPending,
+              child: Text(exactTimingUnavailable || exactTimingPending
+                ? (l?.snoozeExactNote ?? 'Exact timing needs the alarm permission')
+                : 'Phone timing follows the alarm permission',
+                key: ValueKey(exactTimingUnavailable || exactTimingPending
+                  ? 'snooze-exact-note' : 'snooze-exact-ready'),
+                style: F.cap.copyWith(color: p.ink2)))),
         SetRow(LucideIcons.hand, C.blue, tapsTitle,
             value: _taps(l, settings.requiredTaps),
             enabled: active,

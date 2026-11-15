@@ -1179,11 +1179,11 @@ String ecgAnalyzePrompt(String id) =>
     'impression. Say where the trace or its unproven polarity does not '
     'support a reading, and say so if you disagree with the band.';
 
-class _EcgDetailScreenState extends State<EcgDetailScreen> {
+class _EcgDetailScreenState extends State<EcgDetailScreen> with RememberedExpansion<EcgDetailScreen> {
   static const _scales = [40.0, 80.0, 160.0, 320.0];
   int _scale = 1;
-  bool _detailsOpen = false;
-  bool _timelineOpen = false;
+  bool get _detailsOpen => expandedSection('ecg_details');
+  bool get _timelineOpen => expandedSection('ecg_timeline');
   bool _exporting = false;
   String? _exportFailure;
 
@@ -1192,8 +1192,6 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
     super.didUpdateWidget(old);
     // A different reading starts closed: its Details are its own.
     if (!identical(old.data, widget.data)) {
-      _detailsOpen = false;
-      _timelineOpen = false;
       _exportFailure = null;
     }
   }
@@ -1614,7 +1612,7 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
         Pressable(
           key: const ValueKey('ecg-timeline-toggle'),
           semanticLabel: title,
-          onTap: () => setState(() => _timelineOpen = !_timelineOpen),
+          onTap: () => toggleSection('ecg_timeline'),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: S.x1),
             child: Row(
@@ -1916,7 +1914,7 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
                 Pressable(
                   key: const ValueKey('ecg-details'),
                   semanticLabel: l?.ecgDetails ?? 'Details',
-                  onTap: () => setState(() => _detailsOpen = !_detailsOpen),
+                  onTap: () => toggleSection('ecg_details'),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: S.x1),
                     child: Row(

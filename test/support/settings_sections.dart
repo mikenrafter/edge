@@ -16,7 +16,25 @@ Future<void> pumpTall(WidgetTester t, Widget w,
 }
 
 List<SettingsAccordion> accordions(WidgetTester t) =>
-    t.widgetList<SettingsAccordion>(find.byType(SettingsAccordion)).toList();
+    [for (final e in find.byType(SettingsAccordion).evaluate())
+      if (!_nestedAccordion(e)) e.widget as SettingsAccordion];
+
+bool _nestedAccordion(Element element) {
+  var nested = false;
+  element.visitAncestorElements((a) {
+    if (a.widget is SettingsAccordion) { nested = true; return false; }
+    return true;
+  });
+  return nested;
+}
+
+Future<void> openSettingsSection(WidgetTester t, String title) async {
+  final card = section(title);
+  if (find.descendant(of: card, matching: find.byType(Divider)).evaluate().isNotEmpty) return;
+  await t.ensureVisible(find.descendant(of: card, matching: find.text(title)).first);
+  await t.tap(find.descendant(of: card, matching: find.text(title)).first);
+  await t.pump();
+}
 
 List<String> sectionTitles(WidgetTester t) =>
     [for (final a in accordions(t)) a.title];

@@ -73,7 +73,7 @@ class LogFoodSheet extends StatefulWidget {
   State<LogFoodSheet> createState() => _LogFoodSheetState();
 }
 
-class _LogFoodSheetState extends State<LogFoodSheet> {
+class _LogFoodSheetState extends State<LogFoodSheet> with RememberedExpansion<LogFoodSheet> {
   FoodEntry? get _editing => widget.entry;
   late String _date = _editing?.date ?? widget.date ?? todayLabel();
   late String _meal = _editing?.meal ?? widget.meal;
@@ -106,7 +106,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
   final _portion = TextEditingController();
 
   List<FoodEntry> _recent = const [];
-  late bool _detail = _editing != null;
+  bool get _detail => expandedSection('food_details');
 
   /// The last scan's product, when it produced one. Holds the per-100 g
   /// figures the portion field rescales from, and its barcode becomes the
@@ -570,7 +570,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
               ),
             const SizedBox(height: S.x5),
             Pressable(
-              onTap: () => setState(() => _detail = !_detail),
+              onTap: () => toggleSection('food_details'),
               child: Row(
                 children: [
                   Icon(

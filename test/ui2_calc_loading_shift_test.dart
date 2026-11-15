@@ -35,24 +35,24 @@ void main() {
     final before = t.getSize(find.byType(InlineLoading)).height;
     app.derive.value = const DeriveProgress(dayIndex: 3, dayTotal: 12);
     await t.pump();
-    expect(find.text('Calculating · day 3 of 12'), findsOneWidget);
+    expect(find.text('Calculating sleep, recovery and strain · day 3 of 12'), findsOneWidget);
     expect(t.getSize(find.byType(InlineLoading)).height, before);
   });
 
   testWidgets('progress lines are localised', (t) async {
     final ru = await AppLocalizations.delegate.load(const Locale('ru'));
     expect(deriveProgressLine(const DeriveProgress(dayIndex: 3, dayTotal: 12), ru),
-        'Расчёт · день 3 из 12');
+        'Расчёт сна, восстановления и нагрузки · день 3 из 12');
     expect(
         deriveProgressLine(
             const DeriveProgress(dayIndex: 3, dayTotal: 12, day: 'd'), ru),
-        'Расчёт · день 3 из 12 · d');
+        'Расчёт сна, восстановления и нагрузки · день 3 из 12 · d');
     expect(deriveProgressLine(const DeriveProgress(waiting: true), ru),
-        'Ожидание другого расчёта');
-    expect(deriveProgressLine(const DeriveProgress(), ru), 'Считаем…');
+        'Ожидание расчёта сна, восстановления и нагрузки');
+    expect(deriveProgressLine(const DeriveProgress(), ru), 'Расчёт сна, восстановления и нагрузки');
     expect(
         calcProgressLine(
             const SyncPresentationState(phase: 'deriving', busy: true), ru),
-        'Считаем…');
+        'Расчёт сна, восстановления и нагрузки');
   });
 }

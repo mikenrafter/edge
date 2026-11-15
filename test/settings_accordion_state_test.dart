@@ -2,7 +2,7 @@
 // open or folded, per stable key (screen id + section id, never the translated
 // title), through the SettingsRepository app-prefs section.
 //
-//   first visit            -> expanded (today's default), nothing written
+//   first visit            -> expanded; no accordion choice written
 //   fold / unfold          -> one app-pref write (a bool) through
 //                             SettingsRepository.update, announced on
 //                             SettingsRepository.changes
@@ -41,6 +41,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/settings_sections.dart';
+import 'package:openstrap_edge/ui2/skeleton/load_memory.dart';
 
 final _schedule = fillDefaultAlarmSchedule(const [
   AlarmScheduleEntry(weekday: 0, hour: 7, minute: 0, enabled: true),
@@ -149,7 +150,7 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   group('first visit', () {
-    testWidgets('every section starts expanded and nothing is written',
+    testWidgets('every section starts expanded without saving an accordion choice',
         (t) async {
       final writes = _Writes();
       addTearDown(writes.close);
@@ -158,8 +159,8 @@ void main() {
         await expectAllSectionsExpanded(t, e.key);
         await _leave(t);
       }
-      expect(writes.all, isEmpty, reason: 'looking is not a write');
-      expect((await SharedPreferences.getInstance()).getKeys(), isEmpty);
+      expect(writes.all.expand((w)=>w.keys).where((k)=>k != LoadMemory.prefKey), isEmpty, reason: 'only the owner-approved presentation cache may learn on a view');
+      expect((await SharedPreferences.getInstance()).getKeys().where((k)=>k != LoadMemory.prefKey), isEmpty);
     });
   });
 

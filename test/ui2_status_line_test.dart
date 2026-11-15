@@ -80,7 +80,7 @@ void main() {
     addTearDown(app.dispose);
     app.derive.value = const DeriveProgress(dayIndex: 3, dayTotal: 12);
     await t.pumpWidget(_host(app));
-    expect(_text(t), 'Calculating · day 3 of 12');
+    expect(_text(t), 'Calculating sleep, recovery and strain · day 3 of 12');
   });
 
   testWidgets('import beats derive; copying shows stage and step', (t) async {

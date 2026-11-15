@@ -1,3 +1,4 @@
+import 'support/sleep_disclosures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
@@ -60,6 +61,7 @@ Future<void> _pump(WidgetTester t, {double scale = 1, bool signals = true,
         data: _data(signals: signals, stages: stages)),
   ));
   await t.pumpAndSettle();
+  await openSleepDisclosures(t);
   expect(t.takeException(), isNull);
 }
 

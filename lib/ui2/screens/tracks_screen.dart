@@ -84,7 +84,7 @@ class _TracksScreenState extends State<TracksScreen> {
         Text(text('Failed')),
         TextButton(onPressed: _load, child: Text(text('Retry'))),
       ] else if (_tracks == null)
-        const Center(child: CircularProgressIndicator()),
+        const PendingContent(pending: true, child: Surface(child: PendingRows(count: 5))),
       if (_store != null)
         Wrap(
           spacing: S.x2,
@@ -443,7 +443,7 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
         Text(text('Failed')),
         TextButton(onPressed: _load, child: Text(text('Retry'))),
       ] else if (_events == null)
-        const Center(child: CircularProgressIndicator())
+        const PendingContent(pending: true, child: Surface(child: PendingRows(count: 5)))
       else if (_events!.isEmpty)
         Text(text('Never')),
       for (final event in _events ?? <TrackEvent>[])

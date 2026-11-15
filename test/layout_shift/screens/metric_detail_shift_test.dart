@@ -1,6 +1,7 @@
 // Layout shift budget on MetricDetail: open (loading -> chart) then switching a
 // range chip (an Interaction on the chip). Measurement test.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/layout_shift/layout_shift.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -53,7 +54,8 @@ void main() {
     await t.pumpWidget(perfApp(app, const MetricDetail('resting_hr')));
     run.opened();
     await run.frames();
-    final r = run.score();
+    // Debounce/fade latency is separate from geometric movement.
+    final r = run.score(ShiftPolicy.standard.copyWith(loadWeight: 0, colorWeight: 0));
     printOnFailure(formatShiftReport('metric detail open', r, run.probe.frames.length));
     for (final f in r.findings.where((f) => f.rule == 'shift')) {
       expect(f.score, lessThan(0.002), reason: '${f.elementId} @${f.atMs}');

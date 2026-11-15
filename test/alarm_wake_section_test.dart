@@ -324,6 +324,7 @@ void main() {
           ],
         ),
       );
+      await openSettingsSection(t, 'Last wake decision');
       final status = section('Timeline and status');
       expect(
         find.descendant(of: status, matching: find.text('Confirmed')),
@@ -353,6 +354,7 @@ void main() {
       t,
     ) async {
       await pumpTall(t, _Harness().view());
+      await openSettingsSection(t, 'Last wake decision');
       expect(
         find.descendant(
           of: section('Timeline and status'),

@@ -4,6 +4,7 @@
 // The height is fixed across every stage, so moving from "Opening" to
 // "Copying" to "Recalculating" fills the same box instead of pushing the page.
 import 'package:flutter/material.dart';
+import '../skeleton/async_section.dart';
 
 import '../../data/import_progress.dart';
 import '../../l10n/app_localizations.dart';
@@ -80,7 +81,7 @@ class ImportProgressView extends StatelessWidget {
             const SizedBox(
               width: 18,
               height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: PendingMark(),
             ),
             const SizedBox(width: S.x2),
           ],
@@ -128,7 +129,7 @@ class ImportProgressView extends StatelessWidget {
                 const SizedBox(
                   width: 22,
                   height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: PendingMark(),
                 ),
               const SizedBox(height: S.x2),
               Text(status,
@@ -156,7 +157,7 @@ class ImportProgressView extends StatelessWidget {
                     style: F.cap.copyWith(color: p.ink3)),
               if (counted) ...[
                 const SizedBox(height: S.x2),
-                LinearProgressIndicator(value: bar, minHeight: 4),
+                bar == null ? const PendingMark() : LinearProgressIndicator(value: bar, minHeight: 4),
               ],
             ],
           ),

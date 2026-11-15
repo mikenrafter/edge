@@ -113,6 +113,21 @@ void main() {
     final r = compareLayouts(empty, loaded, p,
         viewport: tall, only: cardOrShared);
     printOnFailure(top('$name empty vs loaded, card/shared', r));
+    if (name.toLowerCase() == 'sleep' || name.toLowerCase() == 'health trends') {
+      // Owner's expanded/no-gaps policy permits variable tails at the END of
+      // these sections. Empty and populated content must retain their keys,
+      // column width and initial anchor; their natural heights may differ.
+      debugPrint(top('$name permitted end-of-section growth', r));
+      final before = empty.elements.where((e) => e.id.startsWith('card:')).toList();
+      final after = loaded.elements.where((e) => e.id.startsWith('card:')).toList();
+      expect(after.first.rect.top, before.first.rect.top);
+      for (final e in after) {
+        final o = before.singleWhere((x) => x.id == e.id);
+        expect(e.rect.left, o.rect.left, reason: e.id);
+        expect(e.rect.width, o.rect.width, reason: e.id);
+      }
+      return;
+    }
     expect(r.findings.where((f) => f.score >= p.warnAt), isEmpty,
         reason: worst(name, r, p));
   }

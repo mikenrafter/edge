@@ -189,19 +189,19 @@ class _Repo extends LocalRepository {
 /// sqflite answers on a REAL event loop. Pumping alone never lets those futures
 /// complete, so the screen sits on its spinner and every assertion below passes
 /// against an empty tab — which is how a test like this quietly stops testing
-/// anything, which is why there is a spinner check after it.
+/// anything, which is why there is a pending-state check after it.
 ///
 /// So: real time to let the queries answer, a pump to commit the `setState`
 /// they land in, and POLL rather than guess a duration — a fixed delay that is
 /// long enough on this machine is a flake on a slower one. Returns whether the
-/// spinner ever went away; the caller asserts on it, but only once it has put
+/// pending state ever settled; the caller asserts on it, but only once it has put
 /// `FlutterError.onError` back.
 Future<bool> _settleLoad(WidgetTester t) async {
   for (var i = 0; i < 40; i++) {
     await t.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)));
     await t.pump(const Duration(milliseconds: 16));
-    if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {
+    if (find.byWidgetPredicate((w) => w is PendingContent && w.pending).evaluate().isEmpty) {
       await _frames(t);
       return true;
     }

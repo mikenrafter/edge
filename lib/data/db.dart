@@ -84,7 +84,6 @@ import 'live_coverage_policy.dart';
 import 'step_calibration.dart';
 import 'med_store.dart';
 import 'tracks_schema.dart';
-import 'track_model.dart';
 import 'moment_label.dart';
 import '../ecg/ecg_models.dart' show EcgReading;
 import '../ecg/ecg_result.dart' show ecgJoinTargetId;
@@ -2055,12 +2054,6 @@ class LocalDb {
       dose: (rows.single['dose'] as num?)?.toDouble() ?? 0,
       minute: (rows.single['minute'] as num?)?.toInt(),
     );
-  }
-
-  static double _trackDoseAmount(Map<String, Object?> event) {
-    final standard = event['track_id'] == 'caffeine' ? 'mg' : 'units';
-    if (event['unit'] != null && event['unit'] != standard) return 0;
-    return (event['amount'] as num?)?.toDouble() ?? 0;
   }
 
   /// Track dose rows are canonical; the journal total is their compatibility
@@ -6399,6 +6392,20 @@ class LocalDb {
     })
   >
   metricSeriesBundle(List<String> keys, {bool ownOnly = false}) => _ldbMetricSeriesBundle(keys, ownOnly: ownOnly);
+
+  /// Fast primary shape: current own scalars plus the number of preceding
+  /// non-null own history values, without reading historical payloads. Reuses
+  /// the same provenance predicate as metricSeriesBundle(ownOnly: true).
+  static Future<List<Map<String, Object?>>> ownMetricSeriesDayWithHistoryCount(
+    String day, List<String> keys, {required String historyKey}
+  ) => readerRun((db) => db.rawQuery(
+    'SELECT key, value, date FROM metric_series WHERE date = ? '
+    'AND key IN (${List.filled(keys.length, '?').join(',')}) '
+    'AND value IS NOT NULL$_ownOnlySql '
+    "UNION ALL SELECT 'history_count', COUNT(*), ? FROM metric_series "
+    'WHERE key = ? AND date < ? AND value IS NOT NULL$_ownOnlySql',
+    [day, ...keys, day, historyKey, day],
+  ));
 
   /// Drops stored `spo2` rows that are not a blood oxygen percentage: WHOOP export
   /// cells outside 70-100 banked before the importer dropped them, and the old

@@ -14,6 +14,12 @@ abstract interface class GuidePlot {
   Color get guideLineColor;
 }
 
+/// Shape categories shared by loading placeholders and guide placeholders.
+abstract interface class GuideBars implements GuidePlot {}
+abstract interface class GuideSteps implements GuidePlot {}
+abstract interface class GuideScatter implements GuidePlot {}
+abstract interface class GuideBand implements GuidePlot {}
+
 /// A [GuidePlot] that is a dial. Inside a placeholder it becomes an empty ring track
 /// (no arc, no value), not a wave.
 abstract interface class GuideRing implements GuidePlot {}

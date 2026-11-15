@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/import_progress.dart';
 import 'package:openstrap_edge/ui2/profile/import_progress_view.dart';
-import 'package:openstrap_edge/ui2/ui2.dart' show buildTheme;
+import 'package:openstrap_edge/ui2/ui2.dart' show buildTheme, PendingMark;
 
 Future<void> _pump(WidgetTester t, ImportProgress p) => t.pumpWidget(MaterialApp(
       theme: buildTheme(Brightness.light),
@@ -23,10 +23,10 @@ void main() {
       (ImportPrepStep.checking, 'Checking the backup'),
       (null, 'Getting the backup ready'),
     ]) {
-      testWidgets('$step => $text and a spinner', (t) async {
+      testWidgets('$step => $text and a pending mark', (t) async {
         await _pump(t, ImportPreparing(step));
         expect(find.text(text), findsOneWidget);
-        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        expect(find.byType(PendingMark), findsOneWidget);
       });
     }
   });
@@ -42,10 +42,11 @@ void main() {
       expect(_barValue(t), closeTo(0.25, 1e-9));
     });
 
-    testWidgets('rowsTotal 0 => indeterminate bar', (t) async {
+    testWidgets('rowsTotal 0 => placeholder', (t) async {
       await _pump(t, const ImportCopying(ImportStage.heartRate, 0, 0, 1, 9));
       expect(find.text('Copying heart rate'), findsOneWidget);
-      expect(_barValue(t), isNull);
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+      expect(find.byType(PendingMark), findsWidgets);
     });
   });
 
@@ -69,7 +70,8 @@ void main() {
     await _pump(t, const ImportRebuilding(0, 0, null));
     expect(find.text('Recalculating your days'), findsOneWidget);
     expect(find.textContaining('of 0'), findsNothing);
-    expect(_barValue(t), isNull);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+      expect(find.byType(PendingMark), findsWidgets);
   });
 
   testWidgets('failed: the error text', (t) async {

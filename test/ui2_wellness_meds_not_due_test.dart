@@ -90,7 +90,7 @@ void main() {
         () => Future<void>.delayed(const Duration(milliseconds: 20)),
       );
       await t.pump(const Duration(milliseconds: 16));
-      if (find.byType(CircularProgressIndicator).evaluate().isEmpty) break;
+      if (find.text('Nothing due today').evaluate().isNotEmpty) break;
     }
     for (var i = 0; i < 6; i++) {
       await t.pump(const Duration(milliseconds: 32));

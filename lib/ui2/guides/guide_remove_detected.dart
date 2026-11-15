@@ -58,8 +58,12 @@ Guide get removeDetectedGuide => Guide(
             target: _discard,
             anchor: _reviewNav,
             alsoTap: [EveryLabelled([ScreenLabel.dayReviewDiscard])], // "every item has its own"
+            // Multi-target step: the moving hand visits Keep, Discard and Edit of the first item.
+            multi: const GuideMultiTarget(targets: ReviewRowButtons()),
             action: GuideAction.tap,
             caption: GuideCopy.removeCaptionDiscard,
+            // Reduced motion draws the outline, not the highlight the moving caption names.
+            stillCaption: GuideCopy.removeCaptionDiscardStill,
           ),
           GuideStep(
             id: 'save',

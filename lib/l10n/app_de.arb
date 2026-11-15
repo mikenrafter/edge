@@ -3904,6 +3904,8 @@
   },
   "guideTapMarker": "tippen",
   "guideScrollMarker": "scrollen",
+  "guideTapOneOf": "eins antippen",
+  "guideSearchOrPick": "suchen oder wählen",
   "guideStepUnavailable": "Dieser Schritt kann gerade nicht angezeigt werden.",
   "guideNoVariantBody": "Diese Anleitung gilt noch nicht für dein Band. Sie gilt für: {bands}.",
   "guideHrZonesTitle": "So findest du deine Herzfrequenzzonen",
@@ -3921,7 +3923,7 @@
   "helpEmpty": "Für dein Band gibt es noch keine Anleitungen.",
   "guideAnotherWayInTitle": "Ein anderer Weg",
   "guideAlarmTitle": "Hier stellst du einen Wecker oder jeden Tag eine andere Zeit ein",
-  "guideAlarmStep1": "Scrolle im Tab **{tab}** nach unten zu **{section}** und tippe auf **{row}**.",
+  "guideAlarmStep1": "Tippe im Tab **{tab}** auf **{row}**.",
   "guideAlarmStep2": "Tippe auf den Tab des gewünschten Tages, zum Beispiel **{day}**, und dann auf die erste Zeile darunter, um diesen Tag einzuschalten.",
   "guideAlarmStep3": "Tippe dann unter diesem Tag auf **{wake}** und wähle die Uhrzeit. Jeder Tag kann seine eigene Zeit haben.",
   "guideAlarmAltBody": "Öffne **{settings}** und tippe dann auf **{alarm}**.",
@@ -3936,7 +3938,8 @@
   "guideAddNapRulesBody": "Ein Nickerchen dauert zwischen 5 Minuten und 6 Stunden, muss schon vorbei sein und darf sich nicht mit einem anderen Nickerchen oder deinem Hauptschlaf überschneiden.",
   "guideRemoveTitle": "So entfernst du ein Nickerchen oder Training, das gar nicht stattgefunden hat",
   "guideRemoveStep1": "Tippe im Tab **{tab}** auf die Karte **{card}**. Sie erscheint nur, solange etwas auf dich wartet.",
-  "guideRemoveStep2": "Jeder Eintrag hat sein eigenes **{discard}**. Tippe es bei dem Nickerchen oder Training an, das nicht stattgefunden hat; die Umrandung markiert das erste.",
+  "guideRemoveStep2": "Jeder Eintrag hat sein eigenes **{discard}**. Tippe es bei dem Nickerchen oder Training an, das nicht stattgefunden hat; die Hervorhebung zeigt die Auswahlmöglichkeiten.",
+  "guideRemoveStep2Still": "Jeder Eintrag hat sein eigenes **{discard}**. Tippe es bei dem Nickerchen oder Training an, das nicht stattgefunden hat; die Umrandung markiert das erste.",
   "guideRemoveSavedTitle": "Schon gespeichert?",
   "guideRemoveSavedBody": "Öffne den Tab **{sleep}** und tippe auf **{naps}**. Tippe bei einem vom Band erkannten Nickerchen auf **{notNap}**, bei einem selbst eingetragenen auf **{delete}**.",
   "guideRemoveMissingTitle": "„{card}“ nicht zu sehen?",
@@ -3989,7 +3992,75 @@
   "guideAddNapMissingTitle": "„{naps}“ nicht zu sehen?",
   "guideAddNapMissingBody": "**{naps}** steht unter deiner Nacht. Ist dieser Teil, **{night}**, eingeklappt, tippe auf seinen Titel, um ihn zu öffnen.",
   "guideTapsBack": "{count, plural, one{1 Tipp zurück} other{{count} Tipps zurück}}",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "@guideTapsBack": {
+    "description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "guideExpandAccordion": "{title} aufklappen",
+  "deriveDailyLabel": "Schlaf, Erholung und Belastung werden berechnet",
+  "deriveDailyProgress": "Schlaf, Erholung und Belastung werden berechnet · Tag {index} von {total}",
+  "deriveDailyProgressOn": "Schlaf, Erholung und Belastung werden berechnet · Tag {index} von {total} · {day}",
+  "deriveWaitingDailyLabel": "Warten auf die Berechnung von Schlaf, Erholung und Belastung",
+  "deriveTrendsLabel": "Trends werden neu berechnet",
+  "reviewWaitingImportTitle": "Warten auf den Import",
+  "reviewWaitingImportBody": "Der Import kopiert gespeicherte Daten. Danach können deine Aktivitäten gelesen werden.",
+  "reviewTryAgain": "Erneut versuchen",
+  "reviewReadActivities": "Ausstehende Nickerchen und Trainings werden gelesen",
+  "reviewReadMoments": "Markierte Momente und Wassereinträge werden gelesen",
+  "reviewReadDays": "Verfügbare Tage werden gelesen",
+  "reviewReadSaved": "Gespeicherte Aktivitätsprüfungen werden gelesen",
+  "metricSourcesUsed": "Verwendete Quellen",
+  "reviewReadHeart": "Herzfrequenz, Bewegung und Schlaf werden gelesen",
+  "reviewReadWear": "Tragezeit wird gelesen",
+  "reviewReadJournal": "Dein Tagebuch wird gelesen",
+  "reviewReadMeals": "Mahlzeiten werden gelesen",
+  "reviewReadMedicines": "Medikamente und Einnahmen werden gelesen",
+  "reviewReadDevices": "Gerätemessungen werden gelesen",
+  "reviewReadTime": "Berechnungszeitpunkt des Tages wird gelesen",
+  "reviewReadWake": "Aufwachzeiten werden gelesen",
+  "reviewReadWater": "Wassereinträge werden gelesen",
+  "reviewReadProfile": "Dein Profil wird gelesen",
+  "observationsLatestWeek": "Letzte Woche · {from} – {to}",
+  "@observationsLatestWeek": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "observationsNoWeek": "Diese Woche wurde nichts markiert.",
+  "observationsNoDay": "An diesem Tag wurde nichts markiert.",
+  "observationsEarlierWeek": "Frühere Woche",
+  "observationsLaterWeek": "Spätere Woche",
+  "observationsEventsUnit": "Ereignisse",
+  "observationsDayCount": "{day}: {count, plural, =1{1 Ereignis} other{{count} Ereignisse}}",
+  "@observationsDayCount": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "rhrChangesTitle": "Änderungen des Ruhepulses",
+  "rhrNoReadings": "Keine Ruhepulswerte gespeichert.",
+  "sleepTabTimelineCardTitle": "Schlafverlauf",
+  "sleepTabStoodOutCardTitle": "Was aufgefallen ist",
+  "sleepTabUsualCardTitle": "Im Vergleich zu sonst",
+  "sleepTabSignalsCardTitle": "Nächtliche Signale",
+  "sleepTabThePlanCardTitle": "Der Plan",
+  "pendingSectionLoading": "Wird geladen, {name}",
+  "pendingSectionLoaded": "Geladen, {name}",
+  "pendingSectionContent": "Inhalt",
   "findingNotificationIrregularRhythm": "Die am {day} aufgezeichneten Pulsabstände entsprachen unserer Unregelmäßigkeitsregel. Ihre Genauigkeit und wie oft sie Herzrhythmusstörungen übersieht, wurden nicht gemessen. Tippen Sie, um die Grenzen zu lesen.",
   "pulseSummaryTitle": "{count, plural, =1{Unregelmäßiges Pulsmuster an 1 Tag markiert} other{Unregelmäßige Pulsmuster an {count} Tagen markiert}}",
   "pulseSummaryBody": "{count, plural, =1{{days}. Die Pulsabstände an diesem Tag entsprachen unserer Unregelmäßigkeitsregel. Ihre Genauigkeit und wie oft sie Herzrhythmusstörungen übersieht, wurden nicht gemessen. Tippen Sie, um die Grenzen zu lesen.} other{{days}. Die Pulsabstände an diesen Tagen entsprachen unserer Unregelmäßigkeitsregel. Ihre Genauigkeit und wie oft sie Herzrhythmusstörungen übersieht, wurden nicht gemessen. Tippen Sie, um die Grenzen zu lesen.}}",

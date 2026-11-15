@@ -192,12 +192,12 @@ class CycleTab extends StatefulWidget {
   State<CycleTab> createState() => _CycleTabState();
 }
 
-class _CycleTabState extends State<CycleTab> with RevisionReload {
+class _CycleTabState extends State<CycleTab> with RevisionReload, RememberedExpansion<CycleTab> {
   CycleData? _d;
 
   /// The symptom look-back is folded away by default — the chips above it are
   /// what she opened the tab to tap.
-  bool _showShape = false;
+  bool get _showShape => expandedSection('cycle_shape');
 
   /// Read on every use. The tab lives in the shell's IndexedStack, so a field
   /// initialiser would still be yesterday after midnight and a period start
@@ -640,7 +640,7 @@ class _CycleTabState extends State<CycleTab> with RevisionReload {
         const SizedBox(height: S.x3),
         Pressable(
           semanticLabel: usuallyNotice,
-          onTap: () => setState(() => _showShape = !_showShape),
+          onTap: () => toggleSection('cycle_shape'),
           child: Row(
             children: [
               Expanded(
