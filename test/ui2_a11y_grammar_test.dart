@@ -207,9 +207,10 @@ void main() {
     expect(hasButtonChild, isFalse, reason: 'base: the row was named "Next day" and held the working buttons');
   });
 
-  testWidgets('InlineLoading: the status is a live region; the day count is outside it', (t) async {
+  // Default quiet, announce: true live: test/ui2_a11y_quiet_test.dart.
+  testWidgets('InlineLoading (announce: true): the status is a live region; the day count is outside it', (t) async {
     await t.pumpWidget(_host([
-      const InlineLoading(status: 'Reading last night', detail: 'day 3 of 12'),
+      const InlineLoading(status: 'Reading last night', detail: 'day 3 of 12', announce: true),
     ]));
     final d = _data(t, find.text('Reading last night'));
     expect(d.label, 'Reading last night');
