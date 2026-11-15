@@ -19404,5 +19404,23 @@
     }
   },
   "rhrChangesTitle": "Resting heart rate changes",
-  "rhrNoReadings": "No resting heart rate readings stored."
+  "rhrNoReadings": "No resting heart rate readings stored.",
+  "reviewWaitingImportTitle": "Waiting for import",
+  "reviewWaitingImportBody": "The import is copying stored data. Your activities can be read when it finishes.",
+  "reviewTryAgain": "Try again",
+  "reviewReadActivities": "Reading pending naps and workouts",
+  "reviewReadMoments": "Reading marked moments and water entries",
+  "reviewReadDays": "Reading the available day list",
+  "reviewReadSaved": "Reading saved activity reviews",
+  "metricSourcesUsed": "Sources used",
+  "reviewReadHeart": "Reading heart rate, movement and sleep",
+  "reviewReadWear": "Reading wear time",
+  "reviewReadJournal": "Reading your journal",
+  "reviewReadMeals": "Reading meals",
+  "reviewReadMedicines": "Reading medicines and doses",
+  "reviewReadDevices": "Reading device measurements",
+  "reviewReadTime": "Reading when the day was calculated",
+  "reviewReadWake": "Reading wake times",
+  "reviewReadWater": "Reading water entries",
+  "reviewReadProfile": "Reading your profile"
 }

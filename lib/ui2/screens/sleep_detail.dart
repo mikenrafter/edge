@@ -554,7 +554,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
 
   SleepData? _d;
   bool _loading = true;
-  bool _roughPending = false;
   bool _paused = false;
   String? _day;
   bool _saving = false; // an override write + its forced re-derive is in flight
@@ -669,7 +668,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
 
   Future<void> _load() async {
     final gen = ++_loadGen;
-    _roughPending = false;
     final repo = repoOf(context);
     if (repo == null) {
       if (mounted && gen == _loadGen) setState(() => _loading = false);
@@ -687,7 +685,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       if (mounted && gen == _loadGen) {
         // The night is usable now. The optional insight gets its own slot,
         // so a separate SQL read cannot hold the entire Sleep tab hostage.
-        setState(() => (_d = d, _rough = null, _roughPending = readRough,
+        setState(() => (_d = d, _rough = null,
           _loading = false, _paused = false));
         if (readRough) unawaited(_loadRough(repo, d.day!, gen));
         _refresh.afterPaint(repo, d.refreshPending).then((landed) {
@@ -704,12 +702,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   }
 
   Future<void> _loadRough(LocalRepository repo, String day, int gen) async {
-    try {
-      final rough = await _roughOrNull(repo, day);
-      if (mounted && gen == _loadGen) setState(() => _rough = rough);
-    } finally {
-      if (mounted && gen == _loadGen) setState(() => _roughPending = false);
-    }
+    final rough = await _roughOrNull(repo, day);
+    if (mounted && gen == _loadGen) setState(() => _rough = rough);
   }
 
   /// The rough-night card is an extra: if it cannot be read (an import has the
@@ -855,6 +849,13 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       _nightAccordion(c, [
       // Ours, or any paired device's own staging of the same night — shown
       // side by side as alternatives, never merged.
+      if (_deviceNight(d) case final dn?)
+        _night(c, p, d, dn, device: dn)
+      else
+        _night(c, p, d, n),
+
+      // ── 2b · WHOSE WINDOW IS THIS ──
+      ...?_windowCard(c, p, d, n),
       if (d.deviceNights.isNotEmpty) DeviceFilter(
           allLabel: 'OpenStrap',
           showWithOne: true,
@@ -873,13 +874,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             _scrub = null;
           }),
         ),
-      if (_deviceNight(d) case final dn?)
-        _night(c, p, d, dn, device: dn)
-      else
-        _night(c, p, d, n),
-
-      // ── 2b · WHOSE WINDOW IS THIS ──
-      ...?_windowCard(c, p, d, n),
       ..._napsButton(c, l, d.day),
       ]),
 
@@ -888,10 +882,10 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   }
 
   /// One remembered accordion for a section: the app's own [SettingsAccordion]
-  /// (closed by default, state kept per [id]) around the section's existing
+  /// (expanded by default, state kept per [id]) around the section's existing
   /// content. Only the person's tap on its header changes its height.
   Widget _accordion(String title, String id, Widget child, {Key? key}) =>
-      SettingsAccordion(title, id: 'sleep_$id', key: key, initiallyExpanded: false, children: [InsideCard(child: child)]);
+      SettingsAccordion(title, id: 'sleep_$id', key: key, initiallyExpanded: true, children: [InsideCard(child: child)]);
 
   /// The night, its device staging, the window card and the naps door, as one
   /// section under the night's own title.
@@ -998,14 +992,13 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           // than dropping the section (which moved everything under it) or
           // reassuring from no evidence.
           'unusual',
-          AsyncListSection<Widget>(items: _roughPending ? null : [
+          Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             _unusual(c, p, d, n) ?? StatusCard(
               l?.sleepDetailNotEnoughNightsTitle ?? 'Not enough nights to compare', '',
               fix: l?.sleepDetailNightsSoFar(d.tstHistory.length, _recordNights) ??
                 '${d.tstHistory.length} of $_recordNights nights so far',
               icon: LucideIcons.chartNoAxesColumn),
-          ], visibleRows: 3, rowHeight: 96,
-            itemBuilder: (_, child) => child, emptyBuilder: (_) => const SizedBox.shrink()),
+          ]),
           key: const ValueKey('card:unusual')),
 
       // ── 6 · THE SIGNALS UNDERNEATH ──
@@ -1030,12 +1023,14 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     final tst = n['duration_min'] as num?;
     final eff = n['efficiency'] as num?;
     final inBed = n['in_bed_min'] as num?;
+    final watched = inBed != null && (d.unobservedMin ?? 0) > 0
+        ? math.max(0, inBed - d.unobservedMin!) : null;
     final from = clockOfTs(n['onset_ts'] as num?);
     final to = clockOfTs(n['wake_ts'] as num?);
     return Surface(
       key: const ValueKey('card:answer'),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(tst == null ? '—' : hm(tst), style: F.n48.copyWith(color: p.ink)),
+        SizedBox(width: double.infinity, child: Text(tst == null ? '—' : hm(tst), style: F.n48.copyWith(color: p.ink))),
         const SizedBox(height: S.x1),
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(child: Text(l?.sleepDetailTotalSleep ?? 'Total sleep',
@@ -1048,19 +1043,21 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         Row(children: [
           Icon(LucideIcons.moon, size: 15, color: p.ink3),
           const SizedBox(width: S.x2),
-          Flexible(
+          Expanded(
             child: Text(from.isNotEmpty && to.isNotEmpty ? '$from → $to' : '—',
                 style: F.body
                     .copyWith(color: p.ink, fontWeight: FontWeight.w600)),
           ),
         ]),
         const SizedBox(height: S.x4),
-        InlineMetrics([
+        InlineMetrics(labelLines: 2, columns: 3, [
           (l?.sleepDetailInBed ?? 'IN BED', inBed == null ? '—' : hm(inBed),
               C.indigo),
-          (l?.sleepDetailAsleepOfThat ?? 'ASLEEP OF THAT',
+          (watched != null ? (l?.sleepDetailAsleep ?? 'ASLEEP') : (l?.sleepDetailAsleepOfThat ?? 'ASLEEP OF THAT'),
               eff == null ? '—' : _pct(eff * 100), C.green),
+          if (watched != null) (l?.sleepDetailWatched ?? 'WATCHED', hm(watched), C.sky),
         ]),
+
       ]),
     );
   }
@@ -1395,7 +1392,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
 
   // Notes are inside disclosures and fit their actual text.
   Widget _hintSlot(BuildContext c, P p, String text) =>
-      Text(text, style: F.over.copyWith(color: p.ink3, height: 1.5));
+      SizedBox(width: double.infinity, child: Text(text, style: F.over.copyWith(color: p.ink3, height: 1.5)));
 
   /// [reason] says why there is no night when the window card below has no
   /// times to show; it takes the hint's slot so the window card keeps the
@@ -1403,11 +1400,12 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   Widget _night(BuildContext c, P p, SleepData d, Map<String, dynamic> n,
       {Map<String, dynamic>? device, String? reason}) {
     final l = AppLocalizations.of(c);
-    final marks = [...wakeAnnotations(d.wakeTimeline, l: l), ...d.rhrMarks];
+    final wakeMarks = wakeAnnotations(d.wakeTimeline, l: l);
+    final marks = [...wakeMarks];
     final onset = (n['onset_ts'] as num?)?.toInt();
     final recordedEnd = (n['wake_ts'] as num?)?.toInt();
     var end = recordedEnd;
-    for (final mark in marks) {
+    for (final mark in wakeMarks) {
       if (end != null && mark.at > end) end = mark.at.ceil();
     }
     // Snoozes can follow detected sleep. Extend only the chart's axis and leave
@@ -1415,9 +1413,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     if (end != recordedEnd) n = {...n, 'wake_ts': end};
     var start = onset;
     if (Prefs.sleepWakeZoomOn && onset != null && end != null && end > onset &&
-        marks.length > 1) {
+        wakeMarks.length > 1) {
       final plotWidth = math.max(1.0, MediaQuery.sizeOf(c).width - 160);
-      final ordered = [...marks]..sort((a, b) => a.at.compareTo(b.at));
+      final ordered = [...wakeMarks]..sort((a, b) => a.at.compareTo(b.at));
       final dense = [
         for (var i = 1; i < ordered.length; i++)
           (ordered[i].at - ordered[i - 1].at) * plotWidth / (end - onset),
@@ -1426,6 +1424,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       if (dense) start = math.max(onset, ordered.first.at.floor() - 600);
     }
     if (start != onset) n = {...n, 'onset_ts': start};
+    marks.addAll(d.rhrMarks.where((m) => start != null && end != null && m.at >= start && m.at <= end));
     final annotations = start != null && end != null && end > start
         ? AnnotationSet(items: marks, domainStart: start.toDouble(),
             domainEnd: end.toDouble()) : null;
@@ -1453,7 +1452,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         key: const ValueKey('card:night'),
         child: _sectionViewport(c, Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           ChartFrame(
-            title: l?.sleepDetailThroughTheNight ?? 'Through the night',
+            key: const ValueKey('sleep-night-plot'),
+            title: l?.sleepDetailStagesSection ?? 'Stages',
             unit: l?.sleepDetailUnitStage ?? 'stage',
             height: lane * 4,
             // Real glyphs, not '': an empty label line rounds a pixel shorter
@@ -1491,7 +1491,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         // The hypnogram's own scrub panel below carries the Nerd stats action;
         // a second one here would put two on the card.
         ChartFrame(
-          title: l?.sleepDetailThroughTheNight ?? 'Through the night',
+          key: const ValueKey('sleep-night-plot'),
+          title: l?.sleepDetailStagesSection ?? 'Stages',
           unit: l?.sleepDetailUnitStage ?? 'stage',
           height: lane * 4 + (marks.isEmpty ? 0 : ChartAnnotationLane.headerFor(
               MediaQuery.textScalerOf(c), Directionality.of(c))),
@@ -1504,16 +1505,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           child: _labelledHypnogram(c, p, stages, n, lane, totals,
               annotations: annotations),
         ),
-        if (d.unobservedMin != null && (n['in_bed_min'] as num?) != null) ...[
-          const SizedBox(height: S.x2),
-          InlineMetrics([(l?.sleepDetailWatched ?? 'WATCHED',
-            hm(math.max(0, (n['in_bed_min'] as num) - d.unobservedMin!)), C.sky)]),
-          Text(l?.sleepDetailWatchedExplain(
-            hm(math.max(0, (n['in_bed_min'] as num) - d.unobservedMin!)),
-            hm(n['in_bed_min'] as num)) ??
-            'The band covered ${hm(math.max(0, (n['in_bed_min'] as num) - d.unobservedMin!))} of your ${hm(n['in_bed_min'] as num)} in bed. Sleep and stage figures use only that time.',
-            style: F.over.copyWith(color: p.ink3, height: 1.5)),
-        ],
         interval,
         _scrubPanel(c, p, d, n),
         if (device != null) ..._deviceStaging(c, p, device),
@@ -1536,6 +1527,14 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
               : (l?.sleepDetailTapDragNone ??
                   'Tap or drag the chart for any moment of the night.'),
         ),
+        if ((d.unobservedMin ?? 0) > 0 && (n['in_bed_min'] as num?) != null) ...[
+          const SizedBox(height: S.x2),
+          Text(l?.sleepDetailWatchedExplain(
+            hm(math.max(0, (n['in_bed_min'] as num) - d.unobservedMin!)),
+            hm(n['in_bed_min'] as num)) ??
+            'The band covered ${hm(math.max(0, (n['in_bed_min'] as num) - d.unobservedMin!))} of your ${hm(n['in_bed_min'] as num)} in bed. Sleep and stage figures use only that time.',
+            style: F.over.copyWith(color: p.ink3, height: 1.5)),
+        ],
         if (_shape(c, d) case final shape?) ...[
           const SizedBox(height: S.x2),
           Text(shape, style: F.over.copyWith(color: p.ink3, height: 1.5)),
@@ -1998,7 +1997,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         const SizedBox(width: S.x3),
         Expanded(child: name),
         const SizedBox(width: S.x3),
-        Flexible(child: value),
+        Expanded(child: value),
       ]);
     }
     return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -2046,20 +2045,14 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     // No split: the same four rows with "—" and the reason under them, so the
     // card keeps its size and place. The note under the rows (the reason, or
     // what the figures are) takes the same two-line slot either way.
-    final none = rows.isEmpty;
+    final none = totals.isEmpty;
     if (none) {
-      rows.addAll([
-        for (final s in const [
-          SleepStage.deep,
-          SleepStage.rem,
-          SleepStage.light,
-          SleepStage.awake,
-        ])
-          (s.label(l), '—', ink[s]!),
-      ]);
+      rows.addAll([for (final s in const [SleepStage.deep, SleepStage.rem, SleepStage.light, SleepStage.awake])
+        (s.label(l), '—', ink[s]!)]);
     }
     return Column(children: [
       Surface(
+        key: const ValueKey('sleep-stage-rows'),
         pad: const EdgeInsets.symmetric(horizontal: S.x4),
         child: Column(children: [
           for (var i = 0; i < rows.length; i++) ...[

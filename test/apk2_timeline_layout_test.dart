@@ -229,6 +229,7 @@ void main() {
       expect(apk2Key(apk2Save), findsNothing);
       final beforeList = t.getRect(apk2Key(apk2List));
       final beforeChart = t.getRect(apk2Key(apk2Chart));
+      final beforeRow = t.getRect(apk2Row(apk2Meal));
       gate.complete([]);
       await settle(t);
       expect(find.text('Breakdown of your day'), findsOneWidget);
@@ -236,7 +237,7 @@ void main() {
       expect(apk2PageIds(), isEmpty);
       expect(t.getRect(apk2Key(apk2List)), beforeList);
       expect(t.getRect(apk2Key(apk2Chart)), beforeChart);
-      expect(apk2Row(apk2Meal), findsOneWidget);
+      expect(t.getRect(apk2Row(apk2Meal)), beforeRow);
       expect(errors, isEmpty);
       expect(t.takeException(), isNull);
       // Disposed in the body: the binding checks handles before teardowns run.

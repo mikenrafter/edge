@@ -1,3 +1,4 @@
+import 'review_read_label.dart';
 import '../../l10n/presentation_text.dart';
 import '../../l10n/display_text.dart';
 // DAY TIMELINE — what happened, in the order it happened.
@@ -37,7 +38,7 @@ import '../../compute/inputs/measurement_inputs.dart'
     show bmiScalesOf, nearWeight;
 import '../../compute/profile.dart' show bmiOf;
 import '../../data/coverage_resolver.dart' show OwnedSpan, coverageFromJson, spanAt;
-import '../../data/day_label.dart' show localDayEndSec, todayLabel;
+import '../../data/day_label.dart' show localDayStartSec, localDayEndSec, todayLabel;
 import '../../data/water_moment.dart';
 import '../../data/assumed_water.dart' show AssumedGlass, AssumedState;
 import '../../data/db.dart';
@@ -939,19 +940,18 @@ class TimelineData {
         .where((a) => a.id == 'rhr-shift:$day').toList(); }
       catch (_) { return <ChartAnnotation>[]; }
     });
-    final db = LocalDb.reader;
     final ((timeline, wear, fields, journal, meals, notes, momentLabels),
       (symptoms, definitions, doseRows, rawObservations, hrv, wake, assumed, water)) = await (
       (read('heart rate, movement and sleep', () => repo.getDayTimeline(day)),
        read('wear coverage', () => repo.getDayWear(day)),
        read('journal fields', repo.getJournalFields),
        read('journal values', () => repo.getJournalMetrics(day)),
-       read('meals', () async => NutritionDb.entriesForDay(await db, day)),
+       read('meals', () => LocalDb.readerRun((db) => NutritionDb.entriesForDay(db, day))),
        read('journal notes', () => LocalDb.journalRows(sinceDaysEpoch: day)),
        read('moment labels', () => LocalDb.momentLabels(date: day))).wait,
       (read('symptoms', () => LocalDb.symptomEntries(date: day)),
-       read('medication definitions', () async => MedDb.defs(await db, activeOnly: false)),
-       read('medication doses', () async => MedDb.dosesForDay(await db, day)),
+       read('medication definitions', () => LocalDb.readerRun((db) => MedDb.defs(db, activeOnly: false))),
+       read('medication doses', () => LocalDb.readerRun((db) => MedDb.dosesForDay(db, day))),
        read('device observations', () => repo.getDayObservations(day)),
        read<Map<String, dynamic>>('calculation timestamp', () async {
          try { return await repo.getDayHrv(day); } catch (_) { return {}; }
@@ -1072,12 +1072,13 @@ String observationValue(num v) =>
 
 class DayTimelineScreen extends StatefulWidget {
   const DayTimelineScreen({super.key, this.day, this.data,
-      this.reviewMoments, this.reviewService, this.reviewEditor, this.focusId, this.reviewActivities, this.resolving = false, this.reviewEntry = false, this.resolvingLabel});
+      this.reviewMoments, this.reviewService, this.reviewEditor, this.focusId, this.reviewActivities, this.reviewSnapshot, this.resolving = false, this.reviewEntry = false, this.resolvingLabel});
 
   final bool resolving, reviewEntry;
   final String? resolvingLabel;
   final String? focusId;
   final List<ActivitySuggestion>? reviewActivities;
+  final ReviewReadSnapshot? reviewSnapshot;
 
   final List<PendingMoment>? reviewMoments;
   final MomentReviewService? reviewService;
@@ -1140,7 +1141,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     _review = DayReviewController(repo, day,
         service: widget.reviewService,
         moments: widget.reviewMoments,
-        editor: widget.reviewEditor, activities: widget.reviewActivities,
+        editor: widget.reviewEditor, activities: widget.reviewActivities, snapshot: widget.reviewSnapshot,
         enabledSince: context.read<AppState>().gestureSettings.followUpMoments
             ? context.read<AppState>().gestureSettings.followUpMomentsSince : null);
     _review!.addListener(_onReview);
@@ -1361,6 +1362,14 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   }
 
   Set<String> _pendingReads = const {};
+  bool _reviewReading = false;
+  int _reviewReadToken = 0;
+  Future<void> _readReview(String day) async {
+    final token = ++_reviewReadToken;
+    if (mounted) setState(() => _reviewReading = true);
+    try { await _loadReview(day); }
+    finally { if (mounted && token == _reviewReadToken) setState(() => _reviewReading = false); }
+  }
 
   Future<void> _load() async {
     if (widget.resolving) return;
@@ -1373,6 +1382,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     }
     final l = AppLocalizations.of(context);
     try {
+      final reviewRead = _day != null && _review?.day != _day ? _readReview(_day!) : Future<void>.value();
       final d = await TimelineData.load(repo, want: _day, l: l, onPending: (reads) {
         if (mounted && token == _loadToken) setState(() => _pendingReads = reads);
       });
@@ -1382,7 +1392,10 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
           ? _anyHrCandidates(context, context.read<AppState>())
           : const <DeviceOption>[];
       if (mounted && token == _loadToken) {
-        if (_review?.day != d.day && d.day != null) await _loadReview(d.day!);
+        // The chart can take its actual shape while the saved-review read finishes.
+        setState(() => _d = d);
+        await reviewRead;
+        if (_review?.day != d.day && d.day != null) await _readReview(d.day!);
         if (!mounted || token != _loadToken) return;
         _review?.reconcileSettled(d.computedAtMs);
         setState(() => (
@@ -1586,16 +1599,30 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                 TextButton(onPressed: () => go(c, const TypicalDayScreen()),
                   child: Text(l?.typicalDayTitle ?? 'Typical day')),
                 if (!_loading && _d == null && _pendingReads.contains('import to finish copying stored data'))
-                  StatusCard('Waiting for import',
-                    'The import is copying stored data. Your activities can be read when it finishes.',
-                    fix: 'Try again', onFix: _load),
+                  StatusCard(l?.reviewWaitingImportTitle ?? 'Waiting for import',
+                    l?.reviewWaitingImportBody ?? 'The import is copying stored data. Your activities can be read when it finishes.',
+                    fix: l?.reviewTryAgain ?? 'Try again', onFix: _load),
+                // This caption slot exists in both states. It never inserts a
+                // row above the chart when a slow read changes stage.
+                SizedBox(height: F.cap.fontSize! * MediaQuery.textScalerOf(c).scale(1) * 1.5,
+                  child: _loading ? Text(_reviewReading && _pendingReads.isEmpty
+                      ? reviewReadLabel('saved activity reviews', l)
+                      : _pendingReads.isEmpty ? (widget.resolvingLabel ?? reviewReadLabel('saved activity reviews', l))
+                      : reviewReadLabel(_pendingReads.first, l), maxLines: 1,
+                      overflow: TextOverflow.ellipsis, style: F.cap.copyWith(color: p.ink3)) : null),
                 if (_loading) ...[
-                  const SizedBox(height: S.x4),
-                  Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    Text(_pendingReads.isEmpty ? (widget.resolvingLabel ?? 'Reading saved activity reviews') : 'Reading ${_pendingReads.first}',
-                      maxLines: 1, overflow: TextOverflow.ellipsis, style: F.cap.copyWith(color: p.ink3)),
-                    const PendingContent(pending: true, child: Surface(child: PendingRows(count: 8))),
-                  ]),
+                  if (_d == null || d.graph.hasCurve) PendingContent(pending: true,
+                    child: KeyedSubtree(key: const ValueKey('apk2-day-chart'),
+                      child: _DayGraphZoom(d.graph.hasCurve ? d.graph : DayGraph(
+                        hr: const [0, 0], movement: const [0, 0], dayStart: localDayStartSec(_day ?? todayLabel())),
+                        annotations: [...dayAnnotations(d.moments), ...d.rhrMarks],
+                        nerdStats: this, fineDetail: false))),
+                  if (_d != null && !d.graph.hasCurve && rows.isEmpty && d.notes.isEmpty)
+                    StatusCard(l?.dayTimelineNothingRecordedTitle ?? 'Nothing was recorded on this day',
+                      l?.dayTimelineNothingRecordedBody ?? 'Nothing recorded. The band was probably off.', icon: LucideIcons.circleSlash),
+                  if (_d == null || rows.isNotEmpty) PendingContent(pending: true, child: Section(l?.dayTimelineWhatHappenedSection ?? 'What happened',
+                    Surface(pad: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x2),
+                      child: _d == null ? const PendingRows(count: 3) : Column(children: _dayRows(rows, review))))),
                 ] else ...[
                   if (_candidates.length >= 2)
                     DeviceFilter(options: _candidates, selected: _device,
@@ -2261,10 +2288,11 @@ class MomentGroupRow extends StatefulWidget {
   State<MomentGroupRow> createState() => _MomentGroupRowState();
 }
 
-class _MomentGroupRowState extends State<MomentGroupRow> {
-  bool _open = false;
+class _MomentGroupRowState extends State<MomentGroupRow> with RememberedExpansion<MomentGroupRow> {
+  String get _expansionId => 'moment-group:${widget.group.first.at}:${widget.group.first.identity ?? widget.group.first.icon.codePoint}';
+  bool get _open => expandedSection(_expansionId);
   void expand() {
-    if (!_open) setState(() => _open = true);
+    if (!_open) setSectionExpanded(_expansionId, true);
   }
 
   @override
@@ -2305,7 +2333,7 @@ class _MomentGroupRowState extends State<MomentGroupRow> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Pressable(
-          onTap: () => setState(() => _open = !_open),
+          onTap: () => toggleSection(_expansionId),
           semanticLabel:
               '${f.title}, ${g.count} times, ${_open ? 'expanded' : 'collapsed'}',
           child: Row(

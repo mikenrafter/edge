@@ -35,19 +35,19 @@ class _Concurrent extends _Reads {
 }
 void main() {
   testWidgets('F9 saved review reads start alongside the day reads', (t) async {
-    final env = await BackupEnv.create('review_parallel_stage.db');
+    final env = (await t.runAsync(() => BackupEnv.create('review_parallel_stage.db')))!;
     final repo = _Concurrent();
     final app = AppState.forTesting()..repo = repo;
     try {
-      await LocalDb.instance;
+      await t.runAsync(() async { await LocalDb.instance; });
       await t.pumpWidget(perfApp(app, const DayTimelineScreen(day: '2026-11-13', reviewEntry: true)));
       for (var i = 0; i < 10; i++) { await t.pump(const Duration(milliseconds: 20)); }
       expect(repo.started, containsAll(['timeline', 'reviews']));
     } finally {
       repo.gate.complete();
-      for (var i = 0; i < 10; i++) { await t.pump(const Duration(milliseconds: 50)); }
+      await settle(t);
       await t.pumpWidget(const SizedBox());
-      app.dispose(); await env.dispose();
+      app.dispose(); await t.runAsync(env.dispose);
     }
   });
 
