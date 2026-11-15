@@ -52,6 +52,8 @@ class PendingUserAction {
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (_generation == generation) _active = false;
     });
+    // Accessibility activation can be a no-op with no rebuild to clear intent.
+    SchedulerBinding.instance.scheduleFrame();
     return action();
   }
 }
