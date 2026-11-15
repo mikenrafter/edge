@@ -54,8 +54,8 @@ class ActivitiesTimeline extends StatefulWidget {
 }
 
 /// One line of the list: a row, a collapsed group, or a discarded item.
-class _Item {
-  const _Item(this.id, this.moment, {this.group, this.discarded = false});
+class ActivitiesItem {
+  const ActivitiesItem(this.id, this.moment, {this.group, this.discarded = false});
   final String id;
   final Moment moment;
   final MomentGroup? group;
@@ -91,9 +91,10 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
   }
 
   @override
-  void didUpdateWidget(ActivitiesTimeline old) {
-    super.didUpdateWidget(old);
-    if (old.data.day != widget.data.day || old.data.graph.dayStart != widget.data.graph.dayStart) {
+  void didUpdateWidget(ActivitiesTimeline oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.data.day != widget.data.day ||
+        oldWidget.data.graph.dayStart != widget.data.graph.dayStart) {
       final c = controller;
       controller = _controllerFor(widget.data);
       WidgetsBinding.instance.addPostFrameCallback((_) => c.dispose());
@@ -112,18 +113,18 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
     return r != null && !r.loading && r.needsReview(id) && r.choice(id) == null;
   }
 
-  List<_Item> get items {
+  List<ActivitiesItem> get items {
     final r = widget.review;
-    final out = <_Item>[];
+    final out = <ActivitiesItem>[];
     if (filter != DiscardFilter.only) {
       for (final g in groupRepeatedEvents([for (final x in widget.rows) x.moment])) {
         final row = widget.rows.firstWhere((x) => identical(x.moment, g.first));
-        out.add(_Item(row.id, row.moment, group: g.count > 1 || g.isWake ? g : null));
+        out.add(ActivitiesItem(row.id, row.moment, group: g.count > 1 || g.isWake ? g : null));
       }
     }
     if (filter != DiscardFilter.hide && r != null) {
       for (final d in r.discardedRows(context)) {
-        out.add(_Item(d.id, d.moment, discarded: true));
+        out.add(ActivitiesItem(d.id, d.moment, discarded: true));
       }
     }
     out.sort((a, b) => a.moment.at.compareTo(b.moment.at));
@@ -132,8 +133,8 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
 
   // ── sync ──
 
-  _Item? _nearest(List<_Item> xs, double t) {
-    _Item? best;
+  ActivitiesItem? _nearest(List<ActivitiesItem> xs, double t) {
+    ActivitiesItem? best;
     for (final x in xs) {
       if (best == null || (x.moment.at - t).abs() < (best.moment.at - t).abs()) best = x;
     }
@@ -188,7 +189,7 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
     return false;
   }
 
-  void _tapItem(_Item x) {
+  void _tapItem(ActivitiesItem x) {
     setState(() => focus = x.id);
     controller.glideScrub(x.moment.at.toDouble());
     _scrollTo(x.id, animate: true);
@@ -321,7 +322,7 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
     ]);
   }
 
-  Widget _item(BuildContext c, P p, _Item x) {
+  Widget _item(BuildContext c, P p, ActivitiesItem x) {
     final r = widget.review;
     final key = _keys.putIfAbsent(x.id, GlobalKey.new);
     final Widget body;

@@ -871,6 +871,31 @@ class ExpectedSleepSchedule {
   }
 }
 
+/// One durable write (pilot day-timeline's sleep edit).
+abstract interface class DurableWrite {
+  Future<void> run();
+}
+
+/// [inner], telling [written] when it has committed.
+class _SignalledWrite {
+  _SignalledWrite(this.inner);
+  final DurableWrite inner;
+  final written = Completer<void>();
+  Future<void> run() async {
+    try {
+      await inner.run();
+    } catch (e, s) {
+      if (!written.isCompleted) written.completeError(e, s);
+      rethrow;
+    }
+    if (!written.isCompleted) written.complete();
+  }
+
+  void notWritten(String? error) {
+    if (!written.isCompleted) written.completeError(StateError(error ?? 'Not saved.'));
+  }
+}
+
 class SleepOperationResult {
   final bool success, metricsAvailable;
   final String? error;
@@ -976,38 +1001,28 @@ class SleepCoordinator extends ChangeNotifier {
   });
   /// [mutate], acknowledged at the durable write (pilot day-timeline; the
   /// structural version is responsiveness stage 2). [written] completes when
-  /// [write] has committed (or fails with its error); [done] after [days]
-  /// are re-derived, in order. Still queued: an edit before this one is
-  /// written and derived first, so a late write never lands over this one.
+  /// [write] has committed (or fails with its error); [done] once [days] are
+  /// re-derived. Still queued: an edit before this one is written and derived
+  /// first, so a late write never lands over this one.
   ({Future<void> written, Future<SleepOperationResult> done}) mutateWritten(
     List<String> days,
-    Future<void> Function() write,
+    DurableWrite write,
   ) {
-    final written = Completer<void>();
-    final done = _queue(() async {
-      try {
-        await write();
-      } catch (e, s) {
-        if (!written.isCompleted) written.completeError(e, s);
-        rethrow;
-      }
-      if (!written.isCompleted) written.complete();
-      Map<String, Object?> metrics = const {};
-      for (final d in days) {
-        metrics = await derive(d);
-      }
-      return SleepOperationResult(
-        success: true,
-        metricsAvailable: metrics['duration_min'] != null,
-      );
-    });
+    final w = _SignalledWrite(write);
+    final first = mutate(days.first, w.run);
+    // A nap on the evening before belongs to that day: it re-derives next.
+    final rest = [for (final d in days.skip(1)) recalculate(d)];
     // Closed or timed out before the write ran: the write did not happen.
-    unawaited(done.then((r) {
-      if (!written.isCompleted) {
-        written.completeError(StateError(r.error ?? 'Not saved.'));
+    unawaited(first.then((r) => w.notWritten(r.error)));
+    final done = first.then((r) async {
+      if (!r.success) return r;
+      for (final f in rest) {
+        final x = await f;
+        if (!x.success) return x;
       }
-    }));
-    return (written: written.future, done: done);
+      return r;
+    });
+    return (written: w.written.future, done: done);
   }
 
   Future<SleepOperationResult> recalculate(String day) => _queue(() async {

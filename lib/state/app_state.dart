@@ -3995,7 +3995,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   ({Future<void> written, Future<SleepOperationResult> done}) saveSleepEdit(
           SleepEditPlan plan) =>
       sleepOperations.mutateWritten([plan.day, ...plan.days.where((d) => d != plan.day)],
-          () async => writeSleepEdit(await LocalDb.instance, plan));
+          _SleepEditWrite(plan));
 
   Future<SleepOperationResult> setSleepOverride(String date, DateTime onset, DateTime offset,
       {String source = 'manual', bool useSchedule = false}) {
@@ -8678,4 +8678,12 @@ class _NapExtendsSleep implements MainSleepExtendedListener {
   Future<void> mainSleepExtended(String day) async {
     await app.sleepOperations.recalculate(day);
   }
+}
+
+/// The sleep editor's plan as one durable write (pilot day-timeline).
+class _SleepEditWrite implements DurableWrite {
+  const _SleepEditWrite(this.plan);
+  final SleepEditPlan plan;
+  @override
+  Future<void> run() async => writeSleepEdit(await LocalDb.instance, plan);
 }

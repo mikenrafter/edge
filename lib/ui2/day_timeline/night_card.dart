@@ -114,12 +114,14 @@ String _when(DateTime d, ClockText clock) {
   return '${days[d.weekday - 1]} ${d.day} ${months[d.month - 1]}, ${clock.of(_ts(d))}';
 }
 
+enum _Ask { recalculate, notSleep }
+
 class _NightCardState extends State<NightCard> {
   BlockEnd? _wheel;
   DateTime? _picked;
 
-  Future<void> _confirm({required String title, required String body,
-      required String action, required bool danger, required VoidCallback then}) async {
+  Future<void> _confirm(_Ask ask, {required String title, required String body,
+      required String action, required bool danger}) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) {
@@ -140,25 +142,27 @@ class _NightCardState extends State<NightCard> {
         );
       },
     );
-    if (ok == true && mounted) then();
+    if (ok != true || !mounted) return;
+    switch (ask) {
+      case _Ask.recalculate: widget.listener.recalculate();
+      case _Ask.notSleep: widget.listener.notSleep();
+    }
   }
 
-  void _askRecalculate() => _confirm(
+  void _askRecalculate() => _confirm(_Ask.recalculate,
         title: 'Recalculate this night?',
         body: 'Stages and scores for this night are worked out again from the band\'s '
             'data. Times you set stay as they are. You can keep using the app while it runs.',
         action: 'Recalculate',
         danger: false,
-        then: widget.listener.recalculate,
       );
 
-  void _askNotSleep() => _confirm(
+  void _askNotSleep() => _confirm(_Ask.notSleep,
         title: 'Mark this as not sleep?',
         body: 'This night stops counting toward your sleep totals and scores. '
             'You can undo it from this card.',
         action: 'Not sleep',
         danger: true,
-        then: widget.listener.notSleep,
       );
 
   @override
