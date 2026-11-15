@@ -242,7 +242,7 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
       Surface(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           TimelineTitleRow('Your day', pills: [
-            TimelinePill('⌕ Zoom', key: ActivitiesTimeline.zoomKey,
+            TimelinePill('Zoom', key: ActivitiesTimeline.zoomKey, icon: LucideIcons.search,
                 on: controller.zoomSelection != null,
                 onTap: () => setState(controller.toggleZoomSelection)),
             if (controller.zoomed)
@@ -302,8 +302,10 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
       ),
       const SizedBox(height: S.x2),
       Expanded(
-        child: Surface(
-          pad: const EdgeInsets.fromLTRB(S.x3, S.x1, S.x3, S.x1),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(S.x3, S.x1, S.x3, S.x1),
+          decoration: BoxDecoration(color: p.card, borderRadius: R.rLg, boxShadow: p.el(1)),
+          alignment: Alignment.topCenter,
           child: NotificationListener<ScrollNotification>(
             onNotification: _onScroll,
             child: xs.isEmpty

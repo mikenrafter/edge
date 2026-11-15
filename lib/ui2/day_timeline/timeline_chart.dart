@@ -22,6 +22,7 @@ import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../state/clock_format.dart' show formatClockOf;
 import '../chart_annotations.dart';
@@ -724,26 +725,37 @@ class TimelinePainter extends CustomPainter {
           }
           _text(canvas, 'bpm', Offset(0, y0 + 2),
               label.copyWith(color: p.on(C.red), fontWeight: FontWeight.w700));
+          // Gaps of up to 5 minutes are bridged; a lone reading is a dot,
+          // never a line invented across a longer gap.
           final path = Path();
-          var pen = false;
-          for (var m = mStart; m <= mEnd && m < hr.length; m++) {
-            final v = hr[m];
-            if (v == null) {
-              pen = false;
-              continue;
-            }
-            final px = x(domainStart + m * 60 + 30);
-            if (pen) {
-              path.lineTo(px, y(v));
-            } else {
-              path.moveTo(px, y(v));
-              pen = true;
+          final hrInk = p.on(C.red);
+          int? last;
+          var run = 0;
+          void dotIfLone() {
+            if (run == 1 && last != null) {
+              canvas.drawCircle(Offset(x(domainStart + last * 60 + 30), y(hr[last]!)), 1.6,
+                  Paint()..color = hrInk);
             }
           }
+          for (var m = math.max(0, mStart - 5); m <= mEnd + 5 && m < hr.length; m++) {
+            final v = hr[m];
+            if (v == null) continue;
+            final px = x(domainStart + m * 60 + 30);
+            if (last != null && m - last <= 5) {
+              path.lineTo(px, y(v));
+              run++;
+            } else {
+              dotIfLone();
+              path.moveTo(px, y(v));
+              run = 1;
+            }
+            last = m;
+          }
+          dotIfLone();
           canvas.drawPath(
               path,
               Paint()
-                ..color = p.on(C.red)
+                ..color = hrInk
                 ..style = PaintingStyle.stroke
                 ..strokeWidth = 1.4
                 ..strokeJoin = StrokeJoin.round);
@@ -802,7 +814,7 @@ class TimelinePainter extends CustomPainter {
     // bands; the active one carries the only handles.
     if (blocks.isNotEmpty) {
       final sorted = [...blocks]..sort((a, b) => a.start.compareTo(b.start));
-      final shade = Paint()..color = p.bg.withValues(alpha: .55);
+      final shade = Paint()..color = p.bg.withValues(alpha: .62);
       var cursor = view.start;
       for (final b in sorted) {
         if (b.start > cursor) {
@@ -822,13 +834,20 @@ class TimelinePainter extends CustomPainter {
         _dashedRect(canvas, rect, Paint()
           ..color = p.on(accent).withValues(alpha: .5)
           ..style = PaintingStyle.stroke);
-        final text = blockLabels[b.id] ?? (b.kind == BlockKind.main ? 'Main sleep ✎' : 'Nap ✎');
+        final text = blockLabels[b.id] ?? (b.kind == BlockKind.main ? 'Main sleep' : 'Nap');
         final style = F.over.copyWith(color: p.on(accent), fontWeight: FontWeight.w700, height: 1);
-        final tp = TextPainter(text: TextSpan(text: text, style: style),
+        // "✎" is the Lucide pencil: the text fonts have no such glyph.
+        final pen = LucideIcons.pencil;
+        final tp = TextPainter(text: TextSpan(text: '$text ', style: style, children: [
+              TextSpan(text: String.fromCharCode(pen.codePoint),
+                  style: style.copyWith(fontFamily: pen.fontFamily, package: pen.fontPackage)),
+            ]),
             textDirection: TextDirection.ltr, textScaler: textScaler, maxLines: 1, ellipsis: '…')
-          ..layout(maxWidth: math.max(0, x1 - x0 - 8));
-        final pill = Rect.fromCenter(center: Offset((x0 + x1) / 2, top + 10),
-            width: tp.width + 14, height: tp.height + 6);
+          ..layout(maxWidth: w - 14);
+        final pw = tp.width + 14;
+        final cx = ((x0 + x1) / 2).clamp(_l + pw / 2, size.width - _r - pw / 2);
+        final pill = Rect.fromCenter(center: Offset(cx, top + 10),
+            width: pw, height: tp.height + 6);
         canvas.drawRRect(RRect.fromRectAndRadius(pill, const Radius.circular(99)),
             Paint()..color = p.bg);
         canvas.drawRRect(RRect.fromRectAndRadius(pill, const Radius.circular(99)),
@@ -876,11 +895,20 @@ class TimelinePainter extends CustomPainter {
           Paint()..color = p.ink..strokeWidth = 1.4);
     }
 
-    // The time axis: five clock labels across the view.
-    for (var i = 0; i <= 4; i++) {
-      final t = view.at(i / 4);
-      _text(canvas, clock.of(t.round()), Offset(x(t), bottom + 5), label.copyWith(color: p.ink2),
-          align: i == 0 ? TextAlign.left : i == 4 ? TextAlign.right : TextAlign.center);
+    // The time axis: five clock labels across the view, or three when five
+    // would touch.
+    final axis = label.copyWith(color: p.ink2);
+    double widthOf(String s) => (TextPainter(text: TextSpan(text: s, style: axis),
+            textDirection: TextDirection.ltr, textScaler: textScaler, maxLines: 1)
+          ..layout())
+        .width;
+    final widest = [for (var i = 0; i <= 4; i++) widthOf(clock.of(view.at(i / 4).round()))]
+        .reduce(math.max);
+    final steps = widest * 4 + 4 * 10 <= w ? 4 : 2;
+    for (var i = 0; i <= steps; i++) {
+      final t = view.at(i / steps);
+      _text(canvas, clock.of(t.round()), Offset(x(t), bottom + 5), axis,
+          align: i == 0 ? TextAlign.left : i == steps ? TextAlign.right : TextAlign.center);
     }
     canvas.restore();
   }
@@ -964,7 +992,8 @@ class TimelineTitleRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = P.of(context);
     return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-      Expanded(
+      Flexible(
+        flex: 2,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
               style: F.head.copyWith(color: p.ink)),
@@ -974,7 +1003,8 @@ class TimelineTitleRow extends StatelessWidget {
         ]),
       ),
       const SizedBox(width: S.x2),
-      Flexible(
+      Expanded(
+        flex: 3,
         child: Wrap(spacing: S.x2, alignment: WrapAlignment.end, children: pills),
       ),
     ]);

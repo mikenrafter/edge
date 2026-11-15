@@ -8,6 +8,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/sleep_edit_write.dart';
 import 'package:openstrap_edge/gestures/moment_review_service.dart';
@@ -32,6 +33,12 @@ import '../support/day_timeline_fixtures.dart';
 final _on = Platform.environment['DT_SHOTS'] == '1';
 final _dir = Directory(Platform.environment['DT_SHOTS_DIR'] ?? 'build/dt-shots');
 const _shotKey = ValueKey('dt-shot');
+
+Future<void> frames(WidgetTester t, [int n = 12]) async {
+  for (var i = 0; i < n; i++) {
+    await t.pump(const Duration(milliseconds: 50));
+  }
+}
 
 Future<void> shot(WidgetTester t, String name) async {
   await t.pump();
@@ -85,7 +92,19 @@ Widget _frame(Widget child) => RepaintBoundary(
 
 void main() {
   setUpAll(() async {
-    if (_on) await loadFonts();
+    if (_on) {
+      await loadFonts();
+      // The time wheel's own font is not bundled: draw it in the app's.
+      for (final family in ['CupertinoSystemText', 'CupertinoSystemDisplay']) {
+        final loader = FontLoader(family);
+        for (final f in Directory('assets/fonts/Manrope').listSync().whereType<File>()) {
+          if (f.path.endsWith('.ttf')) {
+            loader.addFont(f.readAsBytes().then((b) => ByteData.sublistView(b)));
+          }
+        }
+        await loader.load();
+      }
+    }
   });
 
   testWidgets('night card, every state', (t) async {
@@ -105,24 +124,29 @@ void main() {
     };
     for (final e in states.entries) {
       await t.pumpWidget(_frame(Scaffold(body: Padding(padding: const EdgeInsets.all(16),
-          child: Column(children: [NightCard(model: e.value, listener: _NoCard())])))));
+          child: Column(children: [
+            NightCard(key: ValueKey(e.key), model: e.value, listener: _NoCard()),
+          ])))));
       await t.pump(const Duration(milliseconds: 800));
       await shot(t, 'sleep-card-${e.key}');
       if (e.key == 'auto') {
         await t.tap(find.byKey(NightCard.recalcKey));
-        await t.pump(const Duration(milliseconds: 400));
+        await frames(t);
         await shot(t, 'sleep-card-dialog-recalculate');
         await t.tap(find.text('Cancel'));
-        await t.pump(const Duration(milliseconds: 400));
+        await frames(t);
         await t.tap(find.byKey(NightCard.notSleepKey));
-        await t.pump(const Duration(milliseconds: 400));
+        await frames(t);
         await shot(t, 'sleep-card-dialog-not-sleep');
         await t.tap(find.text('Cancel'));
-        await t.pump(const Duration(milliseconds: 400));
+        await frames(t);
         t.view.physicalSize = const Size(412 * 2, 600 * 2);
+        await t.pump();
         await t.tap(find.byKey(NightCard.chipKey(BlockEnd.end)));
-        await t.pump(const Duration(milliseconds: 400));
+        await frames(t);
         await shot(t, 'sleep-card-wheel-woke');
+        await t.tap(find.text('Cancel'));
+        await frames(t);
         t.view.physicalSize = const Size(412 * 2, 420 * 2);
       }
     }
@@ -245,10 +269,10 @@ void main() {
       await shot(t, 'activities-zoomed');
       // Cancel's dialog.
       await t.tap(find.byKey(ActivitiesSaveBar.cancelKey));
-      await t.pump(const Duration(milliseconds: 400));
+      await frames(t);
       await shot(t, 'activities-cancel-dialog');
       await t.tap(find.text('Keep editing'));
-      await t.pump(const Duration(milliseconds: 400));
+      await frames(t);
       // Leave and come back: the draft.
       await rig.navigator.currentState!.maybePop();
       await settle(t);

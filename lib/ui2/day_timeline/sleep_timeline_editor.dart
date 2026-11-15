@@ -288,7 +288,7 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
               Surface(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   TimelineTitleRow('Your sleep', subtitle: span, pills: [
-                    TimelinePill('＋ Add sleep block', key: SleepTimelineEditor.addKey,
+                    TimelinePill('Add sleep block', key: SleepTimelineEditor.addKey, icon: LucideIcons.plus,
                         on: _askSide, onTap: () => setState(() => _askSide = !_askSide)),
                     if (controller.zoomed)
                       TimelinePill('Reset zoom', key: SleepTimelineEditor.resetKey,
