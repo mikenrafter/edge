@@ -3,6 +3,9 @@
 // CLAIM(update-network-consent), CLAIM(update-release-page).
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/widgets.dart';
+import 'package:openstrap_edge/l10n/app_localizations.dart';
+import 'package:openstrap_edge/ui2/profile/app_updates.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -55,6 +58,27 @@ void main() {
   late Future<http.Response> Function(http.Request) respond;
   late List<http.Request> requests;
   final center = NotificationCenter.instance;
+  UpdateService createService({
+    String version = '0.11.3-dev',
+    String mode = 'profile',
+    bool fork = true,
+  }) => UpdateService(
+    store: store,
+    client: MockClient((r) {
+      requests.add(r);
+      return respond(r);
+    }),
+    installed: InstalledRelease(
+      version: version,
+      build: 78,
+      fork: fork,
+      mode: mode,
+    ),
+    now: () => now,
+    unmetered: () async => true,
+    schedule: (_) async {},
+    onRelease: notifyRelease,
+  );
   setUp(() async {
     directory = await Directory.systemTemp.createTemp('update-review-');
     store = UpdateStore(
@@ -68,23 +92,7 @@ void main() {
     center.updateStore = () async => store;
     center.updatePermission = () async => true;
     center.updateNow = () => DateTime(2026, 11, 15, 12);
-    service = UpdateService(
-      store: store,
-      client: MockClient((r) {
-        requests.add(r);
-        return respond(r);
-      }),
-      installed: const InstalledRelease(
-        version: '0.11.3',
-        build: 78,
-        fork: true,
-        mode: 'profile',
-      ),
-      now: () => now,
-      unmetered: () async => true,
-      schedule: (_) async {},
-      onRelease: notifyRelease,
-    );
+    service = createService();
   });
   tearDown(() async {
     service.dispose();
@@ -96,46 +104,159 @@ void main() {
     await directory.delete(recursive: true);
   });
 
-  // catches: official <= fork base considered available, misleading notification
-  // title/body, and a rediscovered official release alerting more than once.
-  test(
-    'current fork becomes available only for newer separate official app, announced once',
-    () async {
-      var officialTag = 'v0.11.3';
-      final shown = <NotificationEvent>[];
-      center.presentSink = (e, {bool allowPermissionPrompt = true}) async {
-        shown.add(e);
-        return true;
-      };
+  // WHY: Android appends -dev for profile and forkDevRelease release builds.
+  // The same upstream base must be informational on both, including reload.
+  // Proves CLAIM(update-installed-base).
+  // catches: treating a platform suffix as a genuine prerelease, dropping the
+  // cached separate-app relationship, or spending an alert claim while denied.
+  for (final mode in ['profile', 'release']) {
+    for (final version in ['0.11.3', '0.11.3-dev']) {
+      test(
+        'current fork $mode $version announces only a newer official app once',
+        () async {
+          service.dispose();
+          service = createService(version: version, mode: mode);
+          var officialTag = 'v0.11.3';
+          final shown = <NotificationEvent>[];
+          center.presentSink = (e, {bool allowPermissionPrompt = true}) async {
+            shown.add(e);
+            return true;
+          };
+          respond = (r) async {
+            final metadata = manifest('next-2026.11.15');
+            final artifact = (metadata['artifacts'] as List).single as Map;
+            artifact['mode'] = mode;
+            artifact['name'] = 'openstrap-edge-next-2026.11.15-dev-$mode.apk';
+            return http.Response(
+              jsonEncode(
+                r.url.path.contains('/assets/')
+                    ? metadata
+                    : r.url.path.contains('OpenStrap')
+                    ? [
+                        release(
+                          officialTag,
+                          id: officialTag == 'v0.11.3' ? 1 : 4,
+                        ),
+                      ]
+                    : [
+                        release(
+                          'next-2026.11.15',
+                          id: 2,
+                          prerelease: true,
+                          assets: [
+                            'edge-release.json',
+                            'openstrap-edge-next-2026.11.15-dev-$mode.apk',
+                          ],
+                        ),
+                      ],
+              ),
+              200,
+            );
+          };
+          await service.setEnabled(true);
+          await service.check();
+          expect(service.snapshot.phase, UpdatePhase.current);
+          expect(
+            service.snapshot.sources[ReleaseSource.official]!.current,
+            isTrue,
+          );
+          expect(shown, isEmpty);
+          await service.load();
+          expect(service.snapshot.phase, UpdatePhase.current);
+          expect(
+            service
+                .snapshot
+                .sources[ReleaseSource.official]!
+                .candidate!
+                .separateApp,
+            isTrue,
+          );
+          await service
+              .check(); // Fresh cache must not announce the equal release.
+          expect(shown, isEmpty);
+          now = now.add(const Duration(days: 1, minutes: 1));
+          officialTag = 'v0.11.4';
+          center.updatePermission = () async => false;
+          await service.check();
+          expect(service.snapshot.phase, UpdatePhase.available);
+          expect(shown, isEmpty);
+          await service.load();
+          expect(service.snapshot.phase, UpdatePhase.available);
+          expect(
+            service
+                .snapshot
+                .sources[ReleaseSource.official]!
+                .candidate!
+                .separateApp,
+            isTrue,
+          );
+          final l = await AppLocalizations.delegate.load(const Locale('en'));
+          expect(
+            updateSummary(l, service.snapshot),
+            'New official app release · Official · v0.11.4 · Release · Separate app. Your data stays here.',
+          );
+          center.updatePermission = () async => true;
+          final requestCount = requests.length;
+          await service
+              .check(); // Deliver from cache after reload, no new request.
+          expect(requests, hasLength(requestCount));
+          expect(shown, hasLength(1));
+          expect(shown.single.title, 'New official app release');
+          expect(shown.single.body, contains('v0.11.4'));
+          expect(shown.single.body, contains('Separate app'));
+          expect(shown.single.body, isNot(contains('Update available')));
+          await service.check();
+          expect(shown, hasLength(1));
+        },
+      );
+    }
+  }
+
+  // WHY: remove only the fork's final build label; genuine upstream rc/dev
+  // versions retain semantic precedence, including on the official package.
+  // catches: splitting at the first hyphen or stripping official prereleases.
+  for (final identity in [
+    (
+      version: '0.11.3-rc.1-dev',
+      fork: true,
+      tag: 'v0.11.3-rc.1',
+      current: true,
+    ),
+    (
+      version: '0.11.3-rc.1-dev',
+      fork: true,
+      tag: 'v0.11.3-rc.2',
+      current: false,
+    ),
+    (version: '0.11.3-rc.1-dev', fork: true, tag: 'v0.11.3', current: false),
+    (version: '0.11.3-dev', fork: false, tag: 'v0.11.3', current: false),
+    (version: '0.11.3-dev.1', fork: true, tag: 'v0.11.3', current: false),
+    (version: '0.11.3-dev', fork: true, tag: 'v0.11.2', current: true),
+  ]) {
+    test('semantic provenance $identity', () async {
+      service.dispose();
+      service = createService(version: identity.version, fork: identity.fork);
+      await service.setOfficialPrereleases(true);
       respond = (r) async => http.Response(
         jsonEncode(
-          r.url.path.contains('/assets/')
-              ? manifest('next-2026.11.15')
-              : r.url.path.contains('OpenStrap')
-              ? [release(officialTag, id: officialTag == 'v0.11.3' ? 1 : 4)]
-              : [forkRelease('next-2026.11.15')],
+          r.url.path.contains('OpenStrap')
+              ? [release(identity.tag, prerelease: identity.tag.contains('-'))]
+              : [],
         ),
         200,
       );
-      await service.setEnabled(true);
-      await service.check();
-      expect(service.snapshot.phase, UpdatePhase.current);
-      expect(shown, isEmpty);
+      await service.check(manual: true);
+      expect(
+        service.snapshot.sources[ReleaseSource.official]!.current,
+        identity.current,
+      );
       await service.load();
-      expect(service.snapshot.phase, UpdatePhase.current);
-      now = now.add(const Duration(days: 1, minutes: 1));
-      officialTag = 'v0.11.4';
-      await service.check();
-      expect(service.snapshot.phase, UpdatePhase.available);
-      expect(shown, hasLength(1));
-      expect(shown.single.title, 'New official app release');
-      expect(shown.single.body, contains('v0.11.4'));
-      expect(shown.single.body, contains('Separate app'));
-      expect(shown.single.body, isNot(contains('Update available')));
-      await service.check();
-      expect(shown, hasLength(1));
-    },
-  );
+      expect(
+        service.snapshot.sources[ReleaseSource.official]!.current,
+        identity.current,
+      );
+    });
+  }
 
   // WHY: the reviewed mutant accepted arbitrary hosts. The valid-host control
   // proves this test exercises redirects, not a blanket redirect rejection.

@@ -102,6 +102,14 @@ class InstalledRelease {
   final int build;
   final bool? fork;
   final List<String> abis;
+
+  // Android labels Edge Dev profile/debug and forkDevRelease builds with a
+  // final -dev. Remove only that build label, retaining upstream prereleases.
+  // CLAIM(update-installed-base): platform labels do not change the fork's
+  // upstream version [test/updates/update_review_regressions_test.dart].
+  String get upstreamVersion => fork == true && version.endsWith('-dev')
+      ? version.substring(0, version.length - '-dev'.length)
+      : version;
 }
 
 class ReleaseCandidate {

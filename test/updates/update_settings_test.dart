@@ -1,6 +1,7 @@
 // WHY: every checker state stays visible in Settings, wraps at large text, and
 // gives an actionable reason rather than claiming current from missing input.
 // Proves CLAIM(update-honest-state). PNGs are evidence, not auto-approved goldens.
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -8,7 +9,9 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'update_checker_test.dart' show release;
+import 'update_review_regressions_test.dart' show manifest, forkRelease;
 import 'package:openstrap_edge/sync/update_store.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/sync/update_service.dart';
@@ -20,7 +23,6 @@ import '../support/bundled_fonts.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUpAll(loadFonts);
   final states = <String, UpdateSnapshot>{
     'off': const UpdateSnapshot(),
     'not-checked': const UpdateSnapshot(
@@ -30,34 +32,6 @@ void main() {
     'checking': const UpdateSnapshot(
       enabled: true,
       phase: UpdatePhase.checking,
-    ),
-    'current': const UpdateSnapshot(
-      enabled: true,
-      phase: UpdatePhase.current,
-      sources: {
-        ReleaseSource.official: SourceUpdate(
-          current: true,
-          candidate: ReleaseCandidate(
-            source: ReleaseSource.official,
-            separateApp: true,
-            id: 1,
-            tag: 'v0.11.3',
-            asset: 'openstrap-edge-v0.11.3.apk',
-            prerelease: false,
-          ),
-        ),
-        ReleaseSource.fork: SourceUpdate(
-          current: true,
-          candidate: ReleaseCandidate(
-            source: ReleaseSource.fork,
-            id: 2,
-            tag: 'next-2026.11.15',
-            build: 78,
-            asset: 'openstrap-edge-next-2026.11.15-dev-profile.apk',
-            prerelease: true,
-          ),
-        ),
-      },
     ),
     'available': const UpdateSnapshot(
       enabled: true,
@@ -104,6 +78,13 @@ void main() {
       waiting: true,
     ),
   };
+  setUpAll(() async {
+    await loadFonts();
+    // WHY: B1's former screenshot was hand-built and unreachable from the
+    // actual .dev package's profile versionName. Discover and reload it through
+    // the production service before using it in either Settings or screen shots.
+    states['current'] = await _discoverCurrentProfileFork();
+  });
   // WHY: B1 must label a new official release as a separate app, including the
   // compact Settings entry. The production selector supplies the relationship.
   // catches: reusing the in-place Update available title for official news.
@@ -122,7 +103,7 @@ void main() {
         },
       ],
       const InstalledRelease(
-        version: '0.11.3',
+        version: '0.11.3-dev',
         build: 78,
         fork: true,
         mode: 'profile',
@@ -175,7 +156,7 @@ void main() {
                         },
                       ],
                       const InstalledRelease(
-                        version: '0.11.3',
+                        version: '0.11.3-dev',
                         build: 78,
                         fork: true,
                         mode: 'profile',
@@ -382,7 +363,7 @@ class _CaptureService extends UpdateService {
         store: UpdateStore(_NoDatabase()),
         client: MockClient((_) async => http.Response('[]', 200)),
         installed: const InstalledRelease(
-          version: '0.11.3',
+          version: '0.11.3-dev',
           build: 78,
           fork: true,
           mode: 'profile',
@@ -398,4 +379,57 @@ class _CaptureService extends UpdateService {
 class _NoDatabase implements Database {
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
+}
+
+Future<UpdateSnapshot> _discoverCurrentProfileFork() async {
+  sqfliteFfiInit();
+  final directory = await Directory.systemTemp.createTemp('update-capture-');
+  final store = UpdateStore(
+    await databaseFactoryFfi.openDatabase('${directory.path}/updates.db'),
+  );
+  final service = UpdateService(
+    store: store,
+    client: MockClient(
+      (r) async => http.Response(
+        jsonEncode(
+          r.url.path.contains('/assets/')
+              ? manifest('next-2026.11.15')
+              : r.url.path.contains('OpenStrap')
+              ? [release('v0.11.3')]
+              : [forkRelease('next-2026.11.15')],
+        ),
+        200,
+      ),
+    ),
+    // UpdateService.create maps wtf.openstrap.openstrap_edge.dev to fork: true;
+    // PackageInfo retains Gradle's literal profile versionName and build number.
+    installed: const InstalledRelease(
+      version: '0.11.3-dev',
+      build: 78,
+      fork: true,
+      mode: 'profile',
+    ),
+    now: () => DateTime.utc(2026, 11, 15, 12),
+    unmetered: () async => true,
+    schedule: (_) async {},
+  );
+  try {
+    await store.initialize();
+    await service.setEnabled(true);
+    await service.check();
+    expect(service.snapshot.phase, UpdatePhase.current);
+    await service.load();
+    expect(service.snapshot.phase, UpdatePhase.current);
+    expect(service.snapshot.sources[ReleaseSource.fork]!.current, isTrue);
+    expect(service.snapshot.sources[ReleaseSource.official]!.current, isTrue);
+    expect(
+      service.snapshot.sources[ReleaseSource.official]!.candidate!.separateApp,
+      isTrue,
+    );
+    return service.snapshot;
+  } finally {
+    service.dispose();
+    await store.db.close();
+    await directory.delete(recursive: true);
+  }
 }

@@ -111,7 +111,10 @@ class UpdateService extends ChangeNotifier {
                 candidate.build != null &&
                 candidate.build! <= installed.build
           : installed.fork != null &&
-                _compareSemver(candidate.tag.substring(1), installed.version) <=
+                _compareSemver(
+                      candidate.tag.substring(1),
+                      installed.upstreamVersion,
+                    ) <=
                     0;
     } catch (_) {
       return false;
