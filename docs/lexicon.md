@@ -169,3 +169,7 @@ in the same change that introduces it (AGENTS.md §6).
   metadata is excluded from restore, and does not version analytics output.
   Schema 87 also carries legacy medical claims for already flagged pulse days
   into their dedicated daily delivery keys.
+
+## Pulse episodes
+
+A pulse episode is at least two consecutive closed UTC five-minute windows meeting the experimental irregular timing and recording quality rules. Its bounds describe qualifying windows, not proven rhythm onset or offset. Its seed is the first qualifying window; the source and seed identify it across extensions and algorithm revisions. Beat evidence preserves original intervals, cleaning hypotheses and valid adjacency. A delivery claim is a durable per-episode record consumed before OS handoff; ambiguous delivery remains unknown and is never retried. A partial trace explicitly lists omitted recording ranges. Motion and wear remain unknown when no reliable measurement exists.

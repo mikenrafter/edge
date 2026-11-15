@@ -105,6 +105,8 @@ import 'step_cadence.dart';
 import 'profile.dart';
 import 'processing_context.dart';
 import 'pulse_alert_delivery.dart';
+import 'pulse_episode_delivery.dart';
+import 'pulse_episode_worker.dart';
 import 'substrate.dart';
 import 'substrate_retention.dart';
 import 'union_cut_heavy.dart';
@@ -1991,7 +1993,9 @@ part 'engine/settled.dart';
 // sleep view says the HMM estimate is experimental and not validated, and why
 // a fallback was used. Opted-in nights re-derive. Cardio output (stages,
 // accounting, stored payload and published night baselines) is unchanged.
-const int kAlgoVersion = 119;
+// 120: closed five-minute pulse episodes, ten-minute qualification, bounded
+// cleaning evidence and measurable quality gates. Legacy finalized rows stay frozen.
+const int kAlgoVersion = 120;
 class DerivationEngine {
   DerivationEngine({
     this.log,
@@ -2887,6 +2891,7 @@ class DerivationEngine {
         final rescored = noData
             ? 0
             : await _quietLevelRepass(profile, dataNowSec, scope.rawDays);
+        if (!noData) await PulseEpisodeWorker.run(scope.rawDays, processingContext: processingContext);
         if (rescored > 0) {
           await _refreshBaselines();
           await _runCrossDay(profile);
@@ -2896,6 +2901,7 @@ class DerivationEngine {
           // was held back while notifications were off).
           try {
             await PulseAlertDelivery.run();
+            await PulseEpisodeDelivery.run();
           } catch (e) {
             _log('pulse alerts FAILED/skipped: $e');
           }
@@ -3076,6 +3082,7 @@ class DerivationEngine {
       _diag['stage'] = 'quiet_repass';
       done += await _quietLevelRepass(profile, dataNowSec, scope.rawDays);
 
+      if (!noData) await PulseEpisodeWorker.run(scope.rawDays, processingContext: pulseContext);
       // 4. Cross-day rollup + notifications (best-effort).
       if (done > 0) {
         onCrossDay?.call(true);

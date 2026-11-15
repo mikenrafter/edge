@@ -232,8 +232,15 @@ class NotificationCenter {
             e,
             allowPermissionPrompt: allowPermissionPrompt,
           );
+          if (!shown && (e.dedupeKey.startsWith('pulse-episode:') ||
+              e.dedupeKey.startsWith('pulse-episode-summary:'))) {
+            await _fired.release(e.dedupeKey);
+          }
         } finally {
-          if (!shown) await _fired.release(e.dedupeKey);
+          if (!shown && !e.dedupeKey.startsWith('pulse-episode:') &&
+              !e.dedupeKey.startsWith('pulse-episode-summary:')) {
+            await _fired.release(e.dedupeKey);
+          }
         }
         presented = shown;
       });

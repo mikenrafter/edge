@@ -225,6 +225,7 @@ Future<Database> _ldbPrivOpen() async {
         await LocalDb._createWorkoutRoute(db);
         await LocalDb._createNotifFired(db);
         await LocalDb._createPulseAlert(db);
+    await PulseEpisodeStore.create(db);
         await LocalDb._createNotifSlots(db);
         await LocalDb._createAlarmSchedule(db);
         await LocalDb._createWakeTables(db);
@@ -1095,6 +1096,9 @@ Future<Database> _ldbPrivOpen() async {
                 "WHERE s.key = 'irregular_rhythm_flag' AND s.value = 1");
           }
         }
+        if (oldV < 88) {
+          await PulseEpisodeStore.create(db);
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);
@@ -1186,6 +1190,7 @@ Future<void> _ldbPrivRepairOpenSchema(Database db) async {
     await LocalDb._ensureDayResultPartialColumn(db);
     await LocalDb._createNotifFired(db);
     await LocalDb._createPulseAlert(db);
+    await PulseEpisodeStore.create(db);
     await LocalDb._createNotifSlots(db);
     await LocalDb._createAlarmSchedule(db);
     // CREATE TABLE IF NOT EXISTS on the every-open repair path, no schema

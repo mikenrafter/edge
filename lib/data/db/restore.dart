@@ -349,6 +349,15 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
         await copyRows('metric_method', where: 'date = ?', whereArgs: [dayId]);
         // What became of each flagged day's alert travels with the day.
         await copyRows('pulse_alert', where: 'day = ?', whereArgs: [dayId]);
+        final episodes = await src.rawQuery('SELECT id FROM pulse_episode WHERE day <= ? AND end_day >= ?', [dayId,dayId]);
+        for (final episode in episodes) {
+          final id=episode['id'];
+          await copyRows('pulse_episode',where:'id=?',whereArgs:[id]);
+          for (final table in ['pulse_episode_revision','pulse_evidence_chunk','pulse_episode_outbox','pulse_episode_alias']) {
+            await copyRows(table,where:'episode_id=?',whereArgs:[id]);
+          }
+        }
+
         await copyRows('journal', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('journal_metric', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('cycle_log', where: 'date = ?', whereArgs: [dayId]);
@@ -1705,6 +1714,21 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                     if (cols.contains(e.key)) e.key: e.value,
                 };
                 if (row.isEmpty) continue;
+                if (t == 'pulse_episode_outbox') {
+                  final local = await txn.query(t, where: 'episode_id = ?', whereArgs: [row['episode_id']]);
+                  const consumed = {'sent','summary','pending','unknown'};
+                  if (local.isNotEmpty && consumed.contains(local.first['state'])) continue;
+                  // Restore preserves a consumed claim, and every unsent imported
+                  // item belongs to one bulk summary on this installation.
+                  row['origin'] = 'bulk';
+                  if (row['state'] == 'pending') {
+                    row['state'] = 'unknown';
+                    row['reason'] = 'delivery unknown';
+                  }
+                  await txn.insert(t, row, conflictAlgorithm: ConflictAlgorithm.replace);
+                  continue;
+                }
+
                 if (t == 'sleep_nap' || t == 'sessions' || t == 'moment_label') {
                   var keepLocalDecision = false;
                   final link = t == 'sleep_nap'

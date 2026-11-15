@@ -1,0 +1,595 @@
+// Owner: PulseEpisodeStore. Episode reconciliation, evidence and delivery claims
+// share this transaction boundary; no FK points to prunable signal tables.
+import 'dart:convert';
+import 'dart:io';
+import 'dart:isolate';
+import 'package:crypto/crypto.dart';
+import 'package:openstrap_analytics/onehz.dart' as ana;
+import 'package:sqflite/sqflite.dart';
+import '../util/heavy.dart';
+import '../util/worker_init.dart';
+import 'day_label.dart';
+
+const pulseEpisodeTables = [
+  'pulse_episode',
+  'pulse_episode_revision',
+  'pulse_evidence_chunk',
+  'pulse_episode_outbox',
+  'pulse_episode_alias',
+  'pulse_input_arrival',
+];
+const pulseEvidenceBudget = 128 * 1024 * 1024;
+const pulseEvidenceDays = 365;
+
+class PulseEpisodeSnapshot {
+  final Map<String, Object?> row;
+  final Map<String, dynamic>? evidence;
+  const PulseEpisodeSnapshot(this.row, this.evidence);
+  String get id => row['id'] as String;
+  int get startMs => row['start_ms'] as int;
+  int get endMs => row['end_ms'] as int;
+  String get alertState => row['alert_state'] as String? ?? 'owed';
+  String? get alertReason => row['alert_reason'] as String?;
+  String get evidenceStatus => evidence == null
+      ? 'expired'
+      : evidence!['partial'] == true
+      ? 'partial'
+      : 'complete';
+  List<Map<String, dynamic>> get beats =>
+      (evidence?['beats'] as List? ?? []).cast<Map<String, dynamic>>();
+  String get alertNote => switch (alertState) {
+    'sent' => 'Alert sent',
+    'summary' => 'Alert included in a summary',
+    'pending' || 'unknown' => 'Alert delivery unknown; it will not be repeated',
+    'not_sent' => 'Not sent: ${alertReason ?? 'notifications off'}',
+    _ => 'Alert waiting for delivery',
+  };
+}
+
+class PulseEpisodeStore {
+  final Database db;
+  const PulseEpisodeStore(this.db);
+  static Future<void> create(DatabaseExecutor db) async {
+    for (final sql in [
+      '''CREATE TABLE IF NOT EXISTS pulse_episode (
+        id TEXT PRIMARY KEY, source TEXT NOT NULL, seed_ms INTEGER NOT NULL,
+        start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL, ongoing INTEGER NOT NULL,
+        day TEXT NOT NULL, end_day TEXT NOT NULL, offset_min INTEGER, zone_provenance TEXT NOT NULL,
+        first_seen_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL, revision TEXT NOT NULL,
+        origin TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active')''',
+      '''CREATE TABLE IF NOT EXISTS pulse_episode_revision (
+        episode_id TEXT NOT NULL, revision TEXT NOT NULL, detector INTEGER NOT NULL,
+        summary TEXT NOT NULL, checksum TEXT NOT NULL, evidence_status TEXT NOT NULL,
+        created_ms INTEGER NOT NULL, PRIMARY KEY(episode_id,revision))''',
+      '''CREATE TABLE IF NOT EXISTS pulse_evidence_chunk (
+        episode_id TEXT NOT NULL, revision TEXT NOT NULL, payload BLOB NOT NULL,
+        byte_count INTEGER NOT NULL, created_ms INTEGER NOT NULL,
+        PRIMARY KEY(episode_id,revision))''',
+      '''CREATE TABLE IF NOT EXISTS pulse_episode_outbox (
+        episode_id TEXT PRIMARY KEY, delivery_key TEXT NOT NULL UNIQUE,
+        revision TEXT NOT NULL, state TEXT NOT NULL, reason TEXT, token TEXT,
+        at_ms INTEGER NOT NULL, origin TEXT NOT NULL, summary_key TEXT)''',
+      '''CREATE TABLE IF NOT EXISTS pulse_episode_alias (
+        alias TEXT PRIMARY KEY, episode_id TEXT NOT NULL)''',
+      '''CREATE TABLE IF NOT EXISTS pulse_input_arrival (
+        source TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
+        digest TEXT NOT NULL, origin TEXT NOT NULL, admitted_ms INTEGER NOT NULL,
+        PRIMARY KEY(source,start_ms,end_ms,digest))''',
+      'CREATE INDEX IF NOT EXISTS pulse_episode_time ON pulse_episode(start_ms,id)',
+      'CREATE INDEX IF NOT EXISTS pulse_evidence_age ON pulse_evidence_chunk(created_ms)',
+    ]) {
+      await db.execute(sql);
+    }
+  }
+
+  /// CLAIM(pulse-atomic): evidence and intent commit together [pulse_episode_store_test].
+  /// Preparation throws before writes; any SQLite failure rolls back the whole reconciliation.
+  Future<void> reconcile(
+    ana.PulseDetection detection, {
+    required String origin,
+    required int nowMs,
+    List<Map<String, dynamic>> heartRate = const [],
+  }) async {
+    final prepared = <String, Map<String, dynamic>>{};
+    for (final episode in detection.episodes) {
+      final input = episode.toJson();
+      final comparison = detection.windows
+          .where(
+            (w) =>
+                w.source == episode.source &&
+                !w.pending &&
+                !w.qualified &&
+                w.reasons.isEmpty &&
+                w.endMs <= episode.startMs &&
+                w.endMs >= episode.startMs - 600000,
+          )
+          .toList();
+      input['comparison'] = comparison.isEmpty
+          ? <dynamic>[]
+          : [for (final b in comparison.last.beats) b.toJson()];
+      input['context'] = [
+        for (final w in detection.windows)
+          if (w.source == episode.source &&
+              w.endMs > episode.startMs - 600000 &&
+              w.startMs < episode.endMs + 600000)
+            for (final b in w.beats) b.toJson(),
+      ];
+      input['heartRate'] = heartRate;
+      prepared[episode.id] = await Isolate.run(
+        () => encodePulseEvidenceHeavy(input),
+      );
+    }
+    await db.transaction((txn) async {
+      for (final episode in detection.episodes) {
+        final encoded = prepared[episode.id]!;
+        final overlaps = await txn.query(
+          'pulse_episode',
+          where: 'source = ? AND start_ms < ? AND end_ms > ?',
+          whereArgs: [episode.source, episode.endMs, episode.startMs],
+          orderBy: 'seed_ms,id',
+        );
+        var id = episode.id;
+        for (final old in overlaps) {
+          final seed = old['seed_ms'] as int;
+          if (episode.startMs <= seed && seed < episode.endMs) {
+            id = old['id'] as String;
+            break;
+          }
+        }
+        final existing = await txn.query(
+          'pulse_episode',
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+        final local = DateTime.fromMillisecondsSinceEpoch(episode.startMs);
+        final revision = encoded['checksum'] as String;
+        await txn.insert('pulse_episode', {
+          'id': id,
+          'source': episode.source,
+          'seed_ms': existing.isEmpty
+              ? episode.startMs
+              : existing.first['seed_ms'],
+          'start_ms': episode.startMs,
+          'end_ms': episode.endMs,
+          'ongoing': episode.ongoing ? 1 : 0,
+          'day': existing.isEmpty ? dayLabelOf(local) : existing.first['day'],
+          'end_day': dayLabelOf(
+            DateTime.fromMillisecondsSinceEpoch(episode.endMs - 1),
+          ),
+          'offset_min': existing.isEmpty
+              ? local.timeZoneOffset.inMinutes
+              : existing.first['offset_min'],
+          'zone_provenance': existing.isEmpty
+              ? 'phoneAtAnalysis'
+              : existing.first['zone_provenance'],
+          'first_seen_ms': existing.isEmpty
+              ? nowMs
+              : existing.first['first_seen_ms'],
+          'updated_ms': nowMs,
+          'revision': revision,
+          'origin': existing.isEmpty ? origin : existing.first['origin'],
+          'status': 'active',
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        await txn.insert('pulse_episode_revision', {
+          'episode_id': id,
+          'revision': revision,
+          'detector': ana.pulseDetectorVersion,
+          'summary': encoded['summary'],
+          'checksum': revision,
+          'evidence_status': encoded['partial'] == true
+              ? 'partial'
+              : 'complete',
+          'created_ms': nowMs,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+        await txn.insert('pulse_evidence_chunk', {
+          'episode_id': id,
+          'revision': revision,
+          'payload': encoded['payload'],
+          'byte_count': (encoded['payload'] as List).length,
+          'created_ms': nowMs,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+        // Descendants inherit consumed delivery, including ambiguous claims.
+        Map<String, Object?>? inherited;
+        for (final old in overlaps) {
+          final alerts = await txn.query(
+            'pulse_episode_outbox',
+            where: 'episode_id = ?',
+            whereArgs: [old['id']],
+          );
+          if (alerts.isNotEmpty &&
+              [
+                'sent',
+                'summary',
+                'pending',
+                'unknown',
+              ].contains(alerts.first['state'])) {
+            inherited = alerts.first;
+            break;
+          }
+        }
+        await txn.insert('pulse_episode_outbox', {
+          'episode_id': id,
+          'delivery_key': 'pulse-episode:$id',
+          'revision': revision,
+          'state':
+              inherited?['state'] ??
+              (episode.alertEligible ? 'owed' : 'not_sent'),
+          'reason':
+              inherited?['reason'] ??
+              (episode.alertEligible ? null : 'recording quality'),
+          'at_ms': inherited?['at_ms'] ?? nowMs,
+          'origin': origin,
+          'token': inherited?['token'],
+          'summary_key': inherited?['summary_key'],
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+        for (final old in overlaps) {
+          final oldId = old['id'] as String;
+          final seed = old['seed_ms'] as int;
+          if (oldId != id && episode.startMs <= seed && seed < episode.endMs) {
+            await txn.insert('pulse_episode_alias', {
+              'alias': oldId,
+              'episode_id': id,
+            }, conflictAlgorithm: ConflictAlgorithm.replace);
+            await txn.update(
+              'pulse_episode',
+              {'status': 'merged'},
+              where: 'id = ?',
+              whereArgs: [oldId],
+            );
+            await txn.update(
+              'pulse_episode_outbox',
+              {'state': 'summary', 'reason': 'joined episode'},
+              where: "episode_id = ? AND state IN ('owed','not_sent')",
+              whereArgs: [oldId],
+            );
+          }
+        }
+        // At most current + handed-off revision. Delivery tombstones are never pruned.
+        await txn.rawDelete(
+          '''DELETE FROM pulse_evidence_chunk WHERE episode_id = ?
+          AND revision != ? AND revision NOT IN
+          (SELECT revision FROM pulse_episode_outbox WHERE episode_id = ?)''',
+          [id, revision, id],
+        );
+      }
+      // A quality refusal retains prior evidence. Only fully evaluated, good
+      // nonqualifying windows can retract an earlier decision.
+      final candidates = await txn.query(
+        'pulse_episode',
+        where: "status = 'active'",
+      );
+      for (final old in candidates) {
+        if (detection.episodes.any(
+          (e) =>
+              e.source == old['source'] &&
+              e.startMs < (old['end_ms'] as int) &&
+              e.endMs > (old['start_ms'] as int),
+        ))
+          continue;
+        final covered = detection.windows
+            .where(
+              (w) =>
+                  w.source == old['source'] &&
+                  !w.pending &&
+                  w.reasons.isEmpty &&
+                  w.startMs >= (old['start_ms'] as int) &&
+                  w.endMs <= (old['end_ms'] as int),
+            )
+            .toList();
+        if (covered.length * ana.pulseWindowMs <
+            (old['end_ms'] as int) - (old['start_ms'] as int))
+          continue;
+        await txn.update(
+          'pulse_episode',
+          {'status': 'retracted'},
+          where: 'id=?',
+          whereArgs: [old['id']],
+        );
+        await txn.rawUpdate(
+          "UPDATE pulse_episode_outbox SET state='not_sent',reason='decision changed' WHERE episode_id=? AND state IN ('owed','not_sent')",
+          [old['id']],
+        );
+      }
+    });
+  }
+
+  Future<PulseEpisodeSnapshot?> get(String episodeId) async {
+    var id = episodeId;
+    final seen = <String>{};
+    while (seen.add(id)) {
+      final aliases = await db.query(
+        'pulse_episode_alias',
+        where: 'alias = ?',
+        whereArgs: [id],
+      );
+      if (aliases.isEmpty) break;
+      id = aliases.first['episode_id'] as String;
+    }
+    final rows = await db.rawQuery(
+      '''SELECT e.*, a.state AS alert_state,a.reason AS alert_reason,
+      a.at_ms AS alert_at_ms FROM pulse_episode e LEFT JOIN pulse_episode_outbox a ON a.episode_id=e.id
+      WHERE e.id=?''',
+      [id],
+    );
+    if (rows.isEmpty) return null;
+    final evidence = await db.query(
+      'pulse_evidence_chunk',
+      where: 'episode_id = ? AND revision = ?',
+      whereArgs: [id, rows.first['revision']],
+    );
+    Map<String, dynamic>? decoded;
+    if (evidence.isNotEmpty) {
+      final payload = evidence.first['payload'];
+      if (payload is! List<int> ||
+          sha256.convert(payload).toString() != rows.first['revision']) {
+        throw StateError('Pulse recording checksum mismatch');
+      }
+      decoded = await Isolate.run(() => decodePulseEvidenceHeavy(payload));
+    }
+    return PulseEpisodeSnapshot(rows.first, decoded);
+  }
+
+  Future<List<PulseEpisodeSnapshot>> list({
+    int limit = 30,
+    int? beforeMs,
+    String beforeId = '',
+  }) async {
+    final rows=await db.rawQuery("SELECT e.*,a.state AS alert_state,a.reason AS alert_reason,a.at_ms AS alert_at_ms "
+      "FROM pulse_episode e LEFT JOIN pulse_episode_outbox a ON a.episode_id=e.id "
+      "WHERE e.status='active' ${beforeMs==null?'': 'AND (e.start_ms < ? OR (e.start_ms = ? AND e.id < ?))'} "
+      "ORDER BY e.start_ms DESC,e.id DESC LIMIT ?",[if(beforeMs!=null)...[beforeMs,beforeMs,beforeId],limit]);
+    return [for(final r in rows)PulseEpisodeSnapshot(r,null)];
+  }
+  Future<List<Map<String, Object?>>> owed() =>
+      db.rawQuery('''SELECT a.*, e.start_ms,e.end_ms,e.day,e.offset_min
+    FROM pulse_episode_outbox a JOIN pulse_episode e ON e.id=a.episode_id
+    WHERE e.status='active' AND (a.state='owed' OR (a.state='not_sent' AND a.reason='notifications off'))
+    ORDER BY e.start_ms,e.id''');
+
+  Future<List<String>> claim(
+    List<String> ids, {
+    required String token,
+    required int nowMs,
+  }) => db.transaction((txn) async {
+    final owned = <String>[];
+    for (final id in ids) {
+      final evidence = await txn.rawQuery(
+        '''SELECT c.payload,a.revision FROM pulse_episode_outbox a
+          JOIN pulse_evidence_chunk c ON c.episode_id=a.episode_id AND c.revision=a.revision
+          WHERE a.episode_id=?''',
+        [id],
+      );
+      if (evidence.isEmpty ||
+          evidence.first['payload'] is! List<int> ||
+          sha256.convert(evidence.first['payload'] as List<int>).toString() !=
+              evidence.first['revision']) {
+        continue;
+      }
+      if (await txn.rawUpdate(
+            "UPDATE pulse_episode_outbox SET state='pending',token=?,at_ms=? "
+            "WHERE episode_id=? AND (state='owed' OR (state='not_sent' AND reason='notifications off'))",
+            [token, nowMs, id],
+          ) ==
+          1) {
+        owned.add(id);
+      }
+    }
+    return owned;
+  });
+  Future<void> finish(
+    List<String> ids, {
+    required String token,
+    required String state,
+    String? reason,
+    String? summaryKey,
+    required int nowMs,
+  }) => db.transaction((txn) async {
+    for (final id in ids) {
+      await txn.update(
+        'pulse_episode_outbox',
+        {
+          'state': state,
+          'reason': reason,
+          'at_ms': nowMs,
+          'summary_key': summaryKey,
+        },
+        where: "episode_id = ? AND token = ? AND state = 'pending'",
+        whereArgs: [id, token],
+      );
+    }
+  });
+  Future<void> recoverClaims({required int beforeMs}) => db.rawUpdate(
+    "UPDATE pulse_episode_outbox SET state='unknown',reason='delivery unknown' WHERE state='pending' AND at_ms < ?",
+    [beforeMs],
+  );
+
+  /// Only evidence is bounded. Raw/decoded and small delivery tombstones are untouched.
+  Future<void> retain({
+    required int nowMs,
+    int budgetBytes = pulseEvidenceBudget,
+  }) => db.transaction((txn) async {
+    final rows = await txn.query(
+      'pulse_evidence_chunk',
+      orderBy: 'created_ms ASC,episode_id,revision',
+    );
+    var bytes = rows.fold<int>(0, (s, r) => s + (r['byte_count'] as int));
+    for (final r in rows) {
+      if ((r['created_ms'] as int) >= nowMs - pulseEvidenceDays * 86400000 &&
+          bytes <= budgetBytes)
+        continue;
+      final pending = await txn.query(
+        'pulse_episode_outbox',
+        where: "episode_id=? AND revision=? AND state='pending'",
+        whereArgs: [r['episode_id'], r['revision']],
+      );
+      if (pending.isNotEmpty) continue;
+      await txn.delete(
+        'pulse_evidence_chunk',
+        where: 'episode_id=? AND revision=?',
+        whereArgs: [r['episode_id'], r['revision']],
+      );
+      await txn.update(
+        'pulse_episode_revision',
+        {'evidence_status': 'expired'},
+        where: 'episode_id=? AND revision=?',
+        whereArgs: [r['episode_id'], r['revision']],
+      );
+      await txn.rawUpdate(
+        "UPDATE pulse_episode_outbox SET state='not_sent',reason='recording expired' WHERE episode_id=? AND state='owed'",
+        [r['episode_id']],
+      );
+      bytes -= r['byte_count'] as int;
+    }
+  });
+}
+
+/// @heavy: bounded evidence encoding runs away from the UI isolate.
+@heavy
+Map<String, dynamic> encodePulseEvidenceHeavy(Map<String, dynamic> input) {
+  WorkerInit.ensure(
+    const WorkerInputs(nowEpochMs: 0, zoneId: 'UTC', localeTag: 'en'),
+  );
+  assertWorker();
+  final all = (input['context'] as List? ?? input['beats'] as List)
+      .cast<Map<String, dynamic>>();
+  all.sort((a, b) => (a['time'] as int).compareTo(b['time'] as int));
+  final byId = {for (final b in all) b['id'] as String: b};
+  final unique = byId.values.toList();
+  final jumps =
+      unique
+          .where(
+            (b) =>
+                b['change'] != null &&
+                (b['time'] as int) >= input['start'] &&
+                (b['time'] as int) < input['end'] &&
+                ((b['labels'] as List).contains('suddenLong') ||
+                    (b['labels'] as List).contains('suddenShort')) &&
+                b['dropped'] != true,
+          )
+          .toList()
+        ..sort((a, b) {
+          final d = (b['change'] as num).abs().compareTo(
+            (a['change'] as num).abs(),
+          );
+          return d != 0 ? d : (a['time'] as int).compareTo(b['time'] as int);
+        });
+  final biggest = jumps.take(5).toList()
+    ..sort((a, b) => (a['time'] as int).compareTo(b['time'] as int));
+  var kept = unique;
+  var partial = false;
+  if (kept.length > 20000) {
+    partial = true;
+    final priority = unique
+        .where(
+          (b) =>
+              (b['time'] as int) < input['start'] + 60000 ||
+              (b['time'] as int) > input['end'] - 60000 ||
+              biggest.any(
+                (j) => ((b['time'] as int) - (j['time'] as int)).abs() < 16000,
+              ),
+        )
+        .take(20000)
+        .toList();
+    final keys = priority.map((b) => b['id']).toSet();
+    kept = [
+      ...priority,
+      ...unique
+          .where((b) => !keys.contains(b['id']))
+          .take(20000 - priority.length),
+    ]..sort((a, b) => (a['time'] as int).compareTo(b['time'] as int));
+  }
+  final overview = <Map<String, dynamic>>[];
+  final bins = <int, List<double>>{};
+  for (final b in unique) {
+    if (b['plausible'] != true ||
+        b['corrected'] == true ||
+        b['dropped'] == true)
+      continue;
+    (bins[(b['time'] as int) ~/ 30000 * 30000] ??= []).add(
+      (b['raw'] as num).toDouble(),
+    );
+  }
+  for (final time in bins.keys.toList()..sort()) {
+    final v = bins[time]!..sort();
+    overview.add({
+      'time': time + 15000,
+      'lo': v[((v.length - 1) * .1).floor()],
+      'median': v[((v.length - 1) * .5).floor()],
+      'hi': v[((v.length - 1) * .9).floor()],
+      'count': v.length,
+    });
+  }
+  final windows = (input['windows'] as List).take(4096).toList();
+  final rawEpisode =
+      (input['beats'] as List)
+          .cast<Map<String, dynamic>>()
+          .where((b) => b['plausible'] == true)
+          .toList()
+        ..sort((a, b) => (a['raw'] as num).compareTo(b['raw'] as num));
+  final summary = {...input}
+    ..remove('beats')
+    ..remove('context')
+    ..remove('comparison')
+    ..remove('heartRate');
+  summary['windows'] = windows;
+  Map<String, dynamic> document() => {
+    ...summary,
+    'schema': 1,
+    'partial': partial,
+    'beats': kept,
+    'overview': overview.take(4096).toList(),
+    'jumps': biggest,
+    'comparison': input['comparison'] ?? [],
+    'heartRate': (input['heartRate'] as List? ?? []).take(960).toList(),
+    'extremes': rawEpisode.isEmpty
+        ? null
+        : {'shortest': rawEpisode.first, 'longest': rawEpisode.last},
+    'omissions': [
+      if (kept.isNotEmpty &&
+          (kept.first['time'] as int) > (unique.first['time'] as int))
+        {
+          'from': unique.first['time'],
+          'to': kept.first['time'],
+          'reason': 'evidence limit',
+        },
+      if (kept.isNotEmpty &&
+          (kept.last['time'] as int) < (unique.last['time'] as int))
+        {
+          'from': kept.last['time'],
+          'to': unique.last['time'],
+          'reason': 'evidence limit',
+        },
+      for (var i = 1; i < kept.length; i++)
+        if ((kept[i]['index'] as int) > (kept[i - 1]['index'] as int) + 1)
+          {
+            'from': kept[i - 1]['time'],
+            'to': kept[i]['time'],
+            'reason': 'evidence limit or missing recording',
+          },
+    ],
+  };
+  var payload = gzip.encode(utf8.encode(jsonEncode(document())));
+  while (payload.length > 1024 * 1024 && kept.length > 100) {
+    partial = true;
+    kept = kept.take(kept.length ~/ 2).toList();
+    payload = gzip.encode(utf8.encode(jsonEncode(document())));
+  }
+  if (payload.length > 1024 * 1024)
+    throw StateError('Pulse evidence exceeds byte cap');
+  return {
+    'payload': payload,
+    'checksum': sha256.convert(payload).toString(),
+    'summary': jsonEncode(summary),
+    'partial': partial,
+  };
+}
+
+@heavy
+Map<String, dynamic> decodePulseEvidenceHeavy(List<int> payload) {
+  WorkerInit.ensure(
+    const WorkerInputs(nowEpochMs: 0, zoneId: 'UTC', localeTag: 'en'),
+  );
+  assertWorker();
+  return (jsonDecode(utf8.decode(gzip.decode(payload))) as Map)
+      .cast<String, dynamic>();
+}

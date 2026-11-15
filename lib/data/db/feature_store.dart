@@ -24,7 +24,9 @@ Future<List<String>> _ldbPulseDaysToAlert() async {
       'SELECT s.date AS day FROM metric_series s '
       'LEFT JOIN pulse_alert a ON a.day = s.date '
       "WHERE s.key = 'irregular_rhythm_flag' AND s.value = 1 "
-      "AND (a.day IS NULL OR a.state = 'not_sent') ORDER BY s.date",
+      "AND (a.day IS NULL OR a.state = 'not_sent') "
+      "AND NOT EXISTS (SELECT 1 FROM pulse_episode e WHERE e.status = 'active' "
+      "AND s.date >= e.day AND s.date <= e.end_day) ORDER BY s.date",
     );
     return [for (final r in rows) r['day'] as String];
   }

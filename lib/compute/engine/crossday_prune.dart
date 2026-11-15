@@ -387,6 +387,7 @@ extension _EngineCrossDayPrune on DerivationEngine {
       await PulseAlertDelivery.run(
         individualDays: processingContext.individualDays,
       );
+      await PulseEpisodeDelivery.run();
     } catch (e) {
       _log('pulse alerts FAILED/skipped: $e');
     }
