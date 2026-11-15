@@ -81,6 +81,7 @@ void main() {
       await db.delete('day_result');
       await db.delete('metric_series');
       await db.delete('metric_series_version');
+      await db.delete('metric_method');
       var at = DateTime.utc(2026, 9, 1, 8).millisecondsSinceEpoch;
       // Day 03 has no deep row and an explicit null efficiency; sol_min and
       // awakenings exist for the last night only. worn_min is on every day but 04.
@@ -136,6 +137,18 @@ void main() {
         expect(history.charts['sleep']!['points'], hasLength(5));
       },
     );
+
+    // CLAIM sleep-primary-provenance: the fast publication must abstain from
+    // the same estimated/unavailable series as the historical read.
+    test('primary scalars and history count keep the own-series filter', () async {
+      final db=await LocalDb.instance;
+      await db.insert('metric_method',{'date':'2026-08-02','key':'tst_min','class':'estimated','method':'test','family':'test'});
+      await db.insert('metric_method',{'date':'2026-08-05','key':'sol_min','class':'unavailable','method':'test','family':'test'});
+      final primary=(await repo.getSleepDetailPrimary('2026-08-05'))!;
+      expect(primary.historyCount,3);
+      expect(primary.bundle.charts['sol_min'],isNull);
+      expect(primary.bundle.charts['unobserved_min'],isNotNull);
+    });
 
     test('bundle charts equal what getChart returns, key for key', () async {
       final expected = {for (final k in _keys) k: await repo.getChart(k)};
