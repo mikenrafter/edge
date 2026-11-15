@@ -1291,7 +1291,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         changedAt: _overrideAt,
       ),
       listener: this,
-      clock: (t) => clockOfTs(t.millisecondsSinceEpoch ~/ 1000),
     );
   }
 
@@ -1392,16 +1391,10 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       return;
     }
     if (!mounted) return;
-    (int, int)? saved;
+    final saver = _AppSleepSaver(app);
     final result = await Navigator.of(context).push<SleepEditorResult>(MaterialPageRoute(
-        builder: (_) => SleepTimelineEditor(
-              data: data,
-              save: (plan) {
-                saved = plan.window;
-                return app.saveSleepEdit(plan);
-              },
-            )));
-    if (result != null) _track(result.done, saved);
+        builder: (_) => SleepTimelineEditor(data: data, save: saver)));
+    if (result != null) _track(result.done, saver.window);
   }
 
   @override
@@ -2889,6 +2882,18 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
 /// band" and "where did last night land". A strip carries both, and the
 /// sentence under it carries the same thing in words for anyone who cannot see
 /// the strip.
+/// The editor's Save through AppState, remembering the window it wrote.
+class _AppSleepSaver implements SleepEditSaver {
+  _AppSleepSaver(this.app);
+  final AppState app;
+  (int, int)? window;
+  @override
+  ({Future<void> written, Future<SleepOperationResult> done}) save(SleepEditPlan plan) {
+    window = plan.window;
+    return app.saveSleepEdit(plan);
+  }
+}
+
 class _Compare extends StatelessWidget {
   final String label, value, low, high;
   final double tonight;

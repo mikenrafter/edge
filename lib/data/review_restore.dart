@@ -7,8 +7,9 @@
 //    sets status 'discarded' and keeps the row. Reversible: ActivityStore.
 //    restore sets it back to pending. Its one side effect, a track question's
 //    `track_absence` row, was not attributable (other flows write absences),
-//    so the additive column `activity_suggestions.discard_absence` now records
-//    whether the Discard wrote it, and Restore removes only that.
+//    so the Discard now records in the row's own details_json
+//    ([kDiscardAbsence]) that it wrote it, and Restore removes only that. No
+//    schema change was needed: every type already had a durable state.
 //  • Marked moments: Discard stores a `moment_label` row with a NULL label (a
 //    skip) and nothing else. Reversible: deleting that row returns the moment
 //    to the follow-up list. A moment with a real label is never touched.

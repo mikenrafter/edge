@@ -32,6 +32,18 @@ class _Card implements NightCardListener {
   void openNaps() => calls.add('naps');
 }
 
+class _Saver implements SleepEditSaver {
+  _Saver(this.saved, this.written, this.done);
+  final List<SleepEditPlan> saved;
+  final Completer<void> written;
+  final Completer<SleepOperationResult> done;
+  @override
+  ({Future<void> written, Future<SleepOperationResult> done}) save(SleepEditPlan plan) {
+    saved.add(plan);
+    return (written: written.future, done: done.future);
+  }
+}
+
 class _Quiet implements TimelineHaptics {
   @override
   void tick(HapticTier tier) {}
@@ -117,9 +129,9 @@ void main() {
 
     test('every state has a subheading', () {
       for (final m in states.values) {
-        expect(nightStatusText(m, (d) => '$d').sub, isNotEmpty);
+        expect(nightStatusText(m).sub, isNotEmpty);
       }
-      expect(nightStatusText(states['auto']!, (d) => '').sub,
+      expect(nightStatusText(states['auto']!).sub,
           'Band covered 7h 50m of 8h 06m in bed');
     });
   });
@@ -144,10 +156,7 @@ void main() {
                 builder: (_) => SleepTimelineEditor(
                     data: data ?? dtNight(),
                     haptics: _Quiet(),
-                    save: (plan) {
-                      saved.add(plan);
-                      return (written: written.future, done: done.future);
-                    })));
+                    save: _Saver(saved, written, done))));
           },
           child: const Text('open'))))));
       await t.tap(find.text('open'));

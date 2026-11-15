@@ -15,7 +15,6 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../data/day_label.dart';
 import '../../data/local_repository.dart';
 import '../../data/sleep_edit_write.dart';
-import '../../state/clock_format.dart';
 import '../../state/control_operations.dart' show SleepOperationResult;
 import '../chart_annotations.dart';
 import '../charts.dart' show Hypnogram, SleepStage, SleepStageX;
@@ -100,8 +99,9 @@ class SleepEditorData {
 
 /// Save's acknowledgement: [written] is the durable write; [done] the
 /// background recalculation.
-typedef SleepEditSaver = ({Future<void> written, Future<SleepOperationResult> done})
-    Function(SleepEditPlan plan);
+abstract interface class SleepEditSaver {
+  ({Future<void> written, Future<SleepOperationResult> done}) save(SleepEditPlan plan);
+}
 
 /// What the editor hands back to the night card after a Save.
 class SleepEditorResult {
@@ -244,7 +244,7 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
       _saving = true;
       _saveError = null;
     });
-    final r = widget.save(plan);
+    final r = widget.save.save(plan);
     try {
       await r.written;
     } catch (e) {
@@ -256,7 +256,7 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
     if (mounted) Navigator.of(context).pop(SleepEditorResult(r.done));
   }
 
-  String _clock(int t) => formatClockOf(DateTime.fromMillisecondsSinceEpoch(t * 1000));
+  String _clock(int t) => const AppClockText().of(t);
 
   List<ChartAnnotation> get _annotations => [
         if (d.usualBed case final b?)
@@ -319,7 +319,6 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
                     activeBlock: active,
                     listener: this,
                     haptics: widget.haptics,
-                    clock: _clock,
                   ),
                   _readout(c, p, a),
                   Padding(

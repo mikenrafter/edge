@@ -12,6 +12,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../grammar.dart';
 import '../theme.dart';
+import 'timeline_chart.dart' show AppClockText, ClockText;
 import 'timeline_model.dart' show BlockEnd;
 
 enum NightSource { auto, fallback, mine, rejected }
@@ -45,7 +46,7 @@ String _hm(num minutes) {
 
 /// The status row's title and subheading for [m]. Pure, so every state's
 /// wording is testable.
-({String title, String sub}) nightStatusText(NightCardModel m, String Function(DateTime) when) {
+({String title, String sub}) nightStatusText(NightCardModel m, [ClockText clock = const AppClockText()]) {
   if (m.recalculating) {
     return (title: 'Recalculating this night', sub: 'You can keep using the app');
   }
@@ -62,7 +63,7 @@ String _hm(num minutes) {
       ),
     NightSource.mine => (
         title: 'You set these times',
-        sub: m.changedAt == null ? 'Changed by you' : 'Changed ${when(m.changedAt!)}',
+        sub: m.changedAt == null ? 'Changed by you' : 'Changed ${_when(m.changedAt!, clock)}',
       ),
     NightSource.rejected => (
         title: 'Marked as not sleep',
@@ -87,10 +88,10 @@ abstract interface class NightCardListener {
 
 class NightCard extends StatefulWidget {
   const NightCard({super.key, required this.model, required this.listener,
-      this.clock = _clock, this.when = _when});
+      this.clock = const AppClockText()});
   final NightCardModel model;
   final NightCardListener listener;
-  final String Function(DateTime) clock, when;
+  final ClockText clock;
 
   static const cardKey = ValueKey('night-card');
   static const dotKey = ValueKey('night-card-recalculating-dot');
@@ -104,16 +105,13 @@ class NightCard extends StatefulWidget {
   State<NightCard> createState() => _NightCardState();
 }
 
-String _clock(DateTime d) {
-  final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
-  return '$h:${d.minute.toString().padLeft(2, '0')} ${d.hour < 12 ? 'AM' : 'PM'}';
-}
+int _ts(DateTime d) => d.millisecondsSinceEpoch ~/ 1000;
 
-String _when(DateTime d) {
+String _when(DateTime d, ClockText clock) {
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep',
     'Oct', 'Nov', 'Dec'];
-  return '${days[d.weekday - 1]} ${d.day} ${months[d.month - 1]}, ${_clock(d)}';
+  return '${days[d.weekday - 1]} ${d.day} ${months[d.month - 1]}, ${clock.of(_ts(d))}';
 }
 
 class _NightCardState extends State<NightCard> {
@@ -167,7 +165,7 @@ class _NightCardState extends State<NightCard> {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final m = widget.model;
-    final text = nightStatusText(m, widget.when);
+    final text = nightStatusText(m, widget.clock);
     final rejected = m.source == NightSource.rejected;
     final icon = switch (m.source) {
       NightSource.auto => LucideIcons.wandSparkles,
@@ -180,7 +178,7 @@ class _NightCardState extends State<NightCard> {
             opacity: rejected ? .4 : 1,
             child: Pressable(
               key: NightCard.chipKey(e),
-              semanticLabel: '$label ${t == null ? 'not set' : widget.clock(t)}',
+              semanticLabel: '$label ${t == null ? 'not set' : widget.clock.of(_ts(t))}',
               onTap: rejected || t == null
                   ? null
                   : () => setState(() {
@@ -197,7 +195,7 @@ class _NightCardState extends State<NightCard> {
                 ),
                 child: Column(children: [
                   Text(label, style: F.over.copyWith(color: p.ink3)),
-                  Text(t == null ? '—' : widget.clock(t),
+                  Text(t == null ? '—' : widget.clock.of(_ts(t)),
                       style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w700)),
                 ]),
               ),

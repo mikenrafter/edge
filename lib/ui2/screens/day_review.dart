@@ -7,6 +7,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import '../../data/day_label.dart';
 import '../../data/db.dart';
+import '../../data/activity_store.dart';
+import '../../data/review_restore.dart';
 import '../../data/assumed_water.dart';
 import '../activity/catalogue.dart' show activityByName;
 import 'detected_activities.dart' show NapProposalEditor;
@@ -90,7 +92,8 @@ class _DayReviewEntryState extends State<DayReviewEntry> {
 
 class DayReviewController extends ChangeNotifier {
   DayReviewController(this.repo, this.day, {MomentReviewService? service,
-      this.moments, this.editor, this.enabledSince, this.activities}) : service = service ?? MomentReviewService.shared {
+      this.moments, this.editor, this.enabledSince, this.activities,
+      this.pilot = false}) : service = service ?? MomentReviewService.shared {
     _drafts.addAll(this.service.queue.decisions);
     _ranges.addAll(this.service.queue.ranges.where((r) =>
         r.startKey.startsWith('$day ')));
@@ -99,6 +102,118 @@ class DayReviewController extends ChangeNotifier {
       _choices['moment:${r.startKey}'] = true;
       _choices['moment:${r.endKey}'] = true;
     }
+    // Pilot day-timeline: unsaved decisions left on this day come back.
+    final draft = pilot ? _stash[day] : null;
+    if (draft != null) {
+      _choices.addAll(draft.choices);
+      _activityEdits.addAll(draft.edits);
+      _restores.addAll(draft.restores);
+    }
+  }
+
+  // ── pilot day-timeline: discarded items, staged Restore, kept drafts ──
+
+  /// The day-timeline pilot's Activities: discarded items are listed with a
+  /// staged Restore, and unsaved decisions are kept when leaving.
+  final bool pilot;
+
+  /// Unsaved decisions per day, kept while the app runs (pilot: in memory;
+  /// the structural version decides whether they persist).
+  static final Map<String, ({Map<String, bool> choices,
+      Map<String, ActivityDecision> edits, Set<String> restores})> _stash = {};
+  @visibleForTesting
+  static void debugClearDrafts() => _stash.clear();
+
+  DiscardedItems discarded = const DiscardedItems();
+  final Set<String> _restores = {};
+
+  static String discardedId(Object item) => switch (item) {
+        ActivitySuggestion s => 'discarded:activity:${s.id}',
+        SkippedMoment m => 'discarded:moment:${m.key}',
+        RemovedGlass g => 'discarded:glass:${g.date} ${g.atMin}',
+        _ => throw ArgumentError(item),
+      };
+
+  bool isRestoreStaged(String id) => _restores.contains(id);
+
+  void toggleRestore(String id) {
+    if (!canEdit) return;
+    if (!_restores.remove(id)) _restores.add(id);
+    saveFailed = false;
+    _changed();
+  }
+
+  /// Leaving the screen: the unsaved decisions stay as a draft for this day.
+  void keepDraft() {
+    if (!pilot) return;
+    if (_choices.isEmpty && _restores.isEmpty) {
+      _stash.remove(day);
+    } else {
+      _stash[day] = (choices: Map.of(_choices), edits: Map.of(_activityEdits),
+          restores: Set.of(_restores));
+    }
+  }
+
+  /// Cancel: every staged decision goes; nothing stored is touched.
+  Future<void> cancelStaged() async {
+    await discardDraft();
+    _activityEdits.clear();
+    _restores.clear();
+    _stash.remove(day);
+    saveFailed = false;
+    _changed();
+  }
+
+  /// The discarded rows, as list rows.
+  List<({String id, Moment moment})> discardedRows(BuildContext c) {
+    final l = AppLocalizations.of(c);
+    return [
+      for (final s in discarded.activities)
+        (id: discardedId(s), moment: Moment(at: s.startTs,
+            title: s.kind == ActivityKind.meal ? (l?.activityPossibleMeal ?? 'Possible meal')
+                : s.kind == ActivityKind.nap ? (l?.activityPossibleNap ?? 'Possible nap')
+                : s.kind == ActivityKind.track
+                    ? (l?.activityPossibleTrack((s.details['track_name'] as String?) ?? '') ??
+                        'Possible: ${s.details['track_name'] ?? ''}')
+                    : (l?.activityPossibleWorkout ?? 'Possible workout'),
+            detail: l?.activityLengthMinutes(s.durationMin) ?? '${s.durationMin} min',
+            icon: s.kind == ActivityKind.nap ? LucideIcons.bedDouble
+                : s.kind == ActivityKind.meal ? LucideIcons.utensils
+                : s.kind == ActivityKind.track ? LucideIcons.tag
+                : (activityByName(s.sport)?.icon ?? LucideIcons.dumbbell),
+            color: C.domMove)),
+      for (final m in discarded.moments)
+        (id: discardedId(m), moment: Moment(
+            at: (DateTime.tryParse('${m.date}T${m.hhmm}:00')?.millisecondsSinceEpoch ?? 0) ~/ 1000,
+            title: l?.dayReviewMarkedMoment ?? 'Marked moment', detail: '',
+            icon: LucideIcons.bookmark, color: C.domMind)),
+      for (final g in discarded.glasses)
+        (id: discardedId(g), moment: Moment(
+            at: (DateTime.tryParse(g.date)?.add(Duration(minutes: g.atMin))
+                    .millisecondsSinceEpoch ?? 0) ~/ 1000,
+            title: MomentChoice.water.localized(l), detail: '${g.ml.round()} ml',
+            icon: LucideIcons.droplet, color: C.sky)),
+    ];
+  }
+
+  Future<void> _commitRestores() async {
+    final db = await LocalDb.instance;
+    final byId = {
+      for (final s in discarded.activities) discardedId(s): s,
+      for (final m in discarded.moments) discardedId(m): m,
+      for (final g in discarded.glasses) discardedId(g): g,
+    };
+    await db.transaction((tx) async {
+      for (final id in _restores) {
+        switch (byId[id]) {
+          case final ActivitySuggestion s: await ActivityStore.restore(tx, s.id);
+          case final SkippedMoment m: await restoreSkippedMoment(tx, m);
+          case final RemovedGlass g: await restoreRemovedGlass(tx, g);
+          case _: break; // no longer discarded: nothing to restore
+        }
+      }
+    });
+    _restores.clear();
   }
   final List<ActivitySuggestion>? activities;
   final LocalRepository repo;
@@ -177,9 +292,10 @@ class DayReviewController extends ChangeNotifier {
   bool loading = true, loadFailed = false, saveFailed = false;
   bool followUpFailed = false, busy = false, _disposed = false;
   int _generation = 0;
-  bool get hasChanges => _choices.isNotEmpty;
-  /// Items with a staged answer (a pair's two moments count once).
-  int get stagedCount => ids.where(_choices.containsKey).length;
+  bool get hasChanges => _choices.isNotEmpty || _restores.isNotEmpty;
+  /// Items with a staged answer (a pair's two moments count once), and staged
+  /// restores.
+  int get stagedCount => ids.where(_choices.containsKey).length + _restores.length;
   bool get canEdit => !loading && !loadFailed && !busy;
   /// Review mode: something waits for an answer (staged or not).
   bool get reviewing => ids.isNotEmpty;
@@ -229,6 +345,20 @@ class DayReviewController extends ChangeNotifier {
       _marks = marks.where((m) => m.date == day).toList();
       _pendingMarks = marks;
       _glasses = glasses.where((g) => g.date == day).toList();
+      if (pilot) {
+        discarded = await discardedOn(await LocalDb.instance, day);
+        if (_disposed || generation != _generation) return;
+        final known = {
+          for (final s in discarded.activities) discardedId(s),
+          for (final m in discarded.moments) discardedId(m),
+          for (final g in discarded.glasses) discardedId(g),
+        };
+        _restores.removeWhere((id) => !known.contains(id));
+        // A kept draft's decision on an item that is no longer waiting goes.
+        final live = ids.toSet();
+        _choices.removeWhere((id, _) => !live.contains(id) &&
+            !id.startsWith('moment:'));
+      }
     } catch (_) {
       if (!_disposed && generation == _generation) loadFailed = true;
     } finally {
@@ -501,7 +631,7 @@ class DayReviewController extends ChangeNotifier {
       marks.add(MomentDecision(m, decision));
     }
     try {
-      final receipt = await service.commitDay(_SaveDay(repo,
+      final receipt = staged.isEmpty ? null : await service.commitDay(_SaveDay(repo,
         activities: [for (final s in _activities)
           if (staged['activity:${s.id}'] case final keep?)
             keep ? (_activityEdits['activity:${s.id}'] ?? ActivityDecision(s,
@@ -521,7 +651,7 @@ class DayReviewController extends ChangeNotifier {
           if (staged.containsKey(ReviewKey.glass(g))) ReviewKey.glass(g),
       });
       if (_disposed) return;
-      followUpFailed = receipt.followUpFailed;
+      followUpFailed = receipt?.followUpFailed ?? false;
       for (final e in staged.entries) {
         final row = before[e.key];
         if (e.value && row != null && !e.key.startsWith('range:') &&
@@ -546,6 +676,12 @@ class DayReviewController extends ChangeNotifier {
       _ranges.removeWhere(selectedRanges.contains);
       _drafts.removeWhere((key, _) => staged.containsKey(key));
       _choices.clear();
+      if (pilot) _stash.remove(day);
+      if (_restores.isNotEmpty) {
+        await _commitRestores();
+        if (_disposed) return;
+        unawaited(load());
+      }
       savedRevision++;
       if (c.mounted) bumpInsights(c);
     } catch (error) {

@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
+import '../../state/clock_format.dart' show formatClockOf;
 import '../chart_annotations.dart';
 import '../charts.dart' show Hypnogram, SleepStage;
 import '../theme.dart';
@@ -190,6 +191,18 @@ class TimelineController extends ChangeNotifier {
   }
 }
 
+/// How a time on the chart reads. The default is the app's clock setting.
+abstract interface class ClockText {
+  String of(int epochSec);
+}
+
+class AppClockText implements ClockText {
+  const AppClockText();
+  @override
+  String of(int epochSec) =>
+      formatClockOf(DateTime.fromMillisecondsSinceEpoch(epochSec * 1000));
+}
+
 /// Where the haptics of a handle drag go. The default plays the phone's own
 /// feedback; tests record the tiers.
 abstract interface class TimelineHaptics {
@@ -244,7 +257,7 @@ class DayTimelineChart extends StatefulWidget {
     this.listener,
     this.haptics = const PhoneTimelineHaptics(),
     this.plotHeight = 156,
-    this.clock = _defaultClock,
+    this.clock = const AppClockText(),
   });
 
   final TimelineController controller;
@@ -267,7 +280,7 @@ class DayTimelineChart extends StatefulWidget {
   final TimelineListener? listener;
   final TimelineHaptics haptics;
   final double plotHeight;
-  final String Function(int epochSec) clock;
+  final ClockText clock;
 
   static const double gutter = 44, rightPad = 8, axisHeight = 20;
   static const handleReach = 22.0;
@@ -276,12 +289,6 @@ class DayTimelineChart extends StatefulWidget {
 
   @override
   State<DayTimelineChart> createState() => _DayTimelineChartState();
-}
-
-String _defaultClock(int t) {
-  final d = DateTime.fromMillisecondsSinceEpoch(t * 1000);
-  final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
-  return '$h:${d.minute.toString().padLeft(2, '0')} ${d.hour < 12 ? 'AM' : 'PM'}';
 }
 
 enum _DragMode { scrub, handle, zoomHandle }
@@ -468,8 +475,8 @@ class _DayTimelineChartState extends State<DayTimelineChart>
       final dragValue = _drag?.value;
       return Semantics(
         container: true,
-        label: 'Timeline ${widget.clock(v.start.round())} to ${widget.clock(v.end.round())}'
-            '${c.scrub == null ? '' : ', line at ${widget.clock(c.scrub!.round())}'}',
+        label: 'Timeline ${widget.clock.of(v.start.round())} to ${widget.clock.of(v.end.round())}'
+            '${c.scrub == null ? '' : ', line at ${widget.clock.of(c.scrub!.round())}'}',
         child: GestureDetector(
           key: DayTimelineChart.chartKey,
           behavior: HitTestBehavior.opaque,
@@ -554,7 +561,7 @@ class _Magnifier extends StatelessWidget {
       required this.clock, required this.color});
   final int value;
   final bool fine;
-  final String Function(int) clock;
+  final ClockText clock;
   final Color color;
 
   @override
@@ -570,7 +577,7 @@ class _Magnifier extends StatelessWidget {
         boxShadow: p.el(2),
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(clock(value),
+        Text(clock.of(value),
             style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w700, height: 1.2)),
         Text(fine ? '1-minute steps' : '5-minute steps · hold for minutes',
             maxLines: 1,
@@ -655,7 +662,7 @@ class TimelinePainter extends CustomPainter {
   final Map<String, String> blockLabels;
   final double? scrub;
   final ZoomSelection? zoom;
-  final String Function(int) clock;
+  final ClockText clock;
   final TextScaler textScaler;
 
   static const double _l = DayTimelineChart.gutter, _r = DayTimelineChart.rightPad;
@@ -872,7 +879,7 @@ class TimelinePainter extends CustomPainter {
     // The time axis: five clock labels across the view.
     for (var i = 0; i <= 4; i++) {
       final t = view.at(i / 4);
-      _text(canvas, clock(t.round()), Offset(x(t), bottom + 5), label.copyWith(color: p.ink2),
+      _text(canvas, clock.of(t.round()), Offset(x(t), bottom + 5), label.copyWith(color: p.ink2),
           align: i == 0 ? TextAlign.left : i == 4 ? TextAlign.right : TextAlign.center);
     }
     canvas.restore();
