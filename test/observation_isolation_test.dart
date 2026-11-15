@@ -74,9 +74,15 @@ final _reachesTable = RegExp(
   caseSensitive: false,
 );
 
+// A named widget id is display identity, not a sqflite table argument. Remove
+// only that argument so a real table read on the same line is still caught.
+final _widgetId = RegExp(r"""\bid\s*:\s*['"]observation['"]""");
+
 /// `observation` is lower-case in every table-name position; the widget is not.
-bool _namesTheTable(String line) =>
-    _reachesTable.hasMatch(line) && line.contains('observation');
+bool _namesTheTable(String line) {
+  final code = line.replaceAll(_widgetId, '');
+  return _reachesTable.hasMatch(code) && code.contains('observation');
+}
 
 /// A line that is nothing but a comment cannot reach a table.
 final _pureComment = RegExp(r'^\s*(///|//|\*|/\*)');
@@ -173,6 +179,8 @@ void main() {
     // real violation takes.
     for (final line in const [
       "    final rows = await db.query('observation');",
+      // A widget id must not hide a genuine table read on the same line.
+      "WhyRow(id: 'observation', body: db.query('observation'));",
       '  "SELECT value FROM observation WHERE key = ?",',
       "      'JOIN observation o ON o.date = m.date '",
       r'''      "INSERT INTO observation (key) VALUES (?)",''',
@@ -186,6 +194,9 @@ void main() {
       '  class Observation extends StatelessWidget {',
       // The widget catalogue's map key — a Dart map key, not a table.
       "      'observation': const Observation(",
+      // Semantic widget ids are not SQLite table arguments (Home's body watch).
+      "WhyRow(id: 'observation', title: title, body: body);",
+      'WhyRow(id: "observation", title: title, body: body);',
     ]) {
       expect(
         _pureComment.hasMatch(line) || !_namesTheTable(line),

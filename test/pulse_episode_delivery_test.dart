@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/pulse_episode_delivery.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/pulse_episode_store.dart';
 import 'package:openstrap_edge/notify/notification_center.dart';
 import 'package:openstrap_edge/notify/notification_event.dart';
@@ -47,6 +48,29 @@ void main() {
     await store.reconcile(detection(offset: offset), origin: origin, nowMs: 1);
     return store;
   }
+
+  // WHY/CLAIM(health-episode-read): the production repository serves the real
+  // episode/outbox read, rather than inheriting the empty-ledger default.
+  test('the repository reads stored episode summaries and delivery state', () async {
+    await seed();
+    final repo = LocalRepositoryImpl(getProfileMap: () => const {});
+    final episodes = await repo.getPulseEpisodes();
+    expect(episodes.map((e) => e.id), ['strap:0']);
+    expect(episodes.single.alertState, 'owed');
+    expect(episodes.single.evidence, isNull,
+        reason: 'the overview reads metadata without decoding evidence blobs');
+    await PulseEpisodeDelivery.run();
+    expect((await repo.getPulseEpisodes()).single.alertState, 'sent');
+  });
+
+  // WHY/CLAIM(health-episode-read): a broken ledger must reach the overview as
+  // a read failure, not an empty list claiming the wearer had no episodes.
+  test('the repository propagates episode ledger failures', () async {
+    await seed();
+    final repo = LocalRepositoryImpl(getProfileMap: () => const {});
+    await (await LocalDb.instance).execute('DROP TABLE pulse_episode_outbox');
+    await expectLater(repo.getPulseEpisodes(), throwsException);
+  });
 
   // WHY/CLAIM(pulse-delivery): actual notification center, exact episode route, real old date; once across races.
   test(

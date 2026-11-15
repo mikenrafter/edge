@@ -190,6 +190,16 @@ class HealthData {
     final alertsRead = repo
         .getPulseAlertRecords()
         .catchError((_) => const <String, PulseAlertRecord>{});
+    // CLAIM(health-episode-read): episode metadata joins the overview snapshot through
+    // the repository, alongside alert notes [health_observations_honesty_test].
+    // Keep a failed read distinct from an empty ledger so Observations can retry.
+    final episodesRead = repo.getPulseEpisodes().then(
+      (episodes) => (episodes: episodes, failed: false),
+      onError: (Object _) => (
+        episodes: const <PulseEpisodeSnapshot>[],
+        failed: true,
+      ),
+    );
     final today = await repo.getTodayStored();
     final cd = await repo.getInsights();
     final profile = await repo.getProfile();
@@ -276,16 +286,13 @@ class HealthData {
     final heart = await _soft(() => repo.getDayHeart(todayLabel()));
     final wearable = await wearableRead;
 
-    var pulseEpisodes=<PulseEpisodeSnapshot>[];
-    var pulseReadFailed=false;
-    try {pulseEpisodes=await PulseEpisodeStore(await LocalDb.instance).list();}
-    catch(_){pulseReadFailed=true;}
-    for(final e in pulseEpisodes) {
+    final pulse = await episodesRead;
+    for(final e in pulse.episodes) {
       irregular.removeWhere((day)=>day.compareTo(e.row['day'] as String)>=0 && day.compareTo(e.row['end_day'] as String)<=0);
     }
     return HealthData(
-      pulseEpisodes:pulseEpisodes,
-      pulseReadFailed:pulseReadFailed,
+      pulseEpisodes:pulse.episodes,
+      pulseReadFailed:pulse.failed,
       wearable: wearable,
       today: today,
       insights: cd,

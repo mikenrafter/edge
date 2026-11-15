@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/data/pulse_episode_store.dart';
 import 'package:openstrap_edge/compute/pulse_alert_record.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
@@ -123,6 +124,54 @@ void main() {
     expect(d.findings.single.alert, same(repo.record));
   });
 
+  // WHY/CLAIM(health-episode-read): episode metadata starts beside the primary
+  // read and joins the same snapshot. It suppresses only its covered daily flag.
+  // catches: a late screen-level SQLite read or publishing before evidence lands.
+  test('episode records start with primary and join the published snapshot', () async {
+    final primary = Completer<Map<String, dynamic>>();
+    final episodes = Completer<List<PulseEpisodeSnapshot>>();
+    final repo = _EpisodeRepo(primary, episodes);
+    final episode = PulseEpisodeSnapshot({
+      'id': 'strap:0', 'day': _AlertRepo.day, 'end_day': _AlertRepo.day,
+    }, null);
+    var published = false;
+    final loaded = HealthData.load(repo).then((d) {
+      published = true;
+      return d;
+    });
+    late bool startedWithPrimary, publishedBeforeEpisodes;
+    try {
+      await Future<void>.delayed(Duration.zero);
+      startedWithPrimary = repo.episodesAsked;
+      primary.complete(const {});
+      await Future<void>.delayed(Duration.zero);
+      publishedBeforeEpisodes = published;
+    } finally {
+      if (!primary.isCompleted) primary.complete(const {});
+      episodes.complete([episode]);
+    }
+    final d = await loaded;
+    expect(startedWithPrimary, isTrue,
+        reason: 'episode metadata must start before the primary read finishes');
+    expect(publishedBeforeEpisodes, isFalse,
+        reason: 'the overview must publish its evidence in the same snapshot');
+    expect(d.pulseEpisodes, [same(episode)]);
+    expect(d.pulseReadFailed, isFalse);
+    expect(d.findings, isEmpty, reason: 'the episode covers the old daily flag');
+  });
+
+  // WHY/CLAIM(health-episode-read): a failed ledger read is retryable, not proof
+  // there were no episodes. Other overview data and daily alert notes survive.
+  test('a failed episode read retains the retry state and daily finding', () async {
+    final repo = _EpisodeRepo(Completer()..complete(const {}), null);
+    final d = await HealthData.load(repo);
+    expect(repo.episodesAsked, isTrue);
+    expect(d.pulseReadFailed, isTrue);
+    expect(d.pulseEpisodes, isEmpty);
+    expect(d.findings.single.date, _AlertRepo.day);
+    expect(d.findings.single.alert, same(repo.record));
+  });
+
   test('a failed wearable read is still null, not a failed load', () async {
     final repo = _Gated(Completer()..complete(const {}), wearableThrows: true);
     final d = await HealthData.load(repo);
@@ -197,4 +246,16 @@ class _AlertRepo extends _Gated {
   }) async => metric == 'irregular_rhythm_flag'
       ? {'points': [{'t': DateTime(2026, 11, 12, 12).millisecondsSinceEpoch ~/ 1000, 'v': 1}]}
       : const {};
+}
+
+class _EpisodeRepo extends _AlertRepo {
+  _EpisodeRepo(super.gate, this.episodes);
+  final Completer<List<PulseEpisodeSnapshot>>? episodes;
+  bool episodesAsked = false;
+  @override
+  Future<List<PulseEpisodeSnapshot>> getPulseEpisodes() async {
+    episodesAsked = true;
+    if (episodes == null) throw StateError('episode ledger unavailable');
+    return episodes!.future;
+  }
 }

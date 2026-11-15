@@ -14,6 +14,7 @@
 
 import '../models/activity_suggestion.dart';
 import '../compute/pulse_alert_record.dart';
+import 'pulse_episode_store.dart' show PulseEpisodeSnapshot;
 import '../wake/wake_timeline.dart';
 import '../gestures/moment_review_queue.dart';
 import '../compute/manual_session.dart' show SessionSpan;
@@ -186,6 +187,11 @@ abstract class LocalRepository {
   /// Repositories without an alert ledger return no metadata. Read failures
   /// propagate; the overview may omit this optional metadata on failure.
   Future<Map<String, PulseAlertRecord>> getPulseAlertRecords() async => const {};
+
+  /// Stored episode summaries and delivery outcomes for Observations. Repositories
+  /// without an episode ledger return an empty list. Read failures propagate so
+  /// the overview can offer a retry instead of reporting no episodes.
+  Future<List<PulseEpisodeSnapshot>> getPulseEpisodes() async => const [];
 
   // ── day drill-down detail ────────────────────────────────────────────────────
   /// One read for the whole Sleep detail screen: the night, its timeline, the

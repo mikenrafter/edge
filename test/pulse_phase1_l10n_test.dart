@@ -10,7 +10,8 @@ import 'package:openstrap_edge/l10n/app_localizations_en.dart';
 import 'package:openstrap_edge/ui2/screens/findings_log.dart';
 
 void main() {
-  // why: Observations and Health both render FindingRow; past dates cannot say today.
+  // why: a legacy daily flag keeps its historical label; its detail names
+  // the recorded day rather than implying an episode recording exists today.
   testWidgets('past-day row and detail name the recorded day', (t) async {
     const f = Finding(FindingKind.irregularRhythm, '2026-11-12');
     await t.pumpWidget(const MaterialApp(home: Scaffold(body: FindingRow(f))));
@@ -18,7 +19,8 @@ void main() {
         .widgetList<Text>(find.byType(Text))
         .map((w) => w.data ?? '')
         .join('\n');
-    expect(text, contains('on Thu, Nov 12, 2026'));
+    expect(find.text('Historical daily flag: episode recording unavailable'),
+        findsOneWidget);
     expect(text, contains('On Thu, Nov 12, 2026'));
     expect(text.toLowerCase(), isNot(contains('today')));
     final detail = findingDetail(AppLocalizationsEn(), f);
