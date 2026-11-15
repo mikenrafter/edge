@@ -4,11 +4,12 @@
 // much it holds, so there is nothing true to divide by.
 //
 // The control is one status line and the step list sits behind a tap on
-// that line (collapsed by default), so these tests open it first. The elapsed
+// that line (with a saved folded preference), so these tests open it first. The elapsed
 // time is shown only while a sync runs, there is no button while one does, and
 // the "last successful sync" caption is the sentence itself ("Synced just now").
 // The sentence for every phase is pinned in test/sync_status_line_test.dart.
 import 'package:flutter/material.dart';
+import 'package:openstrap_edge/state/prefs.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/state/control_operations.dart';
@@ -85,7 +86,11 @@ Future<void> _open(
 }
 
 void main() {
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({'accordion_sync-details': false});
+    await Prefs.ensureLoaded();
+    await Prefs.setBoolAcked('accordion_sync-details', false);
+  });
 
   testWidgets('idle: one Sync now and nothing else claiming activity', (
     t,

@@ -27,6 +27,7 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../theme.dart';
+import '../remembered_expansion.dart';
 import '../grammar.dart' show Pressable;
 import 'guide_markers.dart';
 
@@ -93,18 +94,8 @@ class GuideStepCard extends StatefulWidget {
   State<GuideStepCard> createState() => _GuideStepCardState();
 }
 
-class _GuideStepCardState extends State<GuideStepCard> {
-  bool _expanded = false;
-
-  @override
-  void didUpdateWidget(GuideStepCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    final old = oldWidget.model;
-    final now = widget.model;
-    if (old is! GuideCardOnStep || now is! GuideCardOnStep || old.number != now.number || old.caption != now.caption) {
-      _expanded = false;
-    }
-  }
+class _GuideStepCardState extends State<GuideStepCard> with RememberedExpansion<GuideStepCard> {
+  bool get _expanded => expandedSection('guide_missing_help');
 
   @override
   Widget build(BuildContext context) {
@@ -169,7 +160,7 @@ class _GuideStepCardState extends State<GuideStepCard> {
     if (model is GuideCardOnStep && model.missingHelp != null) {
       actions.add(Flexible(child: Semantics(
         key: GuideStepCard.dontSeeItKey, container: true, button: true, expanded: _expanded,
-        child: Pressable(onTap: () => setState(() => _expanded = !_expanded),
+        child: Pressable(onTap: () => toggleSection('guide_missing_help'),
           child: Text(l.guideDontSeeIt, style: F.cap.copyWith(color: p.on(C.blue)))),
       )));
     }

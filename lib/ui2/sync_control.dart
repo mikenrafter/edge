@@ -1,3 +1,4 @@
+import '../state/prefs.dart';
 import 'skeleton/async_section.dart';
 import 'dart:async';
 import 'dart:math' as math;
@@ -51,7 +52,7 @@ class _SyncControlState extends State<SyncControl> {
   static const _detailsId = 'sync-details';
 
   final _ticker = _SyncTicker();
-  bool _open = false;
+  late bool _open = Prefs.getBool(accordionPrefKey(_detailsId), true);
 
   /// Set once the person has toggled it: a stored answer that arrives after
   /// that must not undo what they just did.

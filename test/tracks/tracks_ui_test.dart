@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/day_label.dart';
+import 'package:openstrap_edge/ui2/profile/profile.dart' show SettingsAccordion;
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/med_store.dart';
 import 'package:openstrap_edge/data/tracks_store.dart';
@@ -14,10 +15,15 @@ import '../support/bundled_fonts.dart';
 import 'ui_support.dart';
 
 Future<void> _expand(WidgetTester t, String label) async {
-  await t.ensureVisible(find.text(label));
+  final accordion = find.byWidgetPredicate((w) => w is SettingsAccordion && w.title == label).first;
+  await t.scrollUntilVisible(accordion, 300, scrollable: find.byType(Scrollable).first);
+  final header = find.descendant(of: accordion, matching: find.text(label)).first;
+  await t.ensureVisible(header);
   await t.pumpAndSettle();
-  await t.tap(find.text(label));
-  await t.pumpAndSettle();
+  if (find.descendant(of: accordion, matching: find.byType(Divider)).evaluate().isEmpty) {
+    await t.tap(header);
+    await t.pumpAndSettle();
+  }
 }
 
 void main() {

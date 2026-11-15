@@ -311,11 +311,10 @@ class _ZonesDetailState extends State<ZonesDetail> {
     return detailScaffold(c, l?.activityZonesTitle ?? 'Heart-rate zones', [
       PendingContent(pending: _loading && _d == null,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _ceiling(p, l, d),
         Section(l?.activityZonesYourZonesSection ?? 'Your zones',
-          _loading && _d == null
-            ? const Surface(child: PendingRows(count: 5, rowHeight: 64))
-            : _zones(p, l, d)),
+_zones(p, l, _loading && _d == null ? ZonesData(zones: [
+          for (var z = 1; z <= 5; z++) (zone: z, name: 'Z$z', lo: 0, hi: 0),
+        ]) : d)),
         const SizedBox(height: S.x2),
         Pressable(
           onTap: () => _editManualZones(context, d),
@@ -330,6 +329,7 @@ class _ZonesDetailState extends State<ZonesDetail> {
             ),
           ),
         ),
+        _ceiling(p, l, d),
         ..._distribution(p, l, d),
       ])),
     ]);
@@ -435,6 +435,7 @@ class _ZonesDetailState extends State<ZonesDetail> {
     return Surface(
       child: Column(
         children: [
+          Column(key: const ValueKey('zones-primary-rows'), children: [
           for (final z in d.zones) ...[
             if (z.zone > 1) Divider(height: S.x5, color: p.line),
             Row(
@@ -471,6 +472,7 @@ class _ZonesDetailState extends State<ZonesDetail> {
               ],
             ),
           ],
+          ]),
           if (_anchorCopy(l, d) case final anchor?) ...[
             const SizedBox(height: S.x4),
             Text(

@@ -305,15 +305,15 @@ class DriverBreakdown extends StatefulWidget {
   State<DriverBreakdown> createState() => _DriverBreakdownState();
 }
 
-class _DriverBreakdownState extends State<DriverBreakdown> {
+class _DriverBreakdownState extends State<DriverBreakdown> with RememberedExpansion<DriverBreakdown> {
   /// The one open row. This screen was already long before it grew a chart per
   /// input, so the histories are behind a tap and only one is out at a time.
-  String? _open;
+
 
   @override
   void initState() {
     super.initState();
-    _open = widget.initialOpen;
+
   }
 
   @override
@@ -333,10 +333,10 @@ class _DriverBreakdownState extends State<DriverBreakdown> {
       for (final f in items) {
         rows.add(_DriverTile(
           f,
-          open: _open == f.key,
+          open: expandedSection('driver:${f.key}'),
           onTap: !f.chartable
               ? null
-              : () => setState(() => _open = _open == f.key ? null : f.key),
+              : () => toggleSection('driver:${f.key}'),
         ));
       }
     }

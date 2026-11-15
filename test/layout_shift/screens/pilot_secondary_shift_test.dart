@@ -253,7 +253,7 @@ void main() {
   });
 
   testWidgets(
-    'Sleep plan defers its read until opened without moving the next section',
+    'expanded Sleep plan preserves its metric rows while late advice follows them',
     (t) async {
       phoneSurface(t);
       final repo = _LatePlanRepo();
@@ -265,7 +265,7 @@ void main() {
             app,
             ListView(
               children: const [
-                SettingsAccordion('Your sleep plan', id: 'sleep_plan', initiallyExpanded: false,
+                SettingsAccordion('Your sleep plan', id: 'sleep_plan', initiallyExpanded: true,
                   children: [WellnessScreen(sleepPlanOnly: true)]),
                 Text(
                   'Alarm and body clock',
@@ -283,12 +283,14 @@ void main() {
       await run.frames([0, 150, 200, 216, 466, 2500]);
       final spinners = find.byType(CircularProgressIndicator).evaluate().length;
       await takePilotShot(t, 'sleep-plan');
-      expect(repo.insightsReads, 0);
+      expect(repo.insightsReads, 1);
+      final metrics = find.byKey(const ValueKey('sleep-plan-metrics'));
+      final beforeMetrics = t.getRect(metrics);
       repo.gate.complete();
       await landed(run);
-      check(run, 'Sleep plan');
-      await t.tap(find.text('Your sleep plan'));
-      await landed(ShiftRun(t));
+      expect(t.getRect(metrics), beforeMetrics);
+      // Advice is appended after these stable rows. Its explicitly allowed
+      // end-of-section growth may move the following accordion.
       expect(repo.insightsReads, 1);
       expect(find.textContaining('Turn in by'), findsOneWidget);
       expect(

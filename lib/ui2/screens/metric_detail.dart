@@ -1375,7 +1375,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
                 all.isEmpty ? null : all.last.t)),
         if (_outcome != null)
           SettingsAccordion(l?.metricDetailWhatMovesItSection ?? 'What moves it',
-            id: 'metric_movers', initiallyExpanded: false, children: [AsyncListSection<Widget>(
+            id: 'metric_movers', initiallyExpanded: true, children: [AsyncListSection<Widget>(
               items: _moversPending ? null : d.movers.isEmpty ? [] : [_movers(c, d.movers)],
               emptyBuilder: (_) => _journalFailed
                 ? StatusCard(l?.healthReadFailedBody ?? 'Could not load your data. Nothing was deleted.', '',
@@ -1697,7 +1697,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
             color: spec.color,
           ),
           const SizedBox(height: S.x2),
-          SettingsAccordion('Sources used', id: 'metric_source_notes', initiallyExpanded: false,
+          SettingsAccordion(l?.metricSourcesUsed ?? 'Sources used', id: 'metric_source_notes', initiallyExpanded: true,
             children: [Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
               children: [for (final s in _usingLines(c, l, spec, d))
@@ -2546,13 +2546,13 @@ class DayNav extends StatelessWidget {
               semanticLabel:
                   l?.metricDetailChooseDayShowing(dayNavLabel(day, l)) ??
                   'Choose a day. Showing ${dayNavLabel(day, l)}',
-              child: Text(
+              child: SizedBox(width: double.infinity, child: Text(
                 dayNavLabel(day, l),
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600),
-              ),
+              )),
             ),
           ),
         arrow(LucideIcons.chevronRight, l?.metricDetailNextDay ?? 'Next day', newer),

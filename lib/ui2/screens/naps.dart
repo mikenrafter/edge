@@ -284,6 +284,16 @@ class _NapsScreenState extends State<NapsScreen>
       [
         DayNav(day: day, days: d.days, onDay: _goDay, alwaysShow: true),
         const SizedBox(height: S.x3),
+        const SizedBox(height: S.x4),
+        BigButton(
+          key: const ValueKey('naps-primary-action'),
+          _busy
+              ? (l?.napsWorking ?? 'Working…')
+              : (l?.napsLogANap ?? 'Log a nap'),
+          icon: LucideIcons.plus,
+          color: C.domHealth,
+          onTap: _busy || day == null ? null : () => _log(day),
+        ),
         AsyncListSection<Widget>(items: _d == null ? null : [
         if (!d.judged)
           // THE DETECTOR'S OWN REASON when it left one — 'too little 1 Hz data
@@ -375,15 +385,7 @@ class _NapsScreenState extends State<NapsScreen>
         ], visibleRows: 3, rowHeight: 96,
           itemBuilder: (_, child) => child,
           emptyBuilder: (_) => const SizedBox.shrink()),
-        const SizedBox(height: S.x4),
-        BigButton(
-          _busy
-              ? (l?.napsWorking ?? 'Working…')
-              : (l?.napsLogANap ?? 'Log a nap'),
-          icon: LucideIcons.plus,
-          color: C.domHealth,
-          onTap: _busy || day == null ? null : () => _log(day),
-        ),
+
       ].map((child) => PendingContent(pending: _d == null,
         child: child)).toList(),
     );

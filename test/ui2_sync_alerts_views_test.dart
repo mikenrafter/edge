@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:openstrap_edge/state/prefs.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -146,7 +148,11 @@ const _gesturesSupported = {
 void main() {
   setUpAll(loadFonts);
   // "synced through … 09:10" is asserted as HH:MM.
-  setUp(() => ClockFormatController.seed(ClockFormat.h24));
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({'accordion_sync-details': false});
+    await Prefs.ensureLoaded();
+    ClockFormatController.seed(ClockFormat.h24);
+  });
   tearDown(ClockFormatController.debugReset);
   final fixtures = <String, (double, Widget)>{
     'sync_offline': (300, syncFixture(const SyncPresentationState())),
@@ -545,7 +551,7 @@ void main() {
     screenStructure(name, fixtures[name]!.$2, () {
       expect(find.text('Total sleep'), findsOneWidget);
       expect(find.byWidgetPredicate((w) => w is SettingsAccordion && w.id == 'sleep_night'), findsOneWidget);
-      expect(find.text('Recalculate this night'), findsNothing);
+      expect(find.text('Recalculate this night'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
     });
   }

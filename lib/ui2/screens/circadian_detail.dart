@@ -247,18 +247,18 @@ class CircadianDetail extends StatefulWidget {
 }
 
 class _CircadianDetailState extends State<CircadianDetail>
-    with RevisionReload, PausedReadReload<CircadianDetail> {
+    with RevisionReload, PausedReadReload<CircadianDetail>, RememberedExpansion<CircadianDetail> {
   CircadianData? _d;
   bool _loading = true;
   bool _paused = false;
 
   /// Whether the non-parametric battery is unfolded. Off by default.
-  bool _showStrength = false;
+  bool get _showStrength => expandedSection('circadian_strength');
 
   /// SLP-08 — whether the two rows naming the least-alike pair of nights are
   /// unfolded. Off by default: the regularity index is one row today, and the
   /// decomposition of it is two more that nobody asked for until they did.
-  bool _showNights = false;
+  bool get _showNights => expandedSection('circadian_nights');
 
   @override
   void initState() {
@@ -495,7 +495,7 @@ class _CircadianDetailState extends State<CircadianDetail>
                   : (l?.circadianDetailWhichNights ?? 'Which nights')),
           onAction: d.sriPairs.isEmpty || d.regularity.value == null
               ? null
-              : () => setState(() => _showNights = !_showNights),
+              : () => toggleSection('circadian_nights'),
         ),
 
         // COLLAPSED BY DEFAULT, and that is how the screen paid for the card
@@ -510,7 +510,7 @@ class _CircadianDetailState extends State<CircadianDetail>
           action: _showStrength
               ? (l?.circadianDetailHide ?? 'Hide')
               : (l?.circadianDetailShow ?? 'Show'),
-          onAction: () => setState(() => _showStrength = !_showStrength),
+          onAction: () => toggleSection('circadian_strength'),
         ),
 
         ],

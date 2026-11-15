@@ -298,21 +298,12 @@ class _WellnessScreenState extends State<WellnessScreen>
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c);
     if (widget.sleepPlanOnly) {
-      // Advice and driver counts are unknown until the bundle arrives. Keep
-      // the next Sleep accordion in place, including on absence or retry.
-      Widget frame(Widget? content) => AsyncListSection<Widget>(
-        items: content == null ? null : [content], visibleRows: 5, rowHeight: 112,
-        itemBuilder: (_, child) => child,
-        emptyBuilder: (_) => const SizedBox.shrink());
-      return _paused
-          ? frame(const PausedToday())
-          : AsyncSection<bool>(pending: _loading, failed: _planFailed,
-              value: _loading || _planFailed ? null : true,
-              pendingBuilder: (_) => frame(null),
-              builder: (c, _) => frame(_recovery(c)),
-              failureBuilder: (_) => frame(StatusCard(
-                l?.healthReadFailedBody ?? 'Could not load your data. Nothing was deleted.', '',
-                fix: l?.homeTryAgain ?? 'Try again', onFix: _load)));
+      // Known metric rows form the pending layout. Variable advice and
+      // driver histories follow at the end of the section.
+      return _paused ? const PausedToday() : _planFailed
+        ? StatusCard(l?.healthReadFailedBody ?? 'Could not load your data. Nothing was deleted.', '',
+            fix: l?.homeTryAgain ?? 'Try again', onFix: _load)
+        : PendingContent(pending: _loading, child: _recovery(c));
     }
     final last = _breathing.isEmpty ? null : _breathing.first;
     // `select`, not `watch`: AppState ticks at ~1 Hz during a live session and
@@ -556,9 +547,7 @@ class _WellnessScreenState extends State<WellnessScreen>
     final strainMin = _reading(coachMap?['strain_bonus_min']);
     final debtH = _nested(_insights, 'sleep_debt', 'debt_hours');
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+    final parts = <Widget>[
         // The one recommendation on this screen, and only when all three of
         // its inputs are real: a measured debt worth acting on, a learned need,
         // and a target bedtime to name. No debt, no card — the widget does not
@@ -596,7 +585,19 @@ class _WellnessScreenState extends State<WellnessScreen>
         ),
         Section(
           l?.wellnessSleepNeedTonight ?? 'Sleep need tonight',
-          needSec == null
+          widget.sleepPlanOnly ? Column(children: [Surface(key: const ValueKey('sleep-plan-metrics'), child: Column(children: [
+            MetricRow(LucideIcons.bedDouble, C.blue, l?.wellnessTonightsNeed ?? "Tonight's need", needSec == null ? '—' : _hm(needSec / 60)),
+            MetricRow(LucideIcons.trendingDown, C.orange, l?.wellnessSleepDebt ?? 'Sleep debt', debtH == null ? '—' : _hm(debtH * 60)),
+            MetricRow(LucideIcons.flame, C.purple, l?.wellnessAddedForStrain ?? 'Added for strain', strainMin == null ? '—' : '${strainMin.round()}', unit: 'min'),
+            MetricRow(LucideIcons.sun, C.yellow, l?.wellnessCreditedFromNaps ?? 'Credited from naps', napMin == null ? '—' : '${napMin.round()}', unit: 'min'),
+            MetricRow(LucideIcons.moon, C.indigo, l?.wellnessTargetBedtime ?? 'Target bedtime', bedMin == null ? '—' : formatMinuteOfDay(bedMin.round())),
+            MetricRow(LucideIcons.sunrise, C.orange, l?.wellnessTargetWake ?? 'Target wake', wakeMin == null ? '—' : formatMinuteOfDay(wakeMin.round())),
+          ])),
+            if (needSec == null && !_loading) StatusCard(
+              l?.wellnessNoSleepNeedTitle ?? 'No sleep need yet',
+              whyFromNote(_noteOf(coachMap?['need'])) ?? (l?.wellnessNoSleepNeedBody ?? 'No reading.'),
+              icon: LucideIcons.bedDouble),
+          ]) : needSec == null
               // The coach's own reason for the absent need — it names the
               // input that is actually missing. "Not enough of them yet" named
               // nothing, and was printed for every cause the estimator has.
@@ -658,8 +659,9 @@ class _WellnessScreenState extends State<WellnessScreen>
                   ),
                 ),
         ),
-      ],
-    );
+      ];
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: widget.sleepPlanOnly ? [parts.last, ...parts.take(parts.length - 1)] : parts);
   }
 
   // ── CYCLE ────────────────────────────────────────────────────────────────
@@ -1763,10 +1765,9 @@ class _JournalFindingsState extends State<JournalFindings> {
     return detailScaffold(c, title, [
       const SizedBox(height: S.x2),
       SettingsAccordion('Your log patterns', id: 'journal_comparisons',
-        key: const ValueKey('journal-comparisons'), initiallyExpanded: false,
+        key: const ValueKey('journal-comparisons'), initiallyExpanded: true,
         children: [
-        AsyncListSection<Widget>(
-          items: !_rowsReady ? null : [
+        PendingContent(pending: !_rowsReady, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             if (_rows.isEmpty)
               StatusCard(l?.wellnessNothingSeparatedTitle ?? 'Nothing separated itself yet',
                 l?.wellnessNothingSeparatedBody ?? 'No clear links found yet.', icon: LucideIcons.scatterChart)
@@ -1776,14 +1777,11 @@ class _JournalFindingsState extends State<JournalFindings> {
               Text(l?.wellnessLinkNeverCause ?? 'A link in your own days, not proof of a cause.',
                 style: F.over.copyWith(color: p.ink3, height: 1.5)),
             ],
-          ],
-          itemBuilder: (_, child) => child, emptyBuilder: (_) => const SizedBox.shrink())]),
+          ]))]),
       SettingsAccordion(
         l?.wellnessWhichDayOfWeek ?? 'Which day of the week',
-        id: 'journal_weekday', initiallyExpanded: false, children: [
-        KeyedSubtree(key: const ValueKey('journal-weekday'), child: _weekdayReady
-            ? _weekdayCard(c)
-            : PendingChart(shape: PendingChartShape.bars, title: l?.wellnessWhichDayOfWeek ?? 'Which day of the week')),
+        id: 'journal_weekday', initiallyExpanded: true, children: [
+        KeyedSubtree(key: const ValueKey('journal-weekday'), child: PendingContent(pending: !_weekdayReady, child: _weekdayCard(c))),
       ]),
       if (_cachedAt case final at?)
         Padding(

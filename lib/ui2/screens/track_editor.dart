@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../data/day_label.dart';
 import '../../data/tracks_store.dart';
 import '../ui2.dart';
+import '../profile/profile.dart' show SettingsAccordion;
 import 'track_editor_fields.dart';
 import 'tracks_text.dart';
 
@@ -236,12 +237,12 @@ class _TrackEditorState extends State<TrackEditor> {
                       ? null
                       : (value) => setState(() => _prescribed = value == true),
                 ),
-                _section(text('Kinetics'), [
+                _section('Kinetics', [
                   Text(text('KineticsNote'), style: F.cap),
                   const SizedBox(height: S.x3),
                   TrackKineticsFields(draft: _kinetics),
                 ], open: true),
-                _section(text('Roles'), [
+                _section('Roles', [
                   for (final role in {...trackRoles, ..._roles})
                     CheckboxListTile(
                       contentPadding: EdgeInsets.zero,
@@ -256,7 +257,7 @@ class _TrackEditorState extends State<TrackEditor> {
                       }),
                     ),
                 ]),
-                _section(text('Systems'), [
+                _section('Systems', [
                   for (final system in {...trackSystems, ..._systems})
                     CheckboxListTile(
                       contentPadding: EdgeInsets.zero,
@@ -297,13 +298,11 @@ class _TrackEditorState extends State<TrackEditor> {
                     ],
                   ),
                 ]),
-                _section(text('Subactivities'), [
+                _section('Subactivities', [
                   for (final sub in _sub)
-                    ExpansionTile(
+                    SettingsAccordion(sub.name.isEmpty ? text('Subactivity') : sub.name,
+                      id: 'track-sub:${_initial.id}:${sub.id}',
                       key: ValueKey('sub-${sub.id}'),
-                      title: Text(
-                        sub.name.isEmpty ? text('Subactivity') : sub.name,
-                      ),
                       children: [
                         TextFormField(
                           key: ValueKey('sub-${sub.id}-name'),
@@ -338,7 +337,7 @@ class _TrackEditorState extends State<TrackEditor> {
                     child: Text(text('AddSubactivity')),
                   ),
                 ]),
-                _section(text('Bounds'), [
+                _section('Bounds', [
                   Text(text('BoundsNote'), style: F.cap),
                   Row(
                     children: [
@@ -364,7 +363,7 @@ class _TrackEditorState extends State<TrackEditor> {
                     ],
                   ),
                 ]),
-                _section(text('History'), [
+                _section('History', [
                   SwitchListTile(
                     key: const ValueKey('track-no-clean'),
                     contentPadding: EdgeInsets.zero,
@@ -391,7 +390,7 @@ class _TrackEditorState extends State<TrackEditor> {
                   ),
                 ]),
                 if (_initial.sources.isNotEmpty)
-                  _section(text('Sources'), [
+                  _section('Sources', [
                     for (final source in _initial.sources)
                       Padding(
                         padding: const EdgeInsets.only(bottom: S.x3),
@@ -404,13 +403,6 @@ class _TrackEditorState extends State<TrackEditor> {
     );
   }
 
-  Widget _section(String title, List<Widget> children, {bool open = false}) =>
-      ExpansionTile(
-        key: ValueKey('track-section-$title'),
-        tilePadding: EdgeInsets.zero,
-        initiallyExpanded: open,
-        title: Text(title, style: F.head),
-        childrenPadding: const EdgeInsets.only(bottom: S.x3),
-        children: children,
-      );
+  Widget _section(String id, List<Widget> children, {bool open = true}) =>
+      SettingsAccordion(tracksText(context, id), id: 'track-editor:$id', children: children);
 }

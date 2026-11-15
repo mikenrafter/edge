@@ -231,12 +231,9 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
         PendingContent(pending: _loading && _d == null,
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ..._trace(p, l, d),
-          if (_loading && _d == null)
-            Section(l?.dayStrainTimeInZonesSection ?? 'Time in zones',
-              const Surface(child: PendingRows(count: 5, rowHeight: 52)))
-          else ..._zones(p, l, d),
           Section(l?.dayStrainInputsSection ?? 'What this is made of',
               _inputs(p, l, d)),
+          ..._zones(p, l, d),
         ])),
       ],
       sub: sub,
@@ -391,7 +388,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
       elevation: 0,
       color: p.card2,
       child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: MediaQuery.textScalerOf(context).scale(F.cap.fontSize!) * F.cap.height! * 6),
+        constraints: const BoxConstraints(minWidth: double.infinity),
         child: Text(
         [
           l?.dayStrainInputsBase ??

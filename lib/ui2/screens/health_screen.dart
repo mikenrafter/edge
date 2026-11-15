@@ -1197,7 +1197,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
           dayOf: (i) => prettyDay(dayLabelOf(DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day - (29 - i))), l),
           good: null,
           detailFooter: SettingsAccordion(l?.sleepDetailVersusUsualSection ?? 'Against your usual',
-            id: 'health_trend_$key', initiallyExpanded: false,
+            id: 'health_trend_$key', initiallyExpanded: true,
             children: [Text(l?.healthZeroDaysStored ?? '0 days stored.')]),
           reserveVerdict: true,
           key: ValueKey('card:trend-$key'),
@@ -1235,7 +1235,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
           detailReadout: true,
           annotations: annotations,
           detailFooter: SettingsAccordion(l?.sleepDetailVersusUsualSection ?? 'Against your usual',
-            id: 'health_trend_$key', initiallyExpanded: false, children: [
+            id: 'health_trend_$key', initiallyExpanded: true, children: [
               if (band != null) Text(usualRangeText(l, fmt(band.lo), fmt(band.hi), unit)),
               if (band != null) ReadingVerdict(side: band.side(s.last),
                 detail: vsUsualText(l,

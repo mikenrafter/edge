@@ -1159,7 +1159,7 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
         chevron: false,
       ),
       SettingsAccordion('Last wake decision', id: 'alarm_wake_trace',
-        key: const ValueKey('alarm-trace-slot'), initiallyExpanded: false,
+        key: const ValueKey('alarm-trace-slot'), initiallyExpanded: true,
         children: [PendingContent(pending: w.wakeTracePending, child: SetRow(
         LucideIcons.listChecks,
         C.indigo,

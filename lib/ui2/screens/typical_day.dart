@@ -105,11 +105,10 @@ class _TypicalDayScreenState extends State<TypicalDayScreen> {
           child: Text(l?.tracksTitle ?? 'Tracks')),
         TextButton(onPressed: () => go(context, const AlarmScreen()),
           child: Text(l?.alarmNavTitle ?? 'Alarm')),
-        Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text(l?.typicalEnergy ?? 'Energy / alertness', style: F.head),
-          if (d.circadian.chronotypeLabel.isNotEmpty) Text(d.circadian.chronotypeLabel),
           const SizedBox(height: S.x3),
-          TypicalDayPlot(data: d),
+          TypicalDayPlot(key: const ValueKey('typical-primary-plot'), data: d),
           Text(l?.typicalForecastNote ?? 'A shape forecast from your observed sleep and body clock. Unavailable hours stay blank; it is not an energy measurement.', style: F.cap),
           if (d.circadian.alertness.value != null && d.circadian.cosinorV['acrophase_hours'] == null)
             Text(l?.circadianDetailAssumedPhaseNote ?? 'Your own clock peak is not worked out yet, so this uses an average one.'),
@@ -118,9 +117,11 @@ class _TypicalDayScreenState extends State<TypicalDayScreen> {
           const SizedBox(height: S.x3),
           Text('${l?.typicalQuiet ?? 'Quiet hours'}: ${_window(d.quiet)}'),
           Text('${l?.typicalSleep ?? 'Expected sleep'}: ${_window(d.sleep)}'),
+          if (d.circadian.chronotypeLabel.isNotEmpty) Text(d.circadian.chronotypeLabel),
+
         ])),
         const SizedBox(height: S.x3),
-        Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text(l?.typicalMeals ?? 'Typical large meals', style: F.head),
           Text(d.meals.isEmpty ? (l?.typicalNoneSet ?? 'None set') : d.meals.map(clock).join(' · ')),
           TextButton(onPressed: _saving ? null : _editMeals,
@@ -143,7 +144,7 @@ class _TypicalDayScreenState extends State<TypicalDayScreen> {
       ('latency', l?.typicalLatency ?? 'Bedtime caffeine / sleep latency', s.residualVsLatency),
       ('sleep', l?.typicalTst ?? 'Bedtime caffeine / total sleep', s.residualVsTotalSleep),
     ];
-    return Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Text(l?.typicalCaffeine ?? 'Caffeine timing', style: F.head),
       Text(l?.typicalPattern(s.dayCount) ?? 'Your pattern so far, ${s.dayCount} days'),
       const SizedBox(height: S.x2),

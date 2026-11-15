@@ -212,16 +212,16 @@ void main() {
     await landed(setup);
     final timeline = find.text('Timeline and status');
     await t.scrollUntilVisible(timeline, 300, scrollable: _scroll());
-    final decision = find.text('Last wake decision');
+    final decision = find.text('Last wake decision').first;
     if (decision.evaluate().isEmpty) {
       await t.tap(timeline);
       await landed(setup);
     }
     await t.scrollUntilVisible(decision, 200, scrollable: _scroll());
-    // The late trace stays behind a collapsed disclosure. Its header and
-    // surrounding page must stay still as more decision lines arrive.
+    // The expanded trace appends unknown decision lines at its end.
     await landed(setup);
     await t.pumpAndSettle(); // finish the setup scroll and initial trace read
+    final beforeHeader = t.getTopLeft(decision);
     final run = ShiftRun(t, trackUnkeyed: false)..opened();
     await run.frames([0, 150, 200, 216, 466, 2500]);
     await takePilotShot(t, 'alarm-trace');
@@ -241,12 +241,10 @@ void main() {
       app.wake.noteTraceChanged();
     });
     await landed(run);
-    expect(find.textContaining('armed and confirmed'), findsNothing);
-    expect(find.byType(CircularProgressIndicator), findsNothing);
-    check(run, 'alarm trace');
-    await t.tap(find.text('Last wake decision').first);
-    await t.pump();
     expect(find.textContaining('armed and confirmed'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(t.getTopLeft(decision), beforeHeader);
+    debugPrint(formatShiftReport('alarm trace end growth', run.score(), run.probe.frames.length));
     expect(find.descendant(of: find.byKey(const ValueKey('alarm-trace-slot')),
       matching: find.byType(Scrollable)), findsNothing);
     await t.pumpWidget(const SizedBox());

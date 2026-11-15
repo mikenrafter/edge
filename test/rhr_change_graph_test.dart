@@ -1,6 +1,5 @@
 // CLAIM rhr-marks: the dedicated graph and other charts project the same flags
 // onto actual calendar days, while absent RHR remains absent.
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/findings.dart';
 import 'package:openstrap_edge/data/day_label.dart';

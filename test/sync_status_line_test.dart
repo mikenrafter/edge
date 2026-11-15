@@ -2,7 +2,7 @@
 //
 //   [elapsed]  icon / spinner  ·  one sentence  ·  at most one action
 //
-// Tap the line to expand today's step list inline (collapsed by default, open
+// Tap the line to expand today's step list inline (with a saved folded preference, open
 // or closed remembered under the persisted key 'sync-details'). Always visible
 // on Home, including idle. No estimated counts (AGENTS.md 4.1).
 //
@@ -20,6 +20,7 @@
 // See docs/proof-workflow.md for the structural-fixture convention.
 
 import 'package:flutter/material.dart';
+import 'package:openstrap_edge/state/prefs.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -213,8 +214,10 @@ void _expectLine(WidgetTester t, String line,
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUp(() {
-    SharedPreferences.setMockInitialValues({});
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({'accordion_sync-details': false});
+    await Prefs.ensureLoaded();
+    await Prefs.setBoolAcked('accordion_sync-details', false);
     // "synced through … 14:32" is asserted as HH:MM.
     ClockFormatController.seed(ClockFormat.h24);
   });
@@ -470,7 +473,7 @@ void main() {
   });
 
   group('tap the line to expand the steps', () {
-    _tw('collapsed by default, expands inline, collapses again', (t) async {
+    _tw('with a saved folded preference, expands inline, collapses again', (t) async {
       await t.pumpWidget(_control(_withBacklog()));
       _expectCollapsed();
       await t.tap(find.text('Downloading · 2 h 10 min of band time to go'));

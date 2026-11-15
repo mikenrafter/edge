@@ -132,11 +132,14 @@ void main() {
         (t) async {
       await _pumpBody(t, _moments([for (var i = 0; i < 5; i++) _ev(14, i)]));
       expect(find.text('$_tapTitle · 5 times'), findsOneWidget);
-      // Collapsed: the individual rows are not drawn.
-      expect(find.text(_tapTitle), findsNothing);
+      // First launch expands the group; the person's folded choice persists.
+      for (var i = 0; i < 5; i++) {
+        expect(find.text(clockOfTs(_ts(i))), findsWidgets);
+      }
+      await t.tap(find.text('$_tapTitle · 5 times'));
+      await t.pumpAndSettle();
       for (var i = 1; i < 5; i++) {
-        expect(find.text(clockOfTs(_ts(i))), findsNothing,
-            reason: 'tap $i is hidden while collapsed');
+        expect(find.text(clockOfTs(_ts(i))), findsNothing);
       }
 
       await t.tap(find.text('$_tapTitle · 5 times'));

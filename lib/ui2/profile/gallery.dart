@@ -1826,7 +1826,7 @@ Map<String, Widget> _listCases() => {
         onSync: () {},
       ),
       'settings_accordion': Column(children: [
-        SettingsAccordion('Alarms & Wake', children: [
+        SettingsAccordion('Alarms & Wake', id: 'gallery_alarm', children: [
           SwitchRow('Buzz during Do Not Disturb', true, (_) {},
               sub: 'Off respects Do Not Disturb. Edge never changes your '
                   'Do Not Disturb setting.'),
@@ -1841,9 +1841,9 @@ Map<String, Widget> _listCases() => {
               chevron: false),
         ]),
         // Folded: the summary stays under the header.
-        const SettingsAccordion('Haptics',
+        const SettingsAccordion('Haptics', id: 'gallery_haptics',
             summary: 'The band alarm uses the band\'s own buzz',
-            initiallyExpanded: false,
+            initiallyExpanded: true,
             children: [Text('Buzz pattern')]),
       ]),
       'buzz_pattern_row': Surface(
