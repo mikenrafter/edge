@@ -4046,5 +4046,8 @@
   "sleepTabStoodOutCardTitle": "Was aufgefallen ist",
   "sleepTabUsualCardTitle": "Im Vergleich zu sonst",
   "sleepTabSignalsCardTitle": "Nächtliche Signale",
-  "sleepTabThePlanCardTitle": "Der Plan"
+  "sleepTabThePlanCardTitle": "Der Plan",
+  "pendingSectionLoading": "Wird geladen, {name}",
+  "pendingSectionLoaded": "Geladen, {name}",
+  "pendingSectionContent": "Inhalt"
 }

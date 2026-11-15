@@ -3940,5 +3940,8 @@
   "sleepTabStoodOutCardTitle": "Ce qui ressort",
   "sleepTabUsualCardTitle": "Par rapport à vos habitudes",
   "sleepTabSignalsCardTitle": "Signaux nocturnes",
-  "sleepTabThePlanCardTitle": "Le programme"
+  "sleepTabThePlanCardTitle": "Le programme",
+  "pendingSectionLoading": "Chargement, {name}",
+  "pendingSectionLoaded": "Chargé, {name}",
+  "pendingSectionContent": "contenu"
 }

@@ -608,7 +608,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     if (!widget.embedded) return detailScaffold(c, title, body, sub: sub);
     final p = P.of(c);
     return RefreshIndicator.noSpinner(
-      onRefresh: _load,
+      onRefresh: () => PendingUserAction.run(_load),
       child: tabRootList(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: kTabRootPad,

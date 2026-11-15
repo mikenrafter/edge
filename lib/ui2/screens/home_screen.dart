@@ -3184,7 +3184,7 @@ class _HomeScreenState extends State<HomeScreen>
       : RefreshIndicator.noSpinner(onRefresh: () async {
         try { await context.read<AppState>().refreshData(); }
         on ProviderNotFoundException { /* Standalone fixture has local data only. */ }
-        if (mounted) await _load();
+        if (mounted) await PendingUserAction.run(_load);
       }, child: list);
 
   /// The rings card, wrapped when the results are held: a Stack of (the gap

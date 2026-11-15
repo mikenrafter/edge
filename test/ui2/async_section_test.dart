@@ -62,7 +62,9 @@ void main() {
         );
     await t.pumpWidget(page(pending: true, value: 'Stored result'));
     expect(find.text('Stored result'), findsOneWidget);
-    expect(find.byType(PendingContent), findsNothing);
+    // The shared owner stays mounted to announce user-started settlement;
+    // retained data must still be readable and interactive, never pending.
+    expect(find.byWidgetPredicate((w) => w is PendingContent && w.pending), findsNothing);
     await t.pumpWidget(page(pending: false));
     expect(find.text('No recorded data'), findsOneWidget);
     await t.pumpWidget(page(pending: false, failed: true));

@@ -3940,5 +3940,8 @@
   "sleepTabStoodOutCardTitle": "क्या अलग रहा",
   "sleepTabUsualCardTitle": "आपकी सामान्य नींद से तुलना",
   "sleepTabSignalsCardTitle": "रात के संकेत",
-  "sleepTabThePlanCardTitle": "योजना"
+  "sleepTabThePlanCardTitle": "योजना",
+  "pendingSectionLoading": "लोड हो रहा है, {name}",
+  "pendingSectionLoaded": "लोड हो गया, {name}",
+  "pendingSectionContent": "सामग्री"
 }

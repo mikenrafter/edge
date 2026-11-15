@@ -9844,5 +9844,8 @@
   "sleepTabStoodOutCardTitle": "Что выделилось",
   "sleepTabUsualCardTitle": "В сравнении с обычным",
   "sleepTabSignalsCardTitle": "Ночные показатели",
-  "sleepTabThePlanCardTitle": "План"
+  "sleepTabThePlanCardTitle": "План",
+  "pendingSectionLoading": "Загрузка, {name}",
+  "pendingSectionLoaded": "Загружено, {name}",
+  "pendingSectionContent": "содержимое"
 }

@@ -197,7 +197,9 @@ String accordionPrefKey(String id) => 'accordion_$id';
 /// neighbour would inherit the folded section's State and fold or open with it.
 /// So this widget is a thin const description and the State sits in a card
 /// keyed by [id]: an accordion that moves gets the State for its own id.
-class SettingsAccordion extends StatelessWidget {
+class SettingsAccordion extends StatelessWidget implements PendingSectionLabel {
+  @override
+  String get pendingSectionName => title;
   const SettingsAccordion(this.title,
       {super.key,
       required this.children,

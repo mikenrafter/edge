@@ -10,6 +10,8 @@ import 'load_memory.dart';
 export 'pending_scope.dart';
 import '../grammar.dart' show Surface, ChartFrame;
 import '../theme.dart';
+import '../../l10n/app_localizations.dart';
+import 'pending_scope.dart';
 import 'guide_plot.dart';
 import 'skeleton.dart' show SkeletonBar, paintSkeletonShapes, SkeletonShape, skeletonKindOfPlot;
 
@@ -35,10 +37,18 @@ class AsyncSection<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shown = value;
-    if (shown != null) return builder(context, shown);
     if (failed) return failureBuilder?.call(context) ?? const SizedBox.shrink();
-    if (!pending) return emptyBuilder?.call(context) ?? const SizedBox.shrink();
-    return PendingContent(pending: true, child: pendingBuilder(context));
+    final Widget child;
+    if (shown != null) {
+      child = builder(context, shown);
+    } else if (pending) {
+      child = pendingBuilder(context);
+    } else {
+      child = emptyBuilder?.call(context) ?? const SizedBox.shrink();
+    }
+    // Keep the pending owner mounted across settlement, so it can announce a
+    // user-started completion. Failed/cancelled sections never announce loaded.
+    return PendingContent(pending: pending && shown == null, child: child);
   }
 }
 
@@ -86,6 +96,20 @@ class _PendingContentState extends State<PendingContent>
   Timer? _delay;
   final _elapsed = Stopwatch();
   bool _visible = false;
+  bool _userStarted = false, _announceComplete = false;
+
+  String _sectionName(BuildContext context, AppLocalizations l) {
+    final child = widget.child;
+    String? name = child is PendingSectionLabel ? (child as PendingSectionLabel).pendingSectionName : null;
+    if (name == null) {
+      context.visitAncestorElements((ancestor) {
+        final section = ancestor.widget;
+        if (section is PendingSectionLabel) name = (section as PendingSectionLabel).pendingSectionName;
+        return name == null;
+      });
+    }
+    return name ?? l.pendingSectionContent;
+  }
   @override
   void initState() {
     super.initState();
@@ -95,6 +119,7 @@ class _PendingContentState extends State<PendingContent>
 
   void _start() {
     if (!widget.pending) return;
+    _userStarted = PendingUserAction.active;
     _elapsed
       ..reset()
       ..start();
@@ -119,31 +144,62 @@ class _PendingContentState extends State<PendingContent>
     _fade.reset();
     _visible = false;
     if (widget.pending) {
+      _announceComplete = false;
       _start();
     } else {
+      _announceComplete = _userStarted;
+      _userStarted = false;
+      if (_announceComplete) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _announceComplete) setState(() => _announceComplete = false);
+        });
+      }
       _fade.forward();
     }
   }
   @override
   void dispose() { _delay?.cancel(); _fade.dispose(); super.dispose(); }
   @override
-  Widget build(BuildContext context) => Focus(
-    canRequestFocus: false, skipTraversal: true,
-    descendantsAreFocusable: !widget.pending,
-    descendantsAreTraversable: !widget.pending,
-    child: ExcludeSemantics(excluding: widget.pending,
-      child: IgnorePointer(ignoring: widget.pending,
-        child: AnimatedBuilder(animation: _fade, child: widget.memoryKey == null
-              ? widget.child
-              : RememberedLayout(
-                  id: widget.memoryKey!,
-                  knownShape: widget.knownShape,
-                  pending: widget.pending,
-                  child: widget.child,
-                ),
-          builder: (_, child) => PendingTone(pulse: _PendingPulse.shared.value,
-            fade: _fade.value, child: _PendingPaint(pending: widget.pending,
-              visible: _visible, fade: _fade.value, child: child!))))));
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context) ?? lookupAppLocalizations(const Locale('en'));
+    final name = _sectionName(context, l);
+    final parentOwns = context.dependOnInheritedWidgetOfExactType<_PendingSemanticsOwner>()?.active ?? false;
+    final announce = _announceComplete && !parentOwns;
+    return Semantics(
+      container: true,
+      explicitChildNodes: true,
+      label: widget.pending ? l.pendingSectionLoading(name)
+          : announce ? l.pendingSectionLoaded(name) : null,
+      // Flutter's live-region flag uses polite announcements. A completion is
+      // exposed for one build only, so later data/pulse changes stay quiet.
+      liveRegion: announce,
+      child: _PendingSemanticsOwner(active: widget.pending || announce,
+        child: Focus(
+          canRequestFocus: false, skipTraversal: true,
+          descendantsAreFocusable: !widget.pending,
+          descendantsAreTraversable: !widget.pending,
+          child: ExcludeSemantics(excluding: widget.pending,
+            child: IgnorePointer(ignoring: widget.pending,
+              child: AnimatedBuilder(animation: _fade, child: widget.memoryKey == null
+                    ? widget.child
+                    : RememberedLayout(
+                        id: widget.memoryKey!,
+                        knownShape: widget.knownShape,
+                        pending: widget.pending,
+                        child: widget.child,
+                      ),
+                builder: (_, child) => PendingTone(pulse: _PendingPulse.shared.value,
+                  fade: _fade.value, child: _PendingPaint(pending: widget.pending,
+                    visible: _visible, fade: _fade.value, child: child!))))))));
+  }
+}
+
+class _PendingSemanticsOwner extends InheritedWidget {
+  const _PendingSemanticsOwner({required this.active, required super.child});
+  final bool active;
+  @override
+  bool updateShouldNotify(_PendingSemanticsOwner old) => active != old.active;
+
 }
 
 class _PendingPaint extends SingleChildRenderObjectWidget {

@@ -19427,5 +19427,22 @@
   "sleepTabStoodOutCardTitle": "What stood out",
   "sleepTabUsualCardTitle": "Against your usual",
   "sleepTabSignalsCardTitle": "Overnight signals",
-  "sleepTabThePlanCardTitle": "The Plan"
+  "sleepTabThePlanCardTitle": "The Plan",
+  "pendingSectionLoading": "Loading, {name}",
+  "@pendingSectionLoading": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "pendingSectionLoaded": "Loaded, {name}",
+  "@pendingSectionLoaded": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "pendingSectionContent": "content"
 }

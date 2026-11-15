@@ -3940,5 +3940,8 @@
   "sleepTabStoodOutCardTitle": "值得注意的变化",
   "sleepTabUsualCardTitle": "与你的平时相比",
   "sleepTabSignalsCardTitle": "夜间信号",
-  "sleepTabThePlanCardTitle": "睡眠计划"
+  "sleepTabThePlanCardTitle": "睡眠计划",
+  "pendingSectionLoading": "正在加载，{name}",
+  "pendingSectionLoaded": "已加载，{name}",
+  "pendingSectionContent": "内容"
 }

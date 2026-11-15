@@ -2426,9 +2426,9 @@ Widget detailScaffold(BuildContext c, String title, List<Widget> body,
               trailing: trailing,
               onBack: () => Navigator.of(c).maybePop()),
         Expanded(
-          child: ListView(
+          child: PendingSectionScope(pendingSectionName: title, child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x12),
-              children: body),
+              children: body)),
         ),
       ]),
     ),
@@ -2543,7 +2543,9 @@ class DayNav extends StatelessWidget {
             key: const ValueKey('day-nav-choose'),
             onTap: () async {
               final picked = await chooseDay(c, days, day);
-              if (picked != null && picked != day) onDay(picked);
+              if (picked != null && picked != day) {
+                PendingUserAction.run(() => onDay(picked));
+              }
             },
               semanticLabel:
                   l?.metricDetailChooseDayShowing(dayNavLabel(day, l)) ??

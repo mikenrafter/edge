@@ -103,6 +103,10 @@ class Pressable extends StatefulWidget {
 class _PressableState extends State<Pressable> {
   bool _down = false;
   int? _pointer;
+  void _activate() {
+    final action = widget.onTap;
+    if (action != null) PendingUserAction.run(action);
+  }
 
   // The guide run (guides/guide_dim.dart) paints its dim or skeleton INSIDE the
   // component, so it moves with the content in every frame. The mark sits BELOW this
@@ -131,7 +135,7 @@ class _PressableState extends State<Pressable> {
       return Semantics(
         button: true,
         label: widget.semanticLabel,
-        onTap: widget.onTap,
+        onTap: widget.onTap == null ? null : _activate,
         excludeSemantics: true,
         child: GuideUnitMark(component: c, child: Listener(
           behavior: HitTestBehavior.opaque,
@@ -173,7 +177,7 @@ class _PressableState extends State<Pressable> {
       label: widget.semanticLabel,
       child: GuideUnitMark(component: c, child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
+        onTap: widget.onTap == null ? null : _activate,
         onTapDown: (_) => setState(() => _down = true),
         onTapUp: (_) => setState(() => _down = false),
         onTapCancel: () => setState(() => _down = false),
@@ -1479,7 +1483,9 @@ class _ChartHubHostState extends State<_ChartHubHost> {
 }
 
 /// The base card surface. Elevation, not outline.
-class Surface extends StatelessWidget {
+class Surface extends StatelessWidget implements PendingSectionLabel {
+  @override
+  String? get pendingSectionName => semanticLabel ?? (child is PendingSectionLabel ? (child as PendingSectionLabel).pendingSectionName : null);
   final Widget child;
   final EdgeInsets pad;
   final VoidCallback? onTap;
@@ -1557,7 +1563,9 @@ class InsideCard extends InheritedWidget {
 }
 
 /// Full-width section. Whitespace separates concepts, not borders.
-class Section extends StatelessWidget {
+class Section extends StatelessWidget implements PendingSectionLabel {
+  @override
+  String? get pendingSectionName => title;
   final bool wrapTitle;
   final String title;
   final String? action;
@@ -1634,7 +1642,9 @@ class Section extends StatelessWidget {
 
 // ══════════════════ A · SIGNAL ══════════════════
 /// One number. Glanceable. Lives in grids.
-class SignalCard extends StatelessWidget {
+class SignalCard extends StatelessWidget implements PendingSectionLabel {
+  @override
+  String get pendingSectionName => label;
   final IconData icon;
   final Color color;
   final String label, value, unit, sub;
@@ -1765,7 +1775,9 @@ class SignalCard extends StatelessWidget {
 
 // ══════════════════ B · PROGRESS ══════════════════
 /// Something moving toward a goal. Current → target.
-class ProgressCard extends StatelessWidget {
+class ProgressCard extends StatelessWidget implements PendingSectionLabel {
+  @override
+  String get pendingSectionName => label;
   final String label, value, target;
   final double frac;
   final Color color;
@@ -1875,7 +1887,9 @@ class _Bar extends StatelessWidget {
 ///
 /// With [dayOf], pressing and holding the sparkline reads the day under the
 /// finger in place of [window]; a tap still opens [onTap].
-class TrendCard extends StatefulWidget {
+class TrendCard extends StatefulWidget implements PendingSectionLabel {
+  @override
+  String get pendingSectionName => label;
   final String label, value, unit, delta, window;
   final bool up;
 
@@ -2770,7 +2784,9 @@ String _trendWord(Trend? t) => switch (t) {
     };
 
 /// A metric in a list: name → value → trend.
-class MetricRow extends StatelessWidget {
+class MetricRow extends StatelessWidget implements PendingSectionLabel {
+  @override
+  String get pendingSectionName => name;
   final IconData icon;
   final Color color;
   final String name, sub, value, unit;
@@ -3606,11 +3622,13 @@ Widget tabRootList({
 }) =>
     LayoutBuilder(builder: (c, box) {
       final gutter = box.maxWidth > 600 ? (box.maxWidth - 600) / 2 : 0.0;
-      return ListView(
+      return PendingSectionScope(
+        pendingSectionName: children.whereType<ScreenTitle>().firstOrNull?.title,
+        child: ListView(
         physics: physics,
         padding: padding + EdgeInsets.symmetric(horizontal: gutter),
         children: children,
-      );
+      ));
     });
 
 /// The header every tab root shares: a one-line title and, at its end, either
@@ -3867,7 +3885,9 @@ class BigButton extends StatelessWidget {
 /// the start, middle and end of what is actually drawn. They must describe the
 /// range on screen — a fixed `['30 days ago', '15', 'Today']` under a
 /// seven-day window is worse than no labels at all.
-class ChartFrame extends StatelessWidget {
+class ChartFrame extends StatelessWidget implements PendingSectionLabel {
+  @override
+  String? get pendingSectionName => title;
   final String title;
 
   /// `bpm`, `ms`, `min`, `°`. Always rendered.

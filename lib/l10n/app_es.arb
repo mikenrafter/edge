@@ -3958,5 +3958,8 @@
   "sleepTabStoodOutCardTitle": "Lo que destacó",
   "sleepTabUsualCardTitle": "Frente a lo habitual",
   "sleepTabSignalsCardTitle": "Señales nocturnas",
-  "sleepTabThePlanCardTitle": "El plan"
+  "sleepTabThePlanCardTitle": "El plan",
+  "pendingSectionLoading": "Cargando, {name}",
+  "pendingSectionLoaded": "Cargado, {name}",
+  "pendingSectionContent": "contenido"
 }
