@@ -12,6 +12,12 @@ import 'package:openstrap_edge/notify/notification_center.dart';
 import 'package:openstrap_edge/notify/notification_event.dart';
 import 'package:openstrap_edge/notify/notification_ids.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:openstrap_edge/notify/notification_prefs.dart';
+import 'package:openstrap_edge/notify/notification_service.dart';
+import 'package:openstrap_edge/notify/alert_dispatcher.dart';
+import 'package:openstrap_edge/notify/alert_rule.dart';
+import 'package:openstrap_edge/state/feature_flags.dart';
+import 'package:openstrap_edge/data/day_label.dart';
 import 'backup/backup_support.dart';
 import 'pulse_episode_store_test.dart' show detection;
 
@@ -47,6 +53,116 @@ void main() {
     final store = PulseEpisodeStore(await LocalDb.instance);
     await store.reconcile(detection(offset: offset), origin: origin, nowMs: 1);
     return store;
+  }
+
+  // WHY/CLAIM(pulse-quiet): neither real-time nor summary alerts may wake
+  // the wearer, even when critical health alerts may override quiet hours.
+  // # catches: critical pulse priority bypassing quiet hours or consuming debt.
+  for (final origin in ['sync', 'bulk']) {
+    test('$origin episode waits through quiet hours without consuming delivery', () async {
+      final store = await seed(origin: origin);
+      final now = DateTime.now();
+      final minute = now.hour * 60 + now.minute;
+      await (await NotificationPrefs.load()).copyWith(
+        quietEnabled: true,
+        quietStartMin: (minute + 1380) % 1440,
+        quietEndMin: (minute + 60) % 1440,
+        criticalOverridesQuiet: true,
+      ).save();
+      await PulseEpisodeDelivery.run();
+      expect(shown, isEmpty, reason: 'no OS presentation means no sound or vibration');
+      expect((await store.get('strap:0'))!.alertState, 'owed');
+      await LocalDb.close(); // quiet deferral survives process/database reopen
+      expect(await LocalDb.notifFiredAt('pulse-episode:strap:0'), isNull);
+      await (await NotificationPrefs.load()).copyWith(quietEnabled: false).save();
+      await PulseEpisodeDelivery.run();
+      expect(shown, hasLength(1));
+      expect(shown.single.silent, isTrue);
+      final details = NotificationService.instance.detailsForEvent(shown.single);
+      expect(details.android!.playSound, isFalse);
+      expect(details.android!.enableVibration, isFalse);
+      expect(details.android!.channelId, isNot('health'),
+          reason: 'Android channel sound settings are immutable after creation');
+      expect(details.iOS!.presentSound, isFalse);
+      expect((await PulseEpisodeStore(await LocalDb.instance).get('strap:0'))!.alertState, origin == 'sync' ? 'sent' : 'summary');
+      await PulseEpisodeDelivery.run();
+      expect(shown, hasLength(1));
+    });
+  }
+
+  // WHY/CLAIM(pulse-reading-copy): actual delivered text follows the app
+  // language and describes a reading without presenting a diagnosis.
+  // # catches: hardcoded English episode notifications or untranslated summaries.
+  const readingTitles = {
+    'en': 'Irregular rhythm reading', 'de': 'Messung mit unregelmäßigem Rhythmus',
+    'es': 'Lectura de ritmo irregular', 'fr': 'Mesure de rythme irrégulier',
+    'hi': 'अनियमित लय की रीडिंग', 'ru': 'Запись нерегулярного ритма',
+    'zh': '不规则心律读数',
+  };
+  for (final entry in readingTitles.entries) {
+    for (final origin in ['sync', 'bulk']) {
+      test('${entry.key} $origin episode uses calm translated reading copy', () async {
+        await (await SharedPreferences.getInstance()).setString('locale_override', entry.key);
+        await seed(origin: origin);
+        await PulseEpisodeDelivery.run();
+        expect(shown, hasLength(1));
+        if (origin == 'sync') expect(shown.single.title, entry.value);
+        if (origin == 'bulk') expect(shown.single.title, contains('1'));
+        expect(shown.single.body, contains('1970'));
+        if (entry.key != 'en') {
+          expect(shown.single.body, isNot(contains('A wrist pulse flag')));
+          expect(shown.single.title, isNot(startsWith('Found')));
+        }
+      });
+    }
+  }
+
+  // WHY/CLAIM(pulse-quiet): the shared gate covers both transports and the
+  // legacy phone fallback, even if another caller incorrectly marks it critical.
+  // # catches: phone-only quiet gating or a critical override on either route.
+  for (final dispatcherEnabled in [false, true]) {
+    for (final route in ['/pulse-episode?id=strap%3A0', '/pulse-episodes']) {
+      test('quiet gate covers $route with dispatcher=$dispatcherEnabled', () async {
+        final center = NotificationCenter.instance;
+        final originalDispatcher = center.dispatcher;
+        addTearDown(() async {
+          center.dispatcher = originalDispatcher;
+          await FeatureFlags.load();
+        });
+        await (await SharedPreferences.getInstance()).setBool(
+            FeatureFlag.alertDispatcher.prefsKey, dispatcherEnabled);
+        await FeatureFlags.load();
+        var bands = 0;
+        center.dispatcher = AlertDispatcher(
+          phone: () async => false,
+          band: () async { bands++; return true; },
+          isConnected: () => true,
+          ledger: const NotificationCenterDeliveryLedger(),
+        );
+        final now = DateTime.now();
+        final minute = now.hour * 60 + now.minute;
+        await (await NotificationPrefs.load()).withAlertRule(const AlertRule(
+          id: 'health', kind: 'health', destinations: 3,
+          channelPolicyId: 'health',
+        ).toJson()).copyWith(
+          quietEnabled: true, quietStartMin: (minute + 1380) % 1440,
+          quietEndMin: (minute + 60) % 1440, criticalOverridesQuiet: true,
+        ).save();
+        final event = NotificationEvent(
+          dedupeKey: 'pulse-quiet:$route', category: NotifCategory.health,
+          priority: NotifPriority.critical, title: 'Reading', body: 'Reading',
+          date: todayLabel(), route: route,
+        );
+        expect(await center.emitReaching(event), isEmpty);
+        expect(shown, isEmpty);
+        expect(bands, 0);
+        await (await NotificationPrefs.load()).copyWith(quietEnabled: false).save();
+        expect(await center.emitReaching(event),
+            dispatcherEnabled ? {'phone', 'band'} : {'phone'});
+        expect(shown, hasLength(1));
+        expect(bands, dispatcherEnabled ? 1 : 0);
+      });
+    }
   }
 
   // WHY/CLAIM(health-episode-read): the production repository serves the real

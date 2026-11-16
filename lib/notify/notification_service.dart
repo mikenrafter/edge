@@ -457,6 +457,8 @@ class NotificationService {
     }
   }
 
+  NotificationDetails detailsForEvent(NotificationEvent event) => _details(event.category);
+
   NotificationDetails _details(NotifCategory c) {
     final ch = _channelFor(c);
     return NotificationDetails(

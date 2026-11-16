@@ -36,8 +36,14 @@ Future<void> _seedOldDb(String name, int version) async {
 
 Future<Database> _openThroughLocalDb(String name) async {
   await LocalDb.close();
+  LocalDb.lastRebuild = null;
   LocalDb.dbName = name;
-  return LocalDb.instance;
+  final db = await LocalDb.instance;
+  // WHY/CLAIM(pulse-sparse-upgrade): missing decoded tables are not corruption.
+  // # catches: migration 89 quarantining a valid marker-only legacy database.
+  expect(LocalDb.lastRebuild, isNull,
+      reason: 'legacy upgrades must preserve the original database');
+  return db;
 }
 
 Future<bool> _hasTable(Database db, String table) async =>

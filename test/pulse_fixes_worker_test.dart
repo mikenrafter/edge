@@ -82,16 +82,39 @@ void main() {
     return PulseEpisodeStore(await LocalDb.instance).list();
   }
 
+  // Accepted v4 outcomes: these seven literal excerpts remain eligible.
+  // The original full recordings retain eight episodes; excerpts omit later pairs.
+  const retained = {2, 3, 4, 6, 7, 9, 11};
   for (var i = 0; i < sleepRrFixtures.length; i++) {
-    // WHY/CLAIM(pulse-sleep-pattern): the fixed thresholds flagged breathing variation.
-    // # catches: ignoring sleep context or applying only the old metric thresholds.
-    test('sleep RR capture ${i + 1} does not qualify', () async {
-      await insertRows(
-        await LocalDb.instance,
-        pulseFixRows(sleepRrFixtures[i]),
-      );
+    final capture = i + 1;
+    final why = capture == 7
+        ? 'residual irregularity survives a supported fit'
+        : 'single respiratory fit is too weak to exclude';
+    // WHY/CLAIM(pulse-sleep-pattern): preserve the owner's accepted safety trade-off.
+    // # catches: blanket sleep suppression, weakened fit guard or residual floors.
+    test('sleep RR capture $capture: ${retained.contains(capture) ? why : 'breathing explains irregularity'}', () async {
+      await insertRows(await LocalDb.instance, pulseFixRows(sleepRrFixtures[i]));
       await pulseFixContext(motion: 0.006, wrist: 1);
-      expect(await run(), isEmpty);
+      final episodes = await run();
+      if (!retained.contains(capture)) {
+        expect(episodes, isEmpty);
+        return;
+      }
+      expect(episodes, hasLength(1), reason: why);
+      final stored = await PulseEpisodeStore(await LocalDb.instance).get(episodes.single.id);
+      final windows = (stored!.evidence!['windows'] as List).cast<Map>();
+      final residuals = windows.map((w) => (w['breathing'] as Map)['residual'] as Map).toList();
+      expect(residuals, isNotEmpty);
+      if (capture == 7) {
+        expect(residuals.any((r) => r['status'] == 'supported' &&
+            (r['ratio'] as num) >= .7 && (r['pnnPct'] as num) >= 30), isTrue,
+            reason: 'breathing subtraction still leaves independent irregularity');
+      } else {
+        expect(residuals.every((r) => r['status'] == 'weak' &&
+            (r['explainedVariance'] as num) < .12), isTrue,
+            reason: 'a weak fit cannot justify exclusion even if residual floors fail');
+      }
+      expect(residuals.every((r) => r['excludes'] == false), isTrue);
     });
   }
   // WHY/CLAIM(pulse-sleep-pattern): low heart rate alone must not hide irregularity.
