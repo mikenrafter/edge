@@ -1,4 +1,9 @@
 {
+  "sleepEditorZoom": "Zoom",
+  "sleepEditorResetZoom": "Zoom zurücksetzen",
+  "sleepEditorLoading": "Schlaf wird geladen…",
+  "sleepEditorLoadFailed": "Diese Nacht konnte nicht geladen werden.",
+  "sleepEditorRetry": "Erneut versuchen",
   "sleepEditorChooseEntry": "Schlafeintrag auswählen",
   "sleepEditorSourceAutomatic": "Erkannt",
   "sleepEditorSourceManual": "Selbst festgelegt",

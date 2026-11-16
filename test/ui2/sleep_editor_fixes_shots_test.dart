@@ -47,7 +47,9 @@ void main() {
     )));
     await t.pumpAndSettle();
     await shot('editor-default');
-    await t.tap(find.byKey(const ValueKey('sleep-editor-zoom-in')));
+    await t.tap(find.byKey(const ValueKey('sleep-editor-zoom')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('sleep-editor-zoom')));
     await t.pumpAndSettle();
     await shot('editor-zoomed');
     await t.pumpWidget(RepaintBoundary(key: shotKey, child: MaterialApp(
@@ -60,6 +62,30 @@ void main() {
     await t.pumpAndSettle();
     await shot('editor-with-nap');
   }, skip: Platform.environment['EDITOR_FIXES_SHOTS'] != '1');
+  testWidgets('round 2 loading editor render', (t) async {
+    t.view.physicalSize = const Size(412, 850);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.runAsync(loadFonts);
+    const key = ValueKey('editor-r2-loading-shot');
+    final pending = Completer<SleepEditorData>();
+    await t.pumpWidget(RepaintBoundary(key: key, child: MaterialApp(
+      debugShowCheckedModeBanner: false, theme: buildTheme(Brightness.dark),
+      home: SleepTimelineEditorRoute(load: () => pending.future, save: _Never()),
+    )));
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('sleep-editor-loading')), findsOneWidget);
+    expect(t.takeException(), isNull);
+    final boundary = t.renderObject<RenderRepaintBoundary>(find.byKey(key));
+    await t.runAsync(() async {
+      final image = await boundary.toImage(pixelRatio: 2);
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      final dir = Directory('build/editor-fixes-shots')..createSync(recursive: true);
+      File('${dir.path}/r2-editor-loading.png').writeAsBytesSync(bytes!.buffer.asUint8List());
+      image.dispose();
+    });
+  }, skip: Platform.environment['EDITOR_FIXES_SHOTS'] != '1');
+
   testWidgets('review r1 overlap chooser, visible pending action and cancellation renders', (t) async {
     t.view.physicalSize = const Size(412, 1000);
     t.view.devicePixelRatio = 1;

@@ -266,12 +266,9 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
       Surface(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           TimelineTitleRow('Your day', pills: [
-            TimelinePill('Zoom', key: ActivitiesTimeline.zoomKey, icon: LucideIcons.search,
-                on: controller.zoomSelection != null,
-                onTap: () => setState(controller.toggleZoomSelection)),
-            if (controller.zoomed)
-              TimelinePill('Reset zoom', key: ActivitiesTimeline.resetKey,
-                  onTap: () => setState(controller.reset)),
+            TimelineZoomControls(controller: controller,
+              zoomLabel: 'Zoom', resetLabel: 'Reset zoom',
+              zoomKey: ActivitiesTimeline.zoomKey, resetKey: ActivitiesTimeline.resetKey),
           ]),
           const SizedBox(height: S.x2),
           DayTimelineChart(

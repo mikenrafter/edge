@@ -10,7 +10,7 @@
 //  • Zoom: every change glides 1.5-2 s (ease in-out), never under 30 min;
 //    double-tap empty space zooms in 30% around the tap; reset glides home.
 //  • Blocks (sleep editor): one active block with two handles, the others
-//    labelled bands. Tap a band selects it; double tap selects and zooms.
+//    labelled bands. Tap selects; double tap selects and uses the day zoom.
 //    Dragging a handle shows the magnifier: 5-minute steps, then 1-minute
 //    steps after a 0.6 s hold, a haptic per minute (stronger on round ones).
 //  • ⌕ zoom selection (Activities): two handles, then glide to them.
@@ -40,8 +40,8 @@ class TimelineController extends ChangeNotifier {
     double? scrub,
     double minimumSpan = kMinViewSec,
   })  : _minimumSpan = minimumSpan,
-        home = home.clampTo(domainStart, domainEnd, minimumSpan: minimumSpan),
-        _view = home.clampTo(domainStart, domainEnd, minimumSpan: minimumSpan),
+        home = home.clampTo(domainStart, domainEnd, minimumSpan: math.min(minimumSpan, home.span)),
+        _view = home.clampTo(domainStart, domainEnd, minimumSpan: math.min(minimumSpan, home.span)),
         _scrub = scrub;
 
   final double domainStart, domainEnd;
@@ -382,7 +382,7 @@ class _DayTimelineChartState extends State<DayTimelineChart>
       widget.listener?.blockSelected(id, zoom: zoom);
       if (zoom) {
         final c = widget.controller;
-        c.glideTo(framing(band.start, band.end, c.domainStart, c.domainEnd));
+        c.zoomAt(t);
       }
     } finally {
       _choosingBlock = false;
@@ -411,7 +411,7 @@ class _DayTimelineChartState extends State<DayTimelineChart>
     final c = widget.controller;
     if (band != null && widget.listener != null) {
       widget.listener!.blockSelected(band.id, zoom: true);
-      c.glideTo(framing(band.start, band.end, c.domainStart, c.domainEnd));
+      c.zoomAt(t);
       return;
     }
     c.zoomAt(t);
@@ -1025,6 +1025,36 @@ class TimelinePill extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Shared controls and their semantics for both day and sleep timelines.
+/// The screen supplies labels and keys; all range changes belong to the controller.
+class TimelineZoomControls extends StatelessWidget {
+  const TimelineZoomControls({super.key, required this.controller,
+    required this.zoomLabel, required this.resetLabel,
+    required this.zoomKey, required this.resetKey});
+  final TimelineController controller;
+  final String zoomLabel, resetLabel;
+  final Key zoomKey, resetKey;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: controller,
+    builder: (context, _) => Wrap(alignment: WrapAlignment.end,
+        crossAxisAlignment: WrapCrossAlignment.center, children: [
+      MergeSemantics(key: zoomKey, child: Semantics(
+        selected: controller.zoomSelection != null, child: TextButton.icon(
+        style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+        onPressed: controller.toggleZoomSelection,
+        icon: const Icon(LucideIcons.search, size: 16),
+        label: Text(zoomLabel),
+      ))),
+      if (controller.zoomed)
+        TextButton(key: resetKey,
+          style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+          onPressed: controller.reset, child: Text(resetLabel)),
+    ]),
+  );
 }
 
 /// The chart card's title row: the title (and a small subtitle) on the left,

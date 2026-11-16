@@ -1,14 +1,18 @@
 // WHY: phone round 2. CLAIM(sleep-editor-shared-zoom): identical gestures
 // must use the day view's controller and targets, even over a sleep block.
 import 'dart:async';
+import 'dart:ui' show Tristate;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/data/sleep_edit_write.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/day_timeline/activities_timeline.dart';
+import 'package:openstrap_edge/ui2/day_timeline/night_card.dart';
+import 'package:openstrap_edge/ui2/day_timeline/pilot_flags.dart';
 import 'package:openstrap_edge/ui2/day_timeline/sleep_timeline_editor.dart';
 import 'package:openstrap_edge/ui2/day_timeline/timeline_chart.dart';
 import 'package:openstrap_edge/ui2/day_timeline/timeline_model.dart';
@@ -16,6 +20,7 @@ import 'package:openstrap_edge/ui2/screens/day_review.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'package:openstrap_edge/ui2/screens/sleep_detail.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
+import 'package:openstrap_edge/ui2/grammar.dart';
 
 import '../support/day_timeline_fixtures.dart';
 
@@ -29,7 +34,7 @@ class _Saver implements SleepEditSaver {
       throw StateError('Gestures must never write');
 }
 class _LoadingRepo extends LocalRepository {
-  final graph = Completer<Map<String, dynamic>>();
+  var graph = Completer<Map<String, dynamic>>();
   int reads = 0;
   @override
   Future<Map<String, dynamic>> getDayTimeline(String date) {
@@ -62,9 +67,10 @@ void main() {
       await t.pumpWidget(const SizedBox());
       await t.pumpWidget(MaterialApp(theme: buildTheme(Brightness.dark), home: sleep
         ? SleepTimelineEditor(data: data, save: _Saver())
-        : Scaffold(body: ActivitiesTimeline(data: TimelineData(day: data.day,
+        : Scaffold(body: Padding(padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: ActivitiesTimeline(data: TimelineData(day: data.day,
             graph: DayGraph(dayStart: data.domainStart, hr: data.hr, movement: data.movement)),
-            rows: const [], review: null, editor: _Editor()))));
+            rows: const [], review: null, editor: _Editor())))));
       await t.pumpAndSettle();
       final controller = sleep
         ? t.state<SleepTimelineEditorState>(find.byType(SleepTimelineEditor)).controller
@@ -118,6 +124,8 @@ void main() {
   // CLAIM(sleep-editor-immediate-route): disk latency cannot delay navigation
   // or allow three in-flight loads to push three routes.
   testWidgets('three Edit sleep taps push one route before data loads and back once returns', (t) async {
+    DayTimelinePilot.debugOverride[DayTimelinePilot.sleep] = true;
+    addTearDown(DayTimelinePilot.debugOverride.clear);
     final repo = _LoadingRepo();
     final app = AppState.forTesting()..repo = repo;
     addTearDown(app.dispose);
@@ -134,10 +142,15 @@ void main() {
         })))));
     await t.pumpAndSettle();
     final tab = t.state(find.byType(SleepDetail));
-    for (var i = 0; i < 3; i++) {
-      unawaited((tab as dynamic).openTimeline() as Future<void>);
-    }
-    await t.pump(); // First frame, repository graph still blocked.
+    final entry = find.byKey(NightCard.askKey);
+    await t.ensureVisible(entry);
+    await t.pumpAndSettle();
+    // Deliver a burst through the actual entry control's callback. Capturing
+    // it also covers queued taps after the incoming route blocks hit testing.
+    final tap = t.widget<Pressable>(entry).onTap!;
+    for (var i = 0; i < 3; i++) { tap(); }
+    await t.pump(); // Starts the route transition at opacity zero.
+    await t.pump(const Duration(milliseconds: 16)); // First drawn editor frame; read still blocked.
     expect(repo.graph.isCompleted, isFalse);
     expect(routes.pushed, hasLength(2)); // Sleep tab + exactly one editor.
     expect(find.text('Edit sleep'), findsOneWidget);
@@ -177,6 +190,7 @@ void main() {
     unawaited((tab as dynamic).openTimeline() as Future<void>);
     await t.pump();
     expect(routes.pushed, hasLength(2));
+    await t.pump(const Duration(milliseconds: 16));
     Navigator.of(t.element(find.byKey(const ValueKey('sleep-editor-loading')))).pop();
     await t.pumpAndSettle();
     expect(identical(t.state(find.byType(SleepDetail)), tab), isTrue);
@@ -188,6 +202,71 @@ void main() {
     await t.pumpAndSettle();
     expect(find.byType(SleepTimelineEditor), findsOneWidget);
     expect(routes.pushed, hasLength(3));
+  });
+
+  // CLAIM(sleep-editor-immediate-route): a failed read stays inside the single
+  // editor route and can retry without losing the selected Sleep tab night.
+  testWidgets('load failure retries inside the same editor route', (t) async {
+    final repo = _LoadingRepo();
+    final app = AppState.forTesting()..repo = repo;
+    addTearDown(app.dispose);
+    final routes = _Routes();
+    final d = dtNight(withNap: false);
+    await t.pumpWidget(ChangeNotifierProvider<AppState>.value(value: app,
+      child: MaterialApp(theme: buildTheme(Brightness.dark), navigatorObservers: [routes],
+        home: SleepDetail(day: d.day, data: SleepData(day: d.day, night: {
+          'onset_ts': d.main.start, 'wake_ts': d.main.end, 'duration_min': 480,
+        })))));
+    await t.pumpAndSettle();
+    final tab = t.state(find.byType(SleepDetail));
+    unawaited((tab as dynamic).openTimeline() as Future<void>);
+    await t.pumpAndSettle();
+    repo.graph.completeError(StateError('read failed'));
+    await t.pumpAndSettle();
+    expect(find.text('Could not load this night.'), findsOneWidget);
+    unawaited((tab as dynamic).openTimeline() as Future<void>);
+    await t.pump();
+    expect(routes.pushed, hasLength(2));
+    repo.graph = Completer<Map<String, dynamic>>();
+    await t.tap(find.text('Try again'));
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('sleep-editor-loading')), findsOneWidget);
+    repo.graph.complete({});
+    await t.pumpAndSettle();
+    expect(find.byType(SleepTimelineEditor), findsOneWidget);
+    expect(routes.pushed, hasLength(2));
+  });
+
+  // WHY: replacing icon controls must preserve accessible 48 dp actions in
+  // every shipped locale, including larger text. CLAIM(sleep-editor-shared-zoom).
+  testWidgets('shared zoom controls expose selected state and 48 dp targets in every locale', (t) async {
+    for (final language in ['en', 'de', 'es', 'fr', 'hi', 'ru', 'zh']) {
+      final l = lookupAppLocalizations(Locale(language));
+      final c = TimelineController(domainStart: 0, domainEnd: 86400,
+        home: const TimelineView(0, 86400));
+      addTearDown(c.dispose);
+      c.zoomAt(43200);
+      await t.pumpWidget(MaterialApp(theme: buildTheme(Brightness.dark),
+        home: Scaffold(body: MediaQuery(data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+          child: SizedBox(width: 260, child: TimelineZoomControls(controller: c,
+            zoomLabel: l.sleepEditorZoom, resetLabel: l.sleepEditorResetZoom,
+            zoomKey: const ValueKey('zoom'), resetKey: const ValueKey('reset')))))));
+      await t.pumpAndSettle();
+      for (final key in ['zoom', 'reset']) {
+        final size = t.getSize(find.byKey(ValueKey(key)));
+        expect(size.width, greaterThanOrEqualTo(48), reason: language);
+        expect(size.height, greaterThanOrEqualTo(48), reason: language);
+      }
+      await t.tap(find.byKey(const ValueKey('zoom')));
+      await t.pumpAndSettle();
+      expect(t.getSemantics(find.byKey(const ValueKey('zoom'))).flagsCollection.isSelected,
+        Tristate.isTrue, reason: language);
+      await t.tap(find.byKey(const ValueKey('reset')));
+      await t.pumpAndSettle();
+      expect(c.view, const TimelineView(0, 86400));
+      expect(c.zoomSelection, isNull);
+      expect(t.takeException(), isNull, reason: language);
+    }
   });
 
 }

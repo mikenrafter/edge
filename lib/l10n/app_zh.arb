@@ -1,4 +1,9 @@
 {
+  "sleepEditorZoom": "缩放",
+  "sleepEditorResetZoom": "重置缩放",
+  "sleepEditorLoading": "正在加载睡眠…",
+  "sleepEditorLoadFailed": "无法加载这一晚。",
+  "sleepEditorRetry": "重试",
   "sleepEditorChooseEntry": "选择睡眠记录",
   "sleepEditorSourceAutomatic": "已检测到",
   "sleepEditorSourceManual": "由你设置",

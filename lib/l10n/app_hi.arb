@@ -1,4 +1,9 @@
 {
+  "sleepEditorZoom": "ज़ूम",
+  "sleepEditorResetZoom": "ज़ूम रीसेट करें",
+  "sleepEditorLoading": "नींद लोड हो रही है…",
+  "sleepEditorLoadFailed": "इस रात का डेटा लोड नहीं हो सका।",
+  "sleepEditorRetry": "फिर कोशिश करें",
   "sleepEditorChooseEntry": "नींद की प्रविष्टि चुनें",
   "sleepEditorSourceAutomatic": "पता चला",
   "sleepEditorSourceManual": "आपने तय किया",

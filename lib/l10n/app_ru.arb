@@ -1,4 +1,9 @@
 {
+  "sleepEditorZoom": "Масштаб",
+  "sleepEditorResetZoom": "Сбросить масштаб",
+  "sleepEditorLoading": "Загрузка сна…",
+  "sleepEditorLoadFailed": "Не удалось загрузить эту ночь.",
+  "sleepEditorRetry": "Повторить",
   "sleepEditorChooseEntry": "Выбрать запись сна",
   "sleepEditorSourceAutomatic": "Обнаружено",
   "sleepEditorSourceManual": "Задано вами",

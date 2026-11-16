@@ -56,38 +56,24 @@ Future<SleepTimelineEditorState> _open(WidgetTester t, _Saver saver,
 }
 
 void main() {
-  testWidgets('home includes main sleep and the afternoon nap exactly; buttons reset and expand', (t) async {
+  // Round 2 replaces editor step buttons with the day view's selection control.
+  testWidgets('full night includes the afternoon nap; shared selection and reset preserve it exactly', (t) async {
     final s = await _open(t, _Saver());
     final home = TimelineView(dtAt(160).toDouble(), dtAt(1090).toDouble());
     expect(s.controller.view, home);
-    for (final id in ['zoom-in', 'zoom-out', 'reset']) {
-      final f = find.byKey(ValueKey('sleep-editor-$id'));
-      expect(f, findsOneWidget);
-      final size = t.getSize(f);
-      expect(size.width, greaterThanOrEqualTo(48));
-      expect(size.height, greaterThanOrEqualTo(48));
-    }
-    expect(find.byTooltip('Zoom in'), findsOneWidget);
-    expect(find.byTooltip('Zoom out'), findsOneWidget);
-    expect(find.byTooltip('Full night'), findsOneWidget);
-    await t.tap(find.byKey(const ValueKey('sleep-editor-zoom-in')));
+    final zoom = find.byKey(const ValueKey('sleep-editor-zoom'));
+    expect(t.getSize(zoom).height, greaterThanOrEqualTo(48));
+    expect(find.byKey(const ValueKey('sleep-editor-zoom-in')), findsNothing);
+    expect(find.byKey(const ValueKey('sleep-editor-zoom-out')), findsNothing);
+    await t.tap(zoom);
     await t.pumpAndSettle();
-    expect(s.controller.view.span, closeTo(651 * 60, .001)); // 930 minutes × 0.7.
-    await t.tap(find.byKey(const ValueKey('sleep-editor-zoom-in')));
+    expect(s.controller.zoomSelection, isNotNull);
+    await t.tap(zoom);
     await t.pumpAndSettle();
-    expect(s.controller.view.span, closeTo(455.7 * 60, .001));
-    await t.tap(find.byKey(const ValueKey('sleep-editor-zoom-out')));
-    await t.pumpAndSettle();
-    expect(s.controller.view.span, closeTo(651 * 60, .001));
-    await t.tap(find.byKey(const ValueKey('sleep-editor-zoom-out')));
-    await t.pumpAndSettle();
-    expect(s.controller.view, home);
-    await t.tap(find.byKey(const ValueKey('sleep-editor-zoom-out')));
-    await t.pumpAndSettle();
-    expect(s.controller.view, home);
-    s.controller.glideTo(TimelineView(dtAt(330).toDouble(), dtAt(390).toDouble()));
-    await t.pumpAndSettle();
-    await t.tap(find.byKey(SleepTimelineEditor.resetKey));
+    expect(s.controller.view.span, lessThan(home.span));
+    final reset = find.byKey(SleepTimelineEditor.resetKey);
+    expect(t.getSize(reset).height, greaterThanOrEqualTo(48));
+    await t.tap(reset);
     await t.pumpAndSettle();
     expect(s.controller.view, home);
   });

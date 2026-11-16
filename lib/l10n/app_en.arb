@@ -1,4 +1,9 @@
 {
+  "sleepEditorZoom": "Zoom",
+  "sleepEditorResetZoom": "Reset zoom",
+  "sleepEditorLoading": "Loading sleep…",
+  "sleepEditorLoadFailed": "Could not load this night.",
+  "sleepEditorRetry": "Try again",
   "sleepEditorChooseEntry": "Choose sleep entry",
   "@sleepEditorChooseEntry": {
     "description": "Horizontal sleep editor entry chooser or staged action status."

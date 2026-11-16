@@ -1,4 +1,9 @@
 {
+  "sleepEditorZoom": "Zoom",
+  "sleepEditorResetZoom": "Restablecer zoom",
+  "sleepEditorLoading": "Cargando sueño…",
+  "sleepEditorLoadFailed": "No se pudo cargar esta noche.",
+  "sleepEditorRetry": "Reintentar",
   "sleepEditorChooseEntry": "Elegir registro de sueño",
   "sleepEditorSourceAutomatic": "Detectado",
   "sleepEditorSourceManual": "Definido por ti",

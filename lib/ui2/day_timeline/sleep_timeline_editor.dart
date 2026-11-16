@@ -141,6 +141,52 @@ SleepEditPlan planOf(SleepEditorData d, List<SleepBlock> blocks) {
   );
 }
 
+/// Owns the asynchronous read inside the editor route, so entering and leaving
+/// the editor never waits on storage. Disposed reads cannot navigate.
+class SleepTimelineEditorRoute extends StatefulWidget {
+  const SleepTimelineEditorRoute({super.key, required this.load, required this.save});
+  final Future<SleepEditorData> Function() load;
+  final SleepEditSaver save;
+
+  @override
+  State<SleepTimelineEditorRoute> createState() => _SleepTimelineEditorRouteState();
+}
+
+class _SleepTimelineEditorRouteState extends State<SleepTimelineEditorRoute> {
+  late Future<SleepEditorData> _data = Future.sync(widget.load);
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<SleepEditorData>(
+    future: _data,
+    builder: (context, snapshot) {
+      if (snapshot.hasData) {
+        return SleepTimelineEditor(data: snapshot.requireData, save: widget.save);
+      }
+      final l = AppLocalizations.of(context) ?? lookupAppLocalizations(const Locale('en'));
+      final p = P.of(context);
+      return Scaffold(backgroundColor: p.bg, body: SafeArea(child: Column(children: [
+        NavBar(l.sleepEditorTitle, onBack: () => Navigator.of(context).maybePop()),
+        if (snapshot.connectionState == ConnectionState.done && snapshot.hasError)
+          Padding(padding: const EdgeInsets.all(S.x4), child: Column(children: [
+            Semantics(liveRegion: true, child: Text(l.sleepEditorLoadFailed)),
+            TextButton(onPressed: () => setState(() { _data = Future.sync(widget.load); }),
+              child: Text(l.sleepEditorRetry)),
+          ]))
+        else
+          Expanded(child: ListView(key: const ValueKey('sleep-editor-loading'),
+            padding: const EdgeInsets.all(S.x4), children: [
+              Semantics(liveRegion: true, child: Text(l.sleepEditorLoading,
+                style: F.body.copyWith(color: p.ink))),
+              const SizedBox(height: S.x4),
+              Container(height: 240, decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(12))),
+              const SizedBox(height: S.x4),
+              Container(height: 100, decoration: BoxDecoration(color: p.card2, borderRadius: BorderRadius.circular(12))),
+            ])),
+      ])));
+    },
+  );
+}
+
 class SleepTimelineEditor extends StatefulWidget {
   const SleepTimelineEditor({super.key, required this.data, required this.save,
       this.haptics = const PhoneTimelineHaptics(), this.initialScrub});
@@ -186,7 +232,6 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
       domainStart: _nightRegion.start < d.domainStart ? _nightRegion.start : d.domainStart.toDouble(),
       domainEnd: _nightRegion.end > d.domainEnd ? _nightRegion.end : d.domainEnd.toDouble(),
       home: _nightRegion,
-      minimumSpan: _nightRegion.span < kMinViewSec ? _nightRegion.span : kMinViewSec,
       scrub: widget.initialScrub,
     );
     _lastScrub = controller.scrub;
@@ -219,16 +264,6 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
     }
     _lastScrub = controller.scrub;
     if (mounted) setState(() {});
-  }
-
-  void _zoomOut() {
-    final v = controller.target ?? controller.view;
-    final span = v.span / kDoubleTapZoom;
-    if (span >= controller.home.span - .001) {
-      controller.reset();
-    } else {
-      controller.glideTo(TimelineView(v.center - span / 2, v.center + span / 2));
-    }
   }
 
   void _restage() {
@@ -382,10 +417,10 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
                     },
                     icon: const Icon(LucideIcons.list, size: 18), label: Text(l.sleepEditorChooseEntry)),
                   Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                    _zoomButton('zoom-in', l.sleepEditorZoomIn, LucideIcons.zoomIn,
-                        () => controller.zoomAt((controller.target ?? controller.view).center)),
-                    _zoomButton('zoom-out', l.sleepEditorZoomOut, LucideIcons.zoomOut, _zoomOut),
-                    _zoomButton('reset', l.sleepEditorFullNight, LucideIcons.maximize, controller.reset),
+                    Expanded(child: TimelineZoomControls(controller: controller,
+                      zoomLabel: l.sleepEditorZoom, resetLabel: l.sleepEditorResetZoom,
+                      zoomKey: const ValueKey('sleep-editor-zoom'),
+                      resetKey: SleepTimelineEditor.resetKey)),
                   ]),
                   if (_askSide)
                     _Banner(
@@ -522,10 +557,6 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
       ),
     ));
   }
-
-  Widget _zoomButton(String id, String label, IconData icon, VoidCallback onTap) =>
-      SizedBox(width: 48, height: 48, key: ValueKey('sleep-editor-$id'),
-        child: IconButton(tooltip: label, onPressed: onTap, icon: Icon(icon, size: 20)));
 
   Widget _entryActions(BuildContext c, SleepBlock block) {
     final l = AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));

@@ -182,24 +182,21 @@ void main() {
     // WHY: CLAIM(sleep-editor-home). The default is this night's exact window,
     // even after panning; zooming out cannot return to a generic clock range.
     // catches: retaining the pilot's fixed 20:00-to-noon home.
-    testWidgets('default, zoom out and reset frame exactly the stored night', (t) async {
+    testWidgets('default, day zoom selection and reset frame exactly the stored night', (t) async {
       final s = await open(t, data: dtNight(withNap: false));
       final main = s.blocks.first;
       final home = TimelineView(main.start.toDouble(), main.end.toDouble());
       expect(s.controller.view, home);
-      expect(find.byKey(const ValueKey('sleep-editor-zoom-in')), findsOneWidget);
-      expect(find.byKey(const ValueKey('sleep-editor-zoom-out')), findsOneWidget);
-      await t.tap(find.byKey(const ValueKey('sleep-editor-zoom-in')));
+      final zoom = find.byKey(const ValueKey('sleep-editor-zoom'));
+      expect(zoom, findsOneWidget);
+      await t.tap(zoom);
       await t.pumpAndSettle();
-      expect(s.controller.view.span, closeTo(home.span * .7, .001));
+      await t.tap(zoom);
+      await t.pumpAndSettle();
+      expect(s.controller.view.span, lessThan(home.span));
       s.controller.glideTo(TimelineView(main.start + 1200.0, main.start + 4800.0));
       await t.pumpAndSettle();
       await t.tap(find.byKey(SleepTimelineEditor.resetKey));
-      await t.pumpAndSettle();
-      expect(s.controller.view, home);
-      await t.tap(find.byKey(const ValueKey('sleep-editor-zoom-in')));
-      await t.pumpAndSettle();
-      await t.tap(find.byKey(const ValueKey('sleep-editor-zoom-out')));
       await t.pumpAndSettle();
       expect(s.controller.view, home);
     });

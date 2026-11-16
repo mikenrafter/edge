@@ -246,9 +246,11 @@ void main() {
       expect(find.byKey(SleepTimelineEditor.cancelKey).hitTestable(), findsOneWidget);
       await tapTime(t, state, dtAt(400)); // Same main entry: just scrub.
       expect(find.byKey(const ValueKey('sleep-editor-action-cancelled')), findsNothing);
-      await t.ensureVisible(find.byKey(const ValueKey('sleep-editor-zoom-in')));
+      await t.ensureVisible(find.byKey(const ValueKey('sleep-editor-zoom')));
       await t.pumpAndSettle();
-      await t.tap(find.byKey(const ValueKey('sleep-editor-zoom-in')));
+      await t.tap(find.byKey(const ValueKey('sleep-editor-zoom')));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const ValueKey('sleep-editor-zoom')));
       await t.pumpAndSettle();
       expect(pending, findsOneWidget);
       await t.ensureVisible(find.byKey(SleepTimelineEditor.resetKey));

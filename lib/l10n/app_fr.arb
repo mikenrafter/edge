@@ -1,4 +1,9 @@
 {
+  "sleepEditorZoom": "Zoom",
+  "sleepEditorResetZoom": "Réinitialiser le zoom",
+  "sleepEditorLoading": "Chargement du sommeil…",
+  "sleepEditorLoadFailed": "Impossible de charger cette nuit.",
+  "sleepEditorRetry": "Réessayer",
   "sleepEditorChooseEntry": "Choisir une entrée de sommeil",
   "sleepEditorSourceAutomatic": "Détecté",
   "sleepEditorSourceManual": "Défini par vous",
