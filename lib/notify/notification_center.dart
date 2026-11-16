@@ -11,7 +11,7 @@
 //
 // Whether an emitted event fires an OS notification is decided by
 // NotificationPrefs:
-//   • it must be one of the four sanctioned NotifClasses (see classOf), AND
+//   • it must be one of the sanctioned NotifClasses (see classOf), AND
 //   • its category must be enabled, AND
 //   • either we're outside quiet hours, or the event is critical and the user
 //     allowed critical-overrides-quiet.
@@ -25,6 +25,8 @@
 
 import 'package:clock/clock.dart';
 import 'dart:async';
+import '../sync/update_store.dart';
+import '../sync/update_models.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -87,6 +89,26 @@ class NotificationCenter {
     String? ruleId,
     bool phoneOnly = false,
   }) async {
+    if (e.category == NotifCategory.updates) {
+      // Release claims are permanent and fail closed. They never use the
+      // health ledger's best-effort prefs fallback or any band transport.
+      if (ReleasePage.tryParse(e.route ?? '') == null ||
+          !RegExp(r'^release:(official|fork):[1-9]\d*$').hasMatch(e.dedupeKey)) {
+        return const {};
+      }
+      final prefs = await NotificationPrefs.load();
+      final now = updateNow();
+      if (e.priority != NotifPriority.normal || !prefs.shouldFireOs(e, now.hour * 60 + now.minute)) return const {};
+      try {
+        if (!await updatePermission()) return const {};
+        final osId = await (await updateStore()).claimNotificationId(e.dedupeKey);
+        if (osId == null) return const {};
+        final claimed = NotificationEvent(dedupeKey: e.dedupeKey, category: e.category,
+          title: e.title, body: e.body, date: e.date, route: e.route,
+          priority: e.priority, osId: osId);
+        return await presentSink(claimed, allowPermissionPrompt: false) ? const {'phone'} : const {};
+      } catch (_) { return const {}; }
+    }
     final prefs = await NotificationPrefs.load();
     final id =
         ruleId ??
@@ -147,6 +169,14 @@ class NotificationCenter {
     );
     return out.targets.toSet();
   }
+
+  @visibleForTesting
+  Future<UpdateStore> Function() updateStore = UpdateStore.open;
+  @visibleForTesting
+  Future<bool> Function() updatePermission = () => NotificationService.instance.ensurePermission(allowPrompt: false);
+  @visibleForTesting
+  DateTime Function() updateNow = DateTime.now;
+
 
   /// The persistent "already fired this dedupeKey" guard. See [FiredKeyStore].
   final FiredKeyStore _fired = const FiredKeyStore();

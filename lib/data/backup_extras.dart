@@ -116,6 +116,7 @@ const Map<String, String> kFileRootsBackedUp = {
 };
 
 const Map<String, String> kFileRootsNotBackedUp = {
+  'lib/sync/update_store.dart': 'install-local release consent, cache and claims; never restored',
   'lib/data/auto_backup.dart': 'the automatic backups themselves; they are '
       'what an import reads',
   'lib/sync/dev_log.dart': 'diagnostic log; not a setting, rotates',

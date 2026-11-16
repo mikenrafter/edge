@@ -15,21 +15,20 @@
 // but nothing in the reset itself closes it, and "deleted data comes back" is
 // not a failure to leave resting on an incidental ordering.
 //
-// A STATIC is the right mechanism here, and only because there is no second
-// isolate to hide from it. Every headless entry point runs in the MAIN isolate:
+// A static covers band-data writers because every band-sync entry point runs
+// in the MAIN isolate:
 //   - Android post-boot — EdgeApplication.onCreate pre-warms the FlutterEngine
 //     and runs `main()` with no Activity (headless_boot.dart)
 //   - iOS CoreBluetooth restore wake (ios_ble_restore.dart)
 //   - iOS BGProcessingTask / BGAppRefreshTask (ios_bg_task.dart)
-// and the WorkManager tasks that DID run on their own isolate were pulled for
-// exactly that reason — `main()` still cancels them by unique name on every
-// Android start (main.dart), and nothing registers a `callbackDispatcher`.
-// `HeadlessSyncGate` is already built on the same assumption.
+// The legacy WorkManager band-sync/derive tasks were removed for isolate
+// collisions and main() still cancels them by unique name. The current
+// updateCallbackDispatcher DOES run in another isolate, but owns only release
+// metadata in UpdateStore. It never opens LocalDb or ingests band records, so
+// neither this flag nor HeadlessSyncGate coordinates that worker.
 //
-// IF A BACKGROUND ISOLATE IS EVER REINTRODUCED, this flag stops working and
-// stops working SILENTLY — statics are per-isolate. It would then have to move
-// to something both isolates can see (a `sync_cursor` row, a pref read per
-// batch). Said here rather than discovered later.
+// If a second isolate ever writes band data, this flag must first move to
+// shared storage checked per batch. Statics alone cannot guard another isolate.
 library;
 
 /// Process-wide: is "delete everything" running right now?

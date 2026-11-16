@@ -70,6 +70,7 @@ class NotificationIds {
         NotifCategory.recovery => 200000,
         NotifCategory.health => 300000,
         NotifCategory.reminders => 400000,
+        NotifCategory.updates => 500000,
       };
 
   // In-memory mirror of the three prefs namespaces. Also the ONLY store when

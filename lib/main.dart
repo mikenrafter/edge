@@ -15,6 +15,7 @@ import 'state/clock_format.dart';
 import 'state/locale_controller.dart';
 import 'state/units_controller.dart';
 import 'sync/headless_boot.dart';
+import 'sync/update_background.dart';
 import 'sync/ios_bg_task.dart';
 import 'sync/ios_shortcut_sync.dart';
 import 'theme/theme_controller.dart';
@@ -82,7 +83,8 @@ Future<void> main() async {
   // pulled due to isolate collisions/deadlocks with the main UI's database access.
   // We must explicitly cancel them here otherwise they survive app updates and
   // cause the app to hang on the loading screen (buffering circle) when they fire
-  // concurrently with AppState._init().
+  // concurrently with AppState._init(). The current release-metadata worker
+  // uses its own UpdateStore database and never runs band sync or derivation.
   //
   // IMPORTANT: this MUST be scoped by unique name, never Workmanager().cancelAll().
   // AndroidX WorkManager is a single OS-wide instance shared by every caller —
@@ -98,6 +100,12 @@ Future<void> main() async {
         Workmanager().cancelByUniqueName(kHeavyDeriveTaskName),
         Workmanager().cancelByUniqueName(kSyncTaskName),
       ]).timeout(_kStartupInitTimeout);
+    } catch (_) {}
+  }
+
+  if (Platform.isAndroid) {
+    try {
+      await Workmanager().initialize(updateCallbackDispatcher).timeout(_kStartupInitTimeout);
     } catch (_) {}
   }
 

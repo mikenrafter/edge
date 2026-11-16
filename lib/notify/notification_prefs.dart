@@ -734,6 +734,8 @@ class NotificationPrefs {
     NotifCategory.recovery => recoveryEnabled,
     NotifCategory.reminders => remindersEnabled,
     NotifCategory.device => deviceEnabled,
+    // Install-local update consent is enforced atomically by NotificationCenter.
+    NotifCategory.updates => true,
   };
 
   /// True if [minuteOfDay] falls inside the quiet window (inclusive start,

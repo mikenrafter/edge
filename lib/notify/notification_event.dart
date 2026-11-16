@@ -14,11 +14,11 @@
 
 import 'tap_router.dart';
 
-enum NotifCategory { health, recovery, reminders, device }
+enum NotifCategory { health, recovery, reminders, device, updates }
 
 enum NotifPriority { critical, normal, low }
 
-/// The four — and only four — things this app may EMIT into the notification
+/// The sanctioned events this app may emit into the notification
 /// shade. Everything else is an in-app card.
 ///
 /// This governs the present path only. A standing schedule (the weekly
@@ -54,10 +54,13 @@ enum NotifClass {
   /// may interrupt, and filing "did you work out?" under `exception` would make
   /// the one honest list in the notification system lie.
   prompt,
+
+  /// An opted-in release announcement, phone only.
+  update,
 }
 
 /// Which class [e] belongs to, or null for anything that is not one of the
-/// four — which [NotificationPrefs.shouldFireOs] then drops.
+/// sanctioned classes — which [NotificationPrefs.shouldFireOs] then drops.
 ///
 /// Classified from the category, because that is already the axis the emit
 /// sites express: health/device signals are exceptions; a `reminders` event at
@@ -75,6 +78,7 @@ enum NotifClass {
 /// gate opening for a whole category. `shouldFireOs` already reads the route
 /// for the same reason (the auto-detect off switch).
 NotifClass? classOf(NotificationEvent e) => switch (e.category) {
+      NotifCategory.updates => NotifClass.update,
       NotifCategory.health || NotifCategory.device => NotifClass.exception,
       NotifCategory.reminders
           when e.priority == NotifPriority.critical =>

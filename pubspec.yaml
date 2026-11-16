@@ -6,7 +6,7 @@ publish_to: 'none'
 # Watch App" targets in ios/Runner.xcodeproj/project.pbxproj — they aren't wired
 # to FLUTTER_BUILD_NAME/FLUTTER_BUILD_NUMBER. See guides/IOS_INSTALLATION.md
 # "Version Numbers".
-version: 0.11.3+78
+version: 0.11.3+80
 
 environment:
   sdk: ^3.11.4
@@ -676,8 +676,7 @@ dependencies:
   # compute is opportunistic via BGTaskScheduler, never guaranteed.
   workmanager: ^0.9.0
 
-  # HTTP — retained ONLY for the OTA self-update pointer (see lib/sync/update_service.dart)
-  # and the AI Coach's direct LLM (BYOK) calls. No backend / auth traffic anymore.
+  # HTTP for GitHub release metadata and direct BYOK LLM calls.
   http: ^1.2.2
 
   # Barcode scanning for the food log (lib/ui2/screens/scan_barcode.dart).
@@ -779,10 +778,10 @@ dependencies:
   timezone: ^0.9.4
   flutter_timezone: ^3.0.1
 
-  # OTA self-update (Android sideload): read our own version, download + install the
-  # signed APK from the backend's update pointer, with a browser fallback.
+  # Release metadata uses the installed version and opens GitHub release pages.
   package_info_plus: ^8.1.0
-  ota_update: ^7.1.0
+  release_environment:
+    path: packages/release_environment
   url_launcher: ^6.3.0
   flutter_secure_storage: ^10.3.1
   gpt_markdown: ^1.1.7

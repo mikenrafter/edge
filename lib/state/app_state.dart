@@ -38,7 +38,6 @@ import '../ai/briefing.dart';
 import '../ai/briefing_engine.dart';
 import '../ai/nightly_sweep.dart';
 import '../coach/coach_config.dart';
-import '../models/app_status.dart';
 import '../ble/accessory_setup.dart';
 import '../ble/adapters/_registry.dart' show kBleHrs, kPolarPmd, kWhoopGen4;
 import '../ble/adapters/host.dart' show BandHost;
@@ -217,6 +216,7 @@ import '../sync/sync_policy.dart'
         kIosBackgroundPromptReason,
         kSnoozePromptReason;
 import '../sync/update_service.dart';
+import '../sync/update_background.dart';
 import '../telemetry/telemetry_service.dart';
 import '../telemetry/health_uploader.dart';
 import '../widget/widget_service.dart';
@@ -2476,7 +2476,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
           backupCleanupError ??= e.toString();
         }
       }
-      appStatus = null;
+      try { await updates?.setEnabled(false); } catch (_) { /* update storage cannot block a health-data reset */ }
       _savedAlarm = null;
 
       // 4 · the in-memory mirrors of what we just deleted. These are plain
@@ -2525,47 +2525,45 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// True once the profile has the fields the analytics personalization needs.
   bool get profileComplete => _profile.isComplete;
 
-  // ── app status: the OTA update pointer ──────────────────────────────────────
-  // Fetched directly by UpdateService from a public, unauthenticated pointer
-  // URL — independent of any backend / JWT (the authed client was deleted).
-  //
-  // The operator-pushed alert banner that used to live here is GONE: it was
-  // fetched, dismissible and persisted, but no screen ever drew one, so the
-  // dismissed-id set could only ever be empty. Deleted rather than wired —
-  // nothing in the product asks for an operator broadcast channel.
-  AppStatus? appStatus;
-  int _currentBuild = 0; // our build number (from package_info); 0 if unknown
-
-  UpdateInfo? get _update => appStatus?.update;
-
-  /// A newer build is published (we're behind latest_build).
-  ///
-  /// Gated on [UpdateService.supported] (Android + [kSideloadOtaEnabled]):
-  /// store builds (Play Store / App Store) and any non-Android build must
-  /// never surface a self-update prompt at all, not just fall back to a
-  /// browser link — see update_service.dart.
-  bool get updateAvailable =>
-      UpdateService.supported &&
-      _update != null &&
-      _currentBuild > 0 &&
-      _update!.latestBuild > _currentBuild;
-
-  /// We're below the mandatory floor — the prompt can't be dismissed.
-  bool get updateMandatory =>
-      UpdateService.supported &&
-      _update != null &&
-      _currentBuild > 0 &&
-      _currentBuild < _update!.minBuild;
-
-  Future<void> _loadAppStatus() async {
+  UpdateService? updates;
+  bool _updateInitializationFailed = false;
+  UpdateSnapshot get releaseChecksSnapshot => updates?.snapshot ?? (_updateInitializationFailed
+    ? const UpdateSnapshot(phase: UpdatePhase.error, sources: {
+        ReleaseSource.official: SourceUpdate(error: UpdateError.storage),
+        ReleaseSource.fork: SourceUpdate(error: UpdateError.storage),
+      }) : const UpdateSnapshot());
+  Future<void>? _updatesLoading;
+  Future<UpdateService?> ensureUpdates() async {
+    await _loadReleaseChecks();
+    return updates;
+  }
+  Future<void> _loadReleaseChecks() => _updatesLoading ??=
+      _initializeUpdates().whenComplete(() => _updatesLoading = null);
+  Future<void> _initializeUpdates() async {
+    if (updates != null) return;
+    UpdateService? created;
     try {
       final info = await PackageInfo.fromPlatform();
-      _currentBuild = int.tryParse(info.buildNumber) ?? 0;
       _appVersionLabel = '${info.version}+${info.buildNumber}';
+      if (!updateChecksAvailable) return;
+      created = await UpdateService.create(onRelease: notifyRelease);
+      await created.load();
+      await scheduleUpdateChecks(created.snapshot.enabled);
+      if (_disposed) {
+        created.dispose();
+        return;
+      }
+      updates = created;
+      _updateInitializationFailed = false;
+      updates!.addListener(notifyListeners);
+      notifyListeners();
+      // init already runs after runApp; no BLE/derive prerequisite.
+      unawaited(updates!.check());
     } catch (_) {
-      /* keep 0 → update prompts simply won't fire */
+      created?.dispose();
+      _updateInitializationFailed = true;
+      if (!_disposed) notifyListeners();
     }
-    await refreshAppStatus();
   }
 
   /// Whether Cycle is shown at all.
@@ -2586,26 +2584,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     notifyListeners();
   }
 
-  /// Whether this install checks for updates. Only meaningful on a sideload
-  /// build ([kSideloadOtaEnabled]) — that is the only build whose binary can
-  /// contact the endpoint at all. Defaults ON there, because a sideloaded app
-  /// has no store to tell it a fix exists, but it is refusable and the
-  /// Settings row says what the check discloses.
-  static const String _kUpdateChecks = 'update_checks_enabled';
-  bool get updateChecksEnabled => Prefs.getBool(_kUpdateChecks, true);
-
-  /// Whether the update-check row should appear at all: a build with the
-  /// feature compiled out has nothing to switch.
-  bool get updateChecksAvailable => kSideloadOtaEnabled;
-
-  Future<void> setUpdateChecksEnabled(bool on) async {
-    Prefs.setBool(_kUpdateChecks, on);
-    if (!on) {
-      appStatus = null; // drop whatever the last check answered
-    }
-    notifyListeners();
-    if (on) await refreshAppStatus();
-  }
+  bool get updateChecksAvailable => Platform.isAndroid;
 
   // The HR zone alert is an alert rule ('zone'): its destinations and buzz
   // pattern are in the alert prefs. Only the zone it watches lives here.
@@ -2620,15 +2599,14 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     notifyListeners();
   }
 
-  /// Re-poll the update pointer (best-effort; called on launch and on app resume).
-  Future<void> refreshAppStatus() async {
-    if (!updateChecksEnabled) return;
-    final status = await UpdateService.fetchStatus();
-    if (status == null) return;
-    appStatus = status;
-    notifyListeners();
+  /// Resume reads cache and observes the persisted daily deadline.
+  Future<void> refreshReleaseChecks() async {
+    if (updates == null) {
+      await _loadReleaseChecks();
+    } else {
+      await updates!.check();
+    }
   }
-
 
   /// A tapped notification asks the shell to switch to this tab index. The shell
   /// listens; it resets to -1 after consuming. Kept off the ChangeNotifier path so
@@ -2924,6 +2902,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   StreamSubscription<String>? _tapSub;
 
   void _handleTapRoute(String route) {
+    if (route.startsWith('https:')) {
+      unawaited(UpdateService.openRelease(route));
+      return;
+    }
     final t = resolveTapRoute(route); // pure — lib/notify/tap_router.dart
     if (t.screen != null) screenRequest.value = t.screen;
     navRequest.value = t.tab;
@@ -3204,6 +3186,8 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
 
   @override
   void dispose() {
+    updates?.removeListener(notifyListeners);
+    updates?.dispose();
     _activityReviewRetry?.cancel();
     if (IosShortcutSync.foregroundSync == syncForShortcut) {
       IosShortcutSync.foregroundSync = null;
@@ -4521,8 +4505,8 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     unawaited(_initCompanion());
     // arm the water-reminder strap buzz (timers don't persist)
     unawaited(armWaterReminder());
-    // App status (OTA pointer + admin alert banner) — best-effort, non-blocking.
-    unawaited(_loadAppStatus());
+    // Install-local release cache and due check; never blocks launch.
+    unawaited(_loadReleaseChecks());
     // Register the recurring wall-clock nudges as real OS-scheduled notifications
     // (wind-down, weekly recap) so they fire even when the app is closed.
     if (isPaired) unawaited(_ensureRemindersScheduled());

@@ -140,7 +140,7 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       unawaited(context.read<CoachConfig>().refreshKeyOnResume());
       app.maybeFinishFromLiveActivity();
       unawaited(app.maybeStopBreathingFromLiveActivity());
-      app.refreshAppStatus(); // re-check OTA + admin banner on every foreground
+      app.refreshReleaseChecks(); // cache and due daily release checks
       app.runCadenceChecks(); // evening wind-down / weekly recap nudges (best-effort)
       // Slots of "Assume I drank water" that passed while we were away.
       unawaited(app.catchUpAssumedWater());

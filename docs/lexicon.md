@@ -226,3 +226,16 @@ The **pulse upgrade watermark** is the immutable set of `(source, ts_ms)` RR rec
   I/O operations. Snapshot providers, recovery choices and progress sinks are
   explicit interfaces so the worker guard can resolve their calls.
 
+- **Release source**: one of the two GitHub repositories checked for app releases:
+  `OpenStrap/edge` (official) or `mikenrafter/edge` (fork). Versions are ordered
+  within a source, never by comparing official and fork build counters.
+- **Release page**: a canonical HTTPS GitHub `/releases/tag/` page for a supported
+  tag in a release source. The checker only opens these pages; it never fetches
+  an APK or invokes an installer.
+- **Release claim**: an install-local, permanent atomic record that a release
+  notification was attempted. It has no daily expiry and is excluded from backup.
+
+## App updates
+
+- **Separate app**: an official release viewed from a fork install. It uses a different Android package; the checker opens its release page and carries no data over. Official versions at or below the installed fork's version are informational and do not announce an update.
+

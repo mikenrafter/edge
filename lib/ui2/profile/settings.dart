@@ -1,3 +1,5 @@
+import '../../sync/update_service.dart';
+import 'app_updates.dart';
 import '../../l10n/display_text.dart';
 // Settings, and editing the profile.
 //
@@ -276,9 +278,7 @@ class _MoreSettingsState extends State<MoreSettings> {
       healthSync: app.healthSyncEnabled,
       healthState: app.healthState,
       showUpdateChecks: caps.has(Feature.updateChecks),
-      updateChecks: app.updateChecksEnabled,
-      updateAvailable: app.updateAvailable,
-      updateMandatory: app.updateMandatory,
+      updateSnapshot: app.releaseChecksSnapshot,
       expectedSleepSchedule: app.sleepOperations.schedule,
       onEditSleepSchedule: () => _editSleepSchedule(app),
       storageBytes: _storageBytes,
@@ -323,8 +323,23 @@ class _MoreSettingsState extends State<MoreSettings> {
       onToggleBarcodeLookup: () => _toggleBarcode(c),
       onToggleHealthShare: () => _toggleHealthShare(c, app),
       onToggleHealthSync: () => _toggleHealthSync(app),
-      onToggleUpdateChecks: () =>
-          app.setUpdateChecksEnabled(!app.updateChecksEnabled),
+      onToggleUpdateChecks: () async {
+        final service = await app.ensureUpdates();
+        if (!c.mounted) return;
+        if (service == null) {
+          ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(AppLocalizations.of(c)!.updatesErrorStorage)));
+          return;
+        }
+        try {
+          await service.load();
+          if (c.mounted) goto(c, AppUpdatesScreen(service: service));
+        } catch (_) {
+          if (c.mounted) {
+            ScaffoldMessenger.of(c).showSnackBar(SnackBar(
+            content: Text(AppLocalizations.of(c)!.updatesErrorStorage)));
+          }
+        }
+      },
     );
   }
 }
@@ -624,12 +639,8 @@ class MoreSettingsView extends StatelessWidget {
   final String healthStore;
 
   /// The update-check row appears only on a build that can check.
-  final bool showUpdateChecks, updateChecks;
-
-  /// What the last check ANSWERED. The check itself was already running and
-  /// already storing its answer; this row is the only place in the app that
-  /// says what it found, so without these two the whole poll was a no-op.
-  final bool updateAvailable, updateMandatory;
+  final bool showUpdateChecks;
+  final UpdateSnapshot updateSnapshot;
 
   /// `0.9.26 (57)`, or empty until package_info answers — the About group is
   /// the whole reveal gesture, so it is not drawn against a blank.
@@ -717,9 +728,7 @@ class MoreSettingsView extends StatelessWidget {
     this.showHealthShare = false,
     this.healthShare = false,
     this.showUpdateChecks = false,
-    this.updateChecks = true,
-    this.updateAvailable = false,
-    this.updateMandatory = false,
+    this.updateSnapshot = const UpdateSnapshot(),
     this.version = '',
     this.devMode = false,
     this.lastCalculation = '—',
@@ -1017,21 +1026,7 @@ class MoreSettingsView extends StatelessWidget {
                           'Android can send and receive events. iOS can only buzz the band.',
                       onTap: onAutomation),
                   if (showUpdateChecks)
-                    SetRow(LucideIcons.refreshCw, C.blue,
-                        l?.settingsCheckForUpdatesRowTitle ??
-                            'Check for updates',
-                        sub: updateMandatory
-                            ? (l?.settingsUpdateBelowMinimum ??
-                                'This build is below the minimum supported '
-                                    'build. Install the newer release from GitHub')
-                            : updateAvailable
-                                ? (l?.settingsUpdateAvailable ??
-                                    'A newer build is published on GitHub')
-                                : (l?.settingsUpdateCheckSub ??
-                                    'Asks the release server on launch. It sees '
-                                        'your IP address and when you open the app'),
-                        value: updateChecks ? on : off,
-                        onTap: onToggleUpdateChecks),
+                    AppUpdatesRow(snapshot: updateSnapshot, onTap: onToggleUpdateChecks),
                   // The food log's one outbound call. Named by what it sends,
                   // not by the feature it powers — a scan is the only thing
                   // that triggers it and the barcode is the whole payload.
