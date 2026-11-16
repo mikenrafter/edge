@@ -48,6 +48,27 @@ void main() {
     await db.close();
     await dir.delete(recursive: true);
   });
+  // WHY/CLAIM(pulse-version-history): a new detector cannot rewrite stored decisions.
+  // # catches: retracting or revising a previous-version episode during replay.
+  test('previous detector history and delivery remain byte-identical', () async {
+    final old = detection();
+    await store.reconcile(old, origin: 'sync', nowMs: 1);
+    await db.update('pulse_episode_revision', {'detector': 0});
+    final before = [for (final table in pulseEpisodeTables.take(5))
+      jsonEncode(await db.query(table))];
+    final quiet = ana.PulseDetection([
+      for (final w in old.windows) ana.PulseWindow(
+        source: w.source, startMs: w.startMs, endMs: w.endMs, pairs: w.pairs,
+        totalBeats: w.totalBeats, cleanedBeats: w.cleanedBeats,
+        coverageMs: w.coverageMs, longestGapMs: w.longestGapMs,
+        sd1: w.sd1, sd2: w.sd2, ratio: w.ratio, pnnPct: w.pnnPct,
+        pending: false, qualified: false, reasons: const [], beats: w.beats)
+    ], const []);
+    await store.reconcile(quiet, origin: 'bulk', nowMs: 2);
+    await store.reconcile(old, origin: 'bulk', nowMs: 3);
+    expect([for (final table in pulseEpisodeTables.take(5))
+      jsonEncode(await db.query(table))], before);
+  });
   // WHY/CLAIM(pulse-atomic): storage failure cannot authorize an alert.
   test(
     'evidence and outbox are one transaction; failure rolls back everything',
