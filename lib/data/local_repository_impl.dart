@@ -2176,7 +2176,7 @@ class LocalRepositoryImpl extends LocalRepository {
     for (final row in assertions) {
       if (!represented.contains(row['start_ts'])) naps.add(entry(row));
     }
-    return {...published, 'naps': naps};
+    return {'naps': naps};
   });
 
   @override

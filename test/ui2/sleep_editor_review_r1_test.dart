@@ -123,6 +123,31 @@ void main() {
     });
   }
 
+  testWidgets('choosing the same overlapping entry or dismissing its chooser preserves the staged action', (t) async {
+    final saver = _Saver();
+    final nap = SleepBlock('inside', BlockKind.nap, dtAt(300), dtAt(330));
+    final state = await openEditor(t, saver, dataWith([nap]));
+    await stage(t, 'Not sleep');
+    await tapTime(t, state, dtAt(315));
+    expect(find.byKey(const ValueKey('sleep-editor-entry-chooser')), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('sleep-editor-entry:main')));
+    await t.pumpAndSettle();
+    expect(state.active, 'main');
+    expect(find.byKey(const ValueKey('sleep-editor-pending-action')), findsOneWidget);
+    expect(find.byKey(const ValueKey('sleep-editor-action-cancelled')), findsNothing);
+    await tapTime(t, state, dtAt(315));
+    await t.sendKeyEvent(LogicalKeyboardKey.escape);
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('sleep-editor-entry-chooser')), findsNothing);
+    expect(find.byKey(const ValueKey('sleep-editor-pending-action')), findsOneWidget);
+    expect(find.byKey(const ValueKey('sleep-editor-action-cancelled')), findsNothing);
+    await t.tap(find.byKey(SleepTimelineEditor.saveKey));
+    await t.pumpAndSettle();
+    final entry = saver.plans.single.entry!;
+    expect((entry.main, entry.start, entry.end, entry.action),
+      (true, main.start, main.end, SleepEntryAction.notSleep));
+  });
+
   testWidgets('chooser distinguishes repeated wall times by exact UTC offsets on a DST night', (t) async {
     int epoch(DateTime time) => time.millisecondsSinceEpoch ~/ 1000;
     final early = SleepBlock('early', BlockKind.nap, epoch(DateTime.utc(2026, 11, 1, 7, 10)),

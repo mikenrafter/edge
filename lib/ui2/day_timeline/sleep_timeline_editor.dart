@@ -395,7 +395,7 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
                         ('After', () => _addNap(false)),
                       ],
                     ),
-                  if (isNap)
+                  if (isNap && _action == null)
                     _Banner(text: 'Adjusting nap: drag its ends', actions: [('Done', _doneNap)]),
                   const SizedBox(height: S.x2),
                   DayTimelineChart(
@@ -413,7 +413,7 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
                     haptics: widget.haptics,
                   ),
                   RepaintBoundary(child: _readout(c, p, a)),
-                  Padding(
+                  if (_action == null) Padding(
                     padding: const EdgeInsets.only(top: S.x2),
                     child: Text(
                         'Drag an end: it moves in 5-minute steps; hold still a moment and it '
