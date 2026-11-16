@@ -18,6 +18,10 @@ import 'db/input_read_tracker.dart';
 
 /// The single persistence seam for proposals and review decisions. Computing a
 /// proposal never writes a session or credits sleep. All actions are atomic.
+/// In a discarded track question's details: its Discard wrote the day's
+/// `track_absence` row (pilot day-timeline's Restore takes back only that).
+const String kDiscardAbsence = '_discard_wrote_absence';
+
 class ActivityStore {
   ActivityStore(this.db);
   final Database db;
@@ -35,6 +39,7 @@ class ActivityStore {
       'CREATE INDEX IF NOT EXISTS activity_pending '
       'ON activity_suggestions(status, start_ts)',
     );
+
     await db.execute('''CREATE TABLE IF NOT EXISTS activity_review_meta (
       id INTEGER PRIMARY KEY CHECK(id = 1), activated_at INTEGER NOT NULL,
       revision INTEGER NOT NULL DEFAULT 0, legacy_migrated INTEGER NOT NULL DEFAULT 0,
@@ -394,11 +399,64 @@ class ActivityStore {
         );
         await _changed(tx, row['day_id'] as String);
         if (expected.kind == ActivityKind.track && expected.isPrompt) {
-          await TrackActivity.answerNo(tx, expected, row['day_id'] as String);
+          final wrote = await TrackActivity.answerNo(tx, expected, row['day_id'] as String);
+          // Pilot day-timeline: the row records that THIS Discard wrote the
+          // day's absence (other flows write absences too), so Restore takes
+          // back only that. Kept in the row's details, no schema change.
+          if (wrote) {
+            await tx.update('activity_suggestions', {
+              'details_json': jsonEncode({...expected.details, kDiscardAbsence: true}),
+            }, where: 'id = ?', whereArgs: [expected.id]);
+          }
         }
       }
     return transaction == null ? db.transaction(write) : write(transaction);
   }
+
+  /// Restore (pilot day-timeline): a DISCARDED suggestion goes back to
+  /// pending, so it is offered for review again. Nothing else is touched
+  /// except what its own Discard wrote: a track question's absence row,
+  /// when [kDiscardAbsence] in its details says that Discard wrote it. The revision moves
+  /// on, so a decision staged against the discarded row can never apply to
+  /// the restored one. False, writing nothing, when the row is not
+  /// discarded (already restored, or decided some other way since).
+  static Future<bool> restore(Transaction tx, String id) async {
+    final rows = await tx.query('activity_suggestions',
+        where: 'id = ?', whereArgs: [id], limit: 1);
+    if (rows.isEmpty || rows.single['status'] != 'discarded') return false;
+    final row = rows.single;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final s = ActivitySuggestion.fromRow(row);
+    final wroteAbsence = s.details[kDiscardAbsence] == true;
+    if (wroteAbsence && s.trackId != null) {
+      await tx.delete('track_absence',
+          where: 'track_id = ? AND date = ?',
+          whereArgs: [s.trackId, row['day_id']]);
+    }
+    await tx.update(
+      'activity_suggestions',
+      {
+        'status': 'pending',
+        if (wroteAbsence)
+          'details_json': jsonEncode({...s.details}..remove(kDiscardAbsence)),
+        'revision': (row['revision'] as int) + 1,
+        'updated_at': now,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    await _changed(tx, row['day_id'] as String);
+    return true;
+  }
+
+  /// The day's discarded suggestions (pilot day-timeline's "Only discarded").
+  static Future<List<ActivitySuggestion>> discardedOn(
+      DatabaseExecutor db, String day) async => [
+        for (final r in await db.query('activity_suggestions',
+            where: "status = 'discarded' AND day_id = ?",
+            whereArgs: [day], orderBy: 'start_ts ASC, id ASC'))
+          ActivitySuggestion.fromRow(r),
+      ];
 
   /// Null when the row is already [done] (a repeated tap). Any other decided
   /// status means it changed underneath the caller, which must not report
@@ -708,7 +766,7 @@ class ActivityStore {
             : NapEditKind.added,
         startSec: row['start_ts'] as int,
         endSec: row['end_ts'] as int,
-        snapshot: row['payload_json'] is String
+        snapshot: row['source'] != 'manual' && row['payload_json'] is String
             ? Map<String, dynamic>.from(
                 jsonDecode(row['payload_json'] as String) as Map,
               )

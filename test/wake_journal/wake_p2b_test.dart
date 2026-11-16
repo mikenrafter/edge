@@ -83,9 +83,10 @@ AnnotationSet _sleepAxis(WidgetTester t) => t
     )
     .set;
 
-ChartFrame _sleepFrame(WidgetTester t) => t
-    .widgetList<ChartFrame>(find.byType(ChartFrame))
-    .firstWhere((frame) => frame.title == 'Through the night');
+// Select the stable chart identity; its visible section title changed to
+// Stages before this task. Endpoint and zoom assertions below stay exact.
+ChartFrame _sleepFrame(WidgetTester t) => t.widget<ChartFrame>(
+    find.byKey(const ValueKey('sleep-night-plot')));
 
 void main() {
   setUpAll(() async {

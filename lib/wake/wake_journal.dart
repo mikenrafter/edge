@@ -38,25 +38,17 @@ class DbWakeJournal {
       final preceding = _entries(
         rows.where((r) => (r['at_ms'] as int) <= (ack['at_ms'] as int)),
       );
+      final alarms = await txn.query('band_events', columns: ['ts'],
+        where: 'device_id = ? AND event_id = 57 AND ts = ?',
+        whereArgs: ['', wakeEpochSec]);
       final night = WakeNightTimeline.forEpoch(
         wakeEpochSec: wakeEpochSec,
         trace: preceding,
+        bandAlarms: [for (final alarm in alarms) WakeBandAlarm(
+          wakeEpochSec: wakeEpochSec,
+          at: DateTime.fromMillisecondsSinceEpoch((alarm['ts'] as int) * 1000, isUtc: true))],
       );
-      final kinds = night.events.map((e) => e.kind).toSet();
-      final path = kinds.contains(WakeNightEventKind.natural)
-          ? WakePath.natural
-          : kinds.contains(WakeNightEventKind.gradual)
-          ? WakePath.gradual
-          : kinds.contains(WakeNightEventKind.alarm) ||
-                (await txn.query(
-                  'band_events',
-                  columns: ['ts'],
-                  where: 'device_id = ? AND event_id = 57 AND ts = ?',
-                  whereArgs: ['', wakeEpochSec],
-                  limit: 1,
-                )).isNotEmpty
-          ? WakePath.alarm
-          : null;
+      final path = night.acknowledgedPath;
       await txn.update(
         'wake_trace',
         {
@@ -156,10 +148,13 @@ class DbWakeJournal {
     // acknowledgement to manufacture a duration.
     return WakeNightTimeline(
       events: events,
+      deliveries: [for (final n in nights) ...n.deliveries],
       adjustedFor: {for (final n in nights) ...n.adjustedFor},
       firstFireAt: primary?.firstFireAt,
       ackAt: primary?.ackAt,
+      acknowledgedPath: primary?.acknowledgedPath,
       timeToWake: primary?.timeToWake,
+      dream: primary?.dream,
       snoozeCount: nights.fold(0, (sum, n) => sum + n.snoozeCount),
     );
   }
@@ -402,17 +397,11 @@ class DbWakeJournal {
       'normal' => DreamAnswer.normal,
       _ => null,
     };
-    final path = switch (data['wakePath']) {
-      'natural' => WakePath.natural,
-      'gradual' => WakePath.gradual,
-      'alarm' => WakePath.alarm,
-      _ => null,
-    };
     final at = data['dreamAnsweredAtMs'];
-    if (answer == null || path == null || at is! num) return null;
+    if (answer == null || at is! num) return null;
     return WakeDreamResponse(
       answer: answer,
-      path: path,
+      path: null,
       at: DateTime.fromMillisecondsSinceEpoch(at.toInt(), isUtc: true),
     );
   }

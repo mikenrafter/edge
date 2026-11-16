@@ -149,12 +149,14 @@ class _ShotsRepo extends GuideFakeRepo {
     List<ReviewRange> ranges = const [],
     List<MomentWorkoutDecision> workouts = const [],
     Map<AssumedGlass, bool> glasses = const {},
+    SavedReviewEdits savedEdits = const SavedReviewEdits(),
   }) => _writes.saveDayReview(
     activities: activities,
     moments: moments,
     ranges: ranges,
     workouts: workouts,
     glasses: glasses,
+    savedEdits: savedEdits,
   );
 
   @override

@@ -19,12 +19,20 @@ class WakeNightEvent {
     this.count,
     this.reason,
     this.wakeEpochSec,
+    this.confirmedDelivery = false,
+    this.dream,
+    this.technologyVersion,
   });
   final WakeNightEventKind kind;
   final DateTime at;
   final int? count;
   final String? reason;
   final int? wakeEpochSec;
+  /// Successful transport dispatch or a band-reported alarm. This does not
+  /// confirm physical buzzing [AppState._sendWakeHaptic, wake_timeline_test].
+  final bool confirmedDelivery;
+  final WakeDreamResponse? dream;
+  final String? technologyVersion;
 }
 
 class WakeBandAlarm {
@@ -38,18 +46,36 @@ class WakeBandAlarm {
   final int code;
 }
 
+// Method evidence is shared by answer writes and read projections. A stored
+// path label alone never proves that an alert was delivered before the ack.
+WakePath? _pathBeforeAck(Iterable<WakeNightEvent> events, DateTime? ack) {
+  final kinds = events.where((e) => e.confirmedDelivery && ack != null && !e.at.isAfter(ack))
+      .map((e) => e.kind).toSet();
+  return kinds.contains(WakeNightEventKind.natural) || kinds.contains(WakeNightEventKind.repeat)
+      ? WakePath.natural : kinds.contains(WakeNightEventKind.gradual)
+      ? WakePath.gradual : kinds.contains(WakeNightEventKind.alarm) ? WakePath.alarm : null;
+}
+
 class WakeNightTimeline {
   const WakeNightTimeline({
     this.events = const [],
+    this.deliveries = const [],
     this.firstFireAt,
     this.ackAt,
+    this.acknowledgedPath,
     this.timeToWake,
     this.snoozeCount = 0,
     this.dream,
     this.adjustedFor = const {},
   });
   final List<WakeNightEvent> events;
+  /// Every successful dispatch, including each Gradual step, for the detailed
+  /// summary. [events] retains the legacy first-per-method projection.
+  final List<WakeNightEvent> deliveries;
   final Set<String> adjustedFor;
+
+  /// Evidence preceding this projection's selected first acknowledgement.
+  final WakePath? acknowledgedPath;
 
   /// Display projection only. The observed history remains available in [events].
   List<WakeNightEvent> get collapsedEvents {
@@ -76,6 +102,9 @@ class WakeNightTimeline {
           wakeEpochSec: first.wakeEpochSec,
           reason: first.reason,
           count: observations.length,
+          confirmedDelivery: first.confirmedDelivery,
+          dream: first.dream,
+          technologyVersion: first.technologyVersion,
         ),
       );
     }
@@ -101,7 +130,11 @@ class WakeNightTimeline {
     for (final e in trace) {
       if (e.wakeEpochSec != wakeEpochSec) continue;
       final kind = switch (e.kind) {
-        'natural' when e.data['reason'] == 'fire' => WakeNightEventKind.natural,
+        // A decision is persisted before delivery. Only a successful transport
+        // result proves dispatch, not physical buzzing [wake_timeline_test].
+        'natural_haptic'
+            when e.data['phase'] == 'result' && e.data['result'] == 'sent' =>
+          WakeNightEventKind.natural,
         'natural_repeat'
             when e.data['phase'] == 'result' && e.data['result'] == 'sent' =>
           WakeNightEventKind.repeat,
@@ -120,6 +153,11 @@ class WakeNightTimeline {
           at: DateTime.fromMillisecondsSinceEpoch(e.atMs, isUtc: true),
           count: (e.data['count'] as num?)?.toInt(),
           reason: e.data['reason'] as String?,
+          confirmedDelivery: kind == WakeNightEventKind.natural ||
+              kind == WakeNightEventKind.repeat || kind == WakeNightEventKind.gradual ||
+              kind == WakeNightEventKind.alarm,
+          dream: kind == WakeNightEventKind.ack ? dream : null,
+          technologyVersion: e.data['technologyVersion']?.toString(),
         ),
       );
     }
@@ -127,7 +165,7 @@ class WakeNightTimeline {
       if (alarm.wakeEpochSec == wakeEpochSec && alarm.code == 57) {
         candidates.add(
           WakeNightEvent(kind: WakeNightEventKind.alarm, at: alarm.at,
-            wakeEpochSec: wakeEpochSec),
+            wakeEpochSec: wakeEpochSec, confirmedDelivery: true),
         );
       }
     }
@@ -137,6 +175,14 @@ class WakeNightTimeline {
       final time = a.at.compareTo(b.at);
       return time != 0 ? time : a.kind.index.compareTo(b.kind.index);
     });
+    final deliveries = <WakeNightEvent>[];
+    final reportedAlarms = <DateTime>{};
+    for (final e in candidates.where((e) => e.confirmedDelivery)) {
+      // The same band alarm can be present in both band_events and its trace.
+      // Separate Gradual steps remain separate, even at the same timestamp.
+      if (e.kind == WakeNightEventKind.alarm && !reportedAlarms.add(e.at)) continue;
+      deliveries.add(e);
+    }
     final firstOnly = <WakeNightEventKind>{};
     final events = <WakeNightEvent>[];
     DateTime? firstFire, ack;
@@ -154,23 +200,33 @@ class WakeNightTimeline {
           break;
       }
       events.add(e);
-      if (e.kind == WakeNightEventKind.natural ||
-          e.kind == WakeNightEventKind.gradual ||
-          e.kind == WakeNightEventKind.alarm) {
+      if (e.confirmedDelivery) {
         firstFire ??= e.at;
       }
       if (e.kind == WakeNightEventKind.ack) ack = e.at;
       if (e.kind == WakeNightEventKind.snooze) snoozes++;
     }
+    // CLAIM(wake-answer-first-ack): an answer survives missing path metadata.
+    // Only successful deliveries before this epoch's first ack identify its
+    // method; historical labels alone cannot establish one.
+    final path = _pathBeforeAck(candidates, ack);
+    final response = dream == null || ack == null ? null
+        : WakeDreamResponse(answer: dream.answer, path: path, at: dream.at);
+    final answeredEvents = [for (final e in events)
+      if (e.kind == WakeNightEventKind.ack)
+        WakeNightEvent(kind: e.kind, at: e.at, wakeEpochSec: e.wakeEpochSec, dream: response)
+      else e];
     return WakeNightTimeline(
-      events: List.unmodifiable(events),
+      events: List.unmodifiable(answeredEvents),
+      deliveries: List.unmodifiable(deliveries),
       firstFireAt: firstFire,
       ackAt: ack,
+      acknowledgedPath: path,
       timeToWake: firstFire == null || ack == null || ack.isBefore(firstFire)
           ? null
           : ack.difference(firstFire),
       snoozeCount: snoozes,
-      dream: dream,
+      dream: response,
       adjustedFor: {for (final e in trace)
         if (e.wakeEpochSec == wakeEpochSec && e.kind == 'natural')
           for (final label in e.data['adjustedFor'] as List? ?? const [])

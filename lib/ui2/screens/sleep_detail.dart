@@ -52,6 +52,13 @@ import 'home_screen.dart';
 import 'metric_detail.dart';
 import 'naps.dart';
 import 'rough_night.dart';
+import '../../data/db.dart' show LocalDb;
+import '../../data/sleep_edit_write.dart';
+import '../day_timeline/night_card.dart';
+import '../day_timeline/sleep_summary.dart';
+import '../day_timeline/pilot_flags.dart';
+import '../day_timeline/sleep_timeline_editor.dart';
+import '../day_timeline/timeline_model.dart' show BlockEnd;
 
 /// Nights of history before a personal normal is claimed at all. Below this the
 /// quartiles of three or four nights are noise wearing a band's clothing.
@@ -260,6 +267,7 @@ String _capitalise(String s) =>
 
 class SleepData {
   final WakeNightTimeline wakeTimeline;
+  final List<Map<String, dynamic>> naps;
   final List<ChartAnnotation> rhrMarks;
   final String? day;
 
@@ -302,6 +310,7 @@ class SleepData {
     this.historyCount = 0,
     this.rhrMarks = const [],
     this.wakeTimeline = const WakeNightTimeline(),
+    this.naps = const [],
     this.day,
     this.days = const [],
     this.night = const {},
@@ -431,6 +440,14 @@ class SleepData {
             (today['status'] as Map?)?['today_day']?.toString());
     if (day == null) return SleepData(days: days, refreshPending: pending);
 
+    List<Map<String, dynamic>> naps = const [];
+    if (DayTimelinePilot.sleep.on) {
+      try {
+        final read = await repo.getDayNaps(day);
+        naps = [for (final n in read['naps'] as List? ?? const [])
+          if (n is Map) Map<String, dynamic>.from(n)];
+      } on UnimplementedError { /* Optional in older repository fixtures. */ }
+    }
     SleepPrimaryRead? primary;
     if (onPrimary != null) {
       primary = await repo.getSleepDetailPrimary(day);
@@ -443,6 +460,7 @@ class SleepData {
             pending: pending,
             deviceNights: primary.devices,
             wake: primary.wake,
+            naps: naps,
             historyPending: true,
             historyCount: primary.historyCount,
           ),
@@ -476,6 +494,7 @@ class SleepData {
       pending: pending,
       deviceNights: deviceNights,
       wake: wake,
+      naps: naps,
     );
   }
 
@@ -486,6 +505,7 @@ class SleepData {
     required bool pending,
     required List<Map<String, Object?>> deviceNights,
     required WakeNightTimeline wake,
+    List<Map<String, dynamic>> naps = const [],
     bool historyPending = false,
     int historyCount = 0,
   }) {
@@ -529,6 +549,7 @@ class SleepData {
       days: days,
       night: night,
       wakeTimeline: wake,
+      naps: naps,
       historyPending: historyPending,
       historyCount: historyCount,
       timeline: timeline,
@@ -577,7 +598,7 @@ class SleepDetail extends StatefulWidget {
   State<SleepDetail> createState() => _SleepDetailState();
 }
 
-class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedReadReload<SleepDetail> implements NerdStatsListener {
+class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedReadReload<SleepDetail> implements NerdStatsListener, NightCardListener {
 
   /// The panels' Nerd stats action.
   @override
@@ -781,10 +802,14 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       setState(() {
         _d = primary;
         _rough = null;
+        _overrideAt = null;
         _roughPending = readRough;
       });
       // Start alongside history, retaining the same day/generation guard.
       if (readRough) unawaited(_loadRough(repo, primary.day!, gen));
+      if (DayTimelinePilot.sleep.on && primary.day != null) {
+        unawaited(_loadOverrideAt(primary.day!, gen));
+      }
     }
 
     try {
@@ -865,12 +890,23 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     }
   }
 
+  Future<void> _loadOverrideAt(String day, int gen) async {
+    try {
+      final override = await LocalDb.getSleepOverride(day);
+      final at = (override?['created_at'] as num?)?.toInt();
+      if (mounted && gen == _loadGen) {
+        setState(() => _overrideAt = at == null
+            ? null : DateTime.fromMillisecondsSinceEpoch(at * 1000));
+      }
+    } catch (_) { /* The card still says "Changed by you". */ }
+  }
+
   final _refresh = TodayRefreshLatch();
 
   /// "As of <time>" while this night is being recalculated; the night on
   /// screen stays. Its own row's time, so stepping to another night never
   /// borrows this one's.
-  Widget _asOf(SleepData d) => AsOfHold(
+  Widget _asOf(SleepData d, {bool statusOnly = false}) => AsOfHold(
         shown: d,
         day: d.day,
         computedAt: computedAtOf(d.night['computed_at']),
@@ -878,7 +914,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             shownDay: d.day,
             computedAt: computedAtOf(d.night['computed_at']),
             recalc: recalc),
-        builder: (c, at) => AsOfLabel(at: at),
+        builder: (c, at) => AsOfLabel(at: at, statusOnly: statusOnly),
       );
 
   /// Another night. The scrub cursor belongs to the night it was placed on, so
@@ -910,7 +946,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       ]);
     }
 
-    if (widget.embedded) return _frame(c, title, _tabBody(c, P.of(c), d));
+    if (widget.embedded || DayTimelinePilot.sleep.on) return _frame(c, title, _tabBody(c, P.of(c), d));
 
     if (!d.hasNight) {
       // "No night" also covers a night the user REJECTED outright (edge#248):
@@ -944,6 +980,12 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
                             'scored for it.')
                     : (l?.sleepDetailNoNightBody ??
                         'No stretch of band recordings long enough to score.')),
+        if (DayTimelinePilot.sleep.on) ...[
+          const SizedBox(height: S.x3),
+          _pilotNightCard(c, d),
+          if (_overrideFailed case final error?)
+            StatusCard('Sleep calculation', error, icon: LucideIcons.triangleAlert),
+        ] else ...[
         // The window slot: the window card when the times are saved, else the
         // reason there is no night, in the same place.
         ...?windowCard,
@@ -976,6 +1018,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         // day, off overnight, or a rejected night — so this door to the naps
         // screen does not live inside the window card.
         ..._napsButton(c, l, d.day),
+        ],
         ]),
         ..._sections(c, p, d, d.night),
       ]);
@@ -1006,9 +1049,17 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         _night(c, p, d, n),
 
       // ── 2b · WHOSE WINDOW IS THIS ──
-      ...?_windowCard(c, p, d, n),
-      ?_stagingFilter(d),
-      ..._napsButton(c, l, d.day),
+      if (DayTimelinePilot.sleep.on) ...[
+        const SizedBox(height: S.x3),
+        _pilotNightCard(c, d),
+        if (_overrideFailed case final error?)
+          StatusCard('Sleep calculation', error, icon: LucideIcons.triangleAlert),
+      ] else ...[
+        ...?_windowCard(c, p, d, n),
+        ?_stagingFilter(d),
+        ..._napsButton(c, l, d.day),
+      ],
+      if (DayTimelinePilot.sleep.on) ?_stagingFilter(d),
       ]),
 
       ..._sections(c, p, d, n),
@@ -1074,29 +1125,26 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     Widget link(IconData icon, String name, String sub, Widget target) =>
         detailLinkRow(c, icon, name, sub, () => go(c, target));
     return [
-      InsideCard(
-        key: const ValueKey('sleep-tab:timeline'),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+      if (DayTimelinePilot.sleep.on)
+        Column(key: const ValueKey('sleep-tab:timeline'),
+          crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ..._dayNav(d),
+            Surface(child: _answerSlot(c, p, d, n, summary: true)),
+          ])
+      else
+        InsideCard(key: const ValueKey('sleep-tab:timeline'),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             ..._dayNav(d),
             _answerSlot(c, p, d, n),
-            if (_deviceNight(d) case final dn?)
-              _night(c, p, d, dn, device: dn)
-            else
-              _night(c, p, d, n),
+            if (_deviceNight(d) case final dn?) _night(c, p, d, dn, device: dn)
+            else _night(c, p, d, n),
+
             ...?window,
-            if (window == null)
-              _emptyWindowCard(
-                c,
-                p,
-                d,
-                rejected: n['sleep_source'] == 'rejected',
-              ),
+            if (window == null) _emptyWindowCard(c, p, d,
+                rejected: n['sleep_source'] == 'rejected'),
             ..._napsButton(c, l, d.day),
-          ],
-        ),
-      ),
+          ])),
+
       const SizedBox(height: S.x3),
       _accordion(
         l.sleepTabStoodOutCardTitle,
@@ -1161,6 +1209,12 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (DayTimelinePilot.sleep.on) ...[
+              if (_deviceNight(d) case final dn?)
+                _night(c, p, d, dn, device: dn)
+              else _night(c, p, d, n),
+              const SizedBox(height: S.x3),
+            ],
             _overnight(c, p, d),
             const SizedBox(height: S.x3),
             section(l.sleepDetailStagesSection, _stages(c, p, n)),
@@ -1411,7 +1465,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   /// flight adds its line underneath. One builder so the tab can never lose
   /// the recalculating and failure states the pushed screen shows.
   Widget _answerSlot(
-      BuildContext c, P p, SleepData d, Map<String, dynamic> n) {
+      BuildContext c, P p, SleepData d, Map<String, dynamic> n, {bool summary = false}) {
+    Widget answer() => summary ? _pilotNightCard(c, d) : _answer(c, p, d, n);
     final failed = n['calculation_error'] as String?;
     final running = n['recalculating'] == true && failed == null;
     final editStatus = SleepEditView.of(n['sleep_edit']);
@@ -1425,7 +1480,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         // for work that is not happening.
         if (failed != null) ...[
           StatusCard('Sleep calculation', failed, icon: LucideIcons.triangleAlert),
-          Align(alignment: Alignment.centerLeft, child: _retryButton(day)),
+          if (!summary) Align(alignment: Alignment.centerLeft, child: _retryButton(day)),
         ],
         // Running: the explanation stays readable and is announced; only the
         // numbers it is about pulse.
@@ -1438,9 +1493,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           ),
         if (editStatus?.dependsOn != null) SleepEditStatus(status: editStatus!),
         if (running && !dependents)
-          PendingContent(pending: true, child: _answer(c, p, d, n))
+          PendingContent(pending: true, child: answer())
         else
-          _answer(c, p, d, n),
+          answer(),
         if (_saving)
           Text('Saving times…', style: F.cap.copyWith(color: p.ink3)),
       ],
@@ -1648,6 +1703,168 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     ];
   }
 
+  // ── pilot day-timeline: the night card and its timeline editor ──
+
+  DateTime? _overrideAt;
+
+  /// The recalculation a Save started; the card pulses until it lands.
+  Future<SleepOperationResult>? _background;
+
+  /// The window a Save wrote, shown while the night recalculates (the stored
+  /// result still holds the old one until then).
+  (int, int)? _pendingWindow;
+
+  String get _cardDay => _d?.day ?? _day ?? todayLabel();
+
+  Widget _pilotNightCard(BuildContext c, SleepData d) {
+    final l = AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));
+    final n = d.night;
+    final source = n['sleep_source'];
+    final mine = source == 'manual' || source == 'confirmed';
+    DateTime? at(Object? ts) => ts is num
+        ? DateTime.fromMillisecondsSinceEpoch((ts * 1000).round()) : null;
+    final start = at(_pendingWindow?.$1 ?? n['onset_ts']);
+    final end = at(_pendingWindow?.$2 ?? n['wake_ts']);
+    final rejected = source == 'rejected';
+    final intervals = <SleepSummaryInterval>[
+      if (start != null && end != null)
+        SleepSummaryInterval(id: 'main', start: start, end: end),
+      for (final (i, nap) in d.naps.indexed)
+        if (at(nap['start']) case final start?)
+          if (at(nap['end']) case final end?)
+            SleepSummaryInterval(id: 'nap:$i', start: start, end: end, nap: true,
+              source: nap['source'] as String?, durationMin: nap['duration_min'] as num?),
+    ];
+    return SleepSummary(
+      key: const ValueKey('sleep-summary'),
+      asleepMin: n['duration_min'] as num?,
+      inBedMin: n['in_bed_min'] as num?,
+      efficiency: n['efficiency'] as num?,
+      unobservedMin: d.unobservedMin,
+      changedAt: mine || _pendingWindow != null ? _overrideAt : null,
+      sourceIcon: rejected ? LucideIcons.undo2 : mine ? LucideIcons.userCheck : LucideIcons.wandSparkles,
+      sourceText: rejected ? l.sleepDetailNotSleep
+          : mine || _pendingWindow != null ? l.sleepDetailWindowMine
+          : source == 'auto_fallback' ? l.sleepDetailWindowFallback
+          : source == 'vendor_staged' ? l.sleepDetailStagedByRing
+          : start == null ? l.sleepDetailNoNightBody : l.sleepDetailWindowAuto,
+      sourceDetail: source == 'auto_fallback' ? l.sleepDetailWindowFallbackBody
+          : mine && d.solMin != null ? l.sleepDetailWindowSol(_solBand(c, d.solMin!))
+          : mine && !d.hasNight && _storedRanges(n) != null ? l.sleepDetailTimesSavedRanges : null,
+      intervals: intervals,
+      wake: d.wakeTimeline,
+      updatedAt: computedAtOf(n['recordings_through']),
+      context: _asOf(d, statusOnly: true),
+      onEdit: _loading ? null : openTimeline,
+    );
+  }
+
+  AppState? get _app {
+    try {
+      return context.read<AppState>();
+    } on ProviderNotFoundException {
+      return null;
+    }
+  }
+
+  @override
+  void recalculate() {
+    final app = _app;
+    if (app == null) return;
+    final day = _cardDay;
+    _runOverride(day, () => app.recalculateSleep(day), timesSaved: false);
+  }
+
+  @override
+  void notSleep() => _rejectWindow(_cardDay);
+
+  @override
+  void backToAutomatic() => _clearWindow(_cardDay);
+
+  @override
+  void setEnd(BlockEnd which, DateTime to) {
+    final n = _d?.night ?? const <String, dynamic>{};
+    final s = _pendingWindow?.$1 ?? (n['onset_ts'] as num?)?.round();
+    final e = _pendingWindow?.$2 ?? (n['wake_ts'] as num?)?.round();
+    if (s == null || e == null) return;
+    final t = to.millisecondsSinceEpoch ~/ 1000;
+    final w = which == BlockEnd.start ? (t, e) : (s, t);
+    if (w.$2 <= w.$1) {
+      setState(() => _overrideFailed = 'Wake time must be after the start of sleep.');
+      return;
+    }
+    _saveEdit(SleepEditPlan(day: _cardDay, window: w));
+  }
+
+  /// Save acknowledged at the durable write; the night recalculates after.
+  Future<void> _saveEdit(SleepEditPlan plan) async {
+    final app = _app;
+    if (app == null) return;
+    final r = app.saveSleepEdit(plan);
+    try {
+      await r.written;
+    } catch (e) {
+      unawaited(r.done.then((_) {}, onError: (_) {}));
+      if (mounted) setState(() => _overrideFailed = '$e');
+      return;
+    }
+    _track(r.done, plan.window);
+  }
+
+  void _track(Future<SleepOperationResult> done, (int, int)? window) {
+    if (!mounted) return;
+    setState(() {
+      _background = done;
+      _pendingWindow = window ?? _pendingWindow;
+      _overrideFailed = null;
+      _overrideAt = DateTime.now();
+    });
+    done.then((result) async {
+      if (!mounted || !identical(_background, done)) return;
+      if (!result.success) {
+        setState(() => _overrideFailed = result.error ?? 'Sleep calculation failed. Try again.');
+      }
+      await _load();
+      if (mounted && identical(_background, done)) {
+        setState(() => (_background = null, _pendingWindow = null));
+      }
+    });
+  }
+
+  @override
+  Future<void> openTimeline() async {
+    final repo = repoOf(context);
+    final app = _app;
+    final d = _d;
+    if (repo == null || app == null || d == null) return;
+    final day = _cardDay;
+    final n = d.night;
+    final s = _pendingWindow?.$1 ?? (n['onset_ts'] as num?)?.round();
+    final e = _pendingWindow?.$2 ?? (n['wake_ts'] as num?)?.round();
+    final date = DateTime.tryParse(day);
+    final usual = date == null ? null : app.sleepOperations.expectedWindowFor(date);
+    final SleepEditorData data;
+    try {
+      data = await SleepEditorData.load(repo, day,
+          window: s != null && e != null && n['sleep_source'] != 'rejected' ? (s, e) : null,
+          fallback: usual == null ? null
+              : (usual.$1.millisecondsSinceEpoch ~/ 1000, usual.$2.millisecondsSinceEpoch ~/ 1000),
+          usual: usual == null ? null
+              : (usual.$1.millisecondsSinceEpoch ~/ 1000, usual.$2.millisecondsSinceEpoch ~/ 1000));
+    } catch (err) {
+      if (mounted) setState(() => _overrideFailed = '$err');
+      return;
+    }
+    if (!mounted) return;
+    final saver = _AppSleepSaver(app);
+    final result = await Navigator.of(context).push<SleepEditorResult>(MaterialPageRoute(
+        builder: (_) => SleepTimelineEditor(data: data, save: saver)));
+    if (result != null) _track(result.done, saver.window);
+  }
+
+  @override
+  void openNaps() => go(context, NapsScreen(day: _cardDay));
+
   Future<void> _confirmWindow(String day) => _runOverride(
         day,
         () => context.read<AppState>().confirmSleep(day),
@@ -1752,7 +1969,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   List<Widget> _nightControls(SleepData d, {bool recalc = true}) {
     final day = _day ?? d.day ?? todayLabel();
     return [
-      if (recalc && !_hasWindowCard(d)) _recalculateButton(day),
+      if (recalc && !_hasWindowCard(d) && !DayTimelinePilot.sleep.on)
+        _recalculateButton(day),
 
     ];
   }
@@ -1979,7 +2197,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           Text(l?.sleepDetailWatchedExplain(
             hm(math.max(0, (n['in_bed_min'] as num) - d.unobservedMin!)),
             hm(n['in_bed_min'] as num)) ??
-            'The band covered ${hm(math.max(0, (n['in_bed_min'] as num) - d.unobservedMin!))} of your ${hm(n['in_bed_min'] as num)} in bed. Sleep and stage figures use only that time.',
+            'The band covered ${hm(math.max(0, (n['in_bed_min'] as num) - d.unobservedMin!))} of your ${hm(n['in_bed_min'] as num)} sleep window. Sleep and stage figures use only that time.',
             style: F.over.copyWith(color: p.ink3, height: 1.5)),
         ],
         if (_shape(c, d) case final shape?) ...[
@@ -2638,7 +2856,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     if (eff != null) {
       rows.add(_Compare(
         label: l?.sleepDetailAskSleptThrough ??
-            'Did you sleep through your time in bed?',
+            'Did you sleep through your sleep window?',
         value: _pct(eff * 100),
         tonight: eff * 100,
           pending: d.historyPending,
@@ -2706,6 +2924,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           for (var i = 0; i < rows.length; i++) ...[
             if (i > 0) const SizedBox(height: S.x5),
             rows[i],
+            const SizedBox(height: S.x2),
+            rows[i].detail(c),
           ],
         ]),
       ),
@@ -2714,19 +2934,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           l?.sleepDetailBarExplain ??
               'The bar is the middle half of your own nights.',
           style: F.over.copyWith(color: p.ink3, height: 1.5),
-        ),
-        // History-dependent sentences form the tail. Their line counts cannot
-        // move any of the already-visible comparison plots above them.
-        Column(
-          key: const ValueKey('sleep-comparison-tail'),
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final row in rows)
-              Padding(
-                padding: const EdgeInsets.only(top: S.x3),
-                child: row.detail(c),
-              ),
-          ],
         ),
     ]);
   }
@@ -3192,6 +3399,18 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
 /// band" and "where did last night land". A strip carries both, and the
 /// sentence under it carries the same thing in words for anyone who cannot see
 /// the strip.
+/// The editor's Save through AppState, remembering the window it wrote.
+class _AppSleepSaver implements SleepEditSaver {
+  _AppSleepSaver(this.app);
+  final AppState app;
+  (int, int)? window;
+  @override
+  ({Future<void> written, Future<SleepOperationResult> done}) save(SleepEditPlan plan) {
+    window = plan.window;
+    return app.saveSleepEdit(plan);
+  }
+}
+
 class _Compare extends StatelessWidget {
   final String label, value, low, high;
   final double tonight;

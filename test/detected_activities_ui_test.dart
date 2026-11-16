@@ -54,7 +54,8 @@ class _Repo extends LocalRepository {
   Future<DayReviewReceipt> saveDayReview({required List<ActivityDecision> activities,
       required List<MomentDecision> moments, List<ReviewRange> ranges = const [],
       List<MomentWorkoutDecision> workouts = const [],
-      Map<AssumedGlass, bool> glasses = const {}}) async {
+      Map<AssumedGlass, bool> glasses = const {},
+      SavedReviewEdits savedEdits = const SavedReviewEdits()}) async {
     for (final d in activities) {
       if (items.singleWhere((i) => i.id == d.suggestion.id).revision != d.suggestion.revision) {
         throw const ActivityReviewException('The proposal changed. Review the new times.');

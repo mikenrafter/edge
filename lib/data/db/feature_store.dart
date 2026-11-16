@@ -759,7 +759,7 @@ Future<void> _ldbPrivFixWaterMinute(Transaction txn, String date, int removedMin
 // answer recorded as added (moment_label.metric_value, after any clamp), never
 // a guess; an answer that never recorded it is refused
 // [change_answer_test.dart "never kept"].
-Future<MomentAnswerChange> _ldbChangeMomentAnswer({required MomentLabel before, required MomentLabel after, required String? metricField, required double? metricValue, required double? metricMax, required StoredSymptom? symptom}) async {
+Future<MomentAnswerChange> _ldbChangeMomentAnswer({required MomentLabel before, required MomentLabel after, required String? metricField, required double? metricValue, required double? metricMax, required StoredSymptom? symptom, Transaction? transaction}) async {
     if (before.key != after.key) {
       throw ArgumentError.value(after.key, 'after', 'must be the same moment as ${before.key}');
     }
@@ -776,7 +776,7 @@ Future<MomentAnswerChange> _ldbChangeMomentAnswer({required MomentLabel before, 
     final date = before.date, hhmm = before.hhmm;
     final moment = int.parse(hhmm.substring(0, 2)) * 60 + int.parse(hhmm.substring(3, 5));
     try {
-      return await (await LocalDb.instance).transaction<MomentAnswerChange>((txn) async {
+      Future<MomentAnswerChange> write(Transaction txn) async {
         final rows = await txn.query('moment_label',
             where: 'date = ? AND hhmm = ?', whereArgs: [date, hhmm], limit: 1);
         if (rows.isEmpty) return const MomentNotFound();
@@ -865,10 +865,14 @@ Future<MomentAnswerChange> _ldbChangeMomentAnswer({required MomentLabel before, 
           metricValue: newField == null ? null : added,
           answeredAtMs: stamp,
         ));
-      });
+      }
+      return transaction == null
+          ? await (await LocalDb.instance).transaction(write)
+          : await write(transaction);
     } on ArgumentError {
       rethrow;
     } catch (error) {
+      if (transaction != null) rethrow;
       return MomentChangeFailed(MomentChangeFailure.storage, error);
     }
   }
@@ -1358,11 +1362,11 @@ Future<void> _ldbPutJournalFieldDef(JournalFieldSpec spec) async {
     });
   }
 
-Future<Map<String, int>> _ldbApplyPendingActivityReviews() async {
-    final db = await LocalDb.instance;
-    return db.transaction((tx) async {
+Future<Map<String, int>> _ldbApplyPendingActivityReviews({Transaction? transaction, String? onlyDay}) async {
+    Future<Map<String, int>> write(Transaction tx) async {
       final pending = await tx.query(
-        'activity_review_days', orderBy: 'day_id', limit: 25,
+        'activity_review_days', where: onlyDay == null ? null : 'day_id = ?',
+        whereArgs: onlyDay == null ? null : [onlyDay], orderBy: 'day_id', limit: 25,
       );
       final revisions = <String, int>{};
       for (final job in pending) {
@@ -1426,7 +1430,9 @@ Future<Map<String, int>> _ldbApplyPendingActivityReviews() async {
         await tx.rawUpdate('UPDATE activity_review_meta SET revision = revision + 1');
       }
       return revisions;
-    });
+    }
+    return transaction == null
+        ? (await LocalDb.instance).transaction(write) : write(transaction);
   }
 
 Future<NapResolution?> _ldbPutNapEdit({required String dayId, required int startTs, required int endTs, required String source, NapResolution? expected, Transaction? transaction}) async {
@@ -1473,19 +1479,29 @@ Future<NapResolution?> _ldbPutNapEdit({required String dayId, required int start
     return res;
   }
 
-Future<void> _ldbDeleteNapEdit(String dayId, int startTs) async {
-    final db = await LocalDb.instance;
-    await db.transaction((tx) async {
+Future<void> _ldbDeleteNapEdit(String dayId, int startTs, {Transaction? transaction}) async {
+    Future<void> write(Transaction tx) async {
       final rows = await tx.query('sleep_nap',
         where: 'day_id = ? AND start_ts = ?', whereArgs: [dayId, startTs]);
       await ActivityStore.markDayChanged(tx, dayId);
+      // A retained detector snapshot is not an override to remove.
+      if (rows.isNotEmpty && rows.single['source'] == 'legacy') return;
       String? restoreSource, restorePayload;
-      if (rows.isNotEmpty && rows.single['source'] == 'rejected') {
+      var restoreDay = dayId, restoreStart = startTs;
+      var restoreEnd = rows.isEmpty ? startTs : rows.single['end_ts'] as int;
+      if (rows.isNotEmpty) {
         final payload = rows.single['payload_json'];
         if (payload is String) {
-          final source = (jsonDecode(payload) as Map)['source'];
-          if (source == 'confirmed' || source == 'legacy') restoreSource = source as String;
-        } else {
+          final snapshot = Map<String, dynamic>.from(jsonDecode(payload) as Map);
+          final source = snapshot['source'];
+          if (source == 'legacy' || source == 'confirmed' && rows.single['source'] == 'rejected') {
+            restoreSource = source as String;
+            restoreDay = snapshot.remove('_legacy_day') as String? ?? dayId;
+            restoreStart = (snapshot['start'] as num?)?.toInt() ?? startTs;
+            restoreEnd = (snapshot['end'] as num?)?.toInt() ?? restoreEnd;
+            restorePayload = jsonEncode(snapshot);
+          }
+        } else if (rows.single['source'] == 'rejected') {
           // A rejection from before activity review has no snapshot, and a
           // detection that old is never offered for review again. Put the
           // window back as a legacy nap so it is not lost for good; with no
@@ -1504,15 +1520,30 @@ Future<void> _ldbDeleteNapEdit(String dayId, int startTs) async {
       if (restoreSource != null) {
         // Removing a rejection means "Put it back". Keep its original asleep
         // minutes and confidence even after raw recordings have expired.
-        await tx.update('sleep_nap', {
+        final original = await tx.query('sleep_nap', where: 'day_id = ? AND start_ts = ?',
+          whereArgs: [restoreDay, restoreStart]);
+        if ((restoreDay != dayId || restoreStart != startTs) && original.isNotEmpty &&
+            (!const {'legacy', 'rejected'}.contains(original.single['source']) ||
+              original.single['end_ts'] != restoreEnd)) {
+          throw const ActivityReviewException('This sleep entry changed while you were editing. Open it again.');
+        }
+        await tx.delete('sleep_nap', where: 'day_id = ? AND start_ts = ?', whereArgs: [dayId, startTs]);
+        await tx.insert('sleep_nap', {
+          'day_id': restoreDay, 'start_ts': restoreStart, 'end_ts': restoreEnd,
           'source': restoreSource,
           'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-          'payload_json': ?restorePayload,
-        }, where: 'day_id = ? AND start_ts = ?', whereArgs: [dayId, startTs]);
+          'payload_json': restorePayload,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        await ActivityStore.markDayChanged(tx, restoreDay);
       } else {
         await tx.delete('sleep_nap', where: 'day_id = ? AND start_ts = ?', whereArgs: [dayId, startTs]);
       }
-    });
+    }
+    if (transaction == null) {
+      await (await LocalDb.instance).transaction(write);
+    } else {
+      await write(transaction);
+    }
   }
 
 Future<void> _ldbUpdateBreathingWindows({required int startedAt, required double? preRmssd, required double? postRmssd}) async {

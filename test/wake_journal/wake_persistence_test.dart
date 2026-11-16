@@ -143,6 +143,7 @@ void main() {
       () async {
         await seed([
           if (path == WakePath.natural) row('natural', -20, {'reason': 'fire'}),
+          if (path == WakePath.natural) row('natural_haptic', -20, {'phase': 'result', 'result': 'sent'}),
           if (path != WakePath.alarm) row('gradual', -15, {'result': 'sent'}),
           row('fallback', 0, {'fired': true}),
           row('ack', 8),

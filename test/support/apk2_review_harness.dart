@@ -323,7 +323,8 @@ class Apk2Rig {
   Future<Map<String, List<Map<String, Object?>>>> snapshot(WidgetTester t) async =>
       (await t.runAsync(() async => {
         for (final table in ['activity_suggestions', 'activity_review_meta',
-            'activity_review_days', 'sleep_nap', 'sessions', 'moment_label', 'journal'])
+            'activity_review_days', 'sleep_nap', 'sessions', 'moment_label', 'journal',
+            'journal_metric', 'symptom_entry', 'sleep_override', 'wake_confirmation'])
           table: await db.query(table, orderBy: 'rowid'),
       }))!;
 

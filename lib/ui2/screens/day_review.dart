@@ -8,6 +8,9 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import '../../data/day_label.dart';
 import '../../data/db.dart';
+import '../../data/activity_store.dart';
+import '../../data/review_restore.dart';
+import '../../data/sleep_edit_write.dart';
 import '../../data/assumed_water.dart';
 import '../activity/catalogue.dart' show activityByName;
 import 'detected_activities.dart' show NapProposalEditor;
@@ -24,7 +27,7 @@ import '../ui2.dart';
 import 'day_timeline.dart';
 import 'home_screen.dart' show repoOf, clockOfTs;
 import 'log_workout.dart' show bumpInsights, LogWorkout, WorkoutDraft;
-import 'moment_follow_up.dart' show MomentReviewEditor, StagedWorkoutSink;
+import 'moment_follow_up.dart' show MomentReviewEditor, MomentAnswerEditScreen, StagedWorkoutSink;
 
 String _activityDay(ActivitySuggestion s) => dayLabelOf(
     DateTime.fromMillisecondsSinceEpoch(s.startTs * 1000));
@@ -99,7 +102,7 @@ typedef ReviewReadSnapshot = ({List<ActivitySuggestion> activities, MomentFollow
 
 class DayReviewController extends ChangeNotifier {
   DayReviewController(this.repo, this.day, {MomentReviewService? service,
-      this.moments, this.editor, this.enabledSince, this.activities, ReviewReadSnapshot? snapshot}) : _snapshot = snapshot, service = service ?? MomentReviewService.shared {
+      this.moments, this.editor, this.enabledSince, this.activities, this.pilot = false, ReviewReadSnapshot? snapshot}) : _snapshot = snapshot, service = service ?? MomentReviewService.shared {
     _drafts.addAll(this.service.queue.decisions);
     _ranges.addAll(this.service.queue.ranges.where((r) =>
         r.startKey.startsWith('$day ')));
@@ -108,6 +111,136 @@ class DayReviewController extends ChangeNotifier {
       _choices['moment:${r.startKey}'] = true;
       _choices['moment:${r.endKey}'] = true;
     }
+    // Pilot day-timeline: unsaved decisions left on this day come back.
+    final draft = pilot ? _stash[day] : null;
+    if (draft != null) {
+      _choices.addAll(draft.choices);
+      _activityEdits.addAll(draft.edits);
+      _restores.addAll(draft.restores);
+      _drafts..clear()..addAll(draft.moments);
+      _momentWorkouts.addAll(draft.workouts);
+      _ranges..clear()..addAll(draft.ranges);
+      _savedMoments.addAll(draft.savedMoments);
+      _savedNaps.addAll(draft.savedNaps);
+      _savedWorkouts.addAll(draft.savedWorkouts);
+    }
+  }
+
+  // ── pilot day-timeline: discarded items, staged Restore, kept drafts ──
+
+  /// The day-timeline pilot's Activities: discarded items are listed with a
+  /// staged Restore, and unsaved decisions are kept when leaving.
+  final bool pilot;
+
+  /// Unsaved decisions per day, kept while the app runs (pilot: in memory;
+  /// the structural version decides whether they persist).
+  static final Map<String, ({Map<String, bool> choices,
+      Map<String, ActivityDecision> edits, Set<String> restores,
+      Map<String, ReviewDecision> moments, Map<String, WorkoutDraft> workouts,
+      List<ReviewRange> ranges, Map<String, SavedMomentEdit> savedMoments,
+      Map<String, SleepEditPlan> savedNaps, Map<String, SavedWorkoutEdit> savedWorkouts})> _stash = {};
+  @visibleForTesting
+  static void debugClearDrafts() => _stash.clear();
+
+  DiscardedItems discarded = const DiscardedItems();
+  final Set<String> _restores = {};
+
+  static String discardedId(Object item) => switch (item) {
+        ActivitySuggestion s => 'discarded:activity:${s.id}',
+        SkippedMoment m => 'discarded:moment:${m.key}',
+        RemovedGlass g => 'discarded:glass:${g.date} ${g.atMin}',
+        _ => throw ArgumentError(item),
+      };
+
+  bool isRestoreStaged(String id) => _restores.contains(id);
+
+  void toggleRestore(String id) {
+    if (!canEdit) return;
+    if (!_restores.remove(id)) _restores.add(id);
+    saveFailed = false;
+    _changed();
+  }
+
+  /// Leaving the screen: the unsaved decisions stay as a draft for this day.
+  void keepDraft() {
+    if (!pilot) return;
+    if (!hasChanges) {
+      _stash.remove(day);
+    } else {
+      _stash[day] = (choices: Map.of(_choices), edits: Map.of(_activityEdits),
+          restores: Set.of(_restores), moments: Map.of(_drafts),
+          workouts: Map.of(_momentWorkouts), ranges: List.of(_ranges),
+          savedMoments: Map.of(_savedMoments), savedNaps: Map.of(_savedNaps),
+          savedWorkouts: Map.of(_savedWorkouts));
+    }
+  }
+
+  /// Cancel: every staged decision goes; nothing stored is touched.
+  Future<void> cancelStaged() async {
+    await discardDraft();
+    _activityEdits.clear();
+    _drafts.clear();
+    _momentWorkouts.clear();
+    _ranges.clear();
+    _savedMoments.clear();
+    _savedNaps.clear();
+    _savedWorkouts.clear();
+    _restores.clear();
+    _stash.remove(day);
+    saveFailed = false;
+    _changed();
+  }
+
+  /// The discarded rows, as list rows.
+  List<({String id, Moment moment})> discardedRows(BuildContext c) {
+    final l = AppLocalizations.of(c);
+    return [
+      for (final s in discarded.activities)
+        (id: discardedId(s), moment: Moment(at: s.startTs,
+            title: s.kind == ActivityKind.meal ? (l?.activityPossibleMeal ?? 'Possible meal')
+                : s.kind == ActivityKind.nap ? (l?.activityPossibleNap ?? 'Possible nap')
+                : s.kind == ActivityKind.track
+                    ? (l?.activityPossibleTrack((s.details['track_name'] as String?) ?? '') ??
+                        'Possible: ${s.details['track_name'] ?? ''}')
+                    : (l?.activityPossibleWorkout ?? 'Possible workout'),
+            detail: l?.activityLengthMinutes(s.durationMin) ?? '${s.durationMin} min',
+            icon: s.kind == ActivityKind.nap ? LucideIcons.bedDouble
+                : s.kind == ActivityKind.meal ? LucideIcons.utensils
+                : s.kind == ActivityKind.track ? LucideIcons.tag
+                : (activityByName(s.sport)?.icon ?? LucideIcons.dumbbell),
+            color: C.domMove)),
+      for (final m in discarded.moments)
+        (id: discardedId(m), moment: Moment(
+            at: (DateTime.tryParse('${m.date}T${m.hhmm}:00')?.millisecondsSinceEpoch ?? 0) ~/ 1000,
+            title: l?.dayReviewMarkedMoment ?? 'Marked moment', detail: '',
+            icon: LucideIcons.bookmark, color: C.domMind)),
+      for (final g in discarded.glasses)
+        (id: discardedId(g), moment: Moment(
+            at: (DateTime.tryParse(g.date)?.add(Duration(minutes: g.atMin))
+                    .millisecondsSinceEpoch ?? 0) ~/ 1000,
+            title: MomentChoice.water.localized(l), detail: '${g.ml.round()} ml',
+            icon: LucideIcons.droplet, color: C.sky)),
+    ];
+  }
+
+  Future<void> _commitRestores() async {
+    final db = await LocalDb.instance;
+    final byId = {
+      for (final s in discarded.activities) discardedId(s): s,
+      for (final m in discarded.moments) discardedId(m): m,
+      for (final g in discarded.glasses) discardedId(g): g,
+    };
+    await db.transaction((tx) async {
+      for (final id in _restores) {
+        switch (byId[id]) {
+          case final ActivitySuggestion s: await ActivityStore.restore(tx, s.id);
+          case final SkippedMoment m: await restoreSkippedMoment(tx, m);
+          case final RemovedGlass g: await restoreRemovedGlass(tx, g);
+          case _: break; // no longer discarded: nothing to restore
+        }
+      }
+    });
+    _restores.clear();
   }
   ReviewReadSnapshot? _snapshot;
   final List<ActivitySuggestion>? activities;
@@ -124,6 +257,10 @@ class DayReviewController extends ChangeNotifier {
   final List<ReviewRange> _ranges = [];
   final Map<String, ActivityDecision> _activityEdits = {};
   final Map<String, WorkoutDraft> _momentWorkouts = {};
+  final Map<String, SavedMomentEdit> _savedMoments = {};
+  final Map<String, SleepEditPlan> _savedNaps = {};
+  final Map<String, SavedWorkoutEdit> _savedWorkouts = {};
+  int get _savedCount => _savedMoments.length + _savedNaps.length + _savedWorkouts.length;
   final Map<String, bool> _choices = {};
   /// Rows just saved as Keep: they stay where they were (state swapped in
   /// place) until the reload brings the stored rows, so nothing moves.
@@ -187,9 +324,10 @@ class DayReviewController extends ChangeNotifier {
   bool loading = true, loadFailed = false, saveFailed = false;
   bool followUpFailed = false, busy = false, _disposed = false;
   int _generation = 0;
-  bool get hasChanges => _choices.isNotEmpty;
-  /// Items with a staged answer (a pair's two moments count once).
-  int get stagedCount => ids.where(_choices.containsKey).length;
+  bool get hasChanges => _choices.isNotEmpty || _restores.isNotEmpty || _savedCount > 0;
+  /// Items with a staged answer (a pair's two moments count once), and staged
+  /// restores.
+  int get stagedCount => ids.where(_choices.containsKey).length + _restores.length + _savedCount;
   bool get canEdit => !loading && !loadFailed && !busy;
   /// Review mode: something waits for an answer (staged or not).
   bool get reviewing => ids.isNotEmpty;
@@ -241,6 +379,20 @@ class DayReviewController extends ChangeNotifier {
       _marks = marks.where((m) => m.date == day).toList();
       _pendingMarks = marks;
       _glasses = glasses.where((g) => g.date == day).toList();
+      if (pilot) {
+        discarded = await discardedOn(await LocalDb.instance, day);
+        if (_disposed || generation != _generation) return;
+        final known = {
+          for (final s in discarded.activities) discardedId(s),
+          for (final m in discarded.moments) discardedId(m),
+          for (final g in discarded.glasses) discardedId(g),
+        };
+        _restores.removeWhere((id) => !known.contains(id));
+        // A kept draft's decision on an item that is no longer waiting goes.
+        final live = ids.toSet();
+        _choices.removeWhere((id, _) => !live.contains(id) &&
+            !id.startsWith('moment:'));
+      }
     } catch (_) {
       if (!_disposed && generation == _generation) loadFailed = true;
     } finally {
@@ -488,6 +640,63 @@ class DayReviewController extends ChangeNotifier {
       local.dispose();
     }
   }
+  Future<void> editSavedRow(BuildContext c, Moment m) async {
+    if (!pilot || !canEdit) return;
+    final ref = m.editRef;
+    if (ref == null) return;
+    if (ref.startsWith('moment:')) {
+      final prior = _savedMoments[ref];
+      final saved = prior?.before ?? (await LocalDb.momentLabels(date: day))
+          .where((x) => x.key == ref.substring(7)).firstOrNull;
+      if (saved == null || !c.mounted || _disposed) return;
+      final symptom = saved.label == MomentChoice.symptom.id
+          ? (await LocalDb.symptomEntries(date: day))
+              .where((x) => x.key == saved.key).firstOrNull : null;
+      if (!c.mounted || _disposed) return;
+      final decision = await Navigator.of(c).push<ReviewDecision>(MaterialPageRoute(
+          builder: (_) => MomentAnswerEditScreen(saved: saved, symptom: symptom,
+              stageOnly: true, initialDecision: prior?.decision)));
+      if (decision != null && !_disposed) {
+        _savedMoments[ref] = SavedMomentEdit(saved, decision);
+      }
+    } else if (ref == 'nap') {
+      final key = 'nap:${m.at}';
+      final prior = _savedNaps[key]?.naps.single;
+      final sourceDay = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(m.at * 1000));
+      final source = (await LocalDb.napEdits(sourceDay))
+          .where((n) => n['start_ts'] == m.at && n['end_ts'] == m.until &&
+              n['source'] != 'rejected').firstOrNull?['source'] as String?;
+      if (!c.mounted || _disposed) return;
+      final suggestion = ActivitySuggestion(id: key, kind: ActivityKind.nap, revision: 0,
+          startTs: prior?.start ?? m.at, endTs: prior?.end ?? m.until ?? m.at);
+      final window = await Navigator.of(c).push<(int, int)>(MaterialPageRoute(
+          builder: (_) => NapProposalEditor(suggestion: suggestion, stageOnly: true)));
+      if (window != null && !_disposed) {
+        _savedNaps[key] = SleepEditPlan(day: day, naps: [NapWrite(
+            start: window.$1, end: window.$2, fromStart: prior?.fromStart ?? m.at,
+            fromEnd: prior?.fromEnd ?? m.until,
+            fromSource: prior == null ? source : prior.fromSource)]);
+      }
+    } else if (ref.startsWith('session:')) {
+      final parts = ref.substring(8).split('|');
+      final prior = _savedWorkouts[parts.first];
+      final before = prior?.before ?? await LocalDb.session(parts.first);
+      if (before == null || !c.mounted || _disposed) return;
+      final draft = await Navigator.of(c).push<WorkoutDraft>(MaterialPageRoute(
+          builder: (_) => LogWorkout(sessionId: parts.first, stageOnly: true,
+              start: DateTime.fromMillisecondsSinceEpoch(
+                  (prior?.window.startTs ?? m.at) * 1000),
+              end: DateTime.fromMillisecondsSinceEpoch(
+                  (prior?.window.endTs ?? m.until ?? m.at) * 1000),
+              activity: activityByName(prior?.window.type ??
+                  before['type'] as String?))));
+      if (draft != null && !_disposed) {
+        _savedWorkouts[parts.first] = SavedWorkoutEdit(before, draft);
+      }
+    }
+    _changed();
+  }
+
   Future<void> save(BuildContext c) async {
     if (!canEdit || !hasChanges) return;
     busy = true;
@@ -513,12 +722,14 @@ class DayReviewController extends ChangeNotifier {
       marks.add(MomentDecision(m, decision));
     }
     try {
-      final receipt = await service.commitDay(_SaveDay(repo,
+      final receipt = staged.isEmpty && _savedCount == 0 ? null : await service.commitDay(_SaveDay(repo,
         activities: [for (final s in _activities)
           if (staged['activity:${s.id}'] case final keep?)
             keep ? (_activityEdits['activity:${s.id}'] ?? ActivityDecision(s,
                 keep: true, workoutType: activityByName(s.sport)?.typeKey ?? 'other'))
               : ActivityDecision(s, keep: false)],
+        savedEdits: SavedReviewEdits(moments: _savedMoments.values.toList(),
+            naps: _savedNaps.values.toList(), workouts: _savedWorkouts.values.toList()),
         moments: marks, ranges: selectedRanges,
         workouts: [for (final m in marks)
           if (m.decision.choice == MomentChoice.workout &&
@@ -533,7 +744,7 @@ class DayReviewController extends ChangeNotifier {
           if (staged.containsKey(ReviewKey.glass(g))) ReviewKey.glass(g),
       });
       if (_disposed) return;
-      followUpFailed = receipt.followUpFailed;
+      followUpFailed = receipt?.followUpFailed ?? false;
       for (final e in staged.entries) {
         final row = before[e.key];
         if (e.value && row != null && !e.key.startsWith('range:') &&
@@ -558,6 +769,15 @@ class DayReviewController extends ChangeNotifier {
       _ranges.removeWhere(selectedRanges.contains);
       _drafts.removeWhere((key, _) => staged.containsKey(key));
       _choices.clear();
+      _savedMoments.clear();
+      _savedNaps.clear();
+      _savedWorkouts.clear();
+      if (pilot) _stash.remove(day);
+      if (_restores.isNotEmpty) {
+        await _commitRestores();
+        if (_disposed) return;
+        unawaited(load());
+      }
       savedRevision++;
       if (c.mounted) bumpInsights(c);
     } catch (error) {
@@ -575,16 +795,19 @@ class DayReviewController extends ChangeNotifier {
 /// The day's staged decisions as one repository write, for commitDay.
 class _SaveDay implements DayCommit<DayReviewReceipt> {
   _SaveDay(this.repo, {required this.activities, required this.moments,
-      required this.ranges, required this.workouts, required this.glasses});
+      required this.ranges, required this.workouts, required this.glasses,
+      required this.savedEdits});
   final LocalRepository repo;
   final List<ActivityDecision> activities;
   final List<MomentDecision> moments;
   final List<ReviewRange> ranges;
   final List<MomentWorkoutDecision> workouts;
   final Map<AssumedGlass, bool> glasses;
+  final SavedReviewEdits savedEdits;
   @override
   Future<DayReviewReceipt> commit() => repo.saveDayReview(activities: activities,
-      moments: moments, ranges: ranges, workouts: workouts, glasses: glasses);
+      moments: moments, ranges: ranges, workouts: workouts, glasses: glasses,
+      savedEdits: savedEdits);
 }
 
 class _StagedWorkouts implements StagedWorkoutSink {

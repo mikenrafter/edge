@@ -12,7 +12,8 @@ class WakeDreamResponse {
     required this.at,
   });
   final DreamAnswer answer;
-  final WakePath path;
+  /// Absent when no successful pre-ack delivery identifies a method.
+  final WakePath? path;
   final DateTime at;
 }
 

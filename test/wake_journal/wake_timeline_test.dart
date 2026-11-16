@@ -33,6 +33,32 @@ void main() {
     },
   );
 
+  // WHY: a decision to fire precedes delivery and can fail or be suppressed.
+  // catches: treating natural reason=fire as proof of an actual buzz.
+  test('failed Natural delivery cannot become a first buzz', () {
+    final n = WakeNightTimeline.forEpoch(wakeEpochSec: epoch, trace: [
+      row('natural', -20, {'reason': 'fire'}),
+      row('natural_haptic', -20, {'phase': 'result', 'result': 'notDelivered', 'delivered': []}),
+      row('ack', 8),
+    ]);
+    expect(n.events.map((e) => e.kind), [WakeNightEventKind.ack]);
+    expect(n.firstFireAt, isNull);
+    expect(n.timeToWake, isNull);
+  });
+
+  test('historical decisions stay unconfirmed and a successful repeat starts the interval', () {
+    final historical = WakeNightTimeline.forEpoch(wakeEpochSec: epoch,
+      trace: [row('natural', -20, {'reason': 'fire'}), row('ack', 8)]);
+    expect(historical.firstFireAt, isNull);
+    expect(historical.timeToWake, isNull);
+    final repeated = WakeNightTimeline.forEpoch(wakeEpochSec: epoch, trace: [
+      row('natural', -20, {'reason': 'fire'}),
+      row('natural_haptic', -20, {'phase': 'result', 'result': 'notDelivered'}),
+      row('natural_repeat', -18, {'phase': 'result', 'result': 'sent'}), row('ack', 8)]);
+    expect(repeated.firstFireAt, atMinute(-18));
+    expect(repeated.timeToWake, const Duration(minutes: 26));
+  });
+
   test('time to wake is ack minus first fire, never the scheduled alarm', () {
     final n = WakeNightTimeline.forEpoch(
       wakeEpochSec: epoch,
@@ -51,6 +77,7 @@ void main() {
         wakeEpochSec: epoch,
         trace: [
           row('natural', -20, {'reason': 'fire'}),
+          row('natural_haptic', -20, {'phase': 'result', 'result': 'sent'}),
           row('snooze', 1, {'count': 1}),
         ],
       );
@@ -133,6 +160,7 @@ void main() {
           row('gradual', -22, {'result': 'notDelivered'}),
           row('error', -21),
           row('natural', -20, {'reason': 'fire'}),
+          row('natural_haptic', -20, {'phase': 'result', 'result': 'sent'}),
           row('ack', 8),
         ],
       );

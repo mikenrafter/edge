@@ -2017,7 +2017,10 @@ part 'engine/settled.dart';
 // unapplied changed assertion can invalidate measurements with no input.
 // 122 (sleep edit R4): preserve settled measured nights and reuse unchanged
 // assertions when overnight input is gone even if daytime raw survives.
-const int kAlgoVersion = 122;
+// 123 (sleep summary R1): an unchanged measured night with expired raw
+// still applies nap assertions before completing its edit receipt. Reuse the
+// retained night verbatim; only nap projections/totals and dependents change.
+const int kAlgoVersion = 123;
 
 enum SleepEditCalculation { complete, incomplete, superseded }
 

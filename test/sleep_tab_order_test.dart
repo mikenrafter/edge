@@ -13,6 +13,9 @@ import 'package:openstrap_edge/ui2/screens/sleep_detail.dart';
 import 'package:openstrap_edge/ui2/screens/sleep_tab.dart';
 import 'package:openstrap_edge/ui2/screens/metric_detail.dart' show DayNav;
 import 'package:openstrap_edge/ui2/why_row.dart';
+import 'package:openstrap_edge/ui2/day_timeline/night_card.dart';
+import 'package:openstrap_edge/ui2/day_timeline/pilot_flags.dart';
+import 'package:openstrap_edge/ui2/day_timeline/sleep_timeline_editor.dart';
 import 'package:openstrap_edge/ui2/grammar.dart' show InsideCard, Surface;
 import 'support/as_of_recalc_fakes.dart';
 import 'support/skeleton_fixture.dart';
@@ -21,6 +24,8 @@ import 'support/pilot_shots.dart';
 
 class OrderedSleepRepo extends SleepRepo {
   Completer<void>? held;
+  @override
+  Future<Map<String, dynamic>> getDayNaps(String date) async => const {'naps': []};
   @override
   Future<List<Map<String,Object?>>> getDeviceNights(String day) async => [
     {'device_id':'paired','label':'Paired watch',...await getDaySleepV2(day)}];
@@ -39,7 +44,59 @@ Finder card(String id)=>find.byKey(ValueKey('sleep-tab:$id'));
 Finder within(String id,Finder child)=>find.descendant(of:card(id),matching:child);
 void main(){
   setUpAll(skLoadAppFonts);
-  testWidgets('uncarded timeline keeps its contents above the four cards', (t) async {
+  tearDown(() => DayTimelinePilot.debugOverride.clear());
+  // WHY: the merge must put the pilot actions inside the always-open first
+  // card while preserving all four later cards, including on an empty night.
+  // proves: CLAIM(sleep-tab-order)
+  for (final hasNight in [true, false]) {
+    testWidgets('pilot night card stays in timeline, hasNight=$hasNight', (t) async {
+      DayTimelinePilot.debugOverride[DayTimelinePilot.sleep] = true;
+      skTallView(t, w: 390, h: 10000);
+      final repo = OrderedSleepRepo();
+      final app = AppState.forTesting()..repo = repo;
+      addTearDown(app.dispose);
+      final loaded = await SleepData.load(repo);
+      final data = hasNight ? loaded : SleepData(day: loaded.day);
+      await t.pumpWidget(perfApp(app, SleepDetail(embedded: true, data: data)));
+      for (final id in cards) { expect(card(id), findsOneWidget); }
+      // WHY: v6 summary has a single edit door and no mutable time controls.
+      // catches: rendering the legacy NightCard under the summary.
+      expect(within('timeline', find.text('Edit sleep')), findsOneWidget);
+      expect(within('timeline', find.byType(NightCard)), findsNothing);
+      expect(find.byKey(const ValueKey('card:window')), findsNothing);
+      expect(within('timeline', find.text('Not sleep')), findsNothing);
+      expect(within('timeline', find.text('Back to automatic')), findsNothing);
+      expect(within('timeline', find.byKey(NightCard.askKey)), findsNothing);
+      expect(find.byType(SettingsAccordion), findsNWidgets(4));
+      expect(within('plan', find.text('Alarm')), findsOneWidget);
+      expect(within('signals', find.byKey(const ValueKey('sleep-stage-rows'))), findsOneWidget);
+      await t.pumpWidget(const SizedBox());
+    });
+  }
+  // WHY: the embedded tab must use the real editor route after the merge,
+  // rather than retaining only the isolated NightCard listener tests.
+  testWidgets('pilot Sleep timeline opens the editor from the new card', (t) async {
+    DayTimelinePilot.debugOverride[DayTimelinePilot.sleep] = true;
+    phoneSurface(t);
+    final repo = OrderedSleepRepo();
+    final app = AppState.forTesting()..repo = repo;
+    addTearDown(app.dispose);
+    final data = await SleepData.load(repo);
+    await t.pumpWidget(perfApp(app, SleepDetail(embedded: true, data: data)));
+    await t.pump();
+    await t.ensureVisible(find.text('Edit sleep'));
+    await t.pump();
+    await t.tap(find.text('Edit sleep'));
+    await settle(t);
+    expect(find.byType(SleepTimelineEditor), findsOneWidget);
+    expect(t.widget<SleepTimelineEditor>(find.byType(SleepTimelineEditor)).data.day, data.day);
+    Navigator.of(t.element(find.byType(SleepTimelineEditor))).pop();
+    await settle(t);
+    expect(find.byType(SleepTimelineEditor), findsNothing);
+    expect(within('timeline', find.text('Edit sleep')), findsOneWidget);
+    await t.pumpWidget(const SizedBox());
+  });
+  testWidgets('five cards keep the approved order and first has no collapse control', (t) async {
     skTallView(t,w:390,h:10000);final repo=OrderedSleepRepo();final app=AppState.forTesting()..repo=repo;addTearDown(app.dispose);
     final data=await SleepData.load(repo);
     await t.pumpWidget(perfApp(app,SleepDetail(embedded:true,data:data)));
@@ -102,7 +159,9 @@ void main(){
   });
   // Reviewed render artifacts for the five approved cards, using the existing
   // shot helper; assertions above own behavior and geometry.
-  testWidgets('five Sleep cards dark review renders', (t) async {
+  for (final pilot in [false, true]) {
+  testWidgets('five Sleep cards dark review renders pilot=$pilot', (t) async {
+    DayTimelinePilot.debugOverride[DayTimelinePilot.sleep] = pilot;
     phoneSurface(t); final repo=OrderedSleepRepo();
     final app=AppState.forTesting()..repo=repo; addTearDown(app.dispose);
     final data=await SleepData.load(repo);
@@ -112,10 +171,18 @@ void main(){
       await t.scrollUntilVisible(card(id),300,scrollable:find.byType(Scrollable).first);
       await Scrollable.ensureVisible(t.element(card(id)),alignment:0);
       await t.pump();
-      await takePilotShot(t,'sleep-$id');
+      await takePilotShot(t,'sleep-${pilot ? 'on' : 'off'}-$id');
       expect(t.takeException(),isNull);
+      if (id == 'timeline') {
+        final actions = pilot ? find.byKey(const ValueKey('sleep-summary'))
+            : find.byKey(const ValueKey('card:window'));
+        await Scrollable.ensureVisible(t.element(actions), alignment: 0);
+        await t.pump();
+        await takePilotShot(t, 'sleep-${pilot ? 'on' : 'off'}-night-actions');
+      }
     }
     await t.pumpWidget(const SizedBox());
   });
+  }
 
 }

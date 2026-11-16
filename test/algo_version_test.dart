@@ -32,9 +32,9 @@ void main() {
     return out;
   }
 
-  test('kAlgoVersion is 119', () {
-    expect(kAlgoVersion, 119);
-    expect(int.parse(m.group(1)!), 119);
+  test('kAlgoVersion is 123', () {
+    expect(kAlgoVersion, 123);
+    expect(int.parse(m.group(1)!), 123);
   });
 
   test('the 114 entry is kept: names its base and the decisions it covers', () {

@@ -76,7 +76,7 @@ in the same change that introduces it (AGENTS.md §6).
 - **Wake epoch**: the absolute alarm occurrence, stored as epoch seconds. It groups the observed events for one wake, including early Natural and Gradual delivery.
 - **Wake journal**: durable wake events, answers and tuning history in `wake_trace`. `DbWakeJournal` owns answer writes and outcome reads. `DbSnoozeStore` atomically writes pending snooze state with its journal transition. Journal-bearing kinds survive diagnostic pruning and backup restore; foreign run state stays excluded.
 - **Observed night**: `WakeNightTimeline`, the ordered events for one wake epoch. The planned `WakeTimeline` remains the alarm schedule. Non-firing decisions, armed status and failed deliveries do not establish an observed fire.
-- **Time to wake**: elapsed time from the first observed Natural, Gradual or backup fire to the first "I'm up" acknowledgement. Missing bounds or an acknowledgement before the fire leave it unknown.
+- **Time to wake**: elapsed time from the first recorded successful wake-alert dispatch or band-reported alarm to the first "I'm up" acknowledgement in the same wake epoch. Dispatch confirms transport success, not physical buzzing or leaving bed. Decision-only history and missing bounds leave the interval unknown.
 - **Snooze transition**: a snooze with its original wake epoch, event time and count, or a terminal `snooze_stop`. Stop reasons are `dismissed`, `im_up`, `limit` at the three-hour scheduling bound, and `timeout` for an expired chain, including one found on restart.
 - **Dream response**: the wearer's `dream` or `normal` answer on the wake's first acknowledgement. Its preceding wake path has priority Natural, then delivered Gradual, then backup alarm. Skip writes nothing; an unknown path stays absent.
 - **Wake outcome**: the observed interval, snooze count and optional dream response joined to the matching canonical main-sleep day. Recovery comes from that day's readiness; main-sleep TST comes only from sleep accounting. Missing values stay absent.
@@ -208,4 +208,10 @@ The **pulse upgrade watermark** is the immutable set of `(source, ts_ms)` RR rec
 - **Pulse recording refusal**: insufficient or invalid RR support. It retains an earlier pulse decision rather than retracting it.
 
 - **Pulse respiratory residual**: corrected RR minus the single fitted respiratory sinusoid evaluated at original cumulative beat times. Original feature and adjacency masks stay intact; the same SD1/SD2 and pNN70 calculation checks the residual against 0.7 and 30%. Weak or failed fits preserve eligibility.
+
+
+- **Sleep entry**: one stored main-sleep window or nap. The editor targets one entry by its original bounds and source. Display grouping can join connector lines without merging or deleting entries.
+
+- **Sleep window**: the stored start-to-end interval for a sleep entry. It does not claim the wearer was in bed or asleep throughout. The asleep percentage uses only the time the band recorded within that window.
+- **Time to wake**: elapsed time from the first successfully sent app wake alert to the acknowledgement in that alert’s own wake epoch. Either endpoint missing means unavailable; it does not measure leaving bed.
 

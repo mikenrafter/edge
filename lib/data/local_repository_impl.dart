@@ -31,6 +31,8 @@ import '../compute/staging_provenance.dart';
 import '../models/activity_suggestion.dart';
 import 'activity_store.dart';
 import 'day_review.dart';
+import 'moment_label.dart' show MomentChanged;
+import 'sleep_edit_write.dart';
 import 'assumed_water.dart';
 import 'water_moment.dart';
 import '../gestures/moment_follow_ups.dart';
@@ -173,6 +175,7 @@ class LocalRepositoryImpl extends LocalRepository {
     List<ReviewRange> ranges = const [],
     List<MomentWorkoutDecision> workouts = const [],
     Map<AssumedGlass, bool> glasses = const {},
+    SavedReviewEdits savedEdits = const SavedReviewEdits(),
   }) async {
     // Scoring reads substrate; it must finish before the DB transaction so
     // no read on the outer connection can deadlock sqflite's transaction.
@@ -205,12 +208,50 @@ class LocalRepositoryImpl extends LocalRepository {
           startTs: d.window.startTs, endTs: d.window.endTs, type: d.window.type,
           validateAgainstId: null, prepareOnly: true);
     }
+    final editedSessions = <String, Map<String, dynamic>>{};
+    for (final edit in savedEdits.workouts) {
+      final id = edit.before['id'] as String;
+      editedSessions[id] = await _writeManualSession(
+          startTs: edit.window.startTs, endTs: edit.window.endTs,
+          type: edit.window.type, existing: edit.before,
+          validateAgainstId: id, prepareOnly: true);
+    }
     final writtenManual = <Map<String, dynamic>>[];
     final db = await LocalDb.instance;
     final store = ActivityStore(db);
     final reopened = <String>{};
     final appliedMoments = <String>{};
     await db.transaction((tx) async {
+      // Saved-row edits join the same batch as Keep/Discard. A stale row or
+      // overlap rolls back every decision, including dose/symptom changes.
+      final changeWriter = MomentAnswerWriter(transaction: tx);
+      for (final edit in savedEdits.moments) {
+        final d = edit.decision;
+        final result = await changeWriter.change(edit.before, d.choice!,
+            value: d.value, note: d.note, symptom: d.symptom);
+        if (result is! MomentChanged) {
+          throw StateError('Saved answer could not be changed: $result');
+        }
+      }
+      if (savedEdits.naps.isNotEmpty) {
+        await writeSleepEditInTransaction(tx, SleepEditPlan(
+            day: savedEdits.naps.first.day,
+            naps: [for (final plan in savedEdits.naps) ...plan.naps]));
+      }
+      for (final edit in savedEdits.workouts) {
+        final id = edit.before['id'] as String;
+        final current = await tx.query('sessions', where: 'id = ?', whereArgs: [id]);
+        if (current.isEmpty || current.single['status'] == 'live' ||
+            edit.before.entries.any((e) => current.single[e.key] != e.value)) {
+          throw StateError('Saved workout changed while editing.');
+        }
+        final invalid = validateManualWindow(startSec: edit.window.startTs,
+            endSec: edit.window.endTs, editingId: id,
+            nowSec: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+            existing: await ReviewRangeWriter(transaction: tx).sessionSpans());
+        if (invalid != null) throw ManualWindowException(invalid);
+        await LocalDb.putSession(editedSessions[id]!, transaction: tx);
+      }
       final writer = MomentAnswerWriter(transaction: tx);
       final rangeMarks = <PendingMoment>[];
       for (final r in ranges) {
@@ -275,7 +316,17 @@ class LocalRepositoryImpl extends LocalRepository {
         await LocalDb.releaseFrozenHeadline(day);
         await mainSleepListener?.mainSleepExtended(day);
       }
-      for (final row in [...sessions.values, ...rangeSessions.values, ...writtenManual]) {
+      for (final plan in savedEdits.naps) {
+        for (final day in plan.days) {
+          await mainSleepListener?.mainSleepExtended(day);
+        }
+      }
+      for (final edit in savedEdits.workouts) {
+        await HealthExporter.deleteWorkoutWindow(edit.before['start_ts'] as int,
+            edit.before['end_ts'] as int);
+      }
+      for (final row in [...sessions.values, ...rangeSessions.values, ...writtenManual,
+          ...editedSessions.values]) {
         final id = row['id'] as String;
         final rows = await LocalDb.hrSamplesInRange(
             row['start_ts'] as int, row['end_ts'] as int);
@@ -1757,6 +1808,11 @@ class LocalRepositoryImpl extends LocalRepository {
       // When the row behind this night was computed (epoch ms) — "As of" while
       // a newer one is being calculated.
       'computed_at': computedAt,
+      // CLAIM(sleep-summary-included-time): use this served row's input edge
+      // [engine/day_compute.dart; sleep_summary_recordings_through_test]. The
+      // day fingerprint can move after a declined derive kept an older row.
+      if (b['data_edge_sec'] case final num edge when edge.isFinite && edge > 0)
+        'recordings_through': (edge * 1000).round(),
       'sleep_edit': b['sleep_edit'],
       'sleep_source': sleepSource,
       'duration_min': (tst / 60).round(),

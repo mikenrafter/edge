@@ -2356,7 +2356,8 @@ class LocalDb {
   /// then the new dose added), and its `symptom_entry` row. The track feed
   /// (`track_event_feed`) is a view over those rows, so it follows.
   /// Stale (the row is no longer [before]), not found, refused or failed: the
-  /// database is unchanged. See [MomentAnswerChange].
+  /// database is unchanged. See [MomentAnswerChange]. A supplied [transaction]
+  /// owns rollback: storage errors throw so its entire batch aborts.
   static Future<MomentAnswerChange> changeMomentAnswer({
     required MomentLabel before,
     required MomentLabel after,
@@ -2364,7 +2365,8 @@ class LocalDb {
     double? metricValue,
     double? metricMax,
     StoredSymptom? symptom,
-  }) => _ldbChangeMomentAnswer(before: before, after: after, metricField: metricField, metricValue: metricValue, metricMax: metricMax, symptom: symptom);
+    Transaction? transaction,
+  }) => _ldbChangeMomentAnswer(before: before, after: after, metricField: metricField, metricValue: metricValue, metricMax: metricMax, symptom: symptom, transaction: transaction);
 
   /// How long a block's evidence is kept after the block began (days).
   static const int _wakeEvidenceKeepDays = 7;
@@ -7379,7 +7381,8 @@ class LocalDb {
   /// throw is the race/programmatic-caller backstop.
   static Future<void> putJournalFieldDef(JournalFieldSpec spec) => _ldbPutJournalFieldDef(spec);
 
-  static Future<Map<String, int>> applyPendingActivityReviews() => _ldbApplyPendingActivityReviews();
+  static Future<Map<String, int>> applyPendingActivityReviews({Transaction? transaction, String? onlyDay}) =>
+      _ldbApplyPendingActivityReviews(transaction: transaction, onlyDay: onlyDay);
 
   static Future<void> finishActivityReviews(Map<String, int> revisions) async {
     final db = await instance;
@@ -7402,7 +7405,8 @@ class LocalDb {
     Transaction? transaction,
   }) => _ldbPutNapEdit(dayId: dayId, startTs: startTs, endTs: endTs, source: source, expected: expected, transaction: transaction);
 
-  static Future<void> deleteNapEdit(String dayId, int startTs) => _ldbDeleteNapEdit(dayId, startTs);
+  static Future<void> deleteNapEdit(String dayId, int startTs, {Transaction? transaction}) =>
+      _ldbDeleteNapEdit(dayId, startTs, transaction: transaction);
 
   static Future<List<Map<String, dynamic>>> napEdits(String dayId) async {
     final db = await instance;

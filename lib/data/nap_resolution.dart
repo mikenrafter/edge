@@ -59,7 +59,7 @@ class NapResolver {
     var changed = true;
     while (changed) {
       changed = false;
-      for (final b in await _blocks(tx, start, end)) {
+      for (final b in await blocks(tx, start, end)) {
         if (b.startTs > end || b.endTs < start) continue;
         if (!found.contains(b)) found.add(b);
         if (b.startTs < start) {
@@ -86,10 +86,10 @@ class NapResolver {
   /// Candidates near [s]..[e]: naps that touch it, and the main sleeps owned by
   /// the calendar days around it (an evening interval can overlap the night
   /// owned by tomorrow's wake date). Reads window_json and scalars only.
-  static Future<List<NapBlock>> _blocks(
+  static Future<List<NapBlock>> blocks(
     DatabaseExecutor tx,
     int s,
-    int e,
+    int e, {bool includeDetectedNaps = false, bool includeBareWindows = false}
   ) async {
     final out = <NapBlock>[];
     final naps = await tx.rawQuery(
@@ -124,14 +124,22 @@ class NapResolver {
         endTs: (r['offset_ts'] as num).toInt(),
       ));
     }
+    // Bare windows ({onset_ms, offset_ms}, what the engine stores) are read only by
+    // the pilot's sleep-edit validator. The nap paths (grow) keep reading the
+    // enveloped form alone, so a flag-off nap write never extends a detected
+    // night (day-timeline review r2 B1).
+    final onPath = includeBareWindows
+        ? "COALESCE(json_extract(d.window_json, '\$.value.onset_ms'), json_extract(d.window_json, '\$.onset_ms'))"
+        : "json_extract(d.window_json, '\$.value.onset_ms')";
+    final offPath = includeBareWindows
+        ? "COALESCE(json_extract(d.window_json, '\$.value.offset_ms'), json_extract(d.window_json, '\$.offset_ms'))"
+        : "json_extract(d.window_json, '\$.value.offset_ms')";
     final detected = await tx.rawQuery(
       '''SELECT d.day_id,
-        CASE WHEN json_valid(d.window_json)
-          THEN json_extract(d.window_json, '\$.value.onset_ms') END AS on_ms,
-        CASE WHEN json_valid(d.window_json)
-          THEN json_extract(d.window_json, '\$.value.offset_ms') END AS off_ms
+        CASE WHEN json_valid(d.window_json) THEN $onPath END AS on_ms,
+        CASE WHEN json_valid(d.window_json) THEN $offPath END AS off_ms
       FROM day_result d
-      WHERE d.day_id BETWEEN ? AND ? AND d.algo_version =
+      WHERE d.skipped = 0 AND d.day_id BETWEEN ? AND ? AND d.algo_version =
         (SELECT MAX(r.algo_version) FROM day_result r WHERE r.day_id = d.day_id AND r.algo_version <= ?)''',
       [first, last, kAlgoVersion],
     );
@@ -147,6 +155,35 @@ class NapResolver {
         startTs: on.toInt() ~/ 1000,
         endTs: off.toInt() ~/ 1000,
       ));
+    }
+    if (includeDetectedNaps) {
+      // Read only nap projections, and replay current edits so a stale derived
+      // bundle cannot resurrect a moved/rejected nap or duplicate a manual one.
+      final edits = await tx.query('sleep_nap',
+          where: 'start_ts <= ? AND end_ts >= ?', whereArgs: [e, s]);
+      final detectedNaps = await tx.rawQuery("""
+        SELECT d.day_id, json_extract(n.value, '\$.start') AS start_ts,
+          json_extract(n.value, '\$.end') AS end_ts
+        FROM day_result d JOIN json_each(CASE
+          WHEN json_type(d.payload_json, '\$.naps.value') = 'array'
+          THEN json_extract(d.payload_json, '\$.naps.value') ELSE '[]' END) n
+        WHERE d.skipped = 0 AND d.day_id BETWEEN ? AND ? AND d.algo_version =
+          (SELECT MAX(r.algo_version) FROM day_result r
+           WHERE r.day_id = d.day_id AND r.algo_version <= ?)
+          AND n.type = 'object' AND json_extract(n.value, '\$.source') IS NULL
+          AND json_extract(n.value, '\$.start') <= ?
+          AND json_extract(n.value, '\$.end') >= ?
+      """, [first, last, kAlgoVersion, e, s]);
+      for (final n in detectedNaps) {
+        final start = (n['start_ts'] as num?)?.toInt();
+        final end = (n['end_ts'] as num?)?.toInt();
+        if (start == null || end == null || edits.any((r) =>
+            (r['start_ts'] as int) < end && start < (r['end_ts'] as int))) {
+          continue;
+        }
+        out.add((kind: 'nap', day: n['day_id'] as String,
+            startTs: start, endTs: end));
+      }
     }
     return out;
   }

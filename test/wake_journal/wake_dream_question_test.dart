@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/alarm/snooze/snooze_settings.dart';
+import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/ui2/screens/wake_dream_question.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/screens/natural_wake_card.dart';
 import 'package:openstrap_edge/ui2/screens/snooze_card.dart';
@@ -84,6 +86,8 @@ void main() {
         await const DbWakeTraceStore().append(
           row('natural', -20, {'reason': 'fire'}),
         );
+        await const DbWakeTraceStore().append(row('natural_haptic', -20,
+          {'phase': 'result', 'result': 'sent'}));
         await const DbWakeTraceStore().append(row('ack', 8));
       });
       await pump(t, WakePath.natural);
@@ -141,18 +145,43 @@ void main() {
   testWidgets(
     'the real alarm event exposes an I\'m up question even with Natural off',
     (t) async {
-      final app = AppState.forTesting(engine: FakeAlarmEngine());
-      addTearDown(app.dispose);
-      app.debugWakeClock = () => atMinute(1);
-      app.debugHandleAlarmEvent(57, ts: epoch);
+      late AppState app;
+      // Open SQLite and start the alarm's evidence work in real async time.
+      // A fixed delay under widget-test time cannot prove a committed ack.
+      await t.runAsync(() async {
+        await LocalDb.instance;
+        app = AppState.forTesting(engine: FakeAlarmEngine());
+        app.debugWakeClock = () => atMinute(1);
+        app.debugHandleAlarmEvent(57, ts: epoch);
+        await app.debugWakeSignalsSettled();
+      });
+      addTearDown(() => app.dispose());
       await t.pumpWidget(
         MaterialApp(
           theme: buildTheme(Brightness.light),
           home: Scaffold(body: NaturalWakeBuzzingCard(wake: app.wake)),
         ),
       );
-      await tapImUp(t);
-      await drain(t);
+      late Future<void> acknowledgement;
+      await t.runAsync(() async {
+        // Other cases above exercise the rendered button. Here capture the
+        // shared flow's actual completion, including its durable ack write.
+        acknowledgement = acknowledgeWakeAndAsk(
+          t.element(find.byKey(const ValueKey('natural-wake-im-up'))), app.wake);
+        await pumpEventQueue();
+      });
+      await t.pumpAndSettle();
+      expect(find.text('How did you wake up?'), findsOneWidget);
+      await t.runAsync(() async {
+        await t.tap(find.text('Skip'));
+        await acknowledgement.timeout(const Duration(seconds: 5));
+        await app.debugWakeSignalsSettled();
+        final trace = await const DbWakeTraceStore().forWake(epoch);
+        expect(trace.where((e) => e.kind == 'ack').single.atMs,
+          atMinute(1).millisecondsSinceEpoch);
+      });
+      await t.pumpAndSettle();
+
     },
   );
 

@@ -26,6 +26,7 @@ void main() {
       const trace = DbWakeTraceStore();
       await trace.append(row('plan', -30));
       await trace.append(row('natural', -20, {'reason': 'fire'}));
+      await trace.append(row('natural_haptic', -20, {'phase': 'result', 'result': 'sent'}));
       final batch = (await LocalDb.instance).batch();
       for (var i = 1; i <= 420; i++) {
         batch.insert('wake_trace', {
@@ -121,6 +122,7 @@ void main() {
       const trace = DbWakeTraceStore();
       const journal = DbWakeJournal();
       await trace.append(row('natural', -20, {'reason': 'fire'}));
+      await trace.append(row('natural_haptic', -20, {'phase': 'result', 'result': 'sent'}));
       await trace.append(row('ack', 8));
       await env.seedData();
       final backup = await LocalDb.exportCopy();

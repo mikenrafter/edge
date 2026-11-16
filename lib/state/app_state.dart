@@ -130,6 +130,7 @@ import '../data/db.dart';
 import '../data/sleep_edit_store.dart';
 import '../data/activity_store.dart';
 import 'sleep_edit_runner.dart';
+import '../data/sleep_edit_write.dart';
 import '../ecg/ble_ecg_transport.dart';
 import '../ecg/ecg_controller.dart';
 import '../ecg/ecg_cues.dart' show kEcgCueRule;
@@ -4057,6 +4058,14 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
 
   Future<SleepOperationResult> recalculateSleep(String day) =>
       sleepOperations.mutate(day, () => SleepEditStore.recalculate(day));
+
+  /// The sleep timeline editor's Save (pilot day-timeline): [plan] written in
+  /// one transaction ([written] completes at the durable write), then each
+  /// changed night re-derived in the background ([done]).
+  ({Future<void> written, Future<SleepOperationResult> done}) saveSleepEdit(
+          SleepEditPlan plan) =>
+      sleepOperations.mutateWritten([plan.day, ...plan.days.where((d) => d != plan.day)],
+          _SleepEditWrite(plan));
 
   Future<SleepOperationResult> setSleepOverride(String date, DateTime onset, DateTime offset,
       {String source = 'manual', bool useSchedule = false}) {
@@ -8761,4 +8770,12 @@ final class _AppSleepEditPublication implements SleepEditPublication {
     await app._deriveCoordinator.publishNow();
     return true;
   }
+}
+
+/// The sleep editor's plan as one durable write (pilot day-timeline).
+class _SleepEditWrite implements DurableWrite {
+  const _SleepEditWrite(this.plan);
+  final SleepEditPlan plan;
+  @override
+  Future<void> run() async => writeSleepEdit(await LocalDb.instance, plan);
 }

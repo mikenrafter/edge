@@ -264,6 +264,7 @@ class AsOfLabel extends StatelessWidget {
     this.recordingsThrough,
     this.newestRecording,
     this.hold,
+    this.statusOnly = false,
   });
 
   /// When the shown result was calculated (local time); null shows nothing.
@@ -277,6 +278,10 @@ class AsOfLabel extends StatelessWidget {
   final DateTime? newestRecording;
   final StaleHold? hold;
 
+  /// Sleep places its single included-recording timestamp beside the window.
+  /// Keep the held/recalculating explanation here without another timestamp.
+  final bool statusOnly;
+
   /// Only decides "is it today"; defaults to the wall clock.
   final DateTime? now;
 
@@ -289,6 +294,17 @@ class AsOfLabel extends StatelessWidget {
     final info = _StaleInfo.maybeOf(context);
     final through = recordingsThrough ?? info?.recordingsThrough;
     final holdNow = hold ?? info?.hold;
+    if (statusOnly) {
+      final strings = l ?? lookupAppLocalizations(const Locale('en'));
+      final line = switch (holdNow) {
+        StaleHold.workout => strings.sleepSummaryHeldWorkout,
+        StaleHold.sync => strings.sleepSummaryHeldSync,
+        StaleHold.background => strings.sleepSummaryHeldBackground,
+        StaleHold.power => strings.sleepSummaryHeldPower,
+        null => strings.sleepSummaryUpdating,
+      };
+      return Text(line, style: F.over.copyWith(color: P.of(context).ink3));
+    }
     if (through != null || holdNow != null) {
       final line = stalenessText(
           updatedAt: t,

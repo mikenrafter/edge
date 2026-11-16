@@ -862,10 +862,16 @@ class ChartAnnotationLane extends StatefulWidget {
     required this.set,
     required this.cursor,
     required this.plotHeight,
+    this.emphasis,
   });
   final AnnotationSet set;
   final double? cursor;
   final double plotHeight;
+
+  /// Review emphasis (pilot day-timeline): when non-null, the items with these
+  /// ids are drawn bold and outlined and every other item is dimmed. Null (the
+  /// default) draws every item as before.
+  final Set<String>? emphasis;
 
   static const double iconSize = 24;
 
@@ -958,14 +964,21 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
 
       final geometry = annotationGeometry(
           annotations: set.items, scale: scale, focusId: layout.focusedId);
+      final emphasis = widget.emphasis;
+      bool stressed(String id) =>
+          emphasis != null && emphasis.contains(id.endsWith(':end')
+              ? id.substring(0, id.length - 4) : id);
+      bool dimmed(String id) => emphasis != null && !stressed(id);
       final lines = [
         for (final line in geometry.lines)
           AnnotationLine(
               id: line.id,
               x: line.x,
-              color: p.on(line.color),
-              bold: line.bold,
-              strokeWidth: line.strokeWidth),
+              color: dimmed(line.id)
+                  ? p.on(line.color).withValues(alpha: .3)
+                  : p.on(line.color),
+              bold: line.bold || stressed(line.id),
+              strokeWidth: stressed(line.id) ? 2 : line.strokeWidth),
       ];
 
       final byId = {for (final a in set.items) a.id: a};
@@ -998,8 +1011,8 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
             child: IgnorePointer(
               child: ColoredBox(
                 key: ChartAnnotationLane.shadeKey(s.id),
-                color: annotationColor(s.kind)
-                    .withValues(alpha: s.focused ? .26 : .14),
+                color: annotationColor(s.kind).withValues(
+                    alpha: dimmed(s.id) ? .06 : s.focused || stressed(s.id) ? .26 : .14),
               ),
             ),
           ),
@@ -1045,11 +1058,14 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
             top: labelH - _overhang,
             child: Pressable(
               onTap: () => step(i),
-              child: AnnotationIcon(
-                  key: ChartAnnotationLane.iconKey(i.id),
-                  kind: i.kind,
-                  icon: byId[i.id]?.icon,
-                  bold: i.focused),
+              child: Opacity(
+                opacity: emphasis != null && !i.memberIds.any(stressed) ? .3 : 1,
+                child: AnnotationIcon(
+                    key: ChartAnnotationLane.iconKey(i.id),
+                    kind: i.kind,
+                    icon: byId[i.id]?.icon,
+                    bold: i.focused || i.memberIds.any(stressed)),
+              ),
             ),
           ),
           if (i.more > 0)

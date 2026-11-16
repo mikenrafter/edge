@@ -12,6 +12,8 @@ import 'package:openstrap_edge/wake/wake_stores.dart';
 import '../backup/backup_support.dart';
 import '../support/wake_fakes.dart';
 import 'fixtures.dart';
+import 'package:openstrap_edge/wake/wake_timeline.dart';
+import 'package:openstrap_edge/ui2/day_timeline/sleep_summary.dart';
 
 Future<void> seedNight(
   int day, {
@@ -56,6 +58,7 @@ Future<void> seedNight(
   final e = alarm.millisecondsSinceEpoch ~/ 1000;
   for (final (kind, minutes, data) in [
     ('natural', -20, <String, Object?>{'reason': 'fire'}),
+    ('natural_haptic', -20, <String, Object?>{'phase': 'result', 'result': 'sent', 'delivered': ['band']}),
     (
       'ack',
       -19,
@@ -148,6 +151,8 @@ void main() {
       await const DbWakeTraceStore().append(
         row('natural', -20, {'reason': 'fire'}),
       );
+      await const DbWakeTraceStore().append(row('natural_haptic', -20,
+        {'phase': 'result', 'result': 'sent'}));
       final batch = (await LocalDb.instance).batch();
       for (var i = 1; i <= 420; i++) {
         batch.insert('wake_trace', {
@@ -354,6 +359,79 @@ void main() {
     },
   );
 
+  // WHY: CLAIM(wake-summary-epoch). Day-wide event lists must retain the
+  // answer on each epoch's own acknowledgement, even when only one fired.
+  // catches: assigning primary.dream to every acknowledgement in the day.
+  test('two epochs in one day retain their own answers and never borrow an alert', () async {
+    await seedNight(0);
+    final trace = const DbWakeTraceStore();
+    await trace.append(row('ack', 30, {
+      'dreamAnswer': 'normal', 'wakePath': 'alarm',
+      'dreamAnsweredAtMs': atMinute(31).millisecondsSinceEpoch,
+    }, epoch + 1800));
+    await trace.append(row('snooze', 20, {'count': 1}, epoch + 1800));
+    final n = await const DbWakeJournal().forDay('2026-10-26');
+    expect(n.firstFireAt, atMinute(-20));
+    expect(n.ackAt, atMinute(-19));
+    expect(n.timeToWake, const Duration(minutes: 1));
+    expect(n.dream?.answer, DreamAnswer.dream);
+    expect(n.snoozeCount, 1);
+    final acks = n.events.where((e) => e.kind == WakeNightEventKind.ack).toList();
+    expect(acks.map((e) => [e.wakeEpochSec, e.at, e.dream?.answer]), [
+      [epoch, atMinute(-19), DreamAnswer.dream],
+      [epoch + 1800, atMinute(30), DreamAnswer.normal],
+    ]);
+    final other = await const DbWakeJournal().forEpoch(epoch + 1800);
+    expect(other.firstFireAt, isNull);
+    expect(other.timeToWake, isNull);
+    expect((await const DbWakeJournal().forDay('2026-10-27')).events, isEmpty);
+  });
+
+  // WHY: CLAIM(wake-answer-first-ack). Answer projection survives absent path
+  // metadata, uses only pre-ack successful evidence, and never borrows a later ack.
+  for (final method in ['repeat', 'gradual', 'band', 'none', 'late']) {
+    test('R1 first ack answer survives absent path with $method evidence', () async {
+      await seedNight(0);
+      await (await LocalDb.instance).delete('wake_trace');
+      final trace = const DbWakeTraceStore();
+      if (method == 'repeat') {
+        await trace.append(row('natural_repeat', -2, {'phase': 'result', 'result': 'sent'}));
+      }
+      if (method == 'gradual') await trace.append(row('gradual', -2, {'result': 'sent'}));
+      if (method == 'band') {
+        await (await LocalDb.instance).insert('band_events', {'device_id': '', 'ts': epoch, 'event_id': 57, 'hex': 'r1-alarm',
+          'name': 'alarm_started', 'captured_at': alarmAt.millisecondsSinceEpoch});
+      }
+      await trace.append(row('ack', 1));
+      if (method == 'late') {
+        await trace.append(row('natural_haptic', 2, {'phase': 'result', 'result': 'sent'}));
+      }
+      await trace.append(row('ack', 3, {'dreamAnswer': 'normal',
+        'wakePath': 'alarm', 'dreamAnsweredAtMs': atMinute(4).millisecondsSinceEpoch}));
+      await const DbWakeJournal().answerDream(wakeEpochSec: epoch,
+        at: atMinute(2), answer: DreamAnswer.dream);
+      // Simulate a historical answer written before path metadata existed.
+      final db = await LocalDb.instance;
+      final first = (await db.query('wake_trace', where: "kind = 'ack'", orderBy: 'at_ms')).first;
+      final answer = Map<String, dynamic>.from(jsonDecode(first['data_json'] as String) as Map)..remove('wakePath');
+      await db.update('wake_trace', {'data_json': jsonEncode(answer)}, where: 'id = ?', whereArgs: [first['id']]);
+      await LocalDb.close();
+      final night = await const DbWakeJournal().forEpoch(epoch);
+      final expectedPath = method == 'repeat' ? WakePath.natural : method == 'gradual'
+        ? WakePath.gradual : method == 'band' ? WakePath.alarm : null;
+      expect(night.dream?.answer, DreamAnswer.dream);
+      expect(night.dream?.path, expectedPath);
+      expect(night.ackAt, atMinute(1));
+      expect(night.dream?.at, atMinute(2));
+      if (expectedPath == null) expect(night.timeToWake, isNull);
+      final day = await const DbWakeJournal().forDay('2026-10-26');
+      expect(day.dream?.answer, DreamAnswer.dream);
+      final events = sleepSummaryEvents([SleepSummaryInterval(id: 'main',
+        start: atMinute(-480), end: atMinute(1))], day);
+      expect(events.where((e) => e.ack).single.label, "I'm up from a dream");
+    });
+  }
+
   test('existing day timeline loader includes durable wake moments', () async {
     await seedNight(0);
     final repo = LocalRepositoryImpl(getProfileMap: () => null);
@@ -372,6 +450,11 @@ void main() {
         LocalRepositoryImpl(getProfileMap: () => null),
         want: '2026-10-26',
       );
+      // WHY: the day projection must retain the wearer's answer from its own
+      // epoch; stage estimates cannot stand in for this answer.
+      // catches: forDay drops the primary epoch's dream response.
+      expect(data.wakeTimeline.dream?.answer, DreamAnswer.dream);
+      expect(data.wakeTimeline.dream?.at, atMinute(-19));
       expect(data.wakeTimeline.firstFireAt, atMinute(-20));
       expect(data.wakeTimeline.timeToWake, const Duration(minutes: 1));
     },

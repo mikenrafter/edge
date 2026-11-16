@@ -1,6 +1,4 @@
 {
-  "helpOpenForTab": "Open Help for {tab}",
-  "@helpOpenForTab": {"description": "Accessible name of the tab footer. Names Help and its tab destination.", "placeholders": {"tab": {"type": "String", "description": "Localized tab name"}}},
   "@@locale": "en",
   "chartPanelLatest": "LATEST",
   "chartPanelSelected": "SELECTED",
@@ -7876,7 +7874,7 @@
   "@sleepDetailAsleep": {
     "description": "Inline metric label for asleep percentage (efficiency)."
   },
-  "sleepDetailWatchedExplain": "The band covered {watched} of your {inBed} in bed. Sleep and stage figures use only that time.",
+  "sleepDetailWatchedExplain": "The band recorded {watched} of your {inBed} sleep window. Sleep and stage figures use only that time.",
   "@sleepDetailWatchedExplain": {
     "description": "Explanatory sentence under the total-sleep card about the watched vs. in-bed window.",
     "placeholders": {
@@ -8174,7 +8172,7 @@
   "@sleepDetailAskDeep": {
     "description": "Against-your-usual row for deep sleep, phrased as a plain question."
   },
-  "sleepDetailAskSleptThrough": "Did you sleep through your time in bed?",
+  "sleepDetailAskSleptThrough": "Did you sleep through your sleep window?",
   "@sleepDetailAskSleptThrough": {
     "description": "Against-your-usual row for sleep efficiency (asleep while in bed), phrased as a plain question."
   },
@@ -18651,14 +18649,6 @@
   "@guideScrollMarker": {
     "description": "Short vertical marker in a navigation guide picture: the screen needs scrolling to reach the highlighted control."
   },
-  "guideTapOneOf": "tap one of",
-  "@guideTapOneOf": {
-    "description": "Short label above several highlighted controls in a live guide step: any one of them does the step."
-  },
-  "guideSearchOrPick": "search or pick",
-  "@guideSearchOrPick": {
-    "description": "Short label above the search bar and the activity groups in the live guide step that picks an activity."
-  },
   "guideStepUnavailable": "This step can't be shown right now.",
   "@guideStepUnavailable": {
     "description": "Shown in place of a guide step's picture when the control it points at cannot be found on the demo screen."
@@ -18944,16 +18934,6 @@
   "guideRemoveStep2": "Every item has its own **{discard}**. Tap it on the nap or workout that didn't happen; the highlight shows the choices.",
   "@guideRemoveStep2": {
     "description": "Step 2 caption. {discard} is the in-app name of the Discard button; every pending item has its own and the highlight shows the choices.",
-    "placeholders": {
-      "discard": {
-        "type": "String",
-        "description": "Name of the Discard button"
-      }
-    }
-  },
-  "guideRemoveStep2Still": "Every item has its own **{discard}**. Tap it on the nap or workout that didn't happen; the outline marks the first one.",
-  "@guideRemoveStep2Still": {
-    "description": "Step 2 caption under reduced motion, where the outline (not the moving highlight) marks the first item. {discard} is the in-app name of the Discard button.",
     "placeholders": {
       "discard": {
         "type": "String",
@@ -19392,15 +19372,6 @@
       }
     }
   },
-  "guideExpandAccordion": "Expand {title}",
-  "@guideExpandAccordion": {
-    "description": "Guide hop asking the wearer to open a collapsed section",
-    "placeholders": {
-      "title": {
-        "type": "String"
-      }
-    }
-  },
   "deriveDailyLabel": "Calculating sleep, recovery and strain",
   "deriveDailyProgress": "Calculating sleep, recovery and strain · day {index} of {total}",
   "deriveDailyProgressOn": "Calculating sleep, recovery and strain · day {index} of {total} · {day}",
@@ -19595,26 +19566,6 @@
       }
     }
   },
-<<<<<<< HEAD
-  "helpLookingForSomething": "Looking for something?",
-  "@helpLookingForSomething": {
-    "description": "Quiet button at the bottom of each main tab that opens Help for that tab."
-  },
-  "helpAllGuides": "All guides",
-  "@helpAllGuides": {
-    "description": "Show every guide after entering Help from one tab."
-  },
-  "helpTopicEmpty": "There are no guides for this tab yet.",
-  "@helpTopicEmpty": {
-    "description": "Empty state for a tab with no guides; All guides remains available."
-  },
-  "homeLastKnownUpdating": "Last known {time} · updating",
-  "@homeLastKnownUpdating": {"placeholders": {"time": {"type": "String"}}},
-  "homeLastKnownFailed": "Last known {time} · update failed",
-  "@homeLastKnownFailed": {"placeholders": {"time": {"type": "String"}}},
-  "homeLastKnownSource": "{status}. Read {readTime}. Calculated {computedTime}.",
-  "@homeLastKnownSource": {"placeholders": {"status": {"type": "String"}, "readTime": {"type": "String"}, "computedTime": {"type": "String"}}}
-=======
   "observationsLoading": "Loading observations",
   "observationsPulsePattern": "Irregular pulse pattern",
   "pulseEpisodeReadingTitle": "Irregular rhythm reading",
@@ -19633,6 +19584,233 @@
         "type": "String"
       }
     }
-  }
->>>>>>> a3877523a
+  },
+  "helpOpenForTab": "Open Help for {tab}",
+  "@helpOpenForTab": {
+    "description": "Accessible name of the tab footer. Names Help and its tab destination.",
+    "placeholders": {
+      "tab": {
+        "type": "String",
+        "description": "Localized tab name"
+      }
+    }
+  },
+  "guideTapOneOf": "tap one of",
+  "@guideTapOneOf": {
+    "description": "Short label above several highlighted controls in a live guide step: any one of them does the step."
+  },
+  "guideSearchOrPick": "search or pick",
+  "@guideSearchOrPick": {
+    "description": "Short label above the search bar and the activity groups in the live guide step that picks an activity."
+  },
+  "guideRemoveStep2Still": "Every item has its own **{discard}**. Tap it on the nap or workout that didn't happen; the outline marks the first one.",
+  "@guideRemoveStep2Still": {
+    "description": "Step 2 caption under reduced motion, where the outline (not the moving highlight) marks the first item. {discard} is the in-app name of the Discard button.",
+    "placeholders": {
+      "discard": {
+        "type": "String",
+        "description": "Name of the Discard button"
+      }
+    }
+  },
+  "guideExpandAccordion": "Expand {title}",
+  "@guideExpandAccordion": {
+    "description": "Guide hop asking the wearer to open a collapsed section",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "helpLookingForSomething": "Looking for something?",
+  "@helpLookingForSomething": {
+    "description": "Quiet button at the bottom of each main tab that opens Help for that tab."
+  },
+  "helpAllGuides": "All guides",
+  "@helpAllGuides": {
+    "description": "Show every guide after entering Help from one tab."
+  },
+  "helpTopicEmpty": "There are no guides for this tab yet.",
+  "@helpTopicEmpty": {
+    "description": "Empty state for a tab with no guides; All guides remains available."
+  },
+  "homeLastKnownUpdating": "Last known {time} · updating",
+  "@homeLastKnownUpdating": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "homeLastKnownFailed": "Last known {time} · update failed",
+  "@homeLastKnownFailed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "homeLastKnownSource": "{status}. Read {readTime}. Calculated {computedTime}.",
+  "@homeLastKnownSource": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      },
+      "readTime": {
+        "type": "String"
+      },
+      "computedTime": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryEdit": "Edit sleep",
+  "sleepSummaryAsleep": "asleep",
+  "sleepSummaryInBed": "{time} in bed",
+  "@sleepSummaryInBed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryCoverage": "{watched} watched · {missing} not recorded.",
+  "@sleepSummaryCoverage": {
+    "placeholders": {
+      "watched": {
+        "type": "String"
+      },
+      "missing": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryNoWindow": "No recorded sleep window",
+  "sleepSummaryFellAsleep": "Fell asleep",
+  "sleepSummaryMainSleep": "Main sleep",
+  "sleepSummaryNapStarted": "Nap started",
+  "sleepSummaryNapEnded": "Nap ended",
+  "sleepSummaryLogged": "You logged this",
+  "sleepSummaryDetected": "Detected",
+  "sleepSummaryNapAsleep": "{time} asleep",
+  "@sleepSummaryNapAsleep": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryUpDream": "I'm up from a dream",
+  "sleepSummaryUpNormal": "I'm up normally",
+  "sleepSummaryUnanswered": "Dream/normal not answered",
+  "sleepSummaryAfterAlert": "{time} after first wake alert sent",
+  "@sleepSummaryAfterAlert": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryNaturalSent": "Natural Wake sent",
+  "sleepSummaryRepeatSent": "Natural Wake repeat sent",
+  "sleepSummaryGradualSent": "Gradual Wake sent",
+  "sleepSummaryAlarmReported": "Alarm reported by band",
+  "sleepSummarySleepEnded": "Sleep ended",
+  "sleepSummaryDuration": "{hours}h {minutes}m",
+  "@sleepSummaryDuration": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryElapsed": "{minutes}m {seconds}s",
+  "@sleepSummaryElapsed": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      },
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "sleepSummaryRecalculate": "Recalculate time in bed",
+  "sleepSummaryZoomIn": "Zoom in",
+  "sleepSummaryZoomOut": "Zoom out",
+  "sleepSummaryResetZoom": "Reset zoom",
+  "sleepSummaryBackNight": "Back to this night",
+  "sleepSummaryNoWake": "Wake alert and “I'm up” not recorded.",
+  "sleepSummaryConfirmed": "Detected · confirmed by you",
+  "sleepSummaryRecorded": "Recorded nap",
+  "sleepSummaryNap": "Nap",
+  "sleepSummarySaveChanges": "Save your time changes before changing this entry.",
+  "sleepSummaryEntryChanged": "This sleep entry changed while you were editing. Open it again.",
+  "sleepSummaryNotSaved": "Not saved",
+  "sleepSummaryChanged": "Changed {time}",
+  "@sleepSummaryChanged": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryPanEarlier": "Pan earlier",
+  "sleepSummaryPanLater": "Pan later",
+  "sleepSummaryAfterAlarm": "{time} after band-reported alarm",
+  "@sleepSummaryAfterAlarm": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryWindow": "{time} sleep window",
+  "sleepSummaryPercentageExplanation": "Asleep percentage is time asleep out of the time the band recorded in your sleep window.",
+  "sleepSummaryTimeToWake": "Time to wake",
+  "sleepSummaryTimeToWakeExplanation": "From first sent alert to “I’m up”.",
+  "sleepSummarySentExplanation": "Alerts were sent; band vibration is unconfirmed.",
+  "sleepSummaryNatural": "Natural Wake",
+  "sleepSummaryGradual": "Gradual Wake",
+  "sleepSummaryAlertRange": "{range} · {count, plural, one{1 alert} other{{count} alerts}}",
+  "sleepSummaryWindowUpdated": "{window} · updated {time}",
+  "@sleepSummaryWindow": {
+    "description": "Duration of the sleep window, without claiming the wearer was in bed.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "@sleepSummaryAlertRange": {
+    "description": "Collapsed run of sent wake alerts. Range is local clock time.",
+    "placeholders": {
+      "range": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@sleepSummaryWindowUpdated": {
+    "description": "Sleep-window figure followed by the latest recording included in the served result.",
+    "placeholders": {
+      "window": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryUpdating": "Updating this night",
+  "sleepSummaryHeldWorkout": "Paused during workout",
+  "sleepSummaryHeldSync": "Waiting for sync to finish",
+  "sleepSummaryHeldBackground": "Paused in the background",
+  "sleepSummaryHeldPower": "Waiting for power",
+  "sleepSummaryOverlappingAlerts": "Overlapping wake alerts"
 }
