@@ -118,10 +118,13 @@ void main() {
     () {
       final history = <ana.PulseBeatInput>[],
           context = <int, ana.PulseWindowContext>{};
+      // The residual guard accepts only the supported subset of this capture
+      // as normal. Supply enough history to retain >=24 quality windows;
+      // keep all baseline thresholds and irregular-control assertions unchanged.
       for (var day = 3; day >= 1; day--) {
         final t = candidate - day * 24 * 3600000;
-        history.addAll(beatsAt(t, 55, sleepRrFixtures.first));
-        context.addAll(contexts(t, 55, motion: false, wear: true));
+        history.addAll(beatsAt(t, 115, sleepRrFixtures.first));
+        context.addAll(contexts(t, 115, motion: false, wear: true));
       }
       final target = beatsAt(candidate, 30, irregular());
       context.addAll(contexts(candidate, 30, motion: false, wear: true));

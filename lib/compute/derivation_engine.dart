@@ -2002,7 +2002,11 @@ part 'engine/settled.dart';
 // 122: pulse detector v3 requires paired respiratory spectra and corrects
 // current-version episodes when complete late context excludes them. V1
 // evidence and delivery remain frozen. Analytics fork 2ba4d4e (local only).
-const int kAlgoVersion = 122;
+// 123: pulse detector v4 preserves independently irregular RR when breathing
+// coexists. A narrow sinusoid is fitted on the tachogram, then original-beat
+// residuals must fail fixed floors before exclusion. Analytics fork 8f3c08c
+// (local only; gitignored override required until the owner publishes it).
+const int kAlgoVersion = 123;
 class DerivationEngine {
   DerivationEngine({
     this.log,

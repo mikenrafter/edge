@@ -185,8 +185,10 @@ A pulse episode is at least two consecutive closed UTC five-minute windows meeti
 
 The **pulse upgrade watermark** is the immutable set of `(source, ts_ms)` RR record keys present during the schema-89 migration, or at the first phase 2 initialization on a fresh install, plus its atomic completion marker. An episode whose beats all belong to those records is marked sent with reason "before this version". The keys survive raw eviction, restore and reanalysis. A previously absent key delivered later is new even when its recording timestamp is older.
 
-- **Pulse breathing pattern**: matching respiratory-band spectral peaks in two adjacent, fully supported windows during confirmed low-heart-rate sleep. Analytics resamples cumulative RR timing and requires both peak concentration and prominence. It excludes a pulse window from irregular-pattern qualification. `pulse_episode_worker.dart` supplies context; analytics owns the policy.
+- **Pulse breathing pattern**: matching respiratory-band spectral peaks in two adjacent, fully supported windows during confirmed low-heart-rate sleep. Analytics resamples cumulative RR timing and requires both peak concentration and prominence. Matching peaks trigger a narrow sinusoid fit. A window is excluded only when the supported fit leaves original-beat residuals below at least one fixed screening floor. `pulse_episode_worker.dart` supplies context; analytics owns the policy.
 - **Pulse personal baseline**: quality-passing normal windows from earlier local dates within fourteen days, excluding stored episodes and their thirty-minute surroundings. Its thresholds cannot suppress uncorrelated windows that pass the fixed screening floors.
 
 - **Pulse semantic exclusion**: positive breathing, motion, off-wrist or charging evidence that excludes an otherwise supported pulse window. Complete exclusions can retract current detector decisions and cancel unclaimed alerts.
 - **Pulse recording refusal**: insufficient or invalid RR support. It retains an earlier pulse decision rather than retracting it.
+
+- **Pulse respiratory residual**: corrected RR minus the single fitted respiratory sinusoid evaluated at original cumulative beat times. Original feature and adjacency masks stay intact; the same SD1/SD2 and pNN70 calculation checks the residual against 0.7 and 30%. Weak or failed fits preserve eligibility.

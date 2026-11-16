@@ -636,12 +636,13 @@ dependencies:
       # refuses only its own pair; windows take evaluateFromMs/evaluateToMs so a
       # window decides the same in any query range. Pulse episode output only
       # (new, behind no stored value of an earlier version): kAlgoVersion stays 120.
-      # LOCAL FORK PIN (unpublished): pulse v3 requires matching, supported
-      # respiratory spectra instead of chance lag correlation. Personal thresholds
-      # preserve fixed floors for irregular RR. kAlgoVersion 122.
+      # LOCAL FORK PIN (unpublished): pulse v4 requires a narrow respiratory
+      # sinusoid fit and fixed-floor-negative original-beat residuals before
+      # excluding a window. Personal thresholds retain their safety bound.
+      # kAlgoVersion 123.
       # Until the owner publishes this SHA, development requires the gitignored
       # pubspec_overrides.yaml pointing at the local analytics pulse-fixes worktree.
-      ref: 2ba4d4e0c49bbb4642c4a26464cfab102fe1da3d
+      ref: 8f3c08c5ae63619c3707246e5587ed6adced5bd5
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8

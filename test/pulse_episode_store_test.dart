@@ -87,13 +87,14 @@ void main() {
   });
   // WHY/CLAIM(pulse-late-context): late semantic exclusions cancel only unclaimed debt.
   // # catches: treating semantic reasons as quality refusal or reviving notifications-off debt.
+  for (final previousVersion in [2, 3]) {
   for (final reason in ['motion', 'offWrist', 'charging', 'sleepBreathing']) {
     for (final state in ['owed', 'notifications off', 'sent', 'summary', 'unknown', 'pending']) {
-      test('late $reason retracts while preserving $state ancestry', () async {
+      test('v$previousVersion late $reason retracts while preserving $state ancestry', () async {
         final prior = detection();
         await store.reconcile(prior, origin: 'sync', nowMs: 1);
-        // V2 rows must remain correctable across the v3 bump.
-        await db.update('pulse_episode_revision', {'detector': 2});
+        // V2 and V3 rows remain correctable across V4; only V1 is frozen.
+        await db.update('pulse_episode_revision', {'detector': previousVersion});
         await db.update('pulse_episode_outbox', {
           'state': state == 'notifications off' ? 'not_sent' : state,
           'reason': state == 'notifications off' ? state : null,
@@ -121,6 +122,7 @@ void main() {
         }
       });
     }
+  }
   }
   // WHY: inadequate late recordings cannot retract an existing supported episode.
   // # catches: ignoring quality refusals when a semantic exclusion is also present.

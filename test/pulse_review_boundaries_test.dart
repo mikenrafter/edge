@@ -6,6 +6,13 @@ import 'package:openstrap_edge/compute/pulse_episode_worker.dart';
 import 'support/pin_tz.dart';
 import 'pulse_sleep_rr_fixture.dart';
 
+// Boundary counts must not depend on the respiratory exclusion under test.
+// Tiny periodic RR has pNN70=0, so these are independently normal windows.
+final _normalHistory = List.generate(
+  370,
+  (i) => (1150 + 2 * sin(2 * pi * i / 3.7)).round(),
+);
+
 void main() {
   pinProcessTimeZone(
     "${Platform.environment['TZDIR'] ?? '/usr/share/zoneinfo'}/America/Denver",
@@ -50,11 +57,11 @@ void main() {
         add(
           DateTime(2026, 11, 10 - day, 22).millisecondsSinceEpoch,
           90,
-          sleepRrFixtures.first,
+          _normalHistory,
         );
       }
       // Same local date cannot train today, including across a UTC boundary.
-      add(target - 300000, 5, sleepRrFixtures.first);
+      add(target - 300000, 5, _normalHistory);
       final random = Random(53);
       add(target, 30, List.generate(5000, (_) => 950 + random.nextInt(400)));
       rows.sort((a, b) => (a['ts_ms'] as int).compareTo(b['ts_ms'] as int));
@@ -173,7 +180,7 @@ void main() {
     }
 
     for (var day = 0; day < 3; day++) {
-      add(day * 86400000, 55, sleepRrFixtures.first);
+      add(day * 86400000, 55, _normalHistory);
     }
     final random = Random(53);
     add(target, 30, List.generate(5000, (_) => 950 + random.nextInt(400)));
