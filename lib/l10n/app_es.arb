@@ -1,4 +1,13 @@
 {
+  "sleepEditorTitle": "Editar sueño",
+  "sleepEditorZoomIn": "Acercar",
+  "sleepEditorZoomOut": "Alejar",
+  "sleepEditorFullNight": "Noche completa",
+  "sleepEditorRecalculate": "Recalcular tiempo en cama",
+  "sleepEditorMainEntry": "Sueño principal",
+  "sleepEditorNapEntry": "Siesta",
+  "sleepEditorSaveTimesFirst": "Guarda o cancela primero los cambios de horario.",
+  "sleepEditorActionPending": "Este cambio se aplica al guardar.",
   "@@locale": "es",
   "chartPanelLatest": "ÚLTIMO",
   "chartPanelSelected": "SELECCIONADO",
@@ -3986,14 +3995,5 @@
   "pulseAlertEarlier": "Avisado por una versión anterior de la app {when}",
   "homeLastKnownUpdating": "Último dato {time} · actualizando",
   "homeLastKnownFailed": "Último dato {time} · error al actualizar",
-  "homeLastKnownSource": "{status}. Leído {readTime}. Calculado {computedTime}.",
-  "sleepEditorTitle": "Editar sueño",
-  "sleepEditorZoomIn": "Acercar",
-  "sleepEditorZoomOut": "Alejar",
-  "sleepEditorFullNight": "Noche completa",
-  "sleepEditorRecalculate": "Recalcular tiempo en cama",
-  "sleepEditorMainEntry": "Sueño principal",
-  "sleepEditorNapEntry": "Siesta",
-  "sleepEditorSaveTimesFirst": "Guarda o cancela primero los cambios de horario.",
-  "sleepEditorActionPending": "Este cambio se aplica al guardar."
+  "homeLastKnownSource": "{status}. Leído {readTime}. Calculado {computedTime}."
 }

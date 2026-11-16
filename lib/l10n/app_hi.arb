@@ -1,4 +1,13 @@
 {
+  "sleepEditorTitle": "नींद संपादित करें",
+  "sleepEditorZoomIn": "ज़ूम इन करें",
+  "sleepEditorZoomOut": "ज़ूम आउट करें",
+  "sleepEditorFullNight": "पूरी रात",
+  "sleepEditorRecalculate": "बिस्तर में बिताए समय की फिर गणना करें",
+  "sleepEditorMainEntry": "मुख्य नींद",
+  "sleepEditorNapEntry": "झपकी",
+  "sleepEditorSaveTimesFirst": "पहले समय के बदलाव सहेजें या रद्द करें।",
+  "sleepEditorActionPending": "यह बदलाव सहेजने पर लागू होगा।",
   "@@locale": "hi",
   "chartPanelLatest": "नवीनतम",
   "chartPanelSelected": "चयनित",
@@ -3968,14 +3977,5 @@
   "pulseAlertEarlier": "ऐप के पुराने संस्करण द्वारा अलर्ट किया गया {when}",
   "homeLastKnownUpdating": "पिछली जानकारी {time} · अपडेट हो रहा है",
   "homeLastKnownFailed": "पिछली जानकारी {time} · अपडेट विफल",
-  "homeLastKnownSource": "{status}. पढ़ा गया {readTime}. गणना की गई {computedTime}.",
-  "sleepEditorTitle": "नींद संपादित करें",
-  "sleepEditorZoomIn": "ज़ूम इन करें",
-  "sleepEditorZoomOut": "ज़ूम आउट करें",
-  "sleepEditorFullNight": "पूरी रात",
-  "sleepEditorRecalculate": "बिस्तर में बिताए समय की फिर गणना करें",
-  "sleepEditorMainEntry": "मुख्य नींद",
-  "sleepEditorNapEntry": "झपकी",
-  "sleepEditorSaveTimesFirst": "पहले समय के बदलाव सहेजें या रद्द करें।",
-  "sleepEditorActionPending": "यह बदलाव सहेजने पर लागू होगा।"
+  "homeLastKnownSource": "{status}. पढ़ा गया {readTime}. गणना की गई {computedTime}."
 }

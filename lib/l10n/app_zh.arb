@@ -1,4 +1,13 @@
 {
+  "sleepEditorTitle": "编辑睡眠",
+  "sleepEditorZoomIn": "放大",
+  "sleepEditorZoomOut": "缩小",
+  "sleepEditorFullNight": "整晚",
+  "sleepEditorRecalculate": "重新计算卧床时间",
+  "sleepEditorMainEntry": "主要睡眠",
+  "sleepEditorNapEntry": "小睡",
+  "sleepEditorSaveTimesFirst": "请先保存或取消时间更改。",
+  "sleepEditorActionPending": "此更改将在保存时生效。",
   "@@locale": "zh",
   "chartPanelLatest": "最新",
   "chartPanelSelected": "已选",
@@ -3968,14 +3977,5 @@
   "pulseAlertEarlier": "已由应用的早期版本提醒 {when}",
   "homeLastKnownUpdating": "上次数据 {time} · 正在更新",
   "homeLastKnownFailed": "上次数据 {time} · 更新失败",
-  "homeLastKnownSource": "{status}。读取于 {readTime}。计算于 {computedTime}。",
-  "sleepEditorTitle": "编辑睡眠",
-  "sleepEditorZoomIn": "放大",
-  "sleepEditorZoomOut": "缩小",
-  "sleepEditorFullNight": "整晚",
-  "sleepEditorRecalculate": "重新计算卧床时间",
-  "sleepEditorMainEntry": "主要睡眠",
-  "sleepEditorNapEntry": "小睡",
-  "sleepEditorSaveTimesFirst": "请先保存或取消时间更改。",
-  "sleepEditorActionPending": "此更改将在保存时生效。"
+  "homeLastKnownSource": "{status}。读取于 {readTime}。计算于 {computedTime}。"
 }

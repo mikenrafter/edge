@@ -1,4 +1,40 @@
 {
+  "sleepEditorTitle": "Edit sleep",
+  "@sleepEditorTitle": {
+    "description": "Horizontal sleep editor control or entry action status."
+  },
+  "sleepEditorZoomIn": "Zoom in",
+  "@sleepEditorZoomIn": {
+    "description": "Horizontal sleep editor control or entry action status."
+  },
+  "sleepEditorZoomOut": "Zoom out",
+  "@sleepEditorZoomOut": {
+    "description": "Horizontal sleep editor control or entry action status."
+  },
+  "sleepEditorFullNight": "Full night",
+  "@sleepEditorFullNight": {
+    "description": "Horizontal sleep editor control or entry action status."
+  },
+  "sleepEditorRecalculate": "Recalculate time in bed",
+  "@sleepEditorRecalculate": {
+    "description": "Horizontal sleep editor control or entry action status."
+  },
+  "sleepEditorMainEntry": "Main sleep",
+  "@sleepEditorMainEntry": {
+    "description": "Horizontal sleep editor control or entry action status."
+  },
+  "sleepEditorNapEntry": "Nap",
+  "@sleepEditorNapEntry": {
+    "description": "Horizontal sleep editor control or entry action status."
+  },
+  "sleepEditorSaveTimesFirst": "Save or cancel your time changes first.",
+  "@sleepEditorSaveTimesFirst": {
+    "description": "Horizontal sleep editor control or entry action status."
+  },
+  "sleepEditorActionPending": "This change applies when you save.",
+  "@sleepEditorActionPending": {
+    "description": "Horizontal sleep editor control or entry action status."
+  },
   "@@locale": "en",
   "chartPanelLatest": "LATEST",
   "chartPanelSelected": "SELECTED",
@@ -19587,41 +19623,5 @@
   "homeLastKnownFailed": "Last known {time} · update failed",
   "@homeLastKnownFailed": {"placeholders": {"time": {"type": "String"}}},
   "homeLastKnownSource": "{status}. Read {readTime}. Calculated {computedTime}.",
-  "@homeLastKnownSource": {"placeholders": {"status": {"type": "String"}, "readTime": {"type": "String"}, "computedTime": {"type": "String"}}},
-  "sleepEditorTitle": "Edit sleep",
-  "@sleepEditorTitle": {
-    "description": "Horizontal sleep editor control or entry action status."
-  },
-  "sleepEditorZoomIn": "Zoom in",
-  "@sleepEditorZoomIn": {
-    "description": "Horizontal sleep editor control or entry action status."
-  },
-  "sleepEditorZoomOut": "Zoom out",
-  "@sleepEditorZoomOut": {
-    "description": "Horizontal sleep editor control or entry action status."
-  },
-  "sleepEditorFullNight": "Full night",
-  "@sleepEditorFullNight": {
-    "description": "Horizontal sleep editor control or entry action status."
-  },
-  "sleepEditorRecalculate": "Recalculate time in bed",
-  "@sleepEditorRecalculate": {
-    "description": "Horizontal sleep editor control or entry action status."
-  },
-  "sleepEditorMainEntry": "Main sleep",
-  "@sleepEditorMainEntry": {
-    "description": "Horizontal sleep editor control or entry action status."
-  },
-  "sleepEditorNapEntry": "Nap",
-  "@sleepEditorNapEntry": {
-    "description": "Horizontal sleep editor control or entry action status."
-  },
-  "sleepEditorSaveTimesFirst": "Save or cancel your time changes first.",
-  "@sleepEditorSaveTimesFirst": {
-    "description": "Horizontal sleep editor control or entry action status."
-  },
-  "sleepEditorActionPending": "This change applies when you save.",
-  "@sleepEditorActionPending": {
-    "description": "Horizontal sleep editor control or entry action status."
-  }
+  "@homeLastKnownSource": {"placeholders": {"status": {"type": "String"}, "readTime": {"type": "String"}, "computedTime": {"type": "String"}}}
 }
