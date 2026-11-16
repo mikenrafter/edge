@@ -10,7 +10,6 @@
 // database; the later tests seed it.
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -56,8 +55,9 @@ Future<void> _framesWithDb(WidgetTester t, ShiftRun run,
   final base = run.now;
   for (final o in offsets) {
     if (o == 16) await _drainDb(t);
-    await t.pump(Duration(milliseconds: base + o - run.now));
+    await t.pump(Duration(milliseconds: (base + o - run.now).clamp(0, 1 << 30)));
     run.now = base + o;
+    run.now += await settleHeight(t);
     run.snap();
   }
 }

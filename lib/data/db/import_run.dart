@@ -110,7 +110,7 @@ Future<void> _ldbApplyImportRederive() async {
   final since = await ImportJournal.latestStartedAt();
   if (days.isNotEmpty) {
     await LocalDb.clearDerivedDays(days.toSet(), computedSince: since);
-    LocalDb._markStoreReplaced();
+    await LocalDb._markStoreReplaced();
   }
   await ImportJournal.putMeta({'rederiveApplied': '1'});
   }

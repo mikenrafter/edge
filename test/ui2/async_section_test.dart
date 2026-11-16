@@ -104,7 +104,7 @@ void main() {
     expect(t.getSize(find.byType(AsyncListSection<String>)).height,42);
     await t.pumpWidget(page(null));
     expect(t.getSize(find.byType(AsyncListSection<String>)).height,42);
-    await t.pumpWidget(page([]));await t.pump();
+    await t.pumpWidget(page([]));await t.pump(const Duration(milliseconds:250));
     expect(t.getSize(find.byType(AsyncListSection<String>)).height,14);
     await t.pumpWidget(const SizedBox());
   });

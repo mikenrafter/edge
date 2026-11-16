@@ -125,7 +125,7 @@ void main() {
           expect(find.text('Total sleep'), findsOneWidget);
         } else if (state == 'empty') {
           expect(find.text('Total sleep'), findsOneWidget);
-          expect(find.text(embedded ? 'Sleep timeline' : 'Through the night'), findsOneWidget);
+          expect(embedded ? find.byKey(const ValueKey('sleep-tab:timeline')) : find.text('Through the night'), findsOneWidget);
           // The reason stays in the night section; the research warning
           // above remains visible in every state.
         }

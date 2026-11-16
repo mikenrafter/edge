@@ -4101,5 +4101,8 @@
         "type": "String"
       }
     }
-  }
+  },
+  "homeLastKnownUpdating": "Letzter Stand {time} · wird aktualisiert",
+  "homeLastKnownFailed": "Letzter Stand {time} · Aktualisierung fehlgeschlagen",
+  "homeLastKnownSource": "{status}. Gelesen {readTime}. Berechnet {computedTime}."
 }

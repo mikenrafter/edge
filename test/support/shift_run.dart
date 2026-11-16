@@ -5,8 +5,10 @@
 // scorer applies the latency curve); a background refresh records none.
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/layout_shift/layout_shift.dart';
+import 'package:openstrap_edge/ui2/skeleton/settling_height.dart';
 
 import 'layout_shift_probe.dart';
 
@@ -52,8 +54,11 @@ class ShiftRun {
     for (final o in offsets) {
       final at = base + o;
       final d = at - now;
-      await t.pump(Duration(milliseconds: d));
-      now = at;
+      await t.pump(Duration(milliseconds: d > 0 ? d : 0));
+      if (at > now) now = at;
+      // Item 25: score settled layouts, not intermediate height-animation
+      // frames. Keep both endpoints and every ordinary shift assertion.
+      now += await settleHeight(t);
       snap();
     }
   }
@@ -103,3 +108,19 @@ String formatShiftReport(String name, ShiftReport r, int frames) {
 void expectNoIndeterminateProgress() => expect(find.byWidgetPredicate((w) =>
   w is ProgressIndicator && w.value == null ||
   w is CupertinoActivityIndicator || w is CupertinoSliverRefreshControl), findsNothing);
+
+/// Wait only for bounded height motion, never for the perpetual loading pulse.
+Future<int> settleHeight(WidgetTester t) async {
+  var elapsed = 0;
+  for (var frame = 0; frame < 32; frame++) {
+    final moving = find.byWidgetPredicate((w) => w is AnimatedSize || w is SettlingHeight).evaluate().any((e) {
+      final r = e.findRenderObject();
+      return r is RenderAnimatedSize && r.isAnimating ||
+          r is RenderSettlingHeight && r.isAnimating;
+    });
+    if (!moving) break;
+    await t.pump(const Duration(milliseconds: 16));
+    elapsed += 16;
+  }
+  return elapsed;
+}

@@ -4013,5 +4013,8 @@
         "type": "String"
       }
     }
-  }
+  },
+  "homeLastKnownUpdating": "Último dato {time} · actualizando",
+  "homeLastKnownFailed": "Último dato {time} · error al actualizar",
+  "homeLastKnownSource": "{status}. Leído {readTime}. Calculado {computedTime}."
 }

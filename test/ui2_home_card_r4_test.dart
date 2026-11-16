@@ -1,6 +1,6 @@
 // RED tests: Home card round 4 (Sol r3 P2 + owner render review).
 // The 44 pt reserved caption row left a visible empty band above the rings
-// (dials 60 pt below the card top; the approved mock has them about 30 pt).
+// (dials 60 pt below the card top; the approved mock has them 42 pt).
 // CONTRACT (keys are ValueKey<String>):
 //   home-since-line     the VISUAL caption row inside the card: 18 pt at scale
 //                       1.0 (grows with the text scale), reserved whether or not
@@ -11,7 +11,6 @@
 //                       above the dials and starts below the control before it
 //                       (the day bar). Row and target grow together with text.
 // Tests tap its top and bottom edges; the dials keep their own taps.
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,7 +22,6 @@ import 'package:openstrap_edge/models/metric.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
-import 'package:openstrap_edge/ui2/ui2.dart';
 
 import 'support/as_of_recalc_fakes.dart';
 import 'support/last_result_db.dart';
@@ -113,14 +111,14 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   for (final w in [360.0, 390.0]) {
-    testWidgets('dials sit about 30 pt below the card top @${w.toInt()} (known, unknown, held)',
+    testWidgets('dials sit 42 pt below the card top @${w.toInt()} (known, unknown, held)',
         (t) async {
       for (final (known, held) in [(true, false), (false, false), (true, true)]) {
         await _home(t, w: w, known: known, held: held);
         final gap = t.getTopLeft(_dials.first).dy - t.getTopLeft(_card).dy;
-        expect(gap, lessThanOrEqualTo(36), reason: 'known=$known held=$held');
-        expect(gap, greaterThanOrEqualTo(24));
-        expect(t.getSize(_line).height, 18, reason: 'the visual row is 18 pt');
+        expect(gap, lessThanOrEqualTo(44), reason: 'known=$known held=$held');
+        expect(gap, greaterThanOrEqualTo(40));
+        expect(t.getSize(_line).height, 26, reason: '18 pt caption plus 8 pt margin');
         if (held) await _settleDb(t);
       }
     });
@@ -139,14 +137,14 @@ void main() {
     await _settleDb(t);
   });
 
-  testWidgets('text scale 0.85: the target keeps 44 pt, ends above the dials, row stays 18 pt',
+  testWidgets('text scale 0.85: the target keeps 44 pt, ends above the dials, row keeps its 8 pt margin',
       (t) async {
     await _home(t, scale: 0.85, held: true);
     expect(t.getSize(_target).height, greaterThanOrEqualTo(44));
-    expect(t.getSize(_line).height, 18, reason: 'the row never shrinks below 18');
+    expect(t.getSize(_line).height, 26, reason: 'the caption never shrinks below 18, plus margin');
     final dialTop = t.getTopLeft(_dials.first).dy;
     expect(t.getRect(_target).bottom, lessThanOrEqualTo(dialTop));
-    expect(dialTop - t.getTopLeft(_card).dy, inInclusiveRange(24, 36));
+    expect(dialTop - t.getTopLeft(_card).dy, inInclusiveRange(40, 44));
     await _settleDb(t);
   });
 

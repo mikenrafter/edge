@@ -69,6 +69,7 @@ const Map<String, String> kPrefsNotBackedUp = {
 /// purpose: a prefix once swept up `backup.cadence`, a setting the owner chose
 /// (daily/weekly), so the device-only `backup.*` keys are listed by name above.
 const Map<String, String> kPrefsNotBackedUpPrefixes = {
+  'ui.home_ring_details.': 'Secondary Home presentation snapshots, not portable health data',
   'ui.load_memory.': 'Local presentation estimates, not portable health data',
 };
 

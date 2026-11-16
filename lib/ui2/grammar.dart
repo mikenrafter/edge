@@ -1516,7 +1516,7 @@ class Surface extends StatelessWidget implements PendingSectionLabel {
         child: GuideUnitMark(component: c, child: Container(
           width: double.infinity,
           padding: pad.copyWith(left: 0, right: 0),
-          child: child,
+          child: SettlingHeight(child: child),
         )),
       );
     }
@@ -1531,7 +1531,7 @@ class Surface extends StatelessWidget implements PendingSectionLabel {
           borderRadius: R.rLg,
           boxShadow: p.el(elevation),
         ),
-        child: child,
+        child: SettlingHeight(child: child),
       )),
     );
   }
@@ -1634,7 +1634,7 @@ class Section extends StatelessWidget implements PendingSectionLabel {
             ],
           ),
         ),
-        child,
+        SettlingHeight(child: child),
       ],
     );
   }

@@ -3995,5 +3995,8 @@
         "type": "String"
       }
     }
-  }
+  },
+  "homeLastKnownUpdating": "上次数据 {time} · 正在更新",
+  "homeLastKnownFailed": "上次数据 {time} · 更新失败",
+  "homeLastKnownSource": "{status}。读取于 {readTime}。计算于 {computedTime}。"
 }

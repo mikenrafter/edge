@@ -29,6 +29,7 @@ import '../../l10n/date_text.dart';
 // only three of them and they are read together.
 
 import 'dart:async';
+import '../../data/home_snapshot_store.dart';
 import '../read_prefetch.dart';
 import '../skeleton/load_memory.dart';
 import 'dart:math' as math;
@@ -100,6 +101,8 @@ import 'sleep_detail.dart';
 import 'sleep_tab.dart';
 import 'workout_screen.dart';
 import 'health_screen.dart';
+
+part 'home_ring_cache.dart';
 
 // ═══════════════════ shared plumbing ═══════════════════
 
@@ -1022,6 +1025,8 @@ String driverLabel(Object? key, [AppLocalizations? l]) {
 /// [DayStrainDetail], sleep → [SleepDetail].
 class RingTrio extends StatelessWidget {
   final HomeData d;
+  final bool pending, cacheFresh, failed;
+  final String? cacheDay;
 
   /// Push the ring's own screen. Null in a gallery, where there is no navigator
   /// worth pushing onto.
@@ -1031,6 +1036,7 @@ class RingTrio extends StatelessWidget {
   /// Injected by tests; production reads `clock.now()`.
   final DateTime? now;
   final DateTime? since;
+  final DateTime? readAt;
   /// Non-null while results are held stale (a hold AND newer recordings than
   /// the result covers): the old line's explanation. Draws the arc, makes the
   /// caption tappable.
@@ -1044,9 +1050,14 @@ class RingTrio extends StatelessWidget {
   const RingTrio(
       {super.key,
       required this.d,
+      this.pending = false,
+      this.failed = false,
+      this.cacheFresh = true,
+      this.cacheDay,
       this.onOpen,
       this.now,
       this.since,
+      this.readAt,
       this.holdText,
       this.help});
 
@@ -1066,14 +1077,22 @@ class RingTrio extends StatelessWidget {
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c);
     final at = now ?? pc.clock.now();
-    final rings = [for (final k in HomeRingKind.values) _ringOf(k, d, l, at)];
-    final gaps = rings.where((r) => r.why != null).toList();
-    final observation = _HomeScreenState._bodyWatch(c, d, todayLabel(at));
-    final pressing = pressingRings(d, now: at).take(observation == null ? 2 : 1).toList();
-    final older = d.strain.fromOlderVersion;
+    final locale = l?.localeName ?? Localizations.localeOf(c).toString();
+    final cache = cacheDay == null || cacheFresh ? null : HomeRingDetailCache.local.read(cacheDay!, locale);
+    if (cacheFresh && cacheDay != null) HomeRingDetailCache.local.record(cacheDay!, locale, d, help, readAt: readAt);
+    // Cache supplies the pending layout template, never an exposed ring score:
+    // PendingContent suppresses these data leaves until the current read lands.
+    final shape = pending && cache != null ? cache.data : d;
+    final rings = [for (final k in HomeRingKind.values) _ringOf(k, shape, l, at)];
+    final detail = cache?.data ?? d;
+    final detailRings = [for (final k in HomeRingKind.values) _ringOf(k, detail, l, at)];
+    final gaps = detailRings.where((r) => r.why != null).toList();
+    final observation = _HomeScreenState._bodyWatch(c, detail, todayLabel(at));
+    final pressing = pressingRings(detail, now: at).take(observation == null ? 2 : 1).toList();
+    final older = detail.strain.fromOlderVersion;
     // The shared "Updated 8:12 · 62 → 58" line (Readiness detail and Health print
     // it too): a changed number is explained, as a neutral row.
-    final note = recoveryUpdatedLine(d.readinessUpdate, l);
+    final note = recoveryUpdatedLine(detail.readinessUpdate, l);
     // THERE IS NO "THESE TWO ARE FROM SATURDAY" LINE ANY MORE, and there is
     // nothing left for one to explain. Recovery and sleep used to be served
     // from the last scored night whenever today's had not settled, and this
@@ -1091,13 +1110,13 @@ class RingTrio extends StatelessWidget {
     // With nothing more specific to say, the screen's own status (reading,
     // calculating, failed, "no data for this day", guidance) outranks the
     // per-ring "no reading" reasons, as it did in the old help strip.
-    final status = help;
+    final status = cache == null ? help : cache.help == null ? null : RingHelp(cache.help!);
     final onlyStatus = observation == null && pressing.isEmpty &&
         older == null && note == null && status != null && status.text.isNotEmpty;
     final rows = <Widget>[
       ?observation,
       for (final k in pressing)
-        _HomeWhyPanel(kind: k, data: d, onTap: _open(k)),
+        _HomeWhyPanel(kind: k, data: detail, onTap: _open(k)),
       // A changed number is explained before an absent ring's reason.
       if (note != null)
         _HomeUpdateNote(line: note, onTap: _open(HomeRingKind.recovery)),
@@ -1106,17 +1125,18 @@ class RingTrio extends StatelessWidget {
         _HomeNoteRow(id: 'gap:${r.kind.name}', title: r.label,
             text: presentationText(l, r.why ?? ''), onTap: _open(r.kind)),
       if (older != null)
-        _HomeOlderPanel(version: older, reason: d.strain.olderVersionReason,
+        _HomeOlderPanel(version: older, reason: detail.strain.olderVersionReason,
             onTap: _open(HomeRingKind.strain)),
     ];
     if (onlyStatus) {
       rows.add(_HomeNoteRow(id: 'status', text: status.text,
-          busy: status.busy, onTap: status.onTap));
+          busy: status.busy && pending && cache == null, onTap: status.onTap));
     }
     final slot = [
       for (final (i, row) in rows.take(2).indexed) ...[
         SizedBox(height: i == 0 ? S.x3 : S.x2),
-        row,
+        if (cache == null) row else Semantics(
+          label: _retainedText(l, cache.readAt), child: row),
       ],
     ];
 
@@ -1125,7 +1145,8 @@ class RingTrio extends StatelessWidget {
       child: LayoutBuilder(builder: (c, box) => Column(children: [
         // The "since" line: centred above the rings,
         // its height reserved whether or not the time is known.
-        _sinceLine(c, l),
+        PendingContent(pending: pending && cache == null, child: _sinceLine(c, l, cache == null ? null : (cache.readAt, cache.data.overnightAt, cache.data.activityAt))),
+        PendingContent(pending: pending, child: Column(children: [
         // Rows replace columns by locale, text scale and width only, never by
         // the day's data: an empty card and a loaded one are the same layout.
         if (bigText(c))
@@ -1147,7 +1168,13 @@ class RingTrio extends StatelessWidget {
               ],
             ],
           ),
-        ...slot,
+        ])),
+        PendingContent(key: const ValueKey('home-ring-details'), pending: pending && cache == null,
+          child: Column(children: slot)),
+        if (cache != null && !pending && help != null) ...[
+          const SizedBox(height: S.x2),
+          _HomeNoteRow(id: 'retained-status', text: help!.text, onTap: help!.onTap),
+        ],
       ])),
     );
   }
@@ -1158,12 +1185,34 @@ class RingTrio extends StatelessWidget {
   static double sinceRowHeight(BuildContext c) =>
       math.max(18.0, MediaQuery.textScalerOf(c).scale(18));
 
-  Widget _sinceLine(BuildContext c, AppLocalizations? l) {
+  String _retainedStamp(AppLocalizations? l, DateTime? instant) {
+    if (instant == null) return '—';
+    final local = instant.toLocal();
+    return localizedDateTime(local, l?.localeName ?? 'en', time: formatClockOf(local));
+  }
+
+  String _retainedText(AppLocalizations? l, DateTime? readAt) {
+    final stamp = _retainedStamp(l, readAt);
+    return failed
+        ? l?.homeLastKnownFailed(stamp) ?? 'Last known $stamp · update failed'
+        : l?.homeLastKnownUpdating(stamp) ?? 'Last known $stamp · updating';
+  }
+
+  Widget _sinceLine(BuildContext c, AppLocalizations? l,
+      (DateTime?, DateTime?, DateTime?)? retained) {
     final h = sinceRowHeight(c);
     final t = since;
     final p = P.of(c);
     final clock = t == null ? '—' : DateFormat('HH:mm').format(t);
-    final text = l?.homeSinceTime(clock) ?? 'since $clock';
+    final saved = retained?.$1;
+    final text = retained == null ? l?.homeSinceTime(clock) ?? 'since $clock'
+        : _retainedText(l, saved);
+    final sourceTimes = retained == null ? null : [retained.$2, retained.$3]
+        .whereType<DateTime>().map((t) => _retainedStamp(l, t)).join(', ');
+    final semantics = retained == null ? null : l?.homeLastKnownSource(text,
+        _retainedStamp(l, saved),
+        sourceTimes!.isEmpty ? '—' : sourceTimes)
+        ?? '$text. Read ${_retainedStamp(l, saved)}. Calculated ${sourceTimes!.isEmpty ? '—' : sourceTimes}.';
     return SizedBox(
         key: const ValueKey('home-since-line'),
         width: double.infinity,
@@ -1174,7 +1223,7 @@ class RingTrio extends StatelessWidget {
                 key: const ValueKey('home-since'),
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(text, style: F.over.copyWith(color: p.ink3)),
+                  Flexible(child: Text(text, semanticsLabel: semantics, maxLines: 1, overflow: TextOverflow.ellipsis, style: F.over.copyWith(color: p.ink3))),
                 ])));
   }
 
@@ -2513,6 +2562,8 @@ class _HomeScreenState extends State<HomeScreen>
   HomeData? _d;
   DateTime? _recordingsThrough;
   bool _loading = true;
+  int _dataGeneration = HomeSnapshotStore.generation;
+  DateTime? _readAt;
 
   /// The day requested by the switcher, or null for "today" — the same
   /// null-means-today convention [_load] and [HomeData.load] already used
@@ -2570,22 +2621,43 @@ class _HomeScreenState extends State<HomeScreen>
     stopWatchingPausedRead();
     WidgetsBinding.instance.removeObserver(this);
     _tick?.cancel();
+    HomeSnapshotStore.changes.removeListener(_storeChanged);
     super.dispose();
   }
 
   @override
   void initState() {
     super.initState();
+    HomeSnapshotStore.changes.addListener(_storeChanged);
     watchPausedRead();
     WidgetsBinding.instance.addObserver(this);
     _armTick();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadSince());
     if (widget.data != null) {
+      _dataGeneration = HomeSnapshotStore.generation;
+      _readAt = pc.clock.now();
       _d = widget.data;
       _loading = false;
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  void _storeChanged() {
+    if (!mounted) return;
+    setState(() {
+      _d = null;
+      _recordingsThrough = null;
+      _readAt = null;
+      _loading = true;
+      _failed = false;
+    });
+    // A repo setter invalidates before installing its new repo. Read next frame.
+    if (widget.data == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load();
+      });
+    }
   }
 
   /// The "since hh:mm" time. Read on its own, never as part of the main model:
@@ -2595,13 +2667,14 @@ class _HomeScreenState extends State<HomeScreen>
     final repo = repoOf(context);
     final day = widget.data?.dayId ?? _day ?? todayLabel();
     if (repo == null) return;
+    final generation = HomeSnapshotStore.generation;
     DateTime? through;
     try {
       through = (await pausedRead(repo.dayRecordingsThrough(day))).value;
     } catch (_) {
       return; // unreadable: leave what is shown
     }
-    if (mounted && day == (widget.data?.dayId ?? _day ?? todayLabel()) && through != _recordingsThrough) {
+    if (mounted && generation == HomeSnapshotStore.generation && identical(repo, repoOf(context)) && day == (widget.data?.dayId ?? _day ?? todayLabel()) && through != _recordingsThrough) {
       setState(() => _recordingsThrough = through);
     }
   }
@@ -2610,6 +2683,8 @@ class _HomeScreenState extends State<HomeScreen>
   void didUpdateWidget(covariant HomeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.data != oldWidget.data && widget.data != null) {
+      _dataGeneration = HomeSnapshotStore.generation;
+      _readAt = pc.clock.now();
       _d = widget.data;
       _loading = false;
       _loadSince();
@@ -2697,6 +2772,12 @@ class _HomeScreenState extends State<HomeScreen>
       if (mounted) setState(() => _loading = false);
       return;
     }
+    // CLAIM(home-cache-freshness): every read qualifies retained judgments
+    // before its first await [home_cache_warm_reload_test].
+    if (mounted) setState(() { _loading = true; _failed = false; });
+    final generation = HomeSnapshotStore.generation;
+    bool current() => HomeSnapshotStore.generation == generation &&
+        identical(repo, repoOf(context));
     final t = beginRead(#home);
     final releasePrefetch = ReadPrefetch.shared.visibleRead('home');
     try {
@@ -2724,7 +2805,9 @@ class _HomeScreenState extends State<HomeScreen>
       final List<String> days = focus
           ? _focusDays(day)
           : await repo.availableDays();
-      if (stillNewest(#home, t)) {
+      if (stillNewest(#home, t) && current()) {
+        _dataGeneration = generation;
+        _readAt = pc.clock.now();
         setState(() => (_d = d, _days = days, _loading = false, _failed = false,
             _paused = false));
         _recordRender();
@@ -2756,7 +2839,7 @@ class _HomeScreenState extends State<HomeScreen>
         );
         _loadSince();
         _refresh.afterPaint(repo, d.refreshPending).then((landed) {
-          if (!mounted) return;
+          if (!mounted || !current()) return;
           if (landed) {
             _load();
           } else if (d.refreshPending) {
@@ -2765,14 +2848,14 @@ class _HomeScreenState extends State<HomeScreen>
         });
       }
     } on ReadPaused {
-      if (stillNewest(#home, t)) {
+      if (stillNewest(#home, t) && current()) {
         // A paused day shows NO numbers: whatever was on screen belonged to
         // another day, or to before the pause.
         setState(() => (_d = null, _loading = false, _failed = false,
             _paused = true, _days = _focusDays(_day)));
       }
     } catch (_) {
-      if (stillNewest(#home, t)) {
+      if (stillNewest(#home, t) && current()) {
         setState(() => (_loading = false, _failed = true));
         // Nothing usable was rendered: drop the pending measurement rather
         // than time a later retry from this bump.
@@ -2828,7 +2911,7 @@ class _HomeScreenState extends State<HomeScreen>
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    final loaded = _d;
+    final loaded = _dataGeneration == HomeSnapshotStore.generation ? _d : null;
     // ONE SCREEN FOR EVERY STATE. No day yet (the first read is out, it failed,
     // or there is no repository) is the loaded screen with nothing in it, not a
     // different screen: the same cards in the same places, drawn empty. Each
@@ -3030,8 +3113,13 @@ class _HomeScreenState extends State<HomeScreen>
         since: _recordingsThrough,
         card(
         'rings',
-        PendingContent(pending: _loading && loaded == null, child: RingTrio(
+        RingTrio(
           d: ringData,
+          pending: _loading,
+          failed: _failed,
+          cacheDay: widget.data?.dayId ?? _day ?? todayLabel(),
+          cacheFresh: loaded != null && !_loading && !_failed,
+          readAt: _readAt,
           now: widget.now,
           since: _recordingsThrough,
           holdText: held,
@@ -3047,7 +3135,7 @@ class _HomeScreenState extends State<HomeScreen>
                 // pick resolves to that one.
                 HomeRingKind.sleep => SleepDetail(day: isToday ? null : _day),
               }),
-        )),
+        ),
       ),
       ),
       if (!bare) ...[

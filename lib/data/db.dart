@@ -25,6 +25,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
+import 'home_snapshot_store.dart';
 import '../compute/processing_context.dart';
 import '../compute/pulse_alert_record.dart';
 import '../compute/substrate.dart' show beatTimesMs;
@@ -5481,7 +5482,7 @@ class LocalDb {
 
   /// The only owner of the in-memory wipe epoch. Called after a store-changing
   /// transaction commits, so a failed transaction never invalidates readers.
-  static void _markStoreReplaced() {
+  static Future<void> _markStoreReplaced({bool opened = false}) {
     _wipeEpoch++;
     // The reader belongs to the store that was just replaced: drop it in the
     // same step (synchronously unreachable, closed in the background) so no
@@ -5490,6 +5491,7 @@ class LocalDb {
     _readDb = null;
     _readerBeside = null;
     if (stale != null) unawaited(stale.close().catchError((_) {}));
+    return opened ? Future<void>.value() : HomeSnapshotStore.invalidate();
   }
 
   /// The demo-data delete, moved here from `DemoDataGenerator.purge` so every

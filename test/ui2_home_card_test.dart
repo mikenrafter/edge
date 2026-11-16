@@ -49,6 +49,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'support/shift_run.dart' show settleHeight;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -150,6 +151,7 @@ Future<AppState> _home(WidgetTester t, HomeData d,
   }
   await t.pumpWidget(perfApp(app, HomeScreen(data: d, hour: 9, now: _now)));
   await settle(t, n: 6);
+  await settleHeight(t);
   return app;
 }
 
@@ -163,6 +165,7 @@ Future<void> _rings(WidgetTester t, HomeData d,
             child: RingTrio(d: d, now: _now, onOpen: onOpen))),
   ));
   await t.pump();
+  await settleHeight(t);
 }
 
 Finder _why(String k) => find.byKey(ValueKey('home-why:$k'));
@@ -337,8 +340,7 @@ void main() {
       await _rings(t, _lowRecovery);
       expect(_why('recovery'), findsOneWidget);
       final p = P.of(t.element(_why('recovery')));
-      final box = find.descendant(
-          of: _why('recovery'), matching: find.byType(Container));
+      final box = _why('recovery');
       final insets = t.widgetList<Container>(box).where((c) {
         final dec = c.decoration;
         return dec is BoxDecoration &&
@@ -379,12 +381,12 @@ void main() {
     });
 
     testWidgets('bold title, body of one or two lines, a chevron', (t) async {
-      await _rings(t, _recAndSleep, w: 360);
+      await _rings(t, _recAndSleep, w: 360, onOpen: (_) {});
       expect(_whyOrder(t), ['recovery', 'sleep']);
       for (final k in ['recovery', 'sleep']) {
         final title = t.widget<Text>(find.byKey(ValueKey('home-why-title:$k')));
-        expect(title.style?.fontWeight?.index,
-            greaterThanOrEqualTo(FontWeight.w600.index));
+        expect(title.style?.fontWeight?.value,
+            greaterThanOrEqualTo(FontWeight.w600.value));
         final body = find.byKey(ValueKey('home-why-body:$k'));
         expect(t.widget<Text>(body).data, isNotEmpty);
         final rp = t.renderObject(body) as RenderParagraph;
@@ -400,7 +402,7 @@ void main() {
 
     testWidgets('icon and chevron are vertically centred in the panel',
         (t) async {
-      await _rings(t, _recAndSleep, w: 360);
+      await _rings(t, _recAndSleep, w: 360, onOpen: (_) {});
       expect(_whyOrder(t), ['recovery', 'sleep']);
       for (final k in ['recovery', 'sleep']) {
         final mid = t.getCenter(_why(k)).dy;
@@ -424,14 +426,14 @@ void main() {
 
   // ── 2. the "since hh:mm" overlay ──────────────────────────────────────────
   group('since overlay', () {
-    testWidgets('top right inside the card, a small caption', (t) async {
+    testWidgets('centred inside the card, a small caption', (t) async {
       await _home(t, _data(computedAt: _at(16, 8)), through: _at(16, 4));
       expect(find.text('since 16:04'), findsOneWidget);
       final card = t.getRect(_card);
       final s = t.getRect(_since);
       expect(card.contains(s.topLeft) && card.contains(s.bottomRight), isTrue,
           reason: 'inside card:rings');
-      expect(s.center.dx, greaterThan(card.center.dx), reason: 'right half');
+      expect(s.center.dx, card.center.dx, reason: 'centred');
       // The caption sits in the card's first line (18 pt visual row, round 4).
       final line = t.getRect(find.byKey(const ValueKey('home-since-line')));
       expect(line.top - card.top, lessThan(28), reason: 'the line is the top of the card');
@@ -440,18 +442,18 @@ void main() {
       expect(style?.fontSize ?? 99, lessThanOrEqualTo(12), reason: 'small caption');
     });
 
-    testWidgets('no time known: no overlay (nothing made up)', (t) async {
+    testWidgets('no time known: the since row stays present without a fabricated time', (t) async {
       await _home(t, _data(computedAt: _at(16, 8)));
-      expect(_since, findsNothing);
-      expect(find.textContaining('since'), findsNothing);
+      expect(_since, findsOneWidget);
+      expect(find.text('since —'), findsOneWidget);
     });
 
-    testWidgets('a pending sync adds a tiny progress arc, otherwise none',
+    testWidgets('a pending sync keeps the caption without a spinner',
         (t) async {
       await _home(t, _data(computedAt: _at(16, 8)),
           through: _at(16, 4), syncPending: true);
-      expect(_sinceArc, findsOneWidget);
-      expect(t.getSize(_sinceArc).longestSide, lessThanOrEqualTo(12));
+      expect(_sinceArc, findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.text('since 16:04'), findsOneWidget);
     });
 

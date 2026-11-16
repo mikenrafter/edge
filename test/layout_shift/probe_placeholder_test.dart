@@ -12,6 +12,7 @@ import 'package:openstrap_edge/ui2/inline_loading.dart';
 import 'package:openstrap_edge/ui2/skeleton/async_section.dart';
 
 import '../support/layout_shift_probe.dart';
+import '../support/shift_run.dart' show settleHeight;
 
 Widget _app(List<Widget> children) => MaterialApp(
       home: Scaffold(
@@ -78,6 +79,7 @@ void main() {
     probe.capture(t, atMs: 0);
     probe.interactions.add(const Interaction(0, 'open'));
     await t.pumpWidget(_app([slot(false), footer]));
+    await settleHeight(t);
     probe.capture(t, atMs: 2500);
     final report = score(probe.scenario(const ShiftRect(0, 0, 800, 600)),
       ShiftPolicy.standard.copyWith(loadWeight: 0, colorWeight: 0));

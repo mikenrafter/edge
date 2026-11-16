@@ -3995,5 +3995,8 @@
         "type": "String"
       }
     }
-  }
+  },
+  "homeLastKnownUpdating": "पिछली जानकारी {time} · अपडेट हो रहा है",
+  "homeLastKnownFailed": "पिछली जानकारी {time} · अपडेट विफल",
+  "homeLastKnownSource": "{status}. पढ़ा गया {readTime}. गणना की गई {computedTime}."
 }

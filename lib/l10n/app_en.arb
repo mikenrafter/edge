@@ -19606,5 +19606,11 @@
   "helpTopicEmpty": "There are no guides for this tab yet.",
   "@helpTopicEmpty": {
     "description": "Empty state for a tab with no guides; All guides remains available."
-  }
+  },
+  "homeLastKnownUpdating": "Last known {time} · updating",
+  "@homeLastKnownUpdating": {"placeholders": {"time": {"type": "String"}}},
+  "homeLastKnownFailed": "Last known {time} · update failed",
+  "@homeLastKnownFailed": {"placeholders": {"time": {"type": "String"}}},
+  "homeLastKnownSource": "{status}. Read {readTime}. Calculated {computedTime}.",
+  "@homeLastKnownSource": {"placeholders": {"status": {"type": "String"}, "readTime": {"type": "String"}, "computedTime": {"type": "String"}}}
 }

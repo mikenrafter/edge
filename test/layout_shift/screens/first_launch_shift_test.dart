@@ -7,6 +7,7 @@
 // carries a key 'card:<name>' (the same name in both states).
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../support/shift_run.dart' show settleHeight;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -35,6 +36,7 @@ void main() {
     // differ for reasons that are not the layout's.
     await loadFonts();
   });
+  var install = 0;
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     // The community asks are optional cards (they come and go with eligibility
@@ -42,6 +44,7 @@ void main() {
     // that must be there either way. `DetectedActivitiesCard` is likewise held
     // at zero pending by the fake repos.
     await Prefs.ensureLoaded();
+    Prefs.setString('install_device_id', 'first-launch-${install++}');
     for (final k in ['nudge.discord.dismissed', 'nudge.donate.dismissed']) {
       Prefs.setBool(k, true);
       addTearDown(() => Prefs.setBool(k, false));
@@ -58,9 +61,11 @@ void main() {
       Future<void> Function(WidgetTester)? drive) async {
     await t.pumpWidget(perfApp(app, screen));
     await settleShell(t);
+    await settleHeight(t);
     if (drive != null) {
       await drive(t);
       await settleShell(t);
+    await settleHeight(t);
     }
     final f = captureFrame(t, viewport: tall);
     await t.pumpWidget(const SizedBox.shrink());

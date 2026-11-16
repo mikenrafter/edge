@@ -3995,5 +3995,8 @@
         "type": "String"
       }
     }
-  }
+  },
+  "homeLastKnownUpdating": "Dernières données {time} · mise à jour",
+  "homeLastKnownFailed": "Dernières données {time} · échec de la mise à jour",
+  "homeLastKnownSource": "{status}. Lecture {readTime}. Calcul {computedTime}."
 }

@@ -47,7 +47,7 @@ Future<Database> _ldbPrivOpenOrRebuild() async {
       // makes the transition differ from [generationAfterFirstOpen]'s plain
       // first-open prediction, so a cache cannot mistake a rebuild for the
       // ordinary open it was waiting for.
-      LocalDb._markStoreReplaced();
+      await LocalDb._markStoreReplaced();
       var salvaged = const <String, int>{};
       try {
         // `_`-prefixed keys (`_days`, `_substrate_archive_skipped`) are the
@@ -1105,7 +1105,7 @@ Future<Database> _ldbPrivOpen() async {
       version: LocalDb.schemaVersion,
     );
     LocalDb._openCount++;
-    LocalDb._markStoreReplaced();
+    await LocalDb._markStoreReplaced(opened: true);
     return opened;
   }
 

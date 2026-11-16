@@ -24,6 +24,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/widgets.dart';
 
+import '../data/home_snapshot_store.dart';
 import 'control_operations.dart';
 import 'recalc_state.dart';
 import 'artifact_warmer.dart';
@@ -443,7 +444,14 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// it reads the precomputed day_result / metric_series rows (ZERO heavy
   /// compute on read). Screens still guard on `repo == null` exactly as they did
   /// on `api`.
-  LocalRepository? repo;
+  LocalRepository? _repo;
+  LocalRepository? get repo => _repo;
+  set repo(LocalRepository? value) {
+    if (_repo != null && !identical(_repo, value)) {
+      unawaited(HomeSnapshotStore.invalidate());
+    }
+    _repo = value;
+  }
 
   /// The on-device compute orchestrator. Kicked (light) after every drain/flush
   /// completion, and (heavy) on foreground finalize + throttled reconnect
@@ -2405,6 +2413,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     //     connected and still draining — see [_resetting].
     ResetGate.enter();
     try {
+      await HomeSnapshotStore.invalidate();
       // Wait for a running backup and remove copies while the selected folder
       // grant is still known. Queued scheduled writes see Off inside the lock.
       Prefs.setString(Prefs.backupCadence, BackupCadence.off.name);

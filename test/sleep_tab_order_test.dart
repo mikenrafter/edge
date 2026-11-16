@@ -1,5 +1,5 @@
-// CLAIM sleep-tab-order: the five owner-approved cards keep every existing
-// function, one need reading, and an always-open first card. Late reads retain
+// CLAIM sleep-tab-order: the uncarded timeline and four owner-approved cards
+// keep every existing function and one need reading. Late reads retain
 // the normal loading geometry budget; no spinner is allowed at sampled frames.
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -13,6 +13,7 @@ import 'package:openstrap_edge/ui2/screens/sleep_detail.dart';
 import 'package:openstrap_edge/ui2/screens/sleep_tab.dart';
 import 'package:openstrap_edge/ui2/screens/metric_detail.dart' show DayNav;
 import 'package:openstrap_edge/ui2/why_row.dart';
+import 'package:openstrap_edge/ui2/grammar.dart' show InsideCard, Surface;
 import 'support/as_of_recalc_fakes.dart';
 import 'support/skeleton_fixture.dart';
 import 'support/shift_run.dart';
@@ -38,12 +39,18 @@ Finder card(String id)=>find.byKey(ValueKey('sleep-tab:$id'));
 Finder within(String id,Finder child)=>find.descendant(of:card(id),matching:child);
 void main(){
   setUpAll(skLoadAppFonts);
-  testWidgets('five cards keep the approved order and first has no collapse control', (t) async {
+  testWidgets('uncarded timeline keeps its contents above the four cards', (t) async {
     skTallView(t,w:390,h:10000);final repo=OrderedSleepRepo();final app=AppState.forTesting()..repo=repo;addTearDown(app.dispose);
     final data=await SleepData.load(repo);
     await t.pumpWidget(perfApp(app,SleepDetail(embedded:true,data:data)));
     for(final id in cards) { expect(card(id),findsOneWidget); }
     final tops=[for(final id in cards)t.getTopLeft(card(id)).dy];expect(tops,orderedEquals([...tops]..sort()));
+    expect(t.widget(card('timeline')), isNot(isA<Surface>()));
+    expect(find.text('Sleep timeline'), findsNothing);
+    for (final element in within('timeline', find.byType(Surface)).evaluate()) {
+      expect(InsideCard.of(element), isTrue,
+        reason: 'timeline contents stay flat when the outer card is removed');
+    }
     expect(within('timeline',find.byType(SettingsAccordion)),findsNothing);
     expect(find.byType(SettingsAccordion),findsNWidgets(4));
     expect(within('timeline',find.byType(DayNav)),findsOneWidget);

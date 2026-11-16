@@ -1036,7 +1036,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           }),
         );
 
-  // Embedded tab composition owns the five cards. The pushed night detail keeps
+  // Embedded tab composition owns the timeline and four cards. The pushed night detail keeps
   // its own navigation; no extra plan/driver read can block the tab's primary.
   List<Widget> _tabBody(BuildContext c, P p, SleepData d) {
     final l =
@@ -1074,7 +1074,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     Widget link(IconData icon, String name, String sub, Widget target) =>
         detailLinkRow(c, icon, name, sub, () => go(c, target));
     return [
-      Surface(
+      InsideCard(
         key: const ValueKey('sleep-tab:timeline'),
         semanticLabel: l.sleepTabTimelineCardTitle,
         child: InsideCard(
@@ -1907,8 +1907,12 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             // Real glyphs, not '': an empty label line rounds a pixel shorter
             // at large text and would move everything under the axis.
             xLabels: [
-              for (final k in ['onset_ts', 'wake_ts'])
-                n[k] is num ? clockOfTs((n[k] as num).round()) : '\u00A0',
+              for (final ts in [
+                start,
+                if (start != null && end != null) start + (end - start) ~/ 2 else null,
+                end,
+              ])
+                ts == null ? '\u00A0' : clockOfTs(ts),
             ],
             annotations: annotations,
             child: _loading && _d == null ? const PendingPlot(shape: PendingChartShape.stages) : const SizedBox.expand(),
