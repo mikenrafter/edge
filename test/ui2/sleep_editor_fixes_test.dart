@@ -1,0 +1,181 @@
+// WHY: owner feedback 1–6, CLAIM(sleep-editor-night-region),
+// CLAIM(sleep-editor-stable-text), CLAIM(sleep-editor-entry-write).
+// Exercise the editor the wearer uses, including its acknowledgement boundary.
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/data/sleep_edit_write.dart';
+import 'package:openstrap_edge/state/control_operations.dart';
+import 'package:openstrap_edge/ui2/day_timeline/sleep_timeline_editor.dart';
+import 'package:openstrap_edge/ui2/day_timeline/timeline_chart.dart';
+import 'package:openstrap_edge/ui2/day_timeline/timeline_model.dart';
+import 'package:openstrap_edge/ui2/theme.dart';
+
+import '../support/day_timeline_fixtures.dart';
+
+class _Saver implements SleepEditSaver {
+  final plans = <SleepEditPlan>[];
+  final written = Completer<void>();
+  final done = Completer<SleepOperationResult>();
+  @override
+  ({Future<void> written, Future<SleepOperationResult> done}) save(SleepEditPlan plan) {
+    plans.add(plan);
+    return (written: written.future, done: done.future);
+  }
+}
+
+class _Repo extends LocalRepository {
+  _Repo(this.naps);
+  final List<Map<String, dynamic>> naps;
+  @override
+  Future<Map<String, dynamic>> getDayTimeline(String date) async => {};
+  @override
+  Future<Map<String, dynamic>> getDayNaps(String date) async => {'naps': naps};
+  @override
+  Future<Map<String, dynamic>> getDaySleepV2(String date) async => {'sleep_source': 'manual'};
+}
+
+Future<SleepTimelineEditorState> _open(WidgetTester t, _Saver saver,
+    {SleepEditorData? data}) async {
+  t.view.physicalSize = const Size(412, 1500);
+  t.view.devicePixelRatio = 1;
+  addTearDown(t.view.reset);
+  await t.pumpWidget(MaterialApp(theme: buildTheme(Brightness.dark),
+    home: Builder(builder: (c) => Scaffold(body: TextButton(
+      child: const Text('Sleep tab · 2026-11-14'),
+      onPressed: () => Navigator.of(c).push(MaterialPageRoute<void>(builder: (_) =>
+        SleepTimelineEditor(data: data ?? dtNight(), save: saver))),
+    )))));
+  await t.tap(find.text('Sleep tab · 2026-11-14'));
+  await t.pumpAndSettle();
+  return t.state<SleepTimelineEditorState>(find.byType(SleepTimelineEditor));
+}
+
+void main() {
+  testWidgets('home includes main sleep and the afternoon nap exactly; buttons reset and expand', (t) async {
+    final s = await _open(t, _Saver());
+    final home = TimelineView(dtAt(160).toDouble(), dtAt(1090).toDouble());
+    expect(s.controller.view, home);
+    for (final id in ['zoom-in', 'zoom-out', 'reset']) {
+      final f = find.byKey(ValueKey('sleep-editor-$id'));
+      expect(f, findsOneWidget);
+      final size = t.getSize(f);
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+    }
+    expect(find.byTooltip('Zoom in'), findsOneWidget);
+    expect(find.byTooltip('Zoom out'), findsOneWidget);
+    expect(find.byTooltip('Full night'), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('sleep-editor-zoom-in')));
+    await t.pumpAndSettle();
+    expect(s.controller.view.span, closeTo(651 * 60, .001)); // 930 minutes × 0.7.
+    await t.tap(find.byKey(const ValueKey('sleep-editor-zoom-out')));
+    await t.pumpAndSettle();
+    expect(s.controller.view, home);
+    s.controller.glideTo(TimelineView(dtAt(330).toDouble(), dtAt(390).toDouble()));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(SleepTimelineEditor.resetKey));
+    await t.pumpAndSettle();
+    expect(s.controller.view, home);
+  });
+
+  testWidgets('zoom frames preserve readout Text widgets and list position', (t) async {
+    final s = await _open(t, _Saver());
+    final readout = find.descendant(of: find.byKey(SleepTimelineEditor.readoutKey), matching: find.byType(Text));
+    final before = t.widgetList<Text>(readout).toList();
+    final list = t.state<ScrollableState>(find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)));
+    final offset = list.position.pixels;
+    s.controller.zoomAt(s.controller.view.center);
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 400));
+    final during = t.widgetList<Text>(readout).toList();
+    expect(during.length, before.length);
+    for (var i = 0; i < before.length; i++) {
+      expect(identical(before[i], during[i]), isTrue, reason: 'Static readout text $i rebuilt during zoom');
+    }
+    expect(list.position.pixels, offset);
+    await t.pumpAndSettle();
+  });
+
+  test('load retains overlapping stored naps and respects a calendar day across DST', () async {
+    // Under America/Denver this evening-to-evening domain is 25 hours. Under
+    // UTC it is 24. The expected end is a calendar boundary in either zone.
+    final a = DateTime(2026, 11, 1, 1).millisecondsSinceEpoch ~/ 1000;
+    final b = a + 1800;
+    final d = await SleepEditorData.load(_Repo([{'start': a, 'end': b, 'source': 'manual'}]),
+      '2026-11-01', window: (a - 3600, b + 3600));
+    expect(d.naps.map((n) => (n.start, n.end)).toList(), [(a, b), (a, b)],
+      reason: 'Display retains each returned entry, including overlaps');
+    final expectedEnd = DateTime(2026, 11, 1, 20).millisecondsSinceEpoch ~/ 1000;
+    expect(d.domainEnd, expectedEnd);
+  });
+
+  testWidgets('entry controls are exclusive and target the selected manual nap through Save', (t) async {
+    final base = dtNight();
+    final nap = base.naps.single;
+    final d = SleepEditorData(day: base.day, domainStart: base.domainStart, hr: base.hr,
+      movement: base.movement, main: base.main, naps: base.naps, napSources: {nap.id: 'manual'});
+    final saver = _Saver();
+    final s = await _open(t, saver, data: d);
+    expect(find.text('Recalculate time in bed'), findsOneWidget);
+    expect(find.text('Back to automatic'), findsNothing);
+    s.blockSelected(nap.id, zoom: false);
+    await t.pumpAndSettle();
+    expect(find.byIcon(LucideIcons.bedDouble), findsWidgets);
+    expect(find.text('Recalculate time in bed'), findsNothing);
+    final automatic = find.text('Back to automatic');
+    expect(automatic, findsOneWidget);
+    await t.ensureVisible(automatic);
+    await t.tap(automatic);
+    await t.pumpAndSettle();
+    // Choosing the action only stages it. Cancel/back can still leave safely.
+    expect(saver.plans, isEmpty);
+    await t.ensureVisible(find.byKey(SleepTimelineEditor.saveKey));
+    await t.tap(find.byKey(SleepTimelineEditor.saveKey));
+    await t.pump();
+    final dynamic entry = (saver.plans.single as dynamic).entry;
+    expect((entry.start, entry.end, entry.main, entry.source, entry.action.name),
+      (nap.start, nap.end, false, 'manual', 'automatic'));
+    expect(saver.plans.single.naps, isEmpty, reason: 'Unrelated naps are untouched');
+    expect(find.byType(SleepTimelineEditor), findsOneWidget);
+    saver.written.complete();
+    await t.pumpAndSettle();
+    expect(find.text('Sleep tab · 2026-11-14'), findsOneWidget);
+    expect(saver.done.isCompleted, isFalse);
+  });
+
+  testWidgets('Not sleep is entry scoped and write failure keeps the editor open', (t) async {
+    final saver = _Saver();
+    final s = await _open(t, saver);
+    final notSleep = find.text('Not sleep');
+    await t.ensureVisible(notSleep);
+    await t.tap(notSleep);
+    await t.pumpAndSettle();
+    expect(saver.plans, isEmpty);
+    await t.ensureVisible(find.byKey(SleepTimelineEditor.saveKey));
+    await t.tap(find.byKey(SleepTimelineEditor.saveKey));
+    await t.pump();
+    final dynamic entry = (saver.plans.single as dynamic).entry;
+    expect((entry.start, entry.end, entry.main, entry.action.name),
+      (s.blocks.first.start, s.blocks.first.end, true, 'notSleep'));
+    saver.written.completeError(const SleepEditInvalid('Entry changed'));
+    saver.done.complete(const SleepOperationResult(success: false));
+    await t.pumpAndSettle();
+    expect(find.byType(SleepTimelineEditor), findsOneWidget);
+    expect(find.textContaining('Entry changed'), findsOneWidget);
+  });
+
+  testWidgets('back returns to the same Sleep tab night without writing', (t) async {
+    final saver = _Saver();
+    await _open(t, saver);
+    expect(find.text('Edit sleep'), findsOneWidget);
+    expect(find.textContaining('14'), findsWidgets);
+    await t.pageBack();
+    await t.pumpAndSettle();
+    expect(find.text('Sleep tab · 2026-11-14'), findsOneWidget);
+    expect(saver.plans, isEmpty);
+  });
+}

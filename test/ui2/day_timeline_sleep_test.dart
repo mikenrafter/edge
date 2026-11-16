@@ -183,7 +183,7 @@ void main() {
     // even after panning; zooming out cannot return to a generic clock range.
     // catches: retaining the pilot's fixed 20:00-to-noon home.
     testWidgets('default, zoom out and reset frame exactly the stored night', (t) async {
-      final s = await open(t);
+      final s = await open(t, data: dtNight(withNap: false));
       final main = s.blocks.first;
       final home = TimelineView(main.start.toDouble(), main.end.toDouble());
       expect(s.controller.view, home);
