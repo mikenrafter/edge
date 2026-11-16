@@ -171,6 +171,37 @@ void main() {
       expect((await rows('sleep_edit_job')).single['revision'], 5);
     });
 
+    // WHY: boundary edits must not erase a legacy detector snapshot. Automatic
+    // restores original bounds and asleep minutes, including a moved start.
+    for (final shift in [0, 10]) {
+      test('R1 legacy moved by $shift minutes restores the preserved snapshot', () async {
+        final snapshot = jsonEncode({'start': at(14), 'end': at(14, 30),
+          'duration_min': 21, 'in_bed_min': 30, 'source': 'legacy', 'confidence': .8});
+        await db.insert('sleep_nap', {'day_id': day, 'start_ts': at(14),
+          'end_ts': at(14, 30), 'source': 'legacy', 'created_at': 1, 'payload_json': snapshot});
+        await writeSleepEdit(db, SleepEditPlan(day: day,
+          naps: [NapWrite(start: at(16), end: at(16, 40))]));
+        final other = (await rows('sleep_nap')).last;
+        await writeSleepEdit(db, SleepEditPlan(day: day, naps: [NapWrite(
+          start: at(14, shift), end: at(14, 40), fromStart: at(14),
+          fromEnd: at(14, 30), fromSource: 'legacy')]));
+        await LocalDb.close(); db = await LocalDb.instance;
+        final edits = await ActivityStore.napEdits(db, day);
+        final userNap = edits.where((e) => e.startSec == at(14, shift)).single;
+        expect(userNap.snapshot, isNull, reason: 'a moved manual window has no measured split');
+        await writeSleepEdit(db, SleepEditPlan(day: day, entry: SleepEntryEdit(
+          main: false, start: at(14, shift), end: at(14, 40), source: 'manual',
+          action: SleepEntryAction.automatic)));
+        await LocalDb.close(); db = await LocalDb.instance;
+        final naps = await rows('sleep_nap');
+        expect(naps, hasLength(2));
+        final restored = naps.where((r) => r['start_ts'] == at(14)).single;
+        expect([restored['source'], restored['end_ts']], ['legacy', at(14, 30)]);
+        expect(jsonDecode(restored['payload_json'] as String), jsonDecode(snapshot));
+        expect(naps.where((r) => r['start_ts'] == at(16)).single, other);
+      });
+    }
+
     test('an invalid edit writes nothing at all', () async {
       final before = {for (final t in ['sleep_override', 'sleep_nap']) t: await rows(t)};
       for (final bad in [
