@@ -1074,7 +1074,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     Widget link(IconData icon, String name, String sub, Widget target) =>
         detailLinkRow(c, icon, name, sub, () => go(c, target));
     return [
-      InsideCard(
+      Surface(
         key: const ValueKey('sleep-tab:timeline'),
         semanticLabel: l.sleepTabTimelineCardTitle,
         child: InsideCard(
