@@ -1,0 +1,51 @@
+{
+  "en": {
+    "guideAlarmStep3": "Tap **{wake}**, choose the time, then tap **Save**.",
+    "guideLogPastStep2": "Tap **{log}** above your sessions.",
+    "guideLogPastMissingBody": "In **{history}**, look above your sessions for the action.",
+    "guideAddNapRulesBody": "A nap lasts between {minMinutes} minutes and {maxHours} hours and must have ended. It cannot overlap another nap. If it overlaps or directly touches your main sleep, the app combines both into one main sleep window, from the earlier start to the later end. It does not save a separate nap.",
+    "helpOpenForTab": "Open Help for {tab}"
+  },
+  "de": {
+    "guideAlarmStep3": "Tippe auf **{wake}**, wähle die Uhrzeit und tippe dann auf **Save**.",
+    "guideLogPastStep2": "Tippe oberhalb deiner Einheiten auf **{log}**.",
+    "guideLogPastMissingBody": "Die Aktion steht in **{history}** oberhalb deiner Einheiten.",
+    "guideAddNapRulesBody": "Ein Nickerchen dauert zwischen {minMinutes} Minuten und {maxHours} Stunden und muss bereits beendet sein. Es darf sich nicht mit einem anderen Nickerchen überschneiden. Wenn es sich mit deinem Hauptschlaf überschneidet oder direkt daran anschließt, fasst die App beide zu einem Hauptschlaffenster zusammen, vom früheren Beginn bis zum späteren Ende. Sie speichert kein separates Nickerchen.",
+    "helpOpenForTab": "Hilfe für {tab} öffnen"
+  },
+  "es": {
+    "guideAlarmStep3": "Toca **{wake}**, elige la hora y luego toca **Save**.",
+    "guideLogPastStep2": "Toca **{log}** encima de tus sesiones.",
+    "guideLogPastMissingBody": "En **{history}**, busca la acción encima de tus sesiones.",
+    "guideAddNapRulesBody": "Una siesta dura entre {minMinutes} minutos y {maxHours} horas y debe haber terminado. No puede solaparse con otra siesta. Si se solapa con tu sueño principal o lo toca directamente, la app combina ambos en un solo intervalo de sueño principal, desde el inicio más temprano hasta el final más tardío. No guarda una siesta aparte.",
+    "helpOpenForTab": "Abrir Ayuda para {tab}"
+  },
+  "fr": {
+    "guideAlarmStep3": "Touchez **{wake}**, choisissez l’heure, puis touchez **Save**.",
+    "guideLogPastStep2": "Touchez **{log}** au-dessus de vos séances.",
+    "guideLogPastMissingBody": "Dans **{history}**, cherchez l’action au-dessus de vos séances.",
+    "guideAddNapRulesBody": "Une sieste dure entre {minMinutes} minutes et {maxHours} heures et doit être terminée. Elle ne peut pas chevaucher une autre sieste. Si elle chevauche votre sommeil principal ou le touche directement, l’app réunit les deux en une seule plage de sommeil principal, du début le plus tôt à la fin la plus tardive. Elle n’enregistre pas de sieste distincte.",
+    "helpOpenForTab": "Ouvrir l’aide pour {tab}"
+  },
+  "hi": {
+    "guideAlarmStep3": "**{wake}** पर टैप करें, समय चुनें, फिर **Save** पर टैप करें।",
+    "guideLogPastStep2": "अपने सत्रों के ऊपर **{log}** पर टैप करें।",
+    "guideLogPastMissingBody": "**{history}** में, अपने सत्रों के ऊपर यह विकल्प देखें।",
+    "guideAddNapRulesBody": "झपकी {minMinutes} मिनट से {maxHours} घंटे तक की होनी चाहिए और समाप्त हो चुकी होनी चाहिए। इसका समय किसी दूसरी झपकी से नहीं टकराना चाहिए। अगर इसका समय आपकी मुख्य नींद से टकराता है या दोनों के बीच कोई अंतराल नहीं है, तो ऐप दोनों को मुख्य नींद की एक अवधि में जोड़ देता है। यह पहले शुरू हुए समय से बाद में समाप्त हुए समय तक होती है। ऐप अलग से झपकी नहीं सहेजता।",
+    "helpOpenForTab": "{tab} के लिए मदद खोलें"
+  },
+  "ru": {
+    "guideAlarmStep3": "Нажмите **{wake}**, выберите время, затем нажмите **Save**.",
+    "guideLogPastStep2": "Нажмите **{log}** над списком тренировок.",
+    "guideLogPastMissingBody": "В разделе **{history}** действие находится над списком тренировок.",
+    "guideAddNapRulesBody": "Дневной сон длится от {minMinutes} минут до {maxHours} часов и должен уже закончиться. Он не может пересекаться с другим дневным сном. Если он пересекается с основным сном или примыкает к нему без перерыва, приложение объединяет их в один период основного сна: от более раннего начала до более позднего окончания. Отдельный дневной сон не сохраняется.",
+    "helpOpenForTab": "Открыть справку для вкладки «{tab}»"
+  },
+  "zh": {
+    "guideAlarmStep3": "点按 **{wake}**，选择时间，然后点按 **Save**。",
+    "guideLogPastStep2": "点按训练记录上方的 **{log}**。",
+    "guideLogPastMissingBody": "在 **{history}** 中，操作按钮位于训练记录上方。",
+    "guideAddNapRulesBody": "小睡时长须在 {minMinutes} 分钟到 {maxHours} 小时之间，且必须已经结束。小睡不能与其他小睡重叠。如果它与主要睡眠重叠或首尾相接，应用会将两者合并为一个主要睡眠时段，采用较早的开始时间和较晚的结束时间，不会另存一段小睡。",
+    "helpOpenForTab": "打开{tab}的帮助"
+  }
+}

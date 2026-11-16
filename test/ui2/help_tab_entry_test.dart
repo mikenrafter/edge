@@ -91,7 +91,7 @@ void main() {
           reason: 'above the persistent bottom navigation',
         );
         final node = t.getSemantics(button).getSemanticsData();
-        expect(node.label, 'Looking for something?');
+        expect(node.label, 'Open Help for ${['Today', 'Sleep', 'Activity', 'Health'][topic.index]}');
         expect(node.flagsCollection.isButton, isTrue);
         expect(node.hasAction(SemanticsAction.tap), isTrue);
         await settleLiveGuide(t);
