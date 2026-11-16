@@ -41,6 +41,7 @@ void main() {
   // # catches: making wear==true or motion==false a prerequisite.
   test('unknown context is explicit and remains eligible', () {
     final result = detect(beatsAt(candidate, 30, irregular()), {});
+    print('IRREGULAR CONTROL ratio=${result.windows.first.ratio} pNN70=${result.windows.first.pnnPct}');
     expect(result.episodes, hasLength(1));
     expect(result.episodes.single.alertEligible, isTrue);
     expect(result.windows.first.toJson()['context'], containsPair('status', 'unknown'));
@@ -74,9 +75,12 @@ void main() {
     context.addAll(contexts(candidate, 30, motion: false, wear: true));
     final result = detect([...history, ...target], context);
     final thresholds = result.windows.first.toJson()['thresholds'] as Map;
-    expect(thresholds['ratio'], greaterThan(0.7));
+    expect(thresholds['ratio'], 0.7, reason: 'personalization cannot veto uncorrelated RR');
+    final personal = result.windows.first.toJson()['baseline'] as Map;
+    expect(personal['ratioThreshold'], greaterThan(0.7));
     expect(thresholds['ratio'], lessThanOrEqualTo(0.95));
-    expect(thresholds['pnnPct'], greaterThan(30));
+    expect(thresholds['pnnPct'], 30);
+    expect(personal['pnnThreshold'], greaterThan(30));
     expect(thresholds['pnnPct'], lessThanOrEqualTo(60));
     expect(result.episodes, hasLength(1));
     final baseline = result.windows.first.toJson()['baseline'] as Map;
@@ -99,4 +103,49 @@ void main() {
       evaluateFromMs: candidate, evaluateToMs: candidate + 20 * 60000, context: context);
     expect(again.toJson(), result.toJson());
   });
+  // WHY/CLAIM(pulse-baseline): early irregularity cannot normalize later irregularity.
+  // # catches: learning the first three days indiscriminately.
+  test('irregular first three days do not raise later irregular detection floors', () {
+    final history = <ana.PulseBeatInput>[], context = <int, ana.PulseWindowContext>{};
+    for (var day = 3; day >= 1; day--) {
+      final t = candidate - day * 24 * 3600000;
+      history.addAll(beatsAt(t, 55, irregular()));
+      context.addAll(contexts(t, 55, motion: false, wear: true));
+    }
+    final target = beatsAt(candidate, 30, irregular());
+    context.addAll(contexts(candidate, 30, motion: false, wear: true));
+    final result = detect([...history, ...target], context);
+    expect(result.episodes, hasLength(1));
+    expect(result.windows.first.toJson()['thresholds'], containsPair('ratio', 0.7));
+    expect(result.windows.first.toJson()['thresholds'], containsPair('pnnPct', 30));
+    expect(result.windows.first.toJson()['baseline'], containsPair('windows', 0));
+  });
+
+  // WHY/CLAIM(pulse-baseline): stored episodes of every status cannot train normality.
+  // # catches: omitting the episode exclusion or its thirty-minute halo.
+  test('episode exclusion halos remove otherwise normal baseline windows', () {
+    final history = <ana.PulseBeatInput>[], context = <int, ana.PulseWindowContext>{};
+    final excluded = <List<int>>[];
+    for (var day = 3; day >= 1; day--) {
+      final t = candidate - day * 24 * 3600000;
+      history.addAll(beatsAt(t, 55, sleepRrFixtures.first));
+      context.addAll(contexts(t, 55, motion: false, wear: true));
+      // The stored stretch itself is later. Its thirty-minute halo covers training.
+      excluded.add([t + 55 * 60000, t + 65 * 60000]);
+    }
+    final all = [...history, ...beatsAt(candidate, 30, irregular())];
+    context.addAll(contexts(candidate, 30, motion: false, wear: true));
+    final result = ana.detectPulseEpisodes([
+      for (var i = 0; i < all.length; i++) ana.PulseBeatInput(id: all[i].id,
+        source: 'strap', index: i, timeMs: all[i].timeMs, rawMs: all[i].rawMs)],
+      completeThroughMs: candidate + 30 * 60000,
+      sourceStartMs: candidate - 3 * 24 * 3600000,
+      evaluateFromMs: candidate, evaluateToMs: candidate + 20 * 60000,
+      context: context, baselineExclusions: {'strap': excluded});
+    final baseline = result.windows.first.toJson()['baseline'] as Map;
+    expect(baseline['windows'], lessThan(24));
+    expect(baseline['status'], 'calibrating');
+    expect(result.episodes, hasLength(1));
+  });
+
 }
