@@ -159,4 +159,35 @@ void main() {
     expect(routes.pushed, hasLength(3));
     expect(find.byType(SleepTimelineEditor), findsOneWidget);
   });
+  // WHY: back during a read must neither reopen the route nor poison later taps.
+  // CLAIM(sleep-editor-immediate-route).
+  testWidgets('back during load is immediate and a late result cannot reopen editor', (t) async {
+    final repo = _LoadingRepo();
+    final app = AppState.forTesting()..repo = repo;
+    addTearDown(app.dispose);
+    final routes = _Routes();
+    final d = dtNight(withNap: false);
+    await t.pumpWidget(ChangeNotifierProvider<AppState>.value(value: app,
+      child: MaterialApp(theme: buildTheme(Brightness.dark), navigatorObservers: [routes],
+        home: SleepDetail(day: d.day, data: SleepData(day: d.day, night: {
+          'onset_ts': d.main.start, 'wake_ts': d.main.end, 'duration_min': 480,
+        })))));
+    await t.pumpAndSettle();
+    final tab = t.state(find.byType(SleepDetail));
+    unawaited((tab as dynamic).openTimeline() as Future<void>);
+    await t.pump();
+    expect(routes.pushed, hasLength(2));
+    Navigator.of(t.element(find.byKey(const ValueKey('sleep-editor-loading')))).pop();
+    await t.pumpAndSettle();
+    expect(identical(t.state(find.byType(SleepDetail)), tab), isTrue);
+    repo.graph.complete({});
+    await t.pumpAndSettle();
+    expect(find.byType(SleepTimelineEditor), findsNothing);
+    expect(routes.pushed, hasLength(2));
+    unawaited((tab as dynamic).openTimeline() as Future<void>);
+    await t.pumpAndSettle();
+    expect(find.byType(SleepTimelineEditor), findsOneWidget);
+    expect(routes.pushed, hasLength(3));
+  });
+
 }
