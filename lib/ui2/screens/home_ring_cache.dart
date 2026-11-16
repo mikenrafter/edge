@@ -3,41 +3,26 @@ part of 'home_screen.dart';
 // Owner: HomeRingDetailCache keeps bounded presentation snapshots. These are
 // secondary, day-specific copies: never a source for ring scores or analytics.
 class HomeRingDetailCache {
-  HomeRingDetailCache({String Function()? userKey, this.limit = 32})
+  HomeRingDetailCache({String Function()? userKey, int limit = 32})
     : userKey =
           userKey ??
-          (() => Prefs.getString('install_device_id', 'local-profile'));
-  static final local = HomeRingDetailCache();
-  static const prefKey = 'ui.home_ring_details.v1';
+          (() => Prefs.getString('install_device_id', 'local-profile')),
+      _store = HomeSnapshotStore(limit: limit);
+  static final local = HomeRingDetailCache._local();
+  HomeRingDetailCache._local()
+    : userKey = (() => Prefs.getString('install_device_id', 'local-profile')),
+      _store = HomeSnapshotStore.local;
+  static const prefKey = HomeSnapshotStore.prefKey;
   final String Function() userKey;
-  final int limit;
-  final _entries = <String, dynamic>{};
-  bool _restored = false, _saveScheduled = false;
-  void _restore() {
-    if (_restored || !Prefs.loaded) return;
-    _restored = true;
-    try {
-      final decoded = jsonDecode(Prefs.getString(prefKey, '{}'));
-      if (decoded is Map) {
-        _entries.addAll(
-          Map<String, dynamic>.fromEntries(
-            decoded.entries
-                .where((e) => e.key is String && e.value is Map)
-                .take(limit)
-                .map((e) => MapEntry(e.key as String, e.value)),
-          ),
-        );
-      }
-    } catch (_) {
-      /* A damaged secondary cache loses only its presentation. */
-    }
-  }
+  final HomeSnapshotStore _store;
 
   String _key(String day, String locale) => '${userKey()}:$day:$locale';
-  ({HomeData data, String? help})? read(String day, String locale) {
-    _restore();
-    final raw = _entries[_key(day, locale)];
-    if (raw is! Map) return null;
+  ({HomeData data, String? help, DateTime? readAt})? read(
+    String day,
+    String locale,
+  ) {
+    final raw = _store.read(_key(day, locale));
+    if (raw == null) return null;
     try {
       final m = Map<String, dynamic>.from(raw);
       final stages = m['stages'] as Map?;
@@ -45,6 +30,10 @@ class HomeRingDetailCache {
       return (
         data: HomeData(
           dayId: day,
+          overnightAt: _time(m['overnightAt']),
+          activityAt: _time(m['activityAt']),
+          overnightDay: m['overnightDay'] as String?,
+          activityDay: m['activityDay'] as String?,
           readiness: Metric.parse(m['readiness']),
           strain: Metric.parse(m['strain']),
           sleepMin: Metric.parse(m['sleep']),
@@ -78,14 +67,23 @@ class HomeRingDetailCache {
                 ),
         ),
         help: m['help'] as String?,
+        readAt: _time(m['readAt']),
       );
     } catch (_) {
       return null;
     }
   }
 
-  void record(String day, String locale, HomeData d, RingHelp? help) {
-    _restore();
+  static DateTime? _time(Object? ms) =>
+      ms is int ? DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true) : null;
+
+  void record(
+    String day,
+    String locale,
+    HomeData d,
+    RingHelp? help, {
+    DateTime? readAt,
+  }) {
     Map<String, Object?> metric(Metric m) => {
       'value': m.value,
       'unit': m.unit,
@@ -99,6 +97,11 @@ class HomeRingDetailCache {
       'older_version_reason': m.olderVersionReason,
     };
     final value = <String, Object?>{
+      'readAt': (readAt ?? pc.clock.now()).millisecondsSinceEpoch,
+      'overnightAt': d.overnightAt?.millisecondsSinceEpoch,
+      'activityAt': d.activityAt?.millisecondsSinceEpoch,
+      'overnightDay': d.overnightDay,
+      'activityDay': d.activityDay,
       'readiness': metric(d.readiness),
       'strain': metric(d.strain),
       'sleep': metric(d.sleepMin),
@@ -126,26 +129,6 @@ class HomeRingDetailCache {
               'awake': d.sleepStages!.awake,
             },
     };
-    final key = _key(day, locale);
-    if (jsonEncode(_entries[key]) == jsonEncode(value)) return;
-    _entries.remove(key);
-    _entries[key] = value;
-    while (_entries.length > limit) {
-      _entries.remove(_entries.keys.first);
-    }
-    if (_saveScheduled) return;
-    _saveScheduled = true;
-    scheduleMicrotask(() async {
-      _saveScheduled = false;
-      try {
-        final encoded = jsonEncode(_entries);
-        await SettingsRepository.instance.update(
-          (d) => d.setString(prefKey, encoded),
-          sections: const {},
-        );
-      } catch (_) {
-        /* Fresh stored reads remain authoritative if persistence fails. */
-      }
-    });
+    _store.record(_key(day, locale), value);
   }
 }

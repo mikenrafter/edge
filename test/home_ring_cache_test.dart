@@ -1,6 +1,7 @@
 // CLAIM home-ring-cache: an already-read day's detail rows survive a cold
 // pending read; the rings themselves remain pending until that read settles.
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -32,7 +33,10 @@ void main() {
       await Prefs.ensureLoaded();
       var user = 'cache-a';
       final cache = HomeRingDetailCache(userKey: () => user, limit: 2);
-      const d = HomeData(
+      final computed = DateTime.utc(2026, 11, 12, 6, 30);
+      final d = HomeData(
+        overnightAt: computed,
+        activityAt: computed,
         readiness: Metric(
           value: 23,
           confidence: .8,
@@ -49,6 +53,18 @@ void main() {
       await SettingsRepository.instance.update((_) {}, sections: const {});
       final restored = HomeRingDetailCache(userKey: () => user, limit: 2);
       final metric = restored.read('2026-11-12', 'en')!.data.readiness;
+      // why: restored judgments must retain their source times, not gain 'now'.
+      // CLAIM(home-cache-freshness); catches dropping source metadata on encode.
+      expect(restored.read('2026-11-12', 'en')!.data.overnightAt, computed);
+      expect(restored.read('2026-11-12', 'en')!.data.activityAt, computed);
+      final encoded =
+          jsonDecode(
+                (await SharedPreferences.getInstance()).getString(
+                  HomeRingDetailCache.prefKey,
+                )!,
+              )
+              as Map;
+      expect((encoded.values.first as Map)['readAt'], isA<int>());
       expect(metric.value, 23);
       expect(metric.confidence, .8);
       expect(metric.fromOlderVersion, 12);
@@ -82,7 +98,9 @@ void main() {
         ),
       );
       expect(find.text('Recovery 22 of 100'), findsOneWidget);
-      final settledRows = t.getRect(find.byKey(const ValueKey('home-ring-details')));
+      final settledRows = t.getRect(
+        find.byKey(const ValueKey('home-ring-details')),
+      );
       await t.pumpWidget(const SizedBox());
       await t.runAsync(
         () => SettingsRepository.instance.update((_) {}, sections: const {}),
@@ -94,8 +112,21 @@ void main() {
         reason:
             'the same-day secondary cache must be readable before first paint',
       );
-      expect(t.getRect(find.byKey(const ValueKey('home-ring-details'))), settledRows,
-          reason: 'cached text and the ring sizing template retain row geometry');
+      expect(
+        t.getRect(find.byKey(const ValueKey('home-ring-details'))),
+        settledRows,
+        reason: 'cached text and the ring sizing template retain row geometry',
+      );
+      // why: readable retained health advice must be visibly and accessibly stale.
+      // CLAIM(home-cache-freshness); catches retaining the values with no qualifier.
+      expect(find.textContaining('Last known'), findsOneWidget);
+      expect(find.textContaining('updating'), findsOneWidget);
+      final semantics = t.ensureSemantics();
+      expect(
+        find.bySemanticsLabel(RegExp('Last known.*updating')),
+        findsWidgets,
+      );
+      semantics.dispose();
       final rows = find.text('Recovery 22 of 100');
       expect(
         find.ancestor(
@@ -112,6 +143,7 @@ void main() {
       }
       expect(find.text('Recovery 30 of 100'), findsOneWidget);
       expect(find.text('Recovery 22 of 100'), findsNothing);
+      expect(find.textContaining('Last known'), findsNothing);
       await t.pumpWidget(const SizedBox());
     },
   );

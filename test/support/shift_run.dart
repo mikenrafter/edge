@@ -8,6 +8,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/layout_shift/layout_shift.dart';
+import 'package:openstrap_edge/ui2/skeleton/settling_height.dart';
 
 import 'layout_shift_probe.dart';
 
@@ -112,7 +113,7 @@ void expectNoIndeterminateProgress() => expect(find.byWidgetPredicate((w) =>
 Future<int> settleHeight(WidgetTester t) async {
   var elapsed = 0;
   for (var frame = 0; frame < 32; frame++) {
-    final moving = find.byType(AnimatedSize).evaluate().any((e) {
+    final moving = find.byWidgetPredicate((w) => w is AnimatedSize || w is SettlingHeight).evaluate().any((e) {
       final r = e.findRenderObject();
       return r is RenderAnimatedSize && r.isAnimating;
     });

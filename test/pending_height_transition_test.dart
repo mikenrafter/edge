@@ -1,6 +1,7 @@
 // CLAIM settling-height: pending and settled sections ease to natural size,
 // including a fast read inside debounce; accessibility can disable the motion.
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ui2/skeleton/async_section.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart';
@@ -76,11 +77,129 @@ void main() {
       await t.pump(const Duration(milliseconds: 200));
       expect(t.getSize(find.byType(SettingsAccordion)).height, initial + 100);
       expect(find.byType(Scrollable), findsOneWidget);
+      // why: only the changing inner boundary may tween; the card must flow.
+      // CLAIM(settling-height-flow).
       expect(
-        find.byType(AnimatedSize),
-        findsOneWidget,
-        reason: 'nested pending sections share the accordion envelope',
+        t.renderObject<RenderBox>(find.byType(SettingsAccordion)).size.height,
+        initial + 100,
       );
+      await t.pumpWidget(const SizedBox());
+    },
+  );
+  // why: animating only an ancestor's bounds leaves its second child jumping.
+  // CLAIM(settling-height-flow); catches suppressing nested layout boundaries.
+  for (final reduced in [false, true]) {
+    testWidgets(
+      'following row flows with nested growth and shrink, reduced=$reduced',
+      (t) async {
+        Widget page(double height) => MaterialApp(
+          home: MediaQuery(
+            data: MediaQueryData(disableAnimations: reduced),
+            child: Scaffold(
+              body: Align(
+                alignment: Alignment.topLeft,
+                child: SettlingHeight(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      PendingContent(
+                        pending: false,
+                        child: SizedBox(height: height),
+                      ),
+                      const SizedBox(
+                        key: ValueKey('following-row'),
+                        height: 20,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        double top() =>
+            t.getTopLeft(find.byKey(const ValueKey('following-row'))).dy;
+        await t.pumpWidget(page(80));
+        final start = top();
+        await t.pumpWidget(page(180));
+        expect(top(), reduced ? start + 100 : start);
+        await t.pump(const Duration(milliseconds: 80));
+        if (!reduced) {
+          expect(top(), inExclusiveRange(start, start + 100));
+          final root = t.renderObject<RenderBox>(
+            find.byType(SettlingHeight).first,
+          );
+          expect(
+            root.size.height,
+            top() + 20,
+            reason: 'ancestor follows the child with no second tween',
+          );
+        }
+        await t.pump(const Duration(milliseconds: 170));
+        expect(top(), start + 100);
+        await t.pumpWidget(page(40));
+        expect(top(), reduced ? start - 40 : start + 100);
+        await t.pump(const Duration(milliseconds: 80));
+        if (!reduced) expect(top(), inExclusiveRange(start - 40, start + 100));
+        await t.pump(const Duration(milliseconds: 170));
+        expect(top(), start - 40);
+        await t.pumpWidget(const SizedBox());
+      },
+    );
+  }
+  // why: Sleep's frame wraps an accordion whose changing first section has
+  // another visible row beneath it. CLAIM(settling-height-flow).
+  testWidgets(
+    'Sleep frame and accordion flow around the changing inner section',
+    (t) async {
+      Widget page(double height) => skHost(
+        Scaffold(
+          body: SingleChildScrollView(
+            child: PendingContent(
+              pending: false,
+              child: SettingsAccordion(
+                'Signals',
+                id: 'sleep-flow-regression',
+                initiallyExpanded: true,
+                children: [
+                  PendingContent(
+                    pending: false,
+                    child: SizedBox(height: height),
+                  ),
+                  const SizedBox(key: ValueKey('sleep-following'), height: 20),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      double top() =>
+          t.getTopLeft(find.byKey(const ValueKey('sleep-following'))).dy;
+      await t.pumpWidget(page(80));
+      final start = top();
+      await t.pumpWidget(page(180));
+      expect(top(), start);
+      await t.pump(const Duration(milliseconds: 80));
+      expect(top(), inExclusiveRange(start, start + 100));
+      final animations = find
+          .byWidgetPredicate((w) => w is SingleChildRenderObjectWidget)
+          .evaluate()
+          .map((e) => e.renderObject)
+          .whereType<RenderAnimatedSize>()
+          .toSet();
+      expect(
+        animations.where((r) => r.isAnimating).length,
+        1,
+        reason: 'only the changing boundary tweens, both ancestors flow',
+      );
+      await t.pump(const Duration(milliseconds: 170));
+      expect(top(), start + 100);
+      await t.pumpWidget(page(40));
+      expect(top(), start + 100);
+      await t.pump(const Duration(milliseconds: 80));
+      expect(top(), inExclusiveRange(start - 40, start + 100));
+      await t.pump(const Duration(milliseconds: 170));
+      expect(top(), start - 40);
       await t.pumpWidget(const SizedBox());
     },
   );

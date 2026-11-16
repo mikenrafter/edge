@@ -738,7 +738,7 @@ Future<int> _ldbWipeAll() async {
       // ([LocalDb.storeGeneration]), not by these numbers.
       deleted += await txn.delete('input_revision');
     });
-    LocalDb._markStoreReplaced();
+    await LocalDb._markStoreReplaced();
     return deleted;
   }
 
@@ -855,7 +855,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFile(String path, {required List<Str
       return await LocalDb._mergeFromDbFileBody(path,
           only: only, tolerant: tolerant, onProgress: onProgress, run: run);
     } finally {
-      if (LocalDb._mergePagesCommitted != committedBefore) LocalDb._markStoreReplaced();
+      if (LocalDb._mergePagesCommitted != committedBefore) await LocalDb._markStoreReplaced();
     }
   }
 
