@@ -115,7 +115,8 @@ Future<int> settleHeight(WidgetTester t) async {
   for (var frame = 0; frame < 32; frame++) {
     final moving = find.byWidgetPredicate((w) => w is AnimatedSize || w is SettlingHeight).evaluate().any((e) {
       final r = e.findRenderObject();
-      return r is RenderAnimatedSize && r.isAnimating;
+      return r is RenderAnimatedSize && r.isAnimating ||
+          r is RenderSettlingHeight && r.isAnimating;
     });
     if (!moving) break;
     await t.pump(const Duration(milliseconds: 16));

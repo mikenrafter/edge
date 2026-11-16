@@ -185,10 +185,16 @@ void main() {
           .byWidgetPredicate((w) => w is SingleChildRenderObjectWidget)
           .evaluate()
           .map((e) => e.renderObject)
-          .whereType<RenderAnimatedSize>()
+          .where((r) => r is RenderAnimatedSize || r is RenderSettlingHeight)
           .toSet();
       expect(
-        animations.where((r) => r.isAnimating).length,
+        animations
+            .where(
+              (r) => r is RenderAnimatedSize
+                  ? r.isAnimating
+                  : (r as RenderSettlingHeight).isAnimating,
+            )
+            .length,
         1,
         reason: 'only the changing boundary tweens, both ancestors flow',
       );
@@ -203,6 +209,79 @@ void main() {
       await t.pumpWidget(const SizedBox());
     },
   );
+  // why: descendant motion must not suppress a separate parent-owned change.
+  // CLAIM(settling-height-independent). 80+20 -> 180+120 is a 200dp change.
+  for (final reduced in [false, true]) {
+    for (final staggered in [false, true]) {
+      testWidgets(
+        'independent parent growth and shrink, staggered=$staggered reduced=$reduced',
+        (t) async {
+          Widget page(double inner, double other) => MaterialApp(
+            home: MediaQuery(
+              data: MediaQueryData(disableAnimations: reduced),
+              child: Scaffold(
+                body: Align(
+                  alignment: Alignment.topLeft,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SettlingHeight(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SettlingHeight(child: SizedBox(height: inner)),
+                            SizedBox(height: other),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(key: ValueKey('after-card'), height: 20),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+          double top() =>
+              t.getTopLeft(find.byKey(const ValueKey('after-card'))).dy;
+          await t.pumpWidget(page(80, 20));
+          expect(top(), 100);
+          for (final growing in [true, false]) {
+            final initial = growing ? 100.0 : 300.0;
+            final end = growing ? 300.0 : 100.0;
+            final inner = growing ? 180.0 : 80.0;
+            final other = growing ? 120.0 : 20.0;
+            if (staggered) {
+              await t.pumpWidget(page(inner, growing ? 20 : 120));
+              await t.pump(const Duration(milliseconds: 80));
+            }
+            final before = top();
+            await t.pumpWidget(page(inner, other));
+            expect(
+              top(),
+              reduced ? end : before,
+              reason:
+                  'parent change begins at its current height even during child motion',
+            );
+            await t.pump(const Duration(milliseconds: 80));
+            if (!reduced) {
+              expect(
+                top(),
+                inExclusiveRange(
+                  initial < end ? initial : end,
+                  initial < end ? end : initial,
+                ),
+                reason:
+                    'the independent change must have a real intermediate frame',
+              );
+            }
+            await t.pump(const Duration(milliseconds: 170));
+            expect(top(), end);
+          }
+          await t.pumpWidget(const SizedBox());
+        },
+      );
+    }
+  }
   testWidgets('reduced motion settles to natural height immediately', (
     t,
   ) async {
