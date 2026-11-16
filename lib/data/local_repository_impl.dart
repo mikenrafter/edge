@@ -65,6 +65,7 @@ import '../sync/import_focus.dart';
 import '../health/health_export.dart';
 import 'journal_fields.dart';
 import 'local_repository.dart';
+import 'pulse_episode_store.dart';
 import 'nap_resolution.dart';
 import 'series_codec.dart';
 import '../gps/route_models.dart';
@@ -1276,6 +1277,10 @@ class LocalRepositoryImpl extends LocalRepository {
   @override
   Future<Map<String, PulseAlertRecord>> getPulseAlertRecords() =>
       LocalDb.pulseAlertRecords();
+
+  @override
+  Future<List<PulseEpisodeSnapshot>> getPulseEpisodes() async =>
+      PulseEpisodeStore(await LocalDb.instance).list();
 
   @override
   Future<Map<String, dynamic>> getInsights() => ReadPerf.reading('getInsights', () async {

@@ -70,6 +70,9 @@ class UnresolvedOk {
 /// another package; those closures stay in the guard baseline until each
 /// reader becomes a persisted artifact.
 const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#decodePulseEvidenceHeavy, dispatcher: Dispatcher.run, reason: 'bounded immutable pulse snapshot decode off UI'),
+  WorkerEntry(#preparePulseEvidenceHeavy, dispatcher: Dispatcher.run, reason: 'bounded pulse recording encoding; no raw mutation'),
+  WorkerEntry(#detectPulseEpisodesHeavy, dispatcher: Dispatcher.run, reason: 'closed window pulse detector over immutable committed rows'),
   WorkerEntry(#trackLearningHeavy, dispatcher: Dispatcher.run, reason: 'track learning from immutable row snapshot; initialized worker and typed row-map result round trip'),
   WorkerEntry(#typicalCaffeineHeavy, dispatcher: Dispatcher.run, reason: 'bounded dated caffeine observations; initialized worker with row-map round trip'),
   WorkerEntry(#legacyWakeHeavy, dispatcher:Dispatcher.run,reason:'legacy wake: shared timestamped evidence; initialised worker with row-map round trip'),

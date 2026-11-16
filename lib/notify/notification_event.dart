@@ -145,6 +145,23 @@ class NotificationEvent {
   final String title;
   final String body;
 
+  /// Present without sound or vibration, including band transport.
+  final bool silent;
+
+  /// Earlier of recording end and debt creation, never retry or sync time.
+  /// Null or a future value cannot authorize sound.
+  final DateTime? pulseSourceTime;
+
+  bool get isPulse => const {kRoutePulseEpisode, kRoutePulseEpisodes}
+      .contains(routePath(route ?? '')) || dedupeKey.endsWith(':irregular-pulse') ||
+      dedupeKey.startsWith('pulse-summary:');
+
+  NotificationEvent asSilent() => silent ? this : NotificationEvent(
+    dedupeKey: dedupeKey, category: category, priority: priority, title: title,
+    body: body, date: date, route: route, osId: osId, silent: true,
+    pulseSourceTime: pulseSourceTime,
+  );
+
   /// Deep-link route to open on tap (e.g. '/heart', '/today', '/recap').
   final String? route;
 
@@ -167,6 +184,8 @@ class NotificationEvent {
     this.priority = NotifPriority.normal,
     this.route,
     this.osId,
+    this.silent = false,
+    this.pulseSourceTime,
   });
 
   // The OS notification id is NOT derived here any more. It used to be

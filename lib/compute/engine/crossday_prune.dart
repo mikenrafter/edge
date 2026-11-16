@@ -387,9 +387,29 @@ extension _EngineCrossDayPrune on DerivationEngine {
       await PulseAlertDelivery.run(
         individualDays: processingContext.individualDays,
       );
+      await PulseEpisodeDelivery.run();
     } catch (e) {
       _log('pulse alerts FAILED/skipped: $e');
     }
+  }
+
+  /// The irregular-pulse episode worker, contained: it cannot end the pass. A
+  /// day it did not decide is recorded (log and diagnostics) and keeps its raw
+  /// beats through [_pruneOldDecoded]; the next pass reads it again.
+  Future<PulseRunResult> _runPulseEpisodes(
+    Iterable<String> rawDays,
+    ProcessingContext context,
+  ) async {
+    final result =
+        await PulseEpisodeWorker.run(rawDays, processingContext: context);
+    if (result.failedDays.isNotEmpty) {
+      _diag['pulse_errors'] = result.failedDays;
+      _log('pulse episodes FAILED for ${result.failedDays}');
+    }
+    if (result.retryDays.isNotEmpty) {
+      _log('pulse episodes: input moved under ${result.retryDays}; next pass');
+    }
+    return result;
   }
 
   /// Prune raw older than [rawRetentionDays] BEHIND THE DATA EDGE. Retention is
@@ -423,7 +443,8 @@ extension _EngineCrossDayPrune on DerivationEngine {
   ///     derived rather than re-read from `decoded_onehz` on demand — which is
   ///     why a workout's average HR is written into the bundle (it was once
   ///     re-derived lazily and vanished the moment its substrate aged out).
-  Future<void> _pruneOldDecoded(List<String> rawDayIds, int dataNowSec) async {
+  Future<void> _pruneOldDecoded(List<String> rawDayIds, int dataNowSec,
+      [Set<String> pulseUnevaluated = const {}]) async {
     final cutoffSec = DerivationEngine.rawPruneCutoffSec(
       dataNowSec: dataNowSec,
       rawDayIds: rawDayIds,
@@ -436,7 +457,9 @@ extension _EngineCrossDayPrune on DerivationEngine {
       // (which invalidates the settling) or a re-derive may still want it, and
       // the retention floor already bounds how long it is held.
       finalizedDayIds: (await LocalDb.finalizedDayIds(kAlgoVersion))
-          .difference(await LocalDb.partialDayIds(kAlgoVersion)),
+          .difference(await LocalDb.partialDayIds(kAlgoVersion))
+          // A day the irregular-pulse worker could not decide keeps its beats.
+          .difference(pulseUnevaluated),
     );
     if (cutoffSec == null) return;
     // Lossy sample archive of the 1 Hz signals BEFORE the rows go (write

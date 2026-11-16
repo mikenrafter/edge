@@ -28,6 +28,7 @@ import 'package:sqflite/sqflite.dart';
 import 'home_snapshot_store.dart';
 import '../compute/processing_context.dart';
 import '../compute/pulse_alert_record.dart';
+import 'pulse_episode_store.dart';
 import '../compute/substrate.dart' show beatTimesMs;
 import '../compute/groups/input_catalogue.dart' show InputKind, kInputCatalogue;
 import 'db/input_read_tracker.dart';
@@ -437,6 +438,7 @@ class LocalDb {
     'water_moment',
     'notif_fired',
     'pulse_alert',
+    ...pulseEpisodeTables,
     'notif_slots',
     // The wearer's confirmed nights and wake settings, and the per-night
     // candidate a finalized day re-stages from once its raw is gone.
@@ -735,7 +737,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 88;
+  static const int schemaVersion = 90;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -6053,6 +6055,7 @@ class LocalDb {
       'water_moment',
       'notif_fired',
       'pulse_alert',
+    ...pulseEpisodeTables,
       'notif_slots',
       // Vendor-computed, typed-in and imported scalars. In the hand-entered
       // block because a third of it IS hand-entered and nothing regenerates
@@ -6181,6 +6184,7 @@ class LocalDb {
     'water_moment',
     'notif_fired',
     'pulse_alert',
+    ...pulseEpisodeTables,
     // Local wins: a new phone's own settings, confirmations, ledger rows and
     // notification slots are not replaced by a backup's.
     'wake_confirmation',

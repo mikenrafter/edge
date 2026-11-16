@@ -32,6 +32,7 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import 'notification_event.dart';
+import 'pulse_notification_policy.dart';
 import 'notification_ids.dart';
 
 /// The next wall-clock instant at [hour]:[minute] — optionally the next
@@ -457,15 +458,24 @@ class NotificationService {
     }
   }
 
-  NotificationDetails _details(NotifCategory c) {
+  /// The same platform options passed to the OS; exposed for policy tests.
+  NotificationDetails detailsForEvent(NotificationEvent event) =>
+      _details(event.category, silent: event.silent);
+
+  NotificationDetails _details(NotifCategory c, {bool silent = false}) {
     final ch = _channelFor(c);
     return NotificationDetails(
       android: AndroidNotificationDetails(
-        ch.id,
+        // Android channels retain their original sound/vibration settings.
+        // A separate silent channel avoids inheriting the existing health buzz.
+        silent ? '${ch.id}_silent' : ch.id,
         ch.name,
         channelDescription: ch.description,
-        importance: _importanceFor(c),
-        priority: _priorityFor(c),
+        importance: silent ? Importance.low : _importanceFor(c),
+        priority: silent ? Priority.low : _priorityFor(c),
+        playSound: !silent,
+        enableVibration: !silent,
+        silent: silent,
         icon: '@mipmap/launcher_icon',
         // Device alerts reuse FIXED ids (idLowBattery/idCharging), so a re-post
         // is an UPDATE of a card the user is already looking at — it shouldn't
@@ -476,9 +486,17 @@ class NotificationService {
         // from making noise. iOS has no equivalent on DarwinNotificationDetails.
         onlyAlertOnce: c == NotifCategory.device,
       ),
-      iOS: const DarwinNotificationDetails(),
+      iOS: silent
+          ? const DarwinNotificationDetails(
+              presentSound: false, interruptionLevel: InterruptionLevel.passive)
+          : const DarwinNotificationDetails(),
+      macOS: silent ? const DarwinNotificationDetails(presentSound: false) : null,
     );
   }
+
+  /// Overridable allocation seam for deterministic handoff-wait tests.
+  @visibleForTesting
+  Future<int> Function(NotificationEvent) allocateId = NotificationIds.instance.idFor;
 
   /// Present a NotificationEvent on its category channel. Same osId replaces, so
   /// re-firing the same logical event never stacks duplicates. Never throws.
@@ -503,12 +521,13 @@ class NotificationService {
       // share an id, and `show` REPLACES: one of them vanished silently.
       // e.osId overrides only for a caller that also cancels by id (see
       // NotificationEvent.osId).
+      final id = e.osId ?? await allocateId(e);
+      final outgoing = await PulseNotificationPolicy.atHandoff(e);
+      if (outgoing == null) return false;
+      // No async work between the final policy decision and the platform call.
       await _plugin.show(
-        e.osId ?? await NotificationIds.instance.idFor(e),
-        e.title,
-        e.body.isEmpty ? null : e.body,
-        _details(e.category),
-        payload: e.route,
+        id, outgoing.title, outgoing.body.isEmpty ? null : outgoing.body,
+        detailsForEvent(outgoing), payload: outgoing.route,
       );
       return true;
     } catch (_) {

@@ -188,3 +188,24 @@ in the same change that introduces it (AGENTS.md §6).
 - **Sleep receipt failure**: a night and operation-specific failed save retained by `SleepCoordinator` until acknowledged or superseded by a later successful save. App-level presentation survives route disposal.
 - **Withheld night**: while a night's own edit is unapplied, only its sleep-derived numbers are withheld. Its other measurements, and every later day, keep their values; later days carry a `sleep_edit` mark.
 - **Load timing**: an opt-in (Developer, off by default), bounded local diagnostic sample identifying a stored read, reader acquisition, writer queue, transaction or decode span. Elapsed parallel reads overlap and are never summed into load time.
+## Observations
+
+An observation entry is a stored daily detector finding or a pulse episode, shown
+by `ui2/observation_history.dart`. An episode replaces daily irregular-pulse flags
+on its covered dates. Other finding kinds remain separate. Health shows the
+newest entry; the Observations screen shows the entries for the selected day.
+
+## Pulse episodes
+
+A pulse episode is at least two consecutive closed UTC five-minute windows meeting the experimental irregular timing and recording quality rules. Its bounds describe qualifying windows, not proven rhythm onset or offset. Its seed is the first qualifying window; the source and seed identify it across extensions and algorithm revisions. Beat evidence preserves original intervals, cleaning hypotheses and valid adjacency. A delivery claim is a durable per-episode record consumed before OS handoff; ambiguous delivery remains unknown and is never retried. A partial trace explicitly lists omitted recording ranges. Motion and wear remain unknown when no reliable measurement exists.
+
+The **pulse upgrade watermark** is the immutable set of `(source, ts_ms)` RR record keys present during the schema-89 migration, or at the first phase 2 initialization on a fresh install, plus its atomic completion marker. An episode whose beats all belong to those records is marked sent with reason "before this version". The keys survive raw eviction, restore and reanalysis. A previously absent key delivered later is new even when its recording timestamp is older.
+
+- **Pulse breathing pattern**: matching respiratory-band spectral peaks in two adjacent, fully supported windows during confirmed low-heart-rate sleep. Analytics resamples cumulative RR timing and requires both peak concentration and prominence. Matching peaks trigger a narrow sinusoid fit. A window is excluded only when the supported fit leaves original-beat residuals below at least one fixed screening floor. `pulse_episode_worker.dart` supplies context; analytics owns the policy.
+- **Pulse personal baseline**: quality-passing normal windows from earlier local dates within fourteen days, excluding stored episodes and their thirty-minute surroundings. Its thresholds cannot suppress uncorrelated windows that pass the fixed screening floors.
+
+- **Pulse semantic exclusion**: positive breathing, motion, off-wrist or charging evidence that excludes an otherwise supported pulse window. Complete exclusions can retract current detector decisions and cancel unclaimed alerts.
+- **Pulse recording refusal**: insufficient or invalid RR support. It retains an earlier pulse decision rather than retracting it.
+
+- **Pulse respiratory residual**: corrected RR minus the single fitted respiratory sinusoid evaluated at original cumulative beat times. Original feature and adjacency masks stay intact; the same SD1/SD2 and pNN70 calculation checks the residual against 0.7 and 30%. Weak or failed fits preserve eligibility.
+

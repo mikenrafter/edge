@@ -225,6 +225,7 @@ Future<Database> _ldbPrivOpen() async {
         await LocalDb._createWorkoutRoute(db);
         await LocalDb._createNotifFired(db);
         await LocalDb._createPulseAlert(db);
+    await PulseEpisodeStore.create(db);
         await LocalDb._createNotifSlots(db);
         await LocalDb._createAlarmSchedule(db);
         await LocalDb._createWakeTables(db);
@@ -1097,6 +1098,20 @@ Future<Database> _ldbPrivOpen() async {
         }
         if (oldV < 88) {
           await SleepEditStore.create(db);
+          await PulseEpisodeStore.create(db);
+        }
+        // CLAIM(pulse-upgrade): capture inside onUpgrade's transaction before
+        // the first derive pass lets concurrently synced records reach the worker.
+        if (oldV < 89) {
+          await PulseEpisodeStore.create(db);
+          await PulseEpisodeStore.captureUpgrade(
+            db,
+            nowMs: DateTime.now().millisecondsSinceEpoch,
+          );
+
+        }
+        if (oldV < 90) {
+          await SleepEditStore.create(db);
         }
       },
       onOpen: (db) async {
@@ -1189,6 +1204,7 @@ Future<void> _ldbPrivRepairOpenSchema(Database db) async {
     await LocalDb._ensureDayResultPartialColumn(db);
     await LocalDb._createNotifFired(db);
     await LocalDb._createPulseAlert(db);
+    await PulseEpisodeStore.create(db);
     await LocalDb._createNotifSlots(db);
     await LocalDb._createAlarmSchedule(db);
     // CREATE TABLE IF NOT EXISTS on the every-open repair path, no schema

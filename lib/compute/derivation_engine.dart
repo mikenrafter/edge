@@ -106,6 +106,8 @@ import 'step_cadence.dart';
 import 'profile.dart';
 import 'processing_context.dart';
 import 'pulse_alert_delivery.dart';
+import 'pulse_episode_delivery.dart';
+import 'pulse_episode_worker.dart';
 import 'substrate.dart';
 import 'substrate_retention.dart';
 import 'union_cut_heavy.dart';
@@ -1992,6 +1994,20 @@ part 'engine/settled.dart';
 // sleep view says the HMM estimate is experimental and not validated, and why
 // a fallback was used. Opted-in nights re-derive. Cardio output (stages,
 // accounting, stored payload and published night baselines) is unchanged.
+// 120: closed five-minute pulse episodes, ten-minute qualification, bounded
+// cleaning evidence and measurable quality gates. Legacy finalized rows stay frozen.
+// 121: pulse detector v2 adds sleep breathing and positive motion/wear gates,
+// with bounded personal baselines that preserve fixed floors for irregular RR.
+// Analytics fork 686c173 adds the versioned policy; a local override is
+// required until that unpublished commit is made available by the owner.
+// 122: pulse detector v3 requires paired respiratory spectra and corrects
+// current-version episodes when complete late context excludes them. V1
+// evidence and delivery remain frozen. Analytics fork 2ba4d4e (local only).
+// 123: pulse detector v4 preserves independently irregular RR when breathing
+// coexists. A narrow sinusoid is fitted on the tachogram, then original-beat
+// residuals must fail fixed floors before exclusion. Analytics fork 8f3c08c
+// (local only; gitignored override required until the owner publishes it).
+
 // 119 → 120 (sleep edit R2): no-input assertions reuse night measurements
 // only when the complete stored measured window matches exactly. Other nights
 // record unavailable measurements while preserving daytime facts.
@@ -2014,6 +2030,7 @@ class DayPassResult {
   void _finish(bool complete) => _outcome = complete
       ? SleepEditCalculation.complete : SleepEditCalculation.incomplete;
 }
+
 
 
 class DerivationEngine {
@@ -2911,6 +2928,7 @@ class DerivationEngine {
         final rescored = noData
             ? 0
             : await _quietLevelRepass(profile, dataNowSec, scope.rawDays);
+        final earlyPulse = noData ? PulseRunResult.clean : await _runPulseEpisodes(scope.rawDays, processingContext);
         if (rescored > 0) {
           await _refreshBaselines();
           await _runCrossDay(profile);
@@ -2920,13 +2938,14 @@ class DerivationEngine {
           // was held back while notifications were off).
           try {
             await PulseAlertDelivery.run();
+            await PulseEpisodeDelivery.run();
           } catch (e) {
             _log('pulse alerts FAILED/skipped: $e');
           }
         }
         onScope?.call(0);
         onScopeDays?.call(const []);
-        if (!noData) await _pruneOldDecoded(scope.rawDays, dataNowSec);
+        if (!noData) await _pruneOldDecoded(scope.rawDays, dataNowSec, earlyPulse.unevaluatedDays);
         return rescored;
       }
       final previousPulseResults = <String, ({int version, bool imported})>{};
@@ -3100,6 +3119,7 @@ class DerivationEngine {
       _diag['stage'] = 'quiet_repass';
       done += await _quietLevelRepass(profile, dataNowSec, scope.rawDays);
 
+      final pulse = noData ? PulseRunResult.clean : await _runPulseEpisodes(scope.rawDays, pulseContext);
       // 4. Cross-day rollup + notifications (best-effort).
       if (done > 0) {
         onCrossDay?.call(true);
@@ -3125,7 +3145,7 @@ class DerivationEngine {
       // so it is safe to run this often.
       _diag['stage'] = 'prune';
       _calcStage('Tidying up');
-      if (!noData) await _pruneOldDecoded(scope.rawDays, dataNowSec);
+      if (!noData) await _pruneOldDecoded(scope.rawDays, dataNowSec, pulse.unevaluatedDays);
       // The timezone hold is a FULL-RESTAGE concept — only a restage actually
       // re-derives every held day — so clearing it stays behind fullHistory.
       if (scope.fullHistory && !noData) {

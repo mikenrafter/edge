@@ -23,6 +23,7 @@
 // than at each site — one gate is how the rule stays true when the next emit
 // site is added.
 
+import 'package:clock/clock.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -39,6 +40,7 @@ import 'fired_keys.dart';
 import 'reminder_sleep_gate.dart';
 import 'alert_dispatcher.dart';
 import 'notification_event.dart';
+import 'pulse_notification_policy.dart';
 import 'notification_prefs.dart';
 import 'notification_service.dart';
 import '../state/feature_flags.dart';
@@ -98,7 +100,7 @@ class NotificationCenter {
                 : 'autoDetect',
           _ => classOf(e) == NotifClass.alarm ? 'alarm' : e.category.name,
         };
-    final now = DateTime.now();
+    final now = clock.now();
     if (const {'water', 'movement', 'windDown', 'checkIn'}.contains(id) &&
         (await ReminderSleepGate.load(now: now)).reasonAt(prefs, now) != null) {
       return const {};
@@ -125,14 +127,17 @@ class NotificationCenter {
     final out = await dispatcher.dispatch(
       prefs.alertRule(id),
       eventId: e.dedupeKey,
-      sourceTime: sourceTime ?? DateTime.now(),
+      sourceTime: sourceTime ?? clock.now(),
       historical: historical,
+      targetAllowedAtDelivery: e.isPulse
+          ? (target) async => await PulseNotificationPolicy.atHandoff(e, target: target) != null
+          : null,
       targetAllowed: (_) => explicitAction
           ? !prefs.inQuietHours(minuteOfDay)
           : prefs.shouldFireOs(e, minuteOfDay),
       // Legacy derived reports may describe yesterday. Their receipt time
       // cannot authorize a time-sensitive band haptic.
-      transportTargets: phoneOnly || e.date.compareTo(todayLabel()) < 0
+      transportTargets: phoneOnly || e.silent || e.date.compareTo(todayLabel()) < 0
           ? const {'phone'} : null,
       phoneTransport: () => _emitPhone(
         e,
@@ -177,6 +182,9 @@ class NotificationCenter {
   Future<bool> Function(NotificationEvent e, {bool allowPermissionPrompt})
   presentSink = NotificationService.instance.presentEvent;
 
+  @visibleForTesting
+  void Function(NotificationEvent)? onPhoneQueued;
+
   /// Present to the OS (if allowed). Never throws.
   ///
   /// [allowPermissionPrompt]: Apple's notification docs document that
@@ -201,7 +209,7 @@ class NotificationCenter {
     var presented = false;
     try {
       final prefs = await NotificationPrefs.load();
-      final now = DateTime.now();
+      final now = clock.now();
       final minuteOfDay = now.hour * 60 + now.minute;
       if (explicitAction) {
         if (prefs.inQuietHours(minuteOfDay)) return false;
@@ -224,16 +232,29 @@ class NotificationCenter {
       // stays silent for the rest of the day. Release on every non-present path
       // (hence the finally), which restores the pre-existing
       // "record only after a real present" semantics.
+      onPhoneQueued?.call(e);
       await _synchronized(() async {
         if (!await _fired.claim(e.dedupeKey)) return;
         var shown = false;
         try {
+          final outgoing = await PulseNotificationPolicy.atHandoff(e);
+          if (outgoing == null) {
+            await _fired.release(e.dedupeKey);
+            return;
+          }
           shown = await presentSink(
-            e,
+            outgoing,
             allowPermissionPrompt: allowPermissionPrompt,
           );
+          if (!shown && (e.dedupeKey.startsWith('pulse-episode:') ||
+              e.dedupeKey.startsWith('pulse-episode-summary:'))) {
+            await _fired.release(e.dedupeKey);
+          }
         } finally {
-          if (!shown) await _fired.release(e.dedupeKey);
+          if (!shown && !e.dedupeKey.startsWith('pulse-episode:') &&
+              !e.dedupeKey.startsWith('pulse-episode-summary:')) {
+            await _fired.release(e.dedupeKey);
+          }
         }
         presented = shown;
       });
@@ -364,7 +385,7 @@ class NotificationCenter {
     bool armedTonight = false,
     ReminderSleepGate? sleep,
   }) async {
-    final gate = sleep ?? await ReminderSleepGate.load(now: DateTime.now());
+    final gate = sleep ?? await ReminderSleepGate.load(now: clock.now());
     final svc = NotificationService.instance;
     await svc.cancel(NotificationService.idWeeklyRecap);
     // The night-check is decided fresh on every call (armedTonight is always a
@@ -388,7 +409,7 @@ class NotificationCenter {
     // re-arming would risk asking for a day already answered, so neither
     // happens and the next foreground pass (which does know) decides.
     final pendingCheckIn = checkInSlot(prefs, bedtimeMinOfDay,
-        doneToday: false, now: DateTime.now());
+        doneToday: false, now: clock.now());
     final checkInProtected = pendingCheckIn != null &&
         gate.reasonAt(prefs, pendingCheckIn) != null;
     if (!prefs.phoneDeliveryEnabled('checkIn') || checkInDoneToday != null || checkInProtected) {
@@ -429,7 +450,7 @@ class NotificationCenter {
     // The one cancel that IS correct here is the user's own switch: this is
     // where a movement nudge that was just turned off actually goes away.
     if (!prefs.phoneDeliveryEnabled('movement') ||
-        gate.reasonAt(prefs, DateTime.now()) != null) {
+        gate.reasonAt(prefs, clock.now()) != null) {
       await svc.cancel(NotificationService.idStillness);
     }
     for (var i = 0; i < NotificationService.maxWaterSlots; i++) {
@@ -440,7 +461,7 @@ class NotificationCenter {
         : <int>[];
     final wantWeekly =
         prefs.phoneDeliveryEnabled('reminders') && weeklyFinding != null;
-    final now = DateTime.now();
+    final now = clock.now();
     final checkIn = checkInDoneToday == null
         ? null
         : checkInSlot(
@@ -486,7 +507,7 @@ class NotificationCenter {
     // call started with — the awaits above (zone resolve + every slot ahead
     // of this one) are real wall-clock time, and this is the one slot whose
     // hour boundary (19:00) a stale `nowMin` could cross mid-call.
-    final freshNow = DateTime.now();
+    final freshNow = clock.now();
     final freshNightCheck = alarmNightCheckSlot(
       prefs,
       armedTonight: armedTonight,
@@ -743,7 +764,7 @@ class NotificationCenter {
     }
     if (prefs.inQuietHours(t)) return null;
     if (sleep != null) {
-      final now = DateTime.now();
+      final now = clock.now();
       var target = DateTime(now.year, now.month, now.day, t ~/ 60, t % 60);
       if (!target.isAfter(now)) target = DateTime(now.year, now.month, now.day + 1, t ~/ 60, t % 60);
       if (sleep.reasonAt(prefs, target) != null) return null;
@@ -856,7 +877,7 @@ class NotificationCenter {
   /// upcoming instant separately. Filtering never shifts the cadence.
   static List<int> waterSlotMinutes(NotificationPrefs prefs,
       {ReminderSleepGate? sleep, DateTime? day}) {
-    final d = (day ?? DateTime.now()).toLocal();
+    final d = (day ?? clock.now()).toLocal();
     final gate = day == null ? ReminderSleepGate(schedule: sleep?.schedule) : sleep ?? const ReminderSleepGate();
     return [for (final m in waterCadenceMinutes(prefs))
       if (gate.reasonAt(prefs, DateTime(d.year, d.month, d.day, m ~/ 60, m % 60)) == null) m];
@@ -1000,7 +1021,7 @@ class NotificationCenter {
     DateTime? now,
   }) {
     if (!prefs.medsEnabled || defs.isEmpty) return const [];
-    final at = now ?? DateTime.now();
+    final at = now ?? clock.now();
     final out = <MedSlot>[];
     for (var d = 0; d < medHorizonDays; d++) {
       final day = dayLabelOf(DateTime(at.year, at.month, at.day + d));
@@ -1065,7 +1086,7 @@ class NotificationCenter {
     String? sweepHeadline,
     ReminderSleepGate? sleep,
   }) async {
-    final gate = sleep ?? await ReminderSleepGate.load(now: DateTime.now());
+    final gate = sleep ?? await ReminderSleepGate.load(now: clock.now());
     final svc = NotificationService.instance;
     await svc.cancel(NotificationService.idMorningBrief);
     await svc.cancel(NotificationService.idEveningBrief);
@@ -1081,7 +1102,7 @@ class NotificationCenter {
     ).where((s) => NotificationService.maySchedule(s.id)).toList();
     if (plan.isEmpty) return;
     await svc.ensureTimezone();
-    final nowMin = DateTime.now().hour * 60 + DateTime.now().minute;
+    final nowMin = clock.now().hour * 60 + clock.now().minute;
     for (final s in plan) {
       // ONE-SHOT, and only when the slot is still ahead TODAY.
       //

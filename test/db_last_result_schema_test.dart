@@ -77,6 +77,11 @@ void main() {
     await _seedEmptyV58(name);
     final db = await _openThroughLocalDb(name);
     expect(await _userVersion(db), LocalDb.schemaVersion);
+    // WHY/CLAIM(pulse-sparse-upgrade): an empty snapshot still needs its
+    // migration marker, before any subsequently synced records arrive.
+    // # catches: skipping the entire upgrade capture when decoded_rr is absent.
+    expect(await db.query('pulse_upgrade'), hasLength(1));
+    expect(await db.query('pulse_upgrade_record'), isEmpty);
 
     final cols = {
       for (final c in await db.rawQuery('PRAGMA table_info(last_result)'))

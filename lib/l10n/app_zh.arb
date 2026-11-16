@@ -3968,6 +3968,7 @@
   "pulseAlertUnknown": "提醒可能已发送 {when}",
   "pulseAlertQuiet": "未提醒：因免打扰时段而暂缓",
   "pulseAlertEarlier": "已由应用的早期版本提醒 {when}",
+<<<<<<< HEAD
   "helpLookingForSomething": "在找什么吗？",
   "helpAllGuides": "所有指南",
   "helpTopicEmpty": "此标签页暂无指南。",
@@ -3999,4 +4000,11 @@
   "homeLastKnownUpdating": "上次数据 {time} · 正在更新",
   "homeLastKnownFailed": "上次数据 {time} · 更新失败",
   "homeLastKnownSource": "{status}。读取于 {readTime}。计算于 {computedTime}。"
+=======
+  "observationsLoading": "正在加载观察记录",
+  "observationsPulsePattern": "不规则脉搏模式",
+  "pulseEpisodeReadingTitle": "不规则心律读数",
+  "pulseEpisodeSummaryTitle": "{count, plural, =1{1 次记录出现不规则心律读数} other{{count} 次记录出现不规则心律读数}}",
+  "pulseEpisodeReadingBody": "{dates}。腕部读数显示心律不规则。运动或传感器佩戴松紧可能影响读数。这不是诊断。点按查看。"
+>>>>>>> a3877523a
 }

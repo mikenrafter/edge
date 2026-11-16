@@ -667,6 +667,7 @@ Future<Map<String, dynamic>> _ldbSchemaHealth() async {
       'workout_split',
       'notif_fired',
       'pulse_alert',
+      ...pulseEpisodeTables,
       'metric_series_version',
       'metric_method',
       'band_backlog',

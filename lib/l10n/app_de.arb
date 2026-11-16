@@ -4074,6 +4074,7 @@
   "pulseAlertUnknown": "Hinweis wurde möglicherweise gesendet {when}",
   "pulseAlertQuiet": "Kein Hinweis: wegen Ruhezeiten zurückgehalten",
   "pulseAlertEarlier": "Von einer früheren Version der App gemeldet {when}",
+<<<<<<< HEAD
   "helpLookingForSomething": "Suchst du etwas?",
   "helpAllGuides": "Alle Anleitungen",
   "helpTopicEmpty": "Für diesen Tab gibt es noch keine Anleitungen.",
@@ -4105,4 +4106,11 @@
   "homeLastKnownUpdating": "Letzter Stand {time} · wird aktualisiert",
   "homeLastKnownFailed": "Letzter Stand {time} · Aktualisierung fehlgeschlagen",
   "homeLastKnownSource": "{status}. Gelesen {readTime}. Berechnet {computedTime}."
+=======
+  "observationsLoading": "Beobachtungen werden geladen",
+  "observationsPulsePattern": "Unregelmäßiges Pulsmuster",
+  "pulseEpisodeReadingTitle": "Messung mit unregelmäßigem Rhythmus",
+  "pulseEpisodeSummaryTitle": "{count, plural, =1{Messungen mit unregelmäßigem Rhythmus aus 1 Episode} other{Messungen mit unregelmäßigem Rhythmus aus {count} Episoden}}",
+  "pulseEpisodeReadingBody": "{dates}. Die Messungen am Handgelenk zeigten einen unregelmäßigen Rhythmus. Bewegung oder der Sitz des Sensors können die Messungen beeinflussen. Dies ist keine Diagnose. Zum Ansehen tippen."
+>>>>>>> a3877523a
 }

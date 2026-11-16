@@ -23,6 +23,7 @@ import 'theme/theme_controller.dart';
 import 'theme/theme_switcher.dart';
 import 'widget/widget_service.dart';
 import 'ui2/activity/catalogue.dart';
+import 'ui2/screens/pulse_episode.dart';
 import 'ui2/activity/live.dart';
 import 'ui2/onboarding/pairing.dart' show OnboardingBypass;
 import 'ui2/onboarding/profile_setup.dart';
@@ -512,7 +513,7 @@ ShellDomain domainForRoute(String route) => switch (routePath(route)) {
       // The alarm safety notifications and the alarm-fired note: the alarm
       // lives on the Sleep tab now.
       kRouteAlarm => ShellDomain.sleep,
-      kRouteRecap => ShellDomain.health,
+      kRouteRecap || kRoutePulseEpisode || kRoutePulseEpisodes => ShellDomain.health,
       _ => ShellDomain.today,
     };
 
@@ -565,6 +566,8 @@ Widget? screenForRoute(String route) => switch (routePath(route)) {
       // findings, which the app has been computing every night and delivering
       // only as a notification you could dismiss into nothing.
       kRouteRecap => const WhatChangedScreen(),
+      kRoutePulseEpisode => PulseEpisodeScreen(episodeId: routeId(route) ?? ''),
+      kRoutePulseEpisodes => const PulseEpisodesScreen(),
       _ => null,
     };
 

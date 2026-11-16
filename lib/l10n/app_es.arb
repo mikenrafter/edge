@@ -3986,6 +3986,7 @@
   "pulseAlertUnknown": "Es posible que el aviso se enviara {when}",
   "pulseAlertQuiet": "Sin aviso: retenido por las horas de silencio",
   "pulseAlertEarlier": "Avisado por una versión anterior de la app {when}",
+<<<<<<< HEAD
   "helpLookingForSomething": "¿Buscas algo?",
   "helpAllGuides": "Todas las guías",
   "helpTopicEmpty": "Todavía no hay guías para esta pestaña.",
@@ -4017,4 +4018,11 @@
   "homeLastKnownUpdating": "Último dato {time} · actualizando",
   "homeLastKnownFailed": "Último dato {time} · error al actualizar",
   "homeLastKnownSource": "{status}. Leído {readTime}. Calculado {computedTime}."
+=======
+  "observationsLoading": "Cargando observaciones",
+  "observationsPulsePattern": "Patrón de pulso irregular",
+  "pulseEpisodeReadingTitle": "Lectura de ritmo irregular",
+  "pulseEpisodeSummaryTitle": "{count, plural, =1{Lecturas de ritmo irregular de 1 episodio} other{Lecturas de ritmo irregular de {count} episodios}}",
+  "pulseEpisodeReadingBody": "{dates}. Las lecturas de la muñeca mostraron un ritmo irregular. El movimiento o el ajuste del sensor pueden afectar las lecturas. Esto no es un diagnóstico. Toca para revisar."
+>>>>>>> a3877523a
 }

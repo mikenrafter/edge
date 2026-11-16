@@ -12,6 +12,7 @@ import '../../l10n/display_text.dart';
 //     field that implies an account.
 
 import 'package:flutter/material.dart';
+import '../../compute/pulse_episode_delivery.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -1183,6 +1184,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
       (d) => d.alerts = next,
       sections: {SettingsSection.alerts},
     );
+    try { await PulseEpisodeDelivery.run(); } catch (_) { /* next derive retries unclaimed items */ }
     // Re-run the scheduler so a switch that was just turned off actually
     // cancels what it was standing for, rather than taking effect at some
     // later resume.
@@ -1208,6 +1210,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
   Future<void> _requestPermission() async {
     final ok = await NotificationService.instance.ensurePermission();
     if (mounted) setState(() => _granted = ok);
+    if (ok) { try { await PulseEpisodeDelivery.run(); } catch (_) { /* next derive retries unclaimed items */ } }
   }
 
   @override

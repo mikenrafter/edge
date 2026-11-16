@@ -19595,6 +19595,7 @@
       }
     }
   },
+<<<<<<< HEAD
   "helpLookingForSomething": "Looking for something?",
   "@helpLookingForSomething": {
     "description": "Quiet button at the bottom of each main tab that opens Help for that tab."
@@ -19613,4 +19614,25 @@
   "@homeLastKnownFailed": {"placeholders": {"time": {"type": "String"}}},
   "homeLastKnownSource": "{status}. Read {readTime}. Calculated {computedTime}.",
   "@homeLastKnownSource": {"placeholders": {"status": {"type": "String"}, "readTime": {"type": "String"}, "computedTime": {"type": "String"}}}
+=======
+  "observationsLoading": "Loading observations",
+  "observationsPulsePattern": "Irregular pulse pattern",
+  "pulseEpisodeReadingTitle": "Irregular rhythm reading",
+  "pulseEpisodeSummaryTitle": "{count, plural, =1{Irregular rhythm readings from 1 episode} other{Irregular rhythm readings from {count} episodes}}",
+  "pulseEpisodeReadingBody": "{dates}. Wrist readings showed an irregular rhythm. Movement or sensor fit can affect readings. This is not a diagnosis. Tap to review.",
+  "@pulseEpisodeSummaryTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@pulseEpisodeReadingBody": {
+    "placeholders": {
+      "dates": {
+        "type": "String"
+      }
+    }
+  }
+>>>>>>> a3877523a
 }

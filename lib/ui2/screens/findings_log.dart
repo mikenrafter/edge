@@ -7,9 +7,8 @@
 // sweep measures every metric against your own trailing history, while these
 // are standing watches with their own thresholds.
 //
-// These are existing detector results, projected onto calendar days. The latest
-// week stays summarized while earlier weeks can be explored; the focused day
-// repeats the detector's own wording, including its uncertainty and date.
+// Stored detector results and pulse episodes share one calendar-day detail.
+// The focused day keeps each detector's wording, uncertainty and date.
 //
 // A LOG YOU GO TO, NOT A FEED THAT COMES TO YOU. notification_center.dart
 // records that the in-app notifications feed was removed deliberately, because
@@ -24,18 +23,21 @@
 // entries carry the same "this is a screen, see a clinician" wording they
 // carry in the notification.
 
-// Latest-week summary, standard day scrub and canonical rows in its detail.
+// Standard day scrub and canonical rows in its detail.
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../compute/findings.dart';
 import '../../data/day_label.dart';
+import '../../data/pulse_episode_store.dart';
+import 'pulse_episode.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/chart_point.dart';
 import '../../state/clock_format.dart' show formatClockOf;
 import '../ui2.dart';
 import '../why_row.dart';
 import '../finding_presentation.dart';
+import '../observation_history.dart';
 export '../finding_presentation.dart' show findingColor;
 import 'home_screen.dart' show prettyDay;
 import 'metric_detail.dart' show detailScaffold;
@@ -52,10 +54,19 @@ class FindingsLog extends StatefulWidget {
     super.key,
     this.rhr = const [],
     this.today,
+    this.episodes = const [],
+    this.loadEpisodes,
   });
   final List<Finding> findings;
   final List<ChartPoint> rhr;
   final String? today;
+
+  /// Metadata already loaded by Health; opening the log needs no second read.
+  final List<PulseEpisodeSnapshot> episodes;
+
+  /// Optional retry after a failed Health read. Called once at mount, then
+  /// only on explicit retry. Failure keeps daily findings and exposes retry.
+  final Future<List<PulseEpisodeSnapshot>> Function()? loadEpisodes;
   @override
   State<FindingsLog> createState() => _FindingsLogState();
 }
@@ -64,8 +75,33 @@ class _FindingsLogState extends State<FindingsLog> {
   int _week = 0;
   String? _focus;
   late final String _end = widget.today ?? todayLabel();
-  List<Finding> on(String day) =>
-      widget.findings.where((f) => f.date == day).toList();
+  late List<PulseEpisodeSnapshot> _episodes = widget.episodes;
+  bool _pending = false;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.loadEpisodes != null) _loadEpisodes();
+  }
+
+  // Owner: this state holds one episode read, independent of chart rebuilds.
+  Future<void> _loadEpisodes() async {
+    if (_pending) return;
+    setState(() {
+      _pending = true;
+      _failed = false;
+    });
+    try {
+      final episodes = await widget.loadEpisodes!();
+      if (mounted) setState(() => _episodes = episodes);
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    } finally {
+      if (mounted) setState(() => _pending = false);
+    }
+  }
+
   void move(int delta) => setState(() {
     _week += delta;
     _focus = null;
@@ -76,12 +112,11 @@ class _FindingsLogState extends State<FindingsLog> {
     final l =
         AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));
     final days = observationWeek(_end, _week);
-    final latest = observationWeek(_end, 0);
-    final weekEvents = widget.findings
-        .where((f) => latest.contains(f.date))
-        .toList();
+    final history = observationHistory(widget.findings, _episodes);
+    List<ObservationEntry> on(String day) =>
+        history.where((entry) => entry.occursOn(day)).toList();
     final kinds = FindingKind.values
-        .where((k) => widget.findings.any((f) => f.kind == k))
+        .where((k) => history.any((f) => f.kind == k))
         .toList();
     final focus =
         _focus ??
@@ -91,42 +126,27 @@ class _FindingsLogState extends State<FindingsLog> {
     final axisTop = maximum <= 4 ? maximum : (maximum / 2).ceil() * 2;
     final focused = on(focus);
     final focusedKinds = kinds.where((k) => focused.any((f) => f.kind == k));
-    final earliest = widget.findings.fold(
+    final earliest = history.fold(
       _end,
-      (String d, f) => f.date.compareTo(d) < 0 ? f.date : d,
+      (String d, f) => f.day.compareTo(d) < 0 ? f.day : d,
     );
     return detailScaffold(c, l.findingsLogTitle, [
-      Padding(
-        key: const ValueKey('observations-latest-week'),
-        padding: const EdgeInsets.symmetric(vertical: S.x3),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              l.observationsLatestWeek(
-                prettyDay(latest.first, l),
-                prettyDay(latest.last, l),
-              ),
-              style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600),
+      if (_pending)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: S.x3),
+          child: Semantics(
+            liveRegion: true,
+            child: Text(
+              l.observationsLoading,
+              style: F.cap.copyWith(color: p.ink2),
             ),
-            const SizedBox(height: S.x2),
-            if (weekEvents.isEmpty)
-              Text(l.observationsNoWeek, style: F.cap.copyWith(color: p.ink2)),
-            Wrap(
-              spacing: S.x3,
-              runSpacing: S.x2,
-              children: [
-                for (final k in kinds)
-                  if (weekEvents.any((f) => f.kind == k))
-                    Text(
-                      '${weekEvents.where((f) => f.kind == k).length} · ${findingTitle(l, Finding(k, _end))}',
-                      style: F.cap.copyWith(color: p.on(findingColor(k))),
-                    ),
-              ],
-            ),
-          ],
+          ),
         ),
-      ),
+      if (_failed)
+        TextButton(
+          onPressed: _loadEpisodes,
+          child: const Text('Pulse recordings could not be loaded. Try again.'),
+        ),
       Surface(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -158,35 +178,43 @@ class _FindingsLogState extends State<FindingsLog> {
               title: l.findingsLogTitle,
               unit: l.observationsEventsUnit,
               height: _observationPlotHeight,
-              yAxis: AxisSpec(
-                min: 0,
-                max: axisTop.toDouble(),
-                ticks: maximum <= 4 ? maximum + 1 : 3,
-                format: axisInt,
-              ),
+              yAxis: _pending || _failed
+                  ? null
+                  : AxisSpec(
+                      min: 0,
+                      max: axisTop.toDouble(),
+                      ticks: maximum <= 4 ? maximum + 1 : 3,
+                      format: axisInt,
+                    ),
               panel: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  ChartKeyReadout(
-                    time: prettyDay(focus, l),
-                    timeSpan: days.map((d) => prettyDay(d, l)).toList(),
-                    scrubbed: true,
-                    cells: [
-                      ChartCell(
-                        l.observationsEventsUnit,
-                        p.ink,
-                        value: '${focused.length}',
-                      ),
-                      for (final k in focusedKinds)
+                  PendingContent(
+                    pending: _pending,
+                    child: ChartKeyReadout(
+                      time: prettyDay(focus, l),
+                      timeSpan: days.map((d) => prettyDay(d, l)).toList(),
+                      scrubbed: true,
+                      cells: [
                         ChartCell(
-                          findingTitle(l, Finding(k, focus)),
-                          p.on(findingColor(k)),
-                          value: '${focused.where((f) => f.kind == k).length}',
+                          l.observationsEventsUnit,
+                          p.ink,
+                          value: _failed ? null : '${focused.length}',
                         ),
-                    ],
+                        for (final k in focusedKinds)
+                          ChartCell(
+                            k == FindingKind.irregularRhythm
+                                ? l.observationsPulsePattern
+                                : findingTitle(l, Finding(k, focus)),
+                            p.on(findingColor(k)),
+                            value:
+                                '${focused.where((f) => f.kind == k).length}',
+                          ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: S.x2),
-                  if (focused.isEmpty)
+                  if (!_pending && !_failed && focused.isEmpty)
                     Padding(
                       padding: const EdgeInsets.all(S.x3),
                       child: Text(
@@ -194,29 +222,51 @@ class _FindingsLogState extends State<FindingsLog> {
                         style: F.body.copyWith(color: p.ink2),
                       ),
                     ),
-                  for (final f in focused)
-                    Padding(
-                      padding: const EdgeInsets.only(top: S.x2),
+                  if (_pending)
+                    PendingContent(
+                      pending: true,
                       child: WhyRow(
-                        id: 'finding:${f.kind.name}:${f.date}',
-                        title:
-                            '${prettyDay(f.date, l)} · ${findingTitle(l, f)}',
-                        body: findingDetail(l, f),
-                        color: findingColor(f.kind),
-                        icon: findingIcon(f),
+                        id: 'pending-observation',
+                        title: l.findingsLogTitle,
+                        body: l.findingsLogDerivedNote,
+                        color: C.red,
+                        icon: LucideIcons.heartPulse,
                         fullText: true,
-                        onTap: f.kind == FindingKind.rhrShift
-                            ? () => Navigator.of(c).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => RhrChangesScreen(
-                                    findings: widget.findings,
-                                    points: widget.rhr,
-                                  ),
-                                ),
-                              )
-                            : null,
                       ),
                     ),
+                  for (final entry in focused)
+                    if (_pending &&
+                        entry is DailyObservation &&
+                        entry.kind == FindingKind.irregularRhythm)
+                      const SizedBox.shrink()
+                    else if (entry case PulseObservation(:final episode))
+                      PulseEpisodeRow(
+                        episode,
+                        key: ValueKey('observation-episode:${episode.id}'),
+                      )
+                    else if (entry case DailyObservation(finding: final f))
+                      Padding(
+                        padding: const EdgeInsets.only(top: S.x2),
+                        child: WhyRow(
+                          id: 'finding:${f.kind.name}:${f.date}',
+                          title:
+                              '${prettyDay(f.date, l)} · ${findingTitle(l, f)}',
+                          body: findingDetail(l, f),
+                          color: findingColor(f.kind),
+                          icon: findingIcon(f),
+                          fullText: true,
+                          onTap: f.kind == FindingKind.rhrShift
+                              ? () => Navigator.of(c).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => RhrChangesScreen(
+                                      findings: widget.findings,
+                                      points: widget.rhr,
+                                    ),
+                                  ),
+                                )
+                              : null,
+                        ),
+                      ),
                 ],
               ),
               // Slot-centred dates share the plot cells and precede its readout.
@@ -245,25 +295,32 @@ class _FindingsLogState extends State<FindingsLog> {
                 slots: 7,
                 slotBars: true,
                 snapToSlots: true,
-                keys: [
-                  ChartKey.slots(
-                    l.observationsEventsUnit,
-                    p.ink,
-                    counts,
-                    (i, v) => '${v.round()}',
-                    bars: true,
-                  ),
-                ],
+                keys: _pending || _failed
+                    ? const []
+                    : [
+                        ChartKey.slots(
+                          l.observationsEventsUnit,
+                          p.ink,
+                          counts,
+                          (i, v) => '${v.round()}',
+                          bars: true,
+                        ),
+                      ],
                 time: (v) =>
                     prettyDay(days[ChartScrub.slotAt(7, v, bars: true)], l),
                 onChanged: (v) => setState(
                   () => _focus = days[ChartScrub.slotAt(7, v, bars: true)],
                 ),
-                child: _DayMarkers(
-                  days: days,
-                  events: widget.findings,
-                  top: axisTop,
-                  p: p,
+                child: PendingContent(
+                  pending: _pending,
+                  child: _pending
+                      ? const PendingPlot(shape: PendingChartShape.bars)
+                      : _DayMarkers(
+                          days: days,
+                          events: history,
+                          top: axisTop,
+                          p: p,
+                        ),
                 ),
               ),
             ),
@@ -283,6 +340,17 @@ class _FindingsLogState extends State<FindingsLog> {
           icon: const Icon(LucideIcons.chartLine),
           label: Text(l.rhrChangesTitle),
         ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
+          onPressed: () => Navigator.of(c).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const PulseEpisodesScreen(),
+            ),
+          ),
+          child: const Text('See all pulse episodes'),
+        ),
+      ),
       const SizedBox(height: S.x3),
       Text(
         l.findingsLogDerivedNote,
@@ -302,7 +370,7 @@ class _DayMarkers extends StatelessWidget {
     required this.p,
   });
   final List<String> days;
-  final List<Finding> events;
+  final List<ObservationEntry> events;
   final int top;
   final P p;
   @override
@@ -318,13 +386,16 @@ class _DayMarkers extends StatelessWidget {
               children: [
                 for (final kind in FindingKind.values)
                   for (final event in events.where(
-                    (f) => f.date == day && f.kind == kind,
+                    (f) => f.occursOn(day) && f.kind == kind,
                   ))
                     SizedBox(
                       height: _observationPlotHeight / top,
                       child: Center(
                         child: Icon(
-                          findingIcon(event),
+                          findingIcon(switch (event) {
+                            DailyObservation(:final finding) => finding,
+                            PulseObservation() => Finding(event.kind, day),
+                          }),
                           size: math.min(20, _observationPlotHeight / top - 2),
                           color: p.on(findingColor(kind)),
                         ),
@@ -455,7 +526,9 @@ class FindingRow extends StatelessWidget {
     // English rather than not at all.
     final l =
         AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));
-    final title = findingTitle(l, f);
+    final title = f.kind == FindingKind.irregularRhythm
+        ? 'Historical daily flag: episode recording unavailable'
+        : findingTitle(l, f);
     final detail = findingDetail(l, f);
     final note = switch (f.alert) {
       final a? => a.note(l, time: formatClockOf(a.at)),

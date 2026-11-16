@@ -3968,6 +3968,7 @@
   "pulseAlertUnknown": "L’alerte a peut-être été envoyée {when}",
   "pulseAlertQuiet": "Pas d’alerte : retenue pendant les heures calmes",
   "pulseAlertEarlier": "Signalé par une version antérieure de l’application {when}",
+<<<<<<< HEAD
   "helpLookingForSomething": "Vous cherchez quelque chose ?",
   "helpAllGuides": "Tous les guides",
   "helpTopicEmpty": "Il n’y a pas encore de guides pour cet onglet.",
@@ -3999,4 +4000,11 @@
   "homeLastKnownUpdating": "Dernières données {time} · mise à jour",
   "homeLastKnownFailed": "Dernières données {time} · échec de la mise à jour",
   "homeLastKnownSource": "{status}. Lecture {readTime}. Calcul {computedTime}."
+=======
+  "observationsLoading": "Chargement des observations",
+  "observationsPulsePattern": "Pouls irrégulier",
+  "pulseEpisodeReadingTitle": "Mesure de rythme irrégulier",
+  "pulseEpisodeSummaryTitle": "{count, plural, =1{Mesures de rythme irrégulier sur 1 épisode} other{Mesures de rythme irrégulier sur {count} épisodes}}",
+  "pulseEpisodeReadingBody": "{dates}. Les mesures au poignet ont montré un rythme irrégulier. Les mouvements ou le positionnement du capteur peuvent influencer les mesures. Ce n’est pas un diagnostic. Touchez pour consulter."
+>>>>>>> a3877523a
 }

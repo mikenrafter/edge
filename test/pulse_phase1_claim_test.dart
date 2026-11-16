@@ -331,7 +331,7 @@ void main() {
           quietEnabled: true,
           quietStartMin: (minute + 1380) % 1440,
           quietEndMin: (minute + 60) % 1440,
-          criticalOverridesQuiet: false,
+          criticalOverridesQuiet: true,
         )
         .save();
     await PulseAlertDelivery.run(individualDays: {d});

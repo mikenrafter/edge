@@ -9876,6 +9876,7 @@
   "pulseAlertUnknown": "Оповещение, возможно, было отправлено {when}",
   "pulseAlertQuiet": "Оповещения нет: отложено из-за тихих часов",
   "pulseAlertEarlier": "Оповещено более ранней версией приложения {when}",
+<<<<<<< HEAD
   "helpLookingForSomething": "Что-то ищете?",
   "helpAllGuides": "Все руководства",
   "helpTopicEmpty": "Для этой вкладки пока нет руководств.",
@@ -9944,4 +9945,11 @@
   "homeLastKnownUpdating": "Последние данные {time} · обновление",
   "homeLastKnownFailed": "Последние данные {time} · ошибка обновления",
   "homeLastKnownSource": "{status}. Прочитано {readTime}. Рассчитано {computedTime}."
+=======
+  "observationsLoading": "Загрузка наблюдений",
+  "observationsPulsePattern": "Нерегулярный пульс",
+  "pulseEpisodeReadingTitle": "Запись нерегулярного ритма",
+  "pulseEpisodeSummaryTitle": "{count, plural, one{Записи нерегулярного ритма за {count} эпизод} few{Записи нерегулярного ритма за {count} эпизода} many{Записи нерегулярного ритма за {count} эпизодов} other{Записи нерегулярного ритма за {count} эпизода}}",
+  "pulseEpisodeReadingBody": "{dates}. Измерения на запястье показали нерегулярный ритм. Движение или прилегание датчика могут влиять на измерения. Это не диагноз. Нажмите, чтобы посмотреть запись."
+>>>>>>> a3877523a
 }

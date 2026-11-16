@@ -630,7 +630,19 @@ dependencies:
       # staging_effective_method, staging_fallback and staging_fallback_sec;
       # staging_method stays the requested method. sleep.stage group counter
       # 3 -> 4. Cardio output is unchanged (kAlgoVersion 119).
-      ref: d876c427ce59eed95b5e54411e3b69253f294ae6
+      # REPIN @ cfd45a6 (pilot/pulse-episodes, on d876c427 + the pulse detector):
+      # irregular-pulse episodes. A record overlap (a beat modelled up to 2 s
+      # before the previous record's last beat) is held in detection order and
+      # refuses only its own pair; windows take evaluateFromMs/evaluateToMs so a
+      # window decides the same in any query range. Pulse episode output only
+      # (new, behind no stored value of an earlier version): kAlgoVersion stays 120.
+      # LOCAL FORK PIN (unpublished): pulse v4 requires a narrow respiratory
+      # sinusoid fit and fixed-floor-negative original-beat residuals before
+      # excluding a window. Personal thresholds retain their safety bound.
+      # kAlgoVersion 123.
+      # Until the owner publishes this SHA, development requires the gitignored
+      # pubspec_overrides.yaml pointing at the local analytics pulse-fixes worktree.
+      ref: 8f3c08c5ae63619c3707246e5587ed6adced5bd5
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
