@@ -1,4 +1,6 @@
 {
+  "helpOpenForTab": "Abrir Ayuda para {tab}",
+  "@helpOpenForTab": {"description": "Accessible name of the tab footer. Names Help and its tab destination.", "placeholders": {"tab": {"type": "String", "description": "Localized tab name"}}},
   "@@locale": "es",
   "chartPanelLatest": "ÚLTIMO",
   "chartPanelSelected": "SELECCIONADO",
@@ -3824,7 +3826,7 @@
   "guideHrZonesIntro": "La pantalla de zonas de frecuencia cardíaca está detrás de tu puntuación de {score}. Son tres toques.",
   "guideHrZonesStep1": "En la pestaña **{tab}**, toca el anillo **{ring}**.",
   "guideHrZonesStep2": "Desplázate hacia abajo hasta **{section}** y toca **{action}** a la derecha.",
-  "guideHrZonesStep3": "Esta es la pantalla **{screen}**. Para introducir las tuyas, toca **{link}**.",
+  "guideHrZonesStep3": "En **{screen}**, toca **{link}**, o **{editLink}** si ya has guardado tus propias zonas.",
   "guideHrZonesAltTitle": "Otra forma de llegar",
   "guideHrZonesAltBody": "Abre la pestaña **{tab}** y toca **{link}**; después sigue los pasos 2 y 3.",
   "guideHrZonesMissingTitle": "¿No ves «{section}»?",
@@ -3837,7 +3839,7 @@
   "guideAlarmTitle": "Dónde poner una alarma, o una hora distinta cada día",
   "guideAlarmStep1": "En la pestaña **{tab}**, toca **{row}**.",
   "guideAlarmStep2": "Toca la pestaña del día que quieras, por ejemplo **{day}**, y luego la primera fila de debajo para activar ese día.",
-  "guideAlarmStep3": "Después toca **{wake}** bajo ese día y elige la hora. Cada día puede tener su propia hora.",
+  "guideAlarmStep3": "Toca **{wake}**, elige la hora y luego toca **Save**.",
   "guideAlarmAltBody": "Abre **{settings}** y toca **{alarm}**.",
   "guideAlarmMissingTitle": "¿No ves «{wake}»?",
   "guideAlarmMissingBody": "**{wake}** solo aparece cuando el día está activado: actívalo con la primera fila bajo las pestañas de los días. Si una sección está plegada (**{more}** en la pestaña Sueño, o la que hay bajo las pestañas de los días), toca su título para abrirla.",
@@ -3847,7 +3849,7 @@
   "guideAddNapFoundTitle": "Siestas que detectó la banda",
   "guideAddNapFoundBody": "Las siestas que detectó la banda aparecen en la misma pantalla. Si alguna es incorrecta, toca **{notNap}** a su lado.",
   "guideAddNapRulesTitle": "¿La siesta no se guarda?",
-  "guideAddNapRulesBody": "Una siesta dura entre 5 minutos y 6 horas, tiene que haber terminado ya y no puede solaparse con otra siesta ni con tu sueño principal.",
+  "guideAddNapRulesBody": "Una siesta dura entre {minMinutes} minutos y {maxHours} horas y debe haber terminado. No puede solaparse con otra siesta. Si se solapa con tu sueño principal o lo toca directamente, la app combina ambos en un solo intervalo de sueño principal, desde el inicio más temprano hasta el final más tardío. No guarda una siesta aparte.",
   "guideRemoveTitle": "Dónde quitar una siesta o una sesión que no fue real",
   "guideRemoveStep1": "En la pestaña **{tab}**, toca la tarjeta **{card}**. Solo aparece mientras haya algo esperando tu respuesta.",
   "guideRemoveStep2": "Cada elemento tiene su propio **{discard}**. Tócalo en la siesta o la sesión que no ocurrió; el resaltado muestra las opciones.",
@@ -3876,17 +3878,17 @@
   "guideStartStep3": "Revisa los detalles y toca **{start}**.",
   "guideStartStep4": "Para detenerla, toca el cuadrado rojo (**{finish}**). Llegarás al resumen de tu sesión.",
   "guideStartNoBandTitle": "¿Sin banda conectada?",
-  "guideStartNoBandBody": "Aun así puedes empezar una sesión. Sin la banda no habrá frecuencia cardíaca.",
+  "guideStartNoBandBody": "Aun así puedes empezar una sesión. Una banda desconectada no aporta frecuencia cardíaca, pero otro sensor de frecuencia cardíaca conectado sí puede hacerlo.",
   "guideStartPauseTitle": "¿Necesitas un descanso?",
   "guideStartPauseBody": "Toca **{pause}** para parar el reloj y **{resume}** para seguir.",
   "guideLogPastTitle": "Dónde registrar una sesión que olvidaste grabar",
   "guideLogPastStep1": "En la pestaña **{tab}**, abre **{history}**.",
-  "guideLogPastStep2": "Desplázate hasta el final y toca **{log}**.",
+  "guideLogPastStep2": "Toca **{log}** encima de tus sesiones.",
   "guideLogPastStep3": "Elige la actividad, completa las horas de **{when}** y toca **{logIt}**.",
   "guideLogPastScoreTitle": "¿Tendrá puntuación?",
   "guideLogPastScoreBody": "Si la banda registró tu frecuencia cardíaca en ese tiempo, la sesión se puntúa con ella. Si no, se guarda sin puntuación.",
   "guideLogPastMissingTitle": "¿No ves «{log}»?",
-  "guideLogPastMissingBody": "Está al final de todo de **{history}**, debajo de tus sesiones. Desplázate hasta abajo del todo.",
+  "guideLogPastMissingBody": "En **{history}**, busca la acción encima de tus sesiones.",
   "guideDontSeeIt": "¿No lo ves?",
   "guideExit": "Salir",
   "guideExitLabel": "Salir de la guía",
@@ -3983,5 +3985,33 @@
   "pulseAlertNotPermitted": "Sin aviso: las notificaciones no estaban permitidas",
   "pulseAlertUnknown": "Es posible que el aviso se enviara {when}",
   "pulseAlertQuiet": "Sin aviso: retenido por las horas de silencio",
-  "pulseAlertEarlier": "Avisado por una versión anterior de la app {when}"
+  "pulseAlertEarlier": "Avisado por una versión anterior de la app {when}",
+  "helpLookingForSomething": "¿Buscas algo?",
+  "helpAllGuides": "Todas las guías",
+  "helpTopicEmpty": "Todavía no hay guías para esta pestaña.",
+  "@guideAddNapRulesBody": {
+    "description": "Footer card body: nap limits come from the shared form validation caps.",
+    "placeholders": {
+      "minMinutes": {
+        "type": "String"
+      },
+      "maxHours": {
+        "type": "String"
+      }
+    }
+  },
+  "@guideHrZonesStep3": {
+    "description": "Step 3 caption. The screen title and both button labels are quoted verbatim; Edit appears after saving manual zones.",
+    "placeholders": {
+      "screen": {
+        "type": "String"
+      },
+      "link": {
+        "type": "String"
+      },
+      "editLink": {
+        "type": "String"
+      }
+    }
+  }
 }

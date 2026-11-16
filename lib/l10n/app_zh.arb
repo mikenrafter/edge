@@ -1,4 +1,6 @@
 {
+  "helpOpenForTab": "打开{tab}的帮助",
+  "@helpOpenForTab": {"description": "Accessible name of the tab footer. Names Help and its tab destination.", "placeholders": {"tab": {"type": "String", "description": "Localized tab name"}}},
   "@@locale": "zh",
   "chartPanelLatest": "最新",
   "chartPanelSelected": "已选",
@@ -3806,7 +3808,7 @@
   "guideHrZonesIntro": "心率区间页面位于你的“{score}”之后，点三下即可到达。",
   "guideHrZonesStep1": "在**{tab}**标签页，点按**{ring}**圆环。",
   "guideHrZonesStep2": "向下滚动到**{section}**，然后点按右侧的**{action}**。",
-  "guideHrZonesStep3": "这是**{screen}**页面。要输入自己的区间，请点按**{link}**。",
+  "guideHrZonesStep3": "在**{screen}**页面，点按**{link}**；如果你已经保存了自己的区间，请点按**{editLink}**。",
   "guideHrZonesAltTitle": "另一条路径",
   "guideHrZonesAltBody": "打开**{tab}**标签页，点按**{link}**，然后按第 2、3 步操作。",
   "guideHrZonesMissingTitle": "没有看到“{section}”？",
@@ -3819,7 +3821,7 @@
   "guideAlarmTitle": "在哪里设置闹钟，或每天不同的时间",
   "guideAlarmStep1": "在**{tab}**标签页点按**{row}**。",
   "guideAlarmStep2": "点按所需日期的标签，例如**{day}**，然后点按标签下方的第一行，开启该日。",
-  "guideAlarmStep3": "然后点按该日下方的**{wake}**并选择时间。每天都可以有不同的时间。",
+  "guideAlarmStep3": "点按 **{wake}**，选择时间，然后点按 **Save**。",
   "guideAlarmAltBody": "打开**{settings}**，然后点按**{alarm}**。",
   "guideAlarmMissingTitle": "没有看到“{wake}”？",
   "guideAlarmMissingBody": "只有开启该日后才会显示**{wake}**：请用日期标签下方的第一行开启。如果某个部分已折叠（睡眠标签页上的**{more}**，或日期标签下方的那一部分），请点按其标题展开。",
@@ -3829,7 +3831,7 @@
   "guideAddNapFoundTitle": "手环发现的小睡",
   "guideAddNapFoundBody": "手环检测到的小睡会列在同一页面。如果有误，点按它旁边的**{notNap}**。",
   "guideAddNapRulesTitle": "小睡无法保存？",
-  "guideAddNapRulesBody": "小睡时长需在 5 分钟到 6 小时之间，必须已经结束，且不能与其他小睡或你的主睡眠重叠。",
+  "guideAddNapRulesBody": "小睡时长须在 {minMinutes} 分钟到 {maxHours} 小时之间，且必须已经结束。小睡不能与其他小睡重叠。如果它与主要睡眠重叠或首尾相接，应用会将两者合并为一个主要睡眠时段，采用较早的开始时间和较晚的结束时间，不会另存一段小睡。",
   "guideRemoveTitle": "在哪里移除不是真实发生的小睡或训练",
   "guideRemoveStep1": "在**{tab}**标签页，点按**{card}**卡片。只有在有内容等你确认时才会显示。",
   "guideRemoveStep2": "每个项目都有自己的**{discard}**。请在没有发生的小睡或训练上点按它；高亮显示可选操作。",
@@ -3858,17 +3860,17 @@
   "guideStartStep3": "确认详情，然后点按**{start}**。",
   "guideStartStep4": "要结束时，点按红色方块（**{finish}**）。你会进入这次训练的总结页。",
   "guideStartNoBandTitle": "没有连接手环？",
-  "guideStartNoBandBody": "你仍然可以开始训练，只是没有手环就记录不到心率。",
+  "guideStartNoBandBody": "你仍然可以开始训练。未连接的手环不会提供心率，但其他已连接的心率传感器可以。",
   "guideStartPauseTitle": "需要休息一下？",
   "guideStartPauseBody": "点按**{pause}**暂停计时，点按**{resume}**继续。",
   "guideLogPastTitle": "在哪里补记忘记记录的训练",
   "guideLogPastStep1": "在**{tab}**标签页，打开**{history}**。",
-  "guideLogPastStep2": "滚动到底部，点按**{log}**。",
+  "guideLogPastStep2": "点按训练记录上方的 **{log}**。",
   "guideLogPastStep3": "选择活动，填写**{when}**的时间，然后点按**{logIt}**。",
   "guideLogPastScoreTitle": "会有评分吗？",
   "guideLogPastScoreBody": "如果手环记录了那段时间的心率，训练就会据此评分；否则保存时不带评分。",
   "guideLogPastMissingTitle": "没有看到“{log}”？",
-  "guideLogPastMissingBody": "它在**{history}**的最底部，位于你的训练记录下方。请一直滚动到底。",
+  "guideLogPastMissingBody": "在 **{history}** 中，操作按钮位于训练记录上方。",
   "guideDontSeeIt": "没看到？",
   "guideExit": "退出",
   "guideExitLabel": "退出指南",
@@ -3965,5 +3967,33 @@
   "pulseAlertNotPermitted": "未提醒：未允许通知",
   "pulseAlertUnknown": "提醒可能已发送 {when}",
   "pulseAlertQuiet": "未提醒：因免打扰时段而暂缓",
-  "pulseAlertEarlier": "已由应用的早期版本提醒 {when}"
+  "pulseAlertEarlier": "已由应用的早期版本提醒 {when}",
+  "helpLookingForSomething": "在找什么吗？",
+  "helpAllGuides": "所有指南",
+  "helpTopicEmpty": "此标签页暂无指南。",
+  "@guideAddNapRulesBody": {
+    "description": "Footer card body: nap limits come from the shared form validation caps.",
+    "placeholders": {
+      "minMinutes": {
+        "type": "String"
+      },
+      "maxHours": {
+        "type": "String"
+      }
+    }
+  },
+  "@guideHrZonesStep3": {
+    "description": "Step 3 caption. The screen title and both button labels are quoted verbatim; Edit appears after saving manual zones.",
+    "placeholders": {
+      "screen": {
+        "type": "String"
+      },
+      "link": {
+        "type": "String"
+      },
+      "editLink": {
+        "type": "String"
+      }
+    }
+  }
 }

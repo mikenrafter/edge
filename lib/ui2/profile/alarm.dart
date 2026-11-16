@@ -37,6 +37,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../guides/guide_accordion.dart';
 import '../../data/day_label.dart' show calendarDaysBetween;
 import '../../l10n/app_localizations.dart';
 import '../../state/alarm_draft.dart';
@@ -777,7 +778,9 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
                             'keeps running on the band.',
                             icon: LucideIcons.bluetoothOff,
                           ),
-                        _dayTabs(c, week),
+                        // These choose the edited day inside the page; they do
+                        // not bound the guide area above the pinned Save bar.
+                        GuideNavigationHeader(child: _dayTabs(c, week)),
                         SettingsAccordion(
                           'Alarm and wake',
                           id: 'alarm_day',

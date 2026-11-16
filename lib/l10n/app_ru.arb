@@ -1,4 +1,6 @@
 {
+  "helpOpenForTab": "Открыть справку для вкладки «{tab}»",
+  "@helpOpenForTab": {"description": "Accessible name of the tab footer. Names Help and its tab destination.", "placeholders": {"tab": {"type": "String", "description": "Localized tab name"}}},
   "@@locale": "ru",
   "chartPanelLatest": "ПОСЛЕДНЕЕ",
   "chartPanelSelected": "ВЫБРАНО",
@@ -9254,7 +9256,7 @@
   "guideHrZonesIntro": "Экран зон пульса находится за показателем «{score}». Нужно три нажатия.",
   "guideHrZonesStep1": "На вкладке **{tab}** нажмите на кольцо **{ring}**.",
   "guideHrZonesStep2": "Прокрутите вниз до **{section}** и нажмите **{action}** справа.",
-  "guideHrZonesStep3": "Это экран **{screen}**. Чтобы задать свои зоны, нажмите **{link}**.",
+  "guideHrZonesStep3": "На экране **{screen}** нажмите **{link}** или **{editLink}**, если вы уже сохранили свои зоны.",
   "guideHrZonesAltTitle": "Другой путь",
   "guideHrZonesAltBody": "Откройте вкладку **{tab}** и нажмите **{link}**, затем выполните шаги 2 и 3.",
   "guideHrZonesMissingTitle": "Не видите «{section}»?",
@@ -9294,11 +9296,15 @@
     }
   },
   "@guideHrZonesStep3": {
+    "description": "Step 3 caption. The screen title and both button labels are quoted verbatim; Edit appears after saving manual zones.",
     "placeholders": {
       "screen": {
         "type": "String"
       },
       "link": {
+        "type": "String"
+      },
+      "editLink": {
         "type": "String"
       }
     }
@@ -9328,7 +9334,7 @@
   "guideAlarmTitle": "Где поставить будильник или задать своё время на каждый день",
   "guideAlarmStep1": "На вкладке **{tab}** нажмите **{row}**.",
   "guideAlarmStep2": "Нажмите на вкладку нужного дня, например **{day}**, затем на первую строку под вкладками, чтобы включить этот день.",
-  "guideAlarmStep3": "Затем нажмите **{wake}** под этим днём и выберите время. У каждого дня может быть своё время.",
+  "guideAlarmStep3": "Нажмите **{wake}**, выберите время, затем нажмите **Save**.",
   "guideAlarmAltBody": "Откройте **{settings}**, затем нажмите **{alarm}**.",
   "guideAlarmMissingTitle": "Не видите «{wake}»?",
   "guideAlarmMissingBody": "**{wake}** появляется, только когда день включён: включите его первой строкой под вкладками дней. Если какой-то раздел свёрнут (**{more}** на вкладке «Сон» или раздел под вкладками дней), нажмите на его заголовок, чтобы открыть.",
@@ -9338,7 +9344,7 @@
   "guideAddNapFoundTitle": "Дневной сон, найденный браслетом",
   "guideAddNapFoundBody": "Дневной сон, который заметил браслет, показан на том же экране. Если что-то определено неверно, нажмите рядом **{notNap}**.",
   "guideAddNapRulesTitle": "Дневной сон не сохраняется?",
-  "guideAddNapRulesBody": "Дневной сон длится от 5 минут до 6 часов, должен уже закончиться и не может пересекаться с другим дневным сном или с основным сном.",
+  "guideAddNapRulesBody": "Дневной сон длится от {minMinutes} минут до {maxHours} часов и должен уже закончиться. Он не может пересекаться с другим дневным сном. Если он пересекается с основным сном или примыкает к нему без перерыва, приложение объединяет их в один период основного сна: от более раннего начала до более позднего окончания. Отдельный дневной сон не сохраняется.",
   "guideRemoveTitle": "Где убрать дневной сон или тренировку, которых не было",
   "guideRemoveStep1": "На вкладке **{tab}** нажмите на карточку **{card}**. Она есть, только пока что-то ждёт вашего ответа.",
   "guideRemoveStep2": "У каждого пункта своя кнопка **{discard}**. Нажмите её у дневного сна или тренировки, которых не было; подсветка показывает варианты.",
@@ -9367,17 +9373,17 @@
   "guideStartStep3": "Проверьте детали и нажмите **{start}**.",
   "guideStartStep4": "Чтобы остановить, нажмите красный квадрат (**{finish}**). Вы попадёте на итоги тренировки.",
   "guideStartNoBandTitle": "Браслет не подключён?",
-  "guideStartNoBandBody": "Тренировку всё равно можно начать. Без браслета пульса в ней не будет.",
+  "guideStartNoBandBody": "Тренировку всё равно можно начать. Отключённый браслет не передаёт пульс, но другой подключённый датчик пульса может его передавать.",
   "guideStartPauseTitle": "Нужен перерыв?",
   "guideStartPauseBody": "Нажмите **{pause}**, чтобы остановить время, и **{resume}**, чтобы продолжить.",
   "guideLogPastTitle": "Где записать тренировку, которую вы забыли начать",
   "guideLogPastStep1": "На вкладке **{tab}** откройте **{history}**.",
-  "guideLogPastStep2": "Прокрутите в самый низ и нажмите **{log}**.",
+  "guideLogPastStep2": "Нажмите **{log}** над списком тренировок.",
   "guideLogPastStep3": "Выберите активность, заполните время в разделе **{when}** и нажмите **{logIt}**.",
   "guideLogPastScoreTitle": "Будет ли оценка?",
   "guideLogPastScoreBody": "Если браслет записывал ваш пульс в это время, тренировка получит оценку по нему. Если нет, она сохранится без оценки.",
   "guideLogPastMissingTitle": "Не видите «{log}»?",
-  "guideLogPastMissingBody": "Она в самом низу раздела **{history}**, под вашими тренировками. Прокрутите до конца.",
+  "guideLogPastMissingBody": "В разделе **{history}** действие находится над списком тренировок.",
   "@guideStepOf": {
     "placeholders": {
       "step": {
@@ -9869,5 +9875,70 @@
   "pulseAlertNotPermitted": "Оповещения нет: уведомления не были разрешены",
   "pulseAlertUnknown": "Оповещение, возможно, было отправлено {when}",
   "pulseAlertQuiet": "Оповещения нет: отложено из-за тихих часов",
-  "pulseAlertEarlier": "Оповещено более ранней версией приложения {when}"
+  "pulseAlertEarlier": "Оповещено более ранней версией приложения {when}",
+  "helpLookingForSomething": "Что-то ищете?",
+  "helpAllGuides": "Все руководства",
+  "helpTopicEmpty": "Для этой вкладки пока нет руководств.",
+  "@guideAddNapRulesBody": {
+    "description": "Footer card body: nap limits come from the shared form validation caps.",
+    "placeholders": {
+      "minMinutes": {
+        "type": "String"
+      },
+      "maxHours": {
+        "type": "String"
+      }
+    }
+  },
+  "@guideRemoveStep2Still": {
+    "placeholders": {
+      "discard": {
+        "type": "String",
+        "description": "Name of the Discard button"
+      }
+    }
+  },
+  "@guideTabProxy": {
+    "placeholders": {
+      "tab": {
+        "type": "String",
+        "description": "The tab's name, as the tab bar prints it."
+      }
+    }
+  },
+  "@guideRemoveStep3": {
+    "placeholders": {
+      "save": {
+        "type": "String",
+        "description": "Name of the Save button"
+      }
+    }
+  },
+  "@guideAddNapMissingTitle": {
+    "placeholders": {
+      "naps": {
+        "type": "String",
+        "description": "Name of the Naps button"
+      }
+    }
+  },
+  "@guideAddNapMissingBody": {
+    "placeholders": {
+      "naps": {
+        "type": "String",
+        "description": "Name of the Naps button"
+      },
+      "night": {
+        "type": "String",
+        "description": "Title of the section that holds it"
+      }
+    }
+  },
+  "@guideExpandAccordion": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  }
 }

@@ -10,6 +10,7 @@ import '../../l10n/app_localizations.dart';
 import 'guide_text.dart';
 
 enum ScreenLabel implements GuideText {
+  alarmSave,
   activityLiveFinishSessionLabel,
   activityPickerSearchLabel,
   activitySetupHeartRateLabel,
@@ -43,6 +44,8 @@ enum ScreenLabel implements GuideText {
 
   @override
   String of(AppLocalizations l) => switch (this) {
+        // The fork alarm header prints Save in every locale (alarm.dart).
+        ScreenLabel.alarmSave => 'Save',
         ScreenLabel.activityLiveFinishSessionLabel => l.activityLiveFinishSessionLabel,
         ScreenLabel.activityPickerSearchLabel => l.activityPickerSearchLabel,
         ScreenLabel.activitySetupHeartRateLabel => l.activitySetupHeartRateLabel,

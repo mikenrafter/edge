@@ -1,8 +1,8 @@
 // GUIDE RUNNER (live mode): starts, owns and ends the one [GuideRun] of the
 // app, and does the navigation around it.
 //
-//  * start: bring the app to the guide's start (pop every route above the
-//    shell's root route, then select [Guide.start] with the SHELL'S OWN API:
+//  * start: retain a screen matching a guide step, or bring the app to its
+//    first step (pop unrelated routes, then select [Guide.start] with the shell API:
 //    the tab selection AppShell already follows, or the Settings screen), then
 //    put a [LiveGuideOverlay] into the ROOT Overlay of the app's Navigator,
 //    above every route.
@@ -123,7 +123,9 @@ class GuideRunner extends ChangeNotifier {
     if (_shell == null || nav == null) return const GuideStartNoShell();
     exit();
     final shell = _shell;
-    while (nav.canPop()) {
+    final variant = (choice as GuideVariantFound).variant;
+
+    while (nav.canPop() && !_matchesCurrentScreen(variant)) {
       final before = routes.topRoute;
       // maybePop invokes the screen's own refusal/cleanup handler. A handled
       // Back can return true without removing the route (PopScope, capture).
@@ -131,8 +133,9 @@ class GuideRunner extends ChangeNotifier {
       if (!nav.mounted || !identical(shell, _shell)) return const GuideStartNoShell();
       if (!handled || before?.isActive != false || identical(before, routes.topRoute)) return const GuideStartBlocked();
     }
-    _selectStart(guide.start);
-    final run = GuideRun(guide: guide, variant: (choice as GuideVariantFound).variant);
+    final inPlace = _matchesCurrentScreen(variant);
+    if (!inPlace) _selectStart(guide.start);
+    final run = GuideRun(guide: guide, variant: variant);
     _run = run;
     run.addListener(_runChanged);
     _entry = OverlayEntry(builder: (_) => LiveGuideOverlay(
@@ -141,7 +144,34 @@ class GuideRunner extends ChangeNotifier {
     ));
     nav.overlay!.insert(_entry!);
     notifyListeners();
+    if (!inPlace && variant.steps.first.node != null) unawaited(_reachStart(run));
     return GuideStarted(run);
+  }
+
+  bool _matchesCurrentScreen(GuideVariant variant) {
+    // During a pop the route's page is retained, while routes.page waits for
+    // its transition. Read identity here; input and geometry wait below.
+    final route = routes.topRoute;
+    final page = route is PageRoute<dynamic> ? route.subtreeContext : null;
+    if (page is! Element || !page.mounted) return false;
+    final node = GuideNavigation.location(page);
+    return node != null && variant.steps.any((step) => step.node == node);
+  }
+
+  /// Tab selection can retain History or Activities. Reuse the real navigation
+  /// controls to reach step one, after the shell and any Help pop have settled.
+  /// CLAIM(help-start-on-path) [help_review_flow_test].
+  Future<void> _reachStart(GuideRun run) async {
+    await WidgetsBinding.instance.endOfFrame;
+    while (identical(_run, run) && routes.isTransitioning) {
+      await WidgetsBinding.instance.endOfFrame;
+    }
+    if (!identical(_run, run)) return;
+    final page = routes.page;
+    final node = page == null ? null : GuideNavigation.location(page);
+    if (node != null && run.variant.steps.any((step) => step.node == node)) return;
+    final l = navigatorKey.currentContext == null ? null : AppLocalizations.of(navigatorKey.currentContext!);
+    await _walkHops(run, 0, l);
   }
 
   void _selectStart(GuideStart start) {
@@ -233,7 +263,7 @@ class GuideRunner extends ChangeNotifier {
       if (page == null || hop == null) break;
       // The same hop again means the last press changed nothing: stop, don't spin.
       if (previous != null && previous.node == hop.node && previous.kind == hop.kind) break;
-      if (!_makeHop(hop, page)) break;
+      if (!await _makeHop(hop, page, run)) break;
       previous = hop;
       moved = true;
       // One frame shows the new screen, the next lets the guide's overlay plan it (its
@@ -257,17 +287,34 @@ class GuideRunner extends ChangeNotifier {
   }
 
   /// Does one hop with the app's own controls; false when it is not one the runner can make.
-  bool _makeHop(GuideHop hop, Element page) {
+  Future<bool> _makeHop(GuideHop hop, Element page, GuideRun run) async {
     switch (hop.kind) {
       case GuideHopKind.subTab:
         // A real tap on the sub-tab's own control, as a user would make it: no closure of
         // the screen is called from here.
         final index = GuideNavigation.subTabIndex(hop.node);
         if (index == null) return false;
+        // At a long tab's footer the lazy list may have disposed SubTabs.
+        // Bring the header back before resolving the real control.
+        for (final e in onstageElements(page)) {
+          if (e is! StatefulElement || e.state is! ScrollableState) continue;
+          final scroll = e.state as ScrollableState;
+          if (scroll.axisDirection != AxisDirection.down && scroll.axisDirection != AxisDirection.up) continue;
+          scroll.position.jumpTo(scroll.position.minScrollExtent);
+          break;
+        }
+        await WidgetsBinding.instance.endOfFrame;
+        if (!identical(_run, run) || !page.mounted) return false;
         for (final e in onstageElements(page)) {
           if (e.widget is! SubTabs) continue;
           final controls = onstageElements(e).where((c) => c.widget is Pressable && laidOutBox(c) != null).toList();
-          return index < controls.length && _tap(controls[index], page);
+          if (index >= controls.length) return false;
+          final control = controls[index];
+          // A footer is below the sub-tabs; a retained horizontal scroll may
+          // also hide For you. Reveal the actual control before tapping it.
+          await Scrollable.ensureVisible(control);
+          await WidgetsBinding.instance.endOfFrame;
+          return identical(_run, run) && control.mounted && page.mounted && _tap(control, page);
         }
         return false;
       case GuideHopKind.tab || GuideHopKind.page:

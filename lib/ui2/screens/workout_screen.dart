@@ -44,6 +44,7 @@ import '../charts.dart';
 import '../older_version.dart';
 import '../profile/profile.dart' show ProfileAvatar, openProfile;
 import '../grammar.dart';
+import '../guides/help_entry.dart';
 import '../last_result_cache.dart';
 import '../revision.dart';
 import '../status_line.dart' show HeaderRows;
@@ -125,6 +126,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
                 1 => _activities(c, d),
                 _ => _history(c, d),
               },
+              const HelpEntry(topic: GuideTopic.activity),
             ])
               if (w is StartCard)
                 w

@@ -99,7 +99,7 @@ final List<_Scene> _scenes = [
   // on this screen), so the quoted label is the day TAB the caption names; the row
   // itself is proven by the 'alarm keys' test below.
   _Scene('alarm-schedule', 'pick-day', AlarmScreenView, () => AlarmScreenView(connected: true, schedule: fillDefaultAlarmSchedule(const [])), (l) => l.wellnessTue, printed: false),
-  _Scene('alarm-schedule', 'set-wake-time', AlarmScreenView, () => AlarmScreenView(connected: true, schedule: _tuesdayOn), (l) => l.alarmWakeTimeRowTitle),
+  _Scene('alarm-schedule', 'set-wake-time', AlarmScreenView, () => AlarmScreenView(connected: true, schedule: _tuesdayOn), (l) => 'Save'),
   _Scene('add-nap', 'open-naps', SleepTab, () => _tab(const SleepTab()), (l) => l.sleepDetailEditNaps),
   _Scene('add-nap', 'log-nap', NapsScreen, () => const NapsScreen(), (l) => l.napsLogANap),
   _Scene('remove-detected', 'open-detected', HomeScreen, () => _tab(const HomeScreen()), (l) => l.homeReviewActivities),

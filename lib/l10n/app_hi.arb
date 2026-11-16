@@ -1,4 +1,6 @@
 {
+  "helpOpenForTab": "{tab} के लिए मदद खोलें",
+  "@helpOpenForTab": {"description": "Accessible name of the tab footer. Names Help and its tab destination.", "placeholders": {"tab": {"type": "String", "description": "Localized tab name"}}},
   "@@locale": "hi",
   "chartPanelLatest": "नवीनतम",
   "chartPanelSelected": "चयनित",
@@ -3806,7 +3808,7 @@
   "guideHrZonesIntro": "हृदय गति ज़ोन की स्क्रीन आपके {score} स्कोर के पीछे है। इसमें तीन टैप लगते हैं।",
   "guideHrZonesStep1": "**{tab}** टैब पर **{ring}** रिंग पर टैप करें।",
   "guideHrZonesStep2": "**{section}** तक नीचे स्क्रोल करें और दाईं ओर **{action}** पर टैप करें।",
-  "guideHrZonesStep3": "यह **{screen}** स्क्रीन है। अपने ज़ोन डालने के लिए **{link}** पर टैप करें।",
+  "guideHrZonesStep3": "**{screen}** स्क्रीन पर **{link}** पर टैप करें, या अगर आपने अपने ज़ोन पहले ही सेव कर लिए हैं तो **{editLink}** पर टैप करें।",
   "guideHrZonesAltTitle": "दूसरा रास्ता",
   "guideHrZonesAltBody": "**{tab}** टैब खोलें और **{link}** पर टैप करें, फिर चरण 2 और 3 अपनाएँ।",
   "guideHrZonesMissingTitle": "\"{section}\" नहीं दिख रहा?",
@@ -3819,7 +3821,7 @@
   "guideAlarmTitle": "अलार्म कहाँ लगाएँ, या हर दिन अलग समय",
   "guideAlarmStep1": "**{tab}** टैब पर **{row}** पर टैप करें।",
   "guideAlarmStep2": "जिस दिन का अलार्म चाहिए उसके टैब पर टैप करें, जैसे **{day}**, फिर उसके नीचे की पहली पंक्ति पर टैप करके उस दिन को चालू करें।",
-  "guideAlarmStep3": "फिर उस दिन के नीचे **{wake}** पर टैप करें और समय चुनें। हर दिन का अपना समय हो सकता है।",
+  "guideAlarmStep3": "**{wake}** पर टैप करें, समय चुनें, फिर **Save** पर टैप करें।",
   "guideAlarmAltBody": "**{settings}** खोलें, फिर **{alarm}** पर टैप करें।",
   "guideAlarmMissingTitle": "\"{wake}\" नहीं दिख रहा?",
   "guideAlarmMissingBody": "**{wake}** तभी दिखता है जब दिन चालू हो: दिन के टैब के नीचे की पहली पंक्ति से उसे चालू करें। अगर कोई भाग बंद है (नींद टैब पर **{more}**, या दिन के टैब के नीचे वाला), तो उसका शीर्षक टैप करके खोलें।",
@@ -3829,7 +3831,7 @@
   "guideAddNapFoundTitle": "बैंड को मिली झपकियाँ",
   "guideAddNapFoundBody": "बैंड ने जो झपकियाँ पहचानीं, वे इसी स्क्रीन पर दिखती हैं। कोई गलत हो तो उसके पास **{notNap}** पर टैप करें।",
   "guideAddNapRulesTitle": "झपकी सेव नहीं हो रही?",
-  "guideAddNapRulesBody": "झपकी 5 मिनट से 6 घंटे के बीच की होनी चाहिए, पहले ही खत्म हो चुकी हो, और किसी दूसरी झपकी या आपकी मुख्य नींद से टकराए नहीं।",
+  "guideAddNapRulesBody": "झपकी {minMinutes} मिनट से {maxHours} घंटे तक की होनी चाहिए और समाप्त हो चुकी होनी चाहिए। इसका समय किसी दूसरी झपकी से नहीं टकराना चाहिए। अगर इसका समय आपकी मुख्य नींद से टकराता है या दोनों के बीच कोई अंतराल नहीं है, तो ऐप दोनों को मुख्य नींद की एक अवधि में जोड़ देता है। यह पहले शुरू हुए समय से बाद में समाप्त हुए समय तक होती है। ऐप अलग से झपकी नहीं सहेजता।",
   "guideRemoveTitle": "जो झपकी या सेशन असली नहीं था, उसे कहाँ हटाएँ",
   "guideRemoveStep1": "**{tab}** टैब पर **{card}** कार्ड पर टैप करें। यह तभी दिखता है जब कुछ आपके जवाब का इंतज़ार कर रहा हो।",
   "guideRemoveStep2": "हर आइटम का अपना **{discard}** है। जो झपकी या सेशन हुआ ही नहीं, उसी पर इसे टैप करें; हाइलाइट विकल्प दिखाता है।",
@@ -3858,17 +3860,17 @@
   "guideStartStep3": "ब्योरा जाँचें, फिर **{start}** पर टैप करें।",
   "guideStartStep4": "रोकने के लिए लाल चौकोर (**{finish}**) पर टैप करें। आप अपने सेशन के सारांश पर पहुँचेंगे।",
   "guideStartNoBandTitle": "बैंड कनेक्ट नहीं है?",
-  "guideStartNoBandBody": "फिर भी आप सेशन शुरू कर सकते हैं। बैंड के बिना उसमें हृदय गति नहीं होगी।",
+  "guideStartNoBandBody": "फिर भी आप सेशन शुरू कर सकते हैं। डिस्कनेक्ट किया हुआ बैंड हृदय गति नहीं देता, लेकिन कोई दूसरा कनेक्ट किया हुआ हृदय गति सेंसर दे सकता है।",
   "guideStartPauseTitle": "ब्रेक चाहिए?",
   "guideStartPauseBody": "घड़ी रोकने के लिए **{pause}** और आगे बढ़ने के लिए **{resume}** पर टैप करें।",
   "guideLogPastTitle": "रिकॉर्ड करना भूले सेशन को कहाँ दर्ज करें",
   "guideLogPastStep1": "**{tab}** टैब पर **{history}** खोलें।",
-  "guideLogPastStep2": "सबसे नीचे स्क्रोल करें और **{log}** पर टैप करें।",
+  "guideLogPastStep2": "अपने सत्रों के ऊपर **{log}** पर टैप करें।",
   "guideLogPastStep3": "गतिविधि चुनें, **{when}** के समय भरें, फिर **{logIt}** पर टैप करें।",
   "guideLogPastScoreTitle": "क्या इसे स्कोर मिलेगा?",
   "guideLogPastScoreBody": "अगर बैंड ने उस समय की आपकी हृदय गति दर्ज की थी, तो उसी से सेशन का स्कोर बनता है। नहीं तो यह बिना स्कोर के सेव होता है।",
   "guideLogPastMissingTitle": "\"{log}\" नहीं दिख रहा?",
-  "guideLogPastMissingBody": "यह **{history}** में सबसे नीचे, आपके सेशन के बाद है। पूरा नीचे तक स्क्रोल करें।",
+  "guideLogPastMissingBody": "**{history}** में, अपने सत्रों के ऊपर यह विकल्प देखें।",
   "guideDontSeeIt": "नहीं दिख रहा?",
   "guideExit": "बाहर निकलें",
   "guideExitLabel": "गाइड से बाहर निकलें",
@@ -3965,5 +3967,33 @@
   "pulseAlertNotPermitted": "कोई अलर्ट नहीं: सूचनाओं की अनुमति नहीं थी",
   "pulseAlertUnknown": "अलर्ट शायद भेजा गया था {when}",
   "pulseAlertQuiet": "कोई अलर्ट नहीं: शांत घंटों के कारण रोका गया",
-  "pulseAlertEarlier": "ऐप के पुराने संस्करण द्वारा अलर्ट किया गया {when}"
+  "pulseAlertEarlier": "ऐप के पुराने संस्करण द्वारा अलर्ट किया गया {when}",
+  "helpLookingForSomething": "कुछ ढूँढ रहे हैं?",
+  "helpAllGuides": "सभी गाइड",
+  "helpTopicEmpty": "इस टैब के लिए अभी कोई गाइड नहीं है।",
+  "@guideAddNapRulesBody": {
+    "description": "Footer card body: nap limits come from the shared form validation caps.",
+    "placeholders": {
+      "minMinutes": {
+        "type": "String"
+      },
+      "maxHours": {
+        "type": "String"
+      }
+    }
+  },
+  "@guideHrZonesStep3": {
+    "description": "Step 3 caption. The screen title and both button labels are quoted verbatim; Edit appears after saving manual zones.",
+    "placeholders": {
+      "screen": {
+        "type": "String"
+      },
+      "link": {
+        "type": "String"
+      },
+      "editLink": {
+        "type": "String"
+      }
+    }
+  }
 }

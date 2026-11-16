@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/state/alarm_schedule.dart';
+import 'package:openstrap_edge/state/alarm_draft.dart';
 import 'package:openstrap_edge/ui2/activity/catalogue.dart';
 import 'package:openstrap_edge/ui2/activity/day_strain.dart';
 import 'package:openstrap_edge/ui2/activity/live.dart';
@@ -54,6 +55,7 @@ final r2Scenes = <R2Scene>[
   R2Scene('alarm-schedule', 'pick-day', page: () => AlarmScreenView(
     connected: true, schedule: fillDefaultAlarmSchedule(const []))),
   R2Scene('alarm-schedule', 'set-wake-time', page: () => AlarmScreenView(
+    onSave: (_) async => const AlarmSaveOutcome(AlarmSaveStatus.savedOffline),
     connected: true, schedule: fillDefaultAlarmSchedule([
       const AlarmScheduleEntry(weekday: 1, hour: 7, minute: 30)]))),
   const R2Scene('add-nap', 'open-naps'),
@@ -127,6 +129,15 @@ Future<R2Mounted> pumpR2Scene(WidgetTester t, R2Scene scene, {Size size = r2Size
       : scene.page!();
     app.navigator.push(MaterialPageRoute<void>(builder: (_) => page));
     await settleLiveGuide(t);
+    if (scene.id == 'alarm-schedule/set-wake-time') {
+      // Save is the target now. Stage a changed time through the actual picker,
+      // rather than pointing at a permanently disabled preview-only Save.
+      await t.tap(find.byKey(const ValueKey('alarm-wake-time')));
+      await settleLiveGuide(t);
+      expect(find.byType(TimePickerDialog), findsOneWidget);
+      app.navigator.pop(const TimeOfDay(hour: 9, minute: 17));
+      await settleLiveGuide(t);
+    }
   }
   if (scene.staged) {
     // The pending row may begin beyond the lazy viewport. Build/reveal it

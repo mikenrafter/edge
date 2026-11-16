@@ -1,4 +1,6 @@
 {
+  "helpOpenForTab": "Ouvrir l’aide pour {tab}",
+  "@helpOpenForTab": {"description": "Accessible name of the tab footer. Names Help and its tab destination.", "placeholders": {"tab": {"type": "String", "description": "Localized tab name"}}},
   "@@locale": "fr",
   "chartPanelLatest": "DERNIER",
   "chartPanelSelected": "SÉLECTIONNÉ",
@@ -3806,7 +3808,7 @@
   "guideHrZonesIntro": "L’écran des zones de fréquence cardiaque se trouve derrière votre score « {score} ». Trois appuis suffisent.",
   "guideHrZonesStep1": "Dans l’onglet **{tab}**, touchez l’anneau **{ring}**.",
   "guideHrZonesStep2": "Faites défiler jusqu’à **{section}**, puis touchez **{action}** à droite.",
-  "guideHrZonesStep3": "Voici l’écran **{screen}**. Pour saisir vos propres zones, touchez **{link}**.",
+  "guideHrZonesStep3": "Sur l’écran **{screen}**, touchez **{link}**, ou **{editLink}** si vous avez déjà enregistré vos propres zones.",
   "guideHrZonesAltTitle": "Un autre chemin",
   "guideHrZonesAltBody": "Ouvrez l’onglet **{tab}** et touchez **{link}**, puis suivez les étapes 2 et 3.",
   "guideHrZonesMissingTitle": "Vous ne voyez pas « {section} » ?",
@@ -3819,7 +3821,7 @@
   "guideAlarmTitle": "Où régler une alarme, ou une heure différente chaque jour",
   "guideAlarmStep1": "Dans l’onglet **{tab}**, touchez **{row}**.",
   "guideAlarmStep2": "Touchez l’onglet du jour voulu, par exemple **{day}**, puis la première ligne en dessous pour activer ce jour.",
-  "guideAlarmStep3": "Touchez ensuite **{wake}** sous ce jour et choisissez l’heure. Chaque jour peut avoir sa propre heure.",
+  "guideAlarmStep3": "Touchez **{wake}**, choisissez l’heure, puis touchez **Save**.",
   "guideAlarmAltBody": "Ouvrez **{settings}**, puis touchez **{alarm}**.",
   "guideAlarmMissingTitle": "Vous ne voyez pas « {wake} » ?",
   "guideAlarmMissingBody": "**{wake}** n’apparaît que lorsque le jour est activé : activez-le avec la première ligne sous les onglets des jours. Si une section est repliée (**{more}** dans l’onglet Sommeil, ou celle sous les onglets des jours), touchez son titre pour l’ouvrir.",
@@ -3829,7 +3831,7 @@
   "guideAddNapFoundTitle": "Siestes détectées par le bracelet",
   "guideAddNapFoundBody": "Les siestes détectées par le bracelet figurent sur le même écran. Si l’une est fausse, touchez **{notNap}** à côté.",
   "guideAddNapRulesTitle": "La sieste ne s’enregistre pas ?",
-  "guideAddNapRulesBody": "Une sieste dure entre 5 minutes et 6 heures, doit être déjà terminée et ne peut chevaucher ni une autre sieste ni votre sommeil principal.",
+  "guideAddNapRulesBody": "Une sieste dure entre {minMinutes} minutes et {maxHours} heures et doit être terminée. Elle ne peut pas chevaucher une autre sieste. Si elle chevauche votre sommeil principal ou le touche directement, l’app réunit les deux en une seule plage de sommeil principal, du début le plus tôt à la fin la plus tardive. Elle n’enregistre pas de sieste distincte.",
   "guideRemoveTitle": "Où supprimer une sieste ou une séance qui n’était pas réelle",
   "guideRemoveStep1": "Dans l’onglet **{tab}**, touchez la carte **{card}**. Elle n’apparaît que lorsque quelque chose attend votre réponse.",
   "guideRemoveStep2": "Chaque élément a son propre **{discard}**. Touchez-le sur la sieste ou la séance qui n’a pas eu lieu ; la surbrillance montre les choix.",
@@ -3858,17 +3860,17 @@
   "guideStartStep3": "Vérifiez les détails, puis touchez **{start}**.",
   "guideStartStep4": "Pour arrêter, touchez le carré rouge (**{finish}**). Vous arrivez au résumé de votre séance.",
   "guideStartNoBandTitle": "Pas de bracelet connecté ?",
-  "guideStartNoBandBody": "Vous pouvez quand même démarrer une séance. Sans le bracelet, elle n’aura pas de fréquence cardiaque.",
+  "guideStartNoBandBody": "Vous pouvez quand même démarrer une séance. Un bracelet déconnecté ne fournit pas de fréquence cardiaque, mais un autre capteur de fréquence cardiaque connecté peut le faire.",
   "guideStartPauseTitle": "Besoin d’une pause ?",
   "guideStartPauseBody": "Touchez **{pause}** pour arrêter le chrono, et **{resume}** pour continuer.",
   "guideLogPastTitle": "Où enregistrer une séance que vous avez oublié de lancer",
   "guideLogPastStep1": "Dans l’onglet **{tab}**, ouvrez **{history}**.",
-  "guideLogPastStep2": "Faites défiler jusqu’en bas et touchez **{log}**.",
+  "guideLogPastStep2": "Touchez **{log}** au-dessus de vos séances.",
   "guideLogPastStep3": "Choisissez l’activité et renseignez les heures sous **{when}**, puis touchez **{logIt}**.",
   "guideLogPastScoreTitle": "Aura-t-elle un score ?",
   "guideLogPastScoreBody": "Si le bracelet a enregistré votre fréquence cardiaque sur cette période, la séance reçoit un score. Sinon, elle est enregistrée sans score.",
   "guideLogPastMissingTitle": "Vous ne voyez pas « {log} » ?",
-  "guideLogPastMissingBody": "Il se trouve tout en bas de **{history}**, sous vos séances. Faites défiler jusqu’au bout.",
+  "guideLogPastMissingBody": "Dans **{history}**, cherchez l’action au-dessus de vos séances.",
   "guideDontSeeIt": "Vous ne le voyez pas ?",
   "guideExit": "Quitter",
   "guideExitLabel": "Quitter le guide",
@@ -3965,5 +3967,33 @@
   "pulseAlertNotPermitted": "Pas d’alerte : les notifications n’étaient pas autorisées",
   "pulseAlertUnknown": "L’alerte a peut-être été envoyée {when}",
   "pulseAlertQuiet": "Pas d’alerte : retenue pendant les heures calmes",
-  "pulseAlertEarlier": "Signalé par une version antérieure de l’application {when}"
+  "pulseAlertEarlier": "Signalé par une version antérieure de l’application {when}",
+  "helpLookingForSomething": "Vous cherchez quelque chose ?",
+  "helpAllGuides": "Tous les guides",
+  "helpTopicEmpty": "Il n’y a pas encore de guides pour cet onglet.",
+  "@guideAddNapRulesBody": {
+    "description": "Footer card body: nap limits come from the shared form validation caps.",
+    "placeholders": {
+      "minMinutes": {
+        "type": "String"
+      },
+      "maxHours": {
+        "type": "String"
+      }
+    }
+  },
+  "@guideHrZonesStep3": {
+    "description": "Step 3 caption. The screen title and both button labels are quoted verbatim; Edit appears after saving manual zones.",
+    "placeholders": {
+      "screen": {
+        "type": "String"
+      },
+      "link": {
+        "type": "String"
+      },
+      "editLink": {
+        "type": "String"
+      }
+    }
+  }
 }
