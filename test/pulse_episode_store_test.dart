@@ -50,10 +50,11 @@ void main() {
   });
   // WHY/CLAIM(pulse-version-history): a new detector cannot rewrite stored decisions.
   // # catches: retracting or revising a previous-version episode during replay.
-  test('previous detector history and delivery remain byte-identical', () async {
+  test('v1 detector history and delivery remain byte-identical', () async {
     final old = detection();
     await store.reconcile(old, origin: 'sync', nowMs: 1);
-    await db.update('pulse_episode_revision', {'detector': ana.pulseDetectorVersion - 1});
+    await db.update('pulse_episode_revision', {'detector': 1});
+    await db.insert('pulse_episode_alias', {'alias':'previous-alias','episode_id':'strap:0'});
     final claimed = await store.claim(['strap:0'], token: 'previous', nowMs: 2);
     await store.finish(claimed, token: 'previous', state: 'sent', nowMs: 3);
     final before = [for (final table in pulseEpisodeTables.take(5))
@@ -76,7 +77,7 @@ void main() {
   // # catches: dropping an entire new episode because its prefix overlaps history.
   test('a qualifying tail beyond protected history creates its own alert once', () async {
     await store.reconcile(detection(), origin: 'sync', nowMs: 1);
-    await db.update('pulse_episode_revision', {'detector': ana.pulseDetectorVersion - 1});
+    await db.update('pulse_episode_revision', {'detector': 1});
     final old = jsonEncode(await db.query('pulse_episode', where: 'id=?', whereArgs: ['strap:0']));
     await store.reconcile(detection(offset: 600000), origin: 'sync', nowMs: 2);
     expect(jsonEncode(await db.query('pulse_episode', where: 'id=?', whereArgs: ['strap:0'])), old);
@@ -91,6 +92,8 @@ void main() {
       test('late $reason retracts while preserving $state ancestry', () async {
         final prior = detection();
         await store.reconcile(prior, origin: 'sync', nowMs: 1);
+        // V2 rows must remain correctable across the v3 bump.
+        await db.update('pulse_episode_revision', {'detector': 2});
         await db.update('pulse_episode_outbox', {
           'state': state == 'notifications off' ? 'not_sent' : state,
           'reason': state == 'notifications off' ? state : null,

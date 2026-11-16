@@ -479,8 +479,9 @@ class PulseEpisodeStore {
           whereArgs: [oldId],
         );
       }
-      // A quality refusal retains prior evidence. Only fully evaluated, good
-      // nonqualifying windows can retract an earlier decision.
+      // CLAIM(pulse-late-context): quality refusal retains prior evidence;
+      // complete semantic exclusions retract without creating delivery debt
+      // [pulse_episode_store_test]. Consumed delivery ancestry is untouched.
       final candidates = await txn.query(
         'pulse_episode',
         where: "status = 'active'",
@@ -500,7 +501,7 @@ class PulseEpisodeStore {
               (w) =>
                   w.source == old['source'] &&
                   !w.pending &&
-                  w.reasons.isEmpty &&
+                  w.qualityReasons.isEmpty &&
                   w.startMs >= (old['start_ms'] as int) &&
                   w.endMs <= (old['end_ms'] as int),
             )
@@ -526,9 +527,11 @@ class PulseEpisodeStore {
   Future<List<Map<String, Object?>>> _protectedEpisodes(
     DatabaseExecutor executor,
   ) => executor.rawQuery(
+    // V1 history is frozen. V2 decisions remain correctable by v3; freezing
+    // every older detector would preserve the stale semantic debt fixed here.
     'SELECT DISTINCT e.* FROM pulse_episode e JOIN pulse_episode_revision r '
     'ON r.episode_id=e.id WHERE r.detector < ? ORDER BY e.id',
-    [ana.pulseDetectorVersion],
+    [2],
   );
 
   Future<PulseEpisodeSnapshot?> get(String episodeId) async {

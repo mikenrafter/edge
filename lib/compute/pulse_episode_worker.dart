@@ -132,11 +132,10 @@ class PulseEpisodeWorker {
         oldHi = overlapping.first['hi'] as int?;
     if (oldLo != null && oldLo - 600000 < lo) lo = oldLo - 600000;
     if (oldHi != null && oldHi + 600000 > hi) hi = oldHi + 600000;
-    // Windows start in [lo, hi); each one decides on its whole five-minute
-    // context, so the rows reach that far past both ends and the verdict does
-    // not depend on which day's run looks at the window.
-    final readLo = lo - ana.pulseBaselineLookbackMs - _support - _slack,
-        readHi = hi + _support + _slack;
+    // Windows start in [lo, hi). Read both spectral neighbors and each one's
+    // correction support, so the day's evaluation range cannot change a verdict.
+    final readLo = lo - ana.pulseBaselineLookbackMs - 2 * _support - _slack,
+        readHi = hi + 2 * _support + _slack;
     final startBucket = readLo ~/ 900000, endBucket = (readHi - 1) ~/ 900000;
     final revisions = await db.rawQuery(
       'SELECT COALESCE(SUM(rev),0) AS rev FROM input_rev WHERE bucket BETWEEN ? AND ?',
@@ -495,7 +494,7 @@ PulseDetectionResult detectPulseEpisodesHeavy(PulseDetectionInput input) {
   for (final source in inputs.map((b) => b.source).toSet()) {
     for (
       var start = input.start - ana.pulseBaselineLookbackMs;
-      start < (input.evaluateTo ?? input.watermark);
+      start < (input.evaluateTo ?? input.watermark) + ana.pulseWindowMs;
       start += ana.pulseWindowMs
     ) {
       final end = start + ana.pulseWindowMs;

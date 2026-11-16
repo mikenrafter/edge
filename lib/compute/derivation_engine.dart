@@ -1999,7 +1999,10 @@ part 'engine/settled.dart';
 // with bounded personal baselines that preserve fixed floors for irregular RR.
 // Analytics fork 686c173 adds the versioned policy; a local override is
 // required until that unpublished commit is made available by the owner.
-const int kAlgoVersion = 121;
+// 122: pulse detector v3 requires paired respiratory spectra and corrects
+// current-version episodes when complete late context excludes them. V1
+// evidence and delivery remain frozen. Analytics fork 2ba4d4e (local only).
+const int kAlgoVersion = 122;
 class DerivationEngine {
   DerivationEngine({
     this.log,

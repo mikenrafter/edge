@@ -636,13 +636,12 @@ dependencies:
       # refuses only its own pair; windows take evaluateFromMs/evaluateToMs so a
       # window decides the same in any query range. Pulse episode output only
       # (new, behind no stored value of an earlier version): kAlgoVersion stays 120.
-      # LOCAL FORK PIN (unpublished): pulse v2 adds the low-HR sleep breathing
-      # veto, positive motion/wear gates and bounded personal baselines. Personal
-      # thresholds cannot veto uncorrelated windows that pass the fixed floors.
-      # kAlgoVersion 121. Until the owner publishes this commit, development
-      # requires the gitignored pubspec_overrides.yaml pointing at the local
-      # analytics pulse-fixes worktree. No path override is committed.
-      ref: 686c173cb380f444e5ed46220dfdc6ebad739eee
+      # LOCAL FORK PIN (unpublished): pulse v3 requires matching, supported
+      # respiratory spectra instead of chance lag correlation. Personal thresholds
+      # preserve fixed floors for irregular RR. kAlgoVersion 122.
+      # Until the owner publishes this SHA, development requires the gitignored
+      # pubspec_overrides.yaml pointing at the local analytics pulse-fixes worktree.
+      ref: 2ba4d4e0c49bbb4642c4a26464cfab102fe1da3d
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
