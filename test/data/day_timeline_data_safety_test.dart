@@ -57,6 +57,10 @@ void main() {
       // Durable: read back through a NEW connection.
       await LocalDb.close();
       db = await LocalDb.instance;
+      // WHY: the new durable runner must see editor assertions after restart.
+      // catches: writing overrides without enqueuing their recomputation.
+      final jobs = await rows('sleep_edit_job');
+      expect(jobs.map((r) => [r['day_id'], r['phase']]), [[day, 'queued']]);
       final o = await rows('sleep_override');
       expect(o.single['day_id'], day);
       expect([o.single['onset_ts'], o.single['offset_ts'], o.single['source']],

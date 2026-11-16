@@ -58,9 +58,14 @@ void main(){
       final data = hasNight ? loaded : SleepData(day: loaded.day);
       await t.pumpWidget(perfApp(app, SleepDetail(embedded: true, data: data)));
       for (final id in cards) { expect(card(id), findsOneWidget); }
-      expect(within('timeline', find.byType(NightCard)), findsOneWidget);
+      // WHY: v6 summary has a single edit door and no mutable time controls.
+      // catches: rendering the legacy NightCard under the summary.
+      expect(within('timeline', find.text('Edit sleep')), findsOneWidget);
+      expect(within('timeline', find.byType(NightCard)), findsNothing);
       expect(find.byKey(const ValueKey('card:window')), findsNothing);
-      expect(within('timeline', find.byKey(NightCard.askKey)), findsOneWidget);
+      expect(within('timeline', find.text('Not sleep')), findsNothing);
+      expect(within('timeline', find.text('Back to automatic')), findsNothing);
+      expect(within('timeline', find.byKey(NightCard.askKey)), findsNothing);
       expect(find.byType(SettingsAccordion), findsNWidgets(4));
       expect(within('plan', find.text('Alarm')), findsOneWidget);
       expect(within('signals', find.byKey(const ValueKey('sleep-stage-rows'))), findsOneWidget);
@@ -78,16 +83,16 @@ void main(){
     final data = await SleepData.load(repo);
     await t.pumpWidget(perfApp(app, SleepDetail(embedded: true, data: data)));
     await t.pump();
-    await t.ensureVisible(find.byKey(NightCard.askKey));
+    await t.ensureVisible(find.text('Edit sleep'));
     await t.pump();
-    await t.tap(find.byKey(NightCard.askKey));
+    await t.tap(find.text('Edit sleep'));
     await settle(t);
     expect(find.byType(SleepTimelineEditor), findsOneWidget);
     expect(t.widget<SleepTimelineEditor>(find.byType(SleepTimelineEditor)).data.day, data.day);
     await t.tap(find.byKey(SleepTimelineEditor.cancelKey));
     await settle(t);
     expect(find.byType(SleepTimelineEditor), findsNothing);
-    expect(within('timeline', find.byType(NightCard)), findsOneWidget);
+    expect(within('timeline', find.text('Edit sleep')), findsOneWidget);
     await t.pumpWidget(const SizedBox());
   });
   testWidgets('five cards keep the approved order and first has no collapse control', (t) async {

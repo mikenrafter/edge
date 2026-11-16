@@ -372,6 +372,11 @@ void main() {
         LocalRepositoryImpl(getProfileMap: () => null),
         want: '2026-10-26',
       );
+      // WHY: the day projection must retain the wearer's answer from its own
+      // epoch; stage estimates cannot stand in for this answer.
+      // catches: forDay drops the primary epoch's dream response.
+      expect(data.wakeTimeline.dream?.answer, DreamAnswer.dream);
+      expect(data.wakeTimeline.dream?.at, atMinute(-19));
       expect(data.wakeTimeline.firstFireAt, atMinute(-20));
       expect(data.wakeTimeline.timeToWake, const Duration(minutes: 1));
     },
