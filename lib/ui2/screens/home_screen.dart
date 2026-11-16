@@ -2759,6 +2759,9 @@ class _HomeScreenState extends State<HomeScreen>
       if (mounted) setState(() => _loading = false);
       return;
     }
+    // CLAIM(home-cache-freshness): every read qualifies retained judgments
+    // before its first await [home_cache_warm_reload_test].
+    if (mounted) setState(() { _loading = true; _failed = false; });
     final generation = HomeSnapshotStore.generation;
     bool current() => HomeSnapshotStore.generation == generation &&
         identical(repo, repoOf(context));
