@@ -13,6 +13,7 @@ List<ana.PulseBeatInput> mixedTrace(bool physical, double bpm, double amplitude,
   final phase=2*pi*.25*(physical ? t/1000 : (i+1)*mean/1000);
   return t>=300000 && t<900000 ? (mean+noise+(mixture?amplitude*sin(phase):0)).round() : mean.round();
  });
+}
 void main() {
  // WHY/CLAIM(pulse-respiratory-residual): respiration can coexist with independent irregularity.
  // # catches: spectral matching alone, resampled-domain floors, and personal thresholds suppressing a residual.
