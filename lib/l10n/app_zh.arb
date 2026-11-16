@@ -4007,5 +4007,6 @@
   "sleepSummaryChanged": "修改于 {time}",
   "sleepSummaryPanEarlier": "查看更早",
   "sleepSummaryPanLater": "查看更晚",
-  "sleepSummaryAfterAlarm": "手环报告闹钟后 {time}"
+  "sleepSummaryAfterAlarm": "手环报告闹钟后 {time}",
+  "supplementUnavailable": "{label}，不可用"
 }

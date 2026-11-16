@@ -4007,5 +4007,6 @@
   "sleepSummaryChanged": "बदला गया {time}",
   "sleepSummaryPanEarlier": "पहले का समय देखें",
   "sleepSummaryPanLater": "बाद का समय देखें",
-  "sleepSummaryAfterAlarm": "बैंड द्वारा बताए गए अलार्म के {time} बाद"
+  "sleepSummaryAfterAlarm": "बैंड द्वारा बताए गए अलार्म के {time} बाद",
+  "supplementUnavailable": "{label}, उपलब्ध नहीं"
 }

@@ -394,13 +394,18 @@ void main() {
       await seedNight(0);
       await (await LocalDb.instance).delete('wake_trace');
       final trace = const DbWakeTraceStore();
-      if (method == 'repeat') await trace.append(row('natural_repeat', -2,
-        {'phase': 'result', 'result': 'sent'}));
+      if (method == 'repeat') {
+        await trace.append(row('natural_repeat', -2, {'phase': 'result', 'result': 'sent'}));
+      }
       if (method == 'gradual') await trace.append(row('gradual', -2, {'result': 'sent'}));
-      if (method == 'band') await (await LocalDb.instance).insert('band_events', {'device_id': '', 'ts': epoch, 'event_id': 57});
+      if (method == 'band') {
+        await (await LocalDb.instance).insert('band_events', {'device_id': '', 'ts': epoch, 'event_id': 57, 'hex': 'r1-alarm',
+          'name': 'alarm_started', 'captured_at': alarmAt.millisecondsSinceEpoch});
+      }
       await trace.append(row('ack', 1));
-      if (method == 'late') await trace.append(row('natural_haptic', 2,
-        {'phase': 'result', 'result': 'sent'}));
+      if (method == 'late') {
+        await trace.append(row('natural_haptic', 2, {'phase': 'result', 'result': 'sent'}));
+      }
       await trace.append(row('ack', 3, {'dreamAnswer': 'normal',
         'wakePath': 'alarm', 'dreamAnsweredAtMs': atMinute(4).millisecondsSinceEpoch}));
       await const DbWakeJournal().answerDream(wakeEpochSec: epoch,

@@ -4007,5 +4007,6 @@
   "sleepSummaryChanged": "Modifié {time}",
   "sleepSummaryPanEarlier": "Voir plus tôt",
   "sleepSummaryPanLater": "Voir plus tard",
-  "sleepSummaryAfterAlarm": "{time} après l’alarme signalée par le bracelet"
+  "sleepSummaryAfterAlarm": "{time} après l’alarme signalée par le bracelet",
+  "supplementUnavailable": "{label}, indisponible"
 }

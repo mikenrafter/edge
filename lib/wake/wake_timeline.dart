@@ -46,12 +46,23 @@ class WakeBandAlarm {
   final int code;
 }
 
+// Method evidence is shared by answer writes and read projections. A stored
+// path label alone never proves that an alert was delivered before the ack.
+WakePath? _pathBeforeAck(Iterable<WakeNightEvent> events, DateTime? ack) {
+  final kinds = events.where((e) => e.confirmedDelivery && ack != null && !e.at.isAfter(ack))
+      .map((e) => e.kind).toSet();
+  return kinds.contains(WakeNightEventKind.natural) || kinds.contains(WakeNightEventKind.repeat)
+      ? WakePath.natural : kinds.contains(WakeNightEventKind.gradual)
+      ? WakePath.gradual : kinds.contains(WakeNightEventKind.alarm) ? WakePath.alarm : null;
+}
+
 class WakeNightTimeline {
   const WakeNightTimeline({
     this.events = const [],
     this.deliveries = const [],
     this.firstFireAt,
     this.ackAt,
+    this.acknowledgedPath,
     this.timeToWake,
     this.snoozeCount = 0,
     this.dream,
@@ -62,6 +73,9 @@ class WakeNightTimeline {
   /// summary. [events] retains the legacy first-per-method projection.
   final List<WakeNightEvent> deliveries;
   final Set<String> adjustedFor;
+
+  /// Evidence preceding this projection's selected first acknowledgement.
+  final WakePath? acknowledgedPath;
 
   /// Display projection only. The observed history remains available in [events].
   List<WakeNightEvent> get collapsedEvents {
@@ -192,16 +206,27 @@ class WakeNightTimeline {
       if (e.kind == WakeNightEventKind.ack) ack = e.at;
       if (e.kind == WakeNightEventKind.snooze) snoozes++;
     }
+    // CLAIM(wake-answer-first-ack): an answer survives missing path metadata.
+    // Only successful deliveries before this epoch's first ack identify its
+    // method; historical labels alone cannot establish one.
+    final path = _pathBeforeAck(candidates, ack);
+    final response = dream == null || ack == null ? null
+        : WakeDreamResponse(answer: dream.answer, path: path, at: dream.at);
+    final answeredEvents = [for (final e in events)
+      if (e.kind == WakeNightEventKind.ack)
+        WakeNightEvent(kind: e.kind, at: e.at, wakeEpochSec: e.wakeEpochSec, dream: response)
+      else e];
     return WakeNightTimeline(
-      events: List.unmodifiable(events),
+      events: List.unmodifiable(answeredEvents),
       deliveries: List.unmodifiable(deliveries),
       firstFireAt: firstFire,
       ackAt: ack,
+      acknowledgedPath: path,
       timeToWake: firstFire == null || ack == null || ack.isBefore(firstFire)
           ? null
           : ack.difference(firstFire),
       snoozeCount: snoozes,
-      dream: dream,
+      dream: response,
       adjustedFor: {for (final e in trace)
         if (e.wakeEpochSec == wakeEpochSec && e.kind == 'natural')
           for (final label in e.data['adjustedFor'] as List? ?? const [])

@@ -4025,5 +4025,6 @@
   "sleepSummaryChanged": "Modificado {time}",
   "sleepSummaryPanEarlier": "Ver antes",
   "sleepSummaryPanLater": "Ver después",
-  "sleepSummaryAfterAlarm": "{time} desde la alarma indicada por la pulsera"
+  "sleepSummaryAfterAlarm": "{time} desde la alarma indicada por la pulsera",
+  "supplementUnavailable": "{label}, no disponible"
 }

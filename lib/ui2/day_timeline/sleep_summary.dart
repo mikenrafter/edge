@@ -147,9 +147,12 @@ class SleepSummary extends StatelessWidget {
         ? (inBedMin! - unobservedMin!).clamp(0, inBedMin!) : null;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
-        SizedBox(width: 100, height: 100, child: Stack(alignment: Alignment.center, children: [
+        SizedBox(width: 100, height: 100, child: Semantics(
+          key: const ValueKey('sleep-efficiency-ring'),
+          label: percent == null ? l.supplementUnavailable(l.wearableRowEfficiency) : l.wearableRowEfficiency,
+          value: percent == null ? null : '$percent%',
+          child: ExcludeSemantics(child: Stack(alignment: Alignment.center, children: [
           SizedBox.expand(child: CircularProgressIndicator(
-            key: const ValueKey('sleep-efficiency-ring'),
             value: percent == null ? 0 : eff!.clamp(0, 1).toDouble(),
             strokeWidth: 7, backgroundColor: p.line, color: p.on(C.indigo))),
           Column(mainAxisSize: MainAxisSize.min, children: [
@@ -158,7 +161,7 @@ class SleepSummary extends StatelessWidget {
               style: F.n24.copyWith(color: p.on(C.green), fontSize: 30)),
             Text(l.sleepSummaryAsleep, style: F.over.copyWith(color: p.ink2)),
           ]),
-        ])),
+        ])))),
         const SizedBox(width: S.x5),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(asleepMin == null ? '—' : _duration(asleepMin!, l),

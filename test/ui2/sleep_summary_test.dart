@@ -1,6 +1,7 @@
 // WHY: CLAIM(sleep-summary-truth), CLAIM(sleep-summary-intervals),
 // CLAIM(sleep-summary-end). V6 is a read-only projection of stored facts.
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/ui2/day_timeline/sleep_summary.dart';
@@ -114,14 +115,46 @@ void main() {
   for (final efficiency in [null, double.nan, double.infinity, -.1, 1.1, 0.0, .87]) {
     testWidgets('R1 efficiency semantics distinguish unavailable from $efficiency', (t) async {
       final semantics = t.ensureSemantics();
-      addTearDown(semantics.dispose);
+      try {
       await t.pumpWidget(MaterialApp(theme: buildTheme(Brightness.dark), home: Scaffold(
         body: SingleChildScrollView(child: SleepSummary(efficiency: efficiency,
           sourceText: '', onEdit: () {})))));
-      final data = t.getSemantics(find.byKey(const ValueKey('sleep-efficiency-ring'))).getSemanticsData();
+      final node = t.getSemantics(find.byKey(const ValueKey('sleep-efficiency-ring')));
+      final data = node.getSemanticsData();
       final valid = efficiency != null && efficiency.isFinite && efficiency >= 0 && efficiency <= 1;
       expect(data.label, valid ? 'Sleep efficiency' : 'Sleep efficiency, unavailable');
-      expect(data.value, valid ? '${(efficiency! * 100).round()}%' : '');
+      expect(data.value, valid ? '${(efficiency * 100).round()}%' : '');
+      final values = <String>[];
+      void visit(SemanticsNode node) {
+        final value = node.getSemanticsData().value;
+        if (value.isNotEmpty) values.add(value);
+        node.visitChildren((child) { visit(child); return true; });
+      }
+      visit(node);
+      expect(values, valid ? ['${(efficiency * 100).round()}%'] : isEmpty);
+      } finally { semantics.dispose(); }
+    });
+  }
+
+  // WHY: the unavailable state must be understandable in every shipped locale.
+  for (final entry in const {
+    'en': 'Sleep efficiency, unavailable', 'de': 'Schlafeffizienz, nicht verfügbar',
+    'es': 'Eficiencia del sueño, no disponible', 'fr': 'Efficacité du sommeil, indisponible',
+    'hi': 'नींद की दक्षता, उपलब्ध नहीं', 'ru': 'Эффективность сна, недоступно',
+    'zh': '睡眠效率，不可用',
+  }.entries) {
+    testWidgets('R1 unavailable efficiency semantics in ${entry.key}', (t) async {
+      final semantics = t.ensureSemantics();
+      try {
+        await t.pumpWidget(MaterialApp(locale: Locale(entry.key),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: SingleChildScrollView(child: SleepSummary(sourceText: '', onEdit: () {})))));
+        await t.pumpAndSettle();
+        final data = t.getSemantics(find.byKey(const ValueKey('sleep-efficiency-ring'))).getSemanticsData();
+        expect(data.label, entry.value);
+        expect(data.value, '');
+      } finally { semantics.dispose(); }
     });
   }
 

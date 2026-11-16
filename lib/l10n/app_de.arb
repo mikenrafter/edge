@@ -4113,5 +4113,6 @@
   "sleepSummaryChanged": "Geändert {time}",
   "sleepSummaryPanEarlier": "Früher anzeigen",
   "sleepSummaryPanLater": "Später anzeigen",
-  "sleepSummaryAfterAlarm": "{time} nach dem vom Band gemeldeten Alarm"
+  "sleepSummaryAfterAlarm": "{time} nach dem vom Band gemeldeten Alarm",
+  "supplementUnavailable": "{label}, nicht verfügbar"
 }
