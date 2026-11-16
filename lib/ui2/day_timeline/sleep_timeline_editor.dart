@@ -340,11 +340,11 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
             child: ListView(padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x6), children: [
               Surface(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  TimelineTitleRow('Your sleep', subtitle: span, pills: [
+                  TimelineTitleRow('Your sleep', pills: [
                     TimelinePill('Add sleep block', key: SleepTimelineEditor.addKey, icon: LucideIcons.plus,
                         on: _askSide, onTap: () => setState(() => _askSide = !_askSide)),
-
                   ]),
+                  Text(span, style: F.over.copyWith(color: p.ink3)),
                   Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                     _zoomButton('zoom-in', l.sleepEditorZoomIn, LucideIcons.zoomIn,
                         () => controller.zoomAt((controller.target ?? controller.view).center)),
