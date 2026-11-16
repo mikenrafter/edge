@@ -70,6 +70,35 @@ void main() {
           [at(14), at(14, 40), 'manual']);
     });
 
+    // WHY: CLAIM(sleep-editor-receipt). A batch must publish assertions,
+    // invalidation and every affected day together, including moved naps.
+    // catches: queueing after commit or only queueing the selected night.
+    test('batch receipt queues both nap dates and releases only its own pin atomically', () async {
+      await db.insert('sync_cursor', {'name': LocalDb.kFrozenHeadlineCursor,
+        'value': jsonEncode({'day': day, 'readiness': 71})},
+        conflictAlgorithm: ConflictAlgorithm.replace);
+      await db.transaction((tx) async {
+        await writeSleepEditInTransaction(tx, SleepEditPlan(day: day,
+          naps: [NapWrite(start: at(21), end: at(21, 30),
+            fromStart: at(19, 0, 13), fromEnd: at(19, 30, 13))]));
+        expect((await tx.query('sleep_edit_job', orderBy: 'day_id'))
+          .map((r) => [r['day_id'], r['revision'], r['phase']]),
+          [['2026-11-13', 1, 'queued'], [day, 1, 'queued']]);
+        expect(await tx.query('sync_cursor', where: 'name = ?',
+          whereArgs: [LocalDb.kFrozenHeadlineCursor]), isEmpty);
+      });
+      await LocalDb.close(); db = await LocalDb.instance;
+      expect((await rows('sleep_edit_job')).length, 2);
+      final before = await rows('sleep_edit_job');
+      await expectLater(db.transaction((tx) async {
+        await writeSleepEditInTransaction(tx, SleepEditPlan(day: day,
+          window: (at(23, 0, 13), at(7))));
+        throw StateError('rollback the surrounding batch');
+      }), throwsStateError);
+      expect(await rows('sleep_override'), isEmpty);
+      expect(await rows('sleep_edit_job'), before);
+    });
+
     test('an invalid edit writes nothing at all', () async {
       final before = {for (final t in ['sleep_override', 'sleep_nap']) t: await rows(t)};
       for (final bad in [
