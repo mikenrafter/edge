@@ -173,7 +173,7 @@ void main() {
 
     // WHY: boundary edits must not erase a legacy detector snapshot. Automatic
     // restores original bounds and asleep minutes, including a moved start.
-    for (final shift in [0, 10]) {
+    for (final shift in [0, 10, 1440]) {
       test('R1 legacy moved by $shift minutes restores the preserved snapshot', () async {
         final snapshot = jsonEncode({'start': at(14), 'end': at(14, 30),
           'duration_min': 21, 'in_bed_min': 30, 'source': 'legacy', 'confidence': .8});
@@ -183,14 +183,14 @@ void main() {
           naps: [NapWrite(start: at(16), end: at(16, 40))]));
         final other = (await rows('sleep_nap')).last;
         await writeSleepEdit(db, SleepEditPlan(day: day, naps: [NapWrite(
-          start: at(14, shift), end: at(14, 40), fromStart: at(14),
+          start: at(14, shift), end: at(14, shift + 40), fromStart: at(14),
           fromEnd: at(14, 30), fromSource: 'legacy')]));
         await LocalDb.close(); db = await LocalDb.instance;
-        final edits = await ActivityStore.napEdits(db, day);
+        final edits = await ActivityStore.napEdits(db, shift == 1440 ? '2026-11-15' : day);
         final userNap = edits.where((e) => e.startSec == at(14, shift)).single;
         expect(userNap.snapshot, isNull, reason: 'a moved manual window has no measured split');
         await writeSleepEdit(db, SleepEditPlan(day: day, entry: SleepEntryEdit(
-          main: false, start: at(14, shift), end: at(14, 40), source: 'manual',
+          main: false, start: at(14, shift), end: at(14, shift + 40), source: 'manual',
           action: SleepEntryAction.automatic)));
         await LocalDb.close(); db = await LocalDb.instance;
         final naps = await rows('sleep_nap');
@@ -199,6 +199,8 @@ void main() {
         expect([restored['source'], restored['end_ts']], ['legacy', at(14, 30)]);
         expect(jsonDecode(restored['payload_json'] as String), jsonDecode(snapshot));
         expect(naps.where((r) => r['start_ts'] == at(16)).single, other);
+        expect({for (final j in await rows('sleep_edit_job')) j['day_id']: j['revision']},
+          {day: 3, if (shift == 1440) '2026-11-15': 2});
       });
     }
 

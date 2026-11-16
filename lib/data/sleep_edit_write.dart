@@ -9,6 +9,7 @@
 // Existing overlaps stay visible for correction. Every changed interval is
 // validated against unchanged stored entries before anything is written.
 
+import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 
 import '../compute/nap_edits.dart' show manualNapWindowIsValid;
@@ -93,6 +94,7 @@ Future<void> writeSleepEditInTransaction(Transaction tx, SleepEditPlan plan) asy
   final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
   await _validateSleepEdit(tx, plan);
   final edit = plan.entry;
+  String? restoredDay;
   if (edit != null) {
     if (plan.window != null || plan.naps.isNotEmpty) {
       throw const SleepEditInvalid('Save your time changes before changing this entry.');
@@ -102,12 +104,12 @@ Future<void> writeSleepEditInTransaction(Transaction tx, SleepEditPlan plan) asy
       where: edit.main ? 'day_id = ?' : 'day_id = ? AND start_ts = ?',
       whereArgs: edit.main ? [day] : [day, edit.start]);
     final row = rows.firstOrNull;
-    final mine = const {'manual', 'confirmed', 'rejected'}.contains(edit.source);
-    if (mine && (row == null || row['source'] != edit.source ||
+    final persisted = const {'manual', 'confirmed', 'rejected', 'legacy'}.contains(edit.source);
+    if (persisted && (row == null || row['source'] != edit.source ||
         (!edit.main && row['end_ts'] != edit.end) ||
         (edit.main && edit.source != 'rejected' &&
           (row['onset_ts'] != edit.start || row['offset_ts'] != edit.end))) ||
-        !mine && row != null && row['source'] != 'rejected') {
+        !persisted && row != null && row['source'] != 'rejected') {
       throw const SleepEditInvalid('This sleep entry changed while you were editing. Open it again.');
     }
     if (edit.main) {
@@ -125,8 +127,11 @@ Future<void> writeSleepEditInTransaction(Transaction tx, SleepEditPlan plan) asy
     } else {
       switch (edit.action) {
         case SleepEntryAction.automatic:
-          await tx.delete('sleep_nap', where: 'day_id = ? AND start_ts = ? AND end_ts = ?',
-            whereArgs: [day, edit.start, edit.end]);
+          final payload = row?['payload_json'];
+          if (payload is String) {
+            restoredDay = (jsonDecode(payload) as Map)['_legacy_day'] as String?;
+          }
+          await LocalDb.deleteNapEdit(day, edit.start, transaction: tx);
         case SleepEntryAction.notSleep:
           await LocalDb.putNapEdit(dayId: day, startTs: edit.start, endTs: edit.end,
             source: 'rejected', transaction: tx);
@@ -149,12 +154,22 @@ Future<void> writeSleepEditInTransaction(Transaction tx, SleepEditPlan plan) asy
     await ActivityStore.markDayChanged(tx, plan.day);
   }
   for (final n in plan.naps) {
+    String? legacyPayload;
     if (!n.isNew && n.moved) {
       final fromDay = _dayOf(n.fromStart!);
       final own = await tx.query('sleep_nap',
           where: "day_id = ? AND start_ts = ? AND source != 'rejected'",
           whereArgs: [fromDay, n.fromStart]);
-      if (n.fromSource != null && own.isNotEmpty) {
+      if (own.isNotEmpty && own.single['payload_json'] is String) {
+        final snapshot = Map<String, dynamic>.from(jsonDecode(own.single['payload_json'] as String) as Map);
+        if (snapshot['source'] == 'legacy') {
+          // Preserve original bounds and measured TST for Back to automatic.
+          // Manual composition deliberately ignores this restoration payload.
+          snapshot.putIfAbsent('_legacy_day', () => fromDay);
+          legacyPayload = jsonEncode(snapshot);
+        }
+      }
+      if (n.fromSource != null && n.fromSource != 'legacy' && own.isNotEmpty) {
         // The user's (or a confirmed) row moves: the old row goes.
         await tx.delete('sleep_nap',
             where: 'day_id = ? AND start_ts = ?', whereArgs: [fromDay, n.fromStart]);
@@ -173,14 +188,14 @@ Future<void> writeSleepEditInTransaction(Transaction tx, SleepEditPlan plan) asy
       'end_ts': n.end,
       'source': 'manual',
       'created_at': now,
-      'payload_json': null,
+      'payload_json': legacyPayload,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
     await ActivityStore.supersede(tx, ActivityKind.nap, n.start, n.end);
     await ActivityStore.markDayChanged(tx, day);
   }
   // CLAIM(sleep-editor-receipt): the durable assertion, affected-day jobs and
   // frozen-headline release commit together [day_timeline_data_safety_test].
-  for (final day in plan.days) {
+  for (final day in {...plan.days, ?restoredDay}) {
     await SleepEditStore.enqueue(tx, day);
   }
 }

@@ -289,6 +289,10 @@ class SleepEditStore {
         [day, day, algoVersion],
       );
       if (measured.isEmpty) return false;
+      // CLAIM(retained-nap-receipt): matching the main window proves only
+      // its measurements. Apply the day's pending nap projection under this
+      // same fence before certifying the revision [responsiveness_sleep_r4_test].
+      await LocalDb.applyPendingActivityReviews(transaction: tx, onlyDay: day);
       await tx.rawUpdate(
         'UPDATE sleep_edit_job SET applied_revision = revision WHERE day_id = ?',
         [day],
