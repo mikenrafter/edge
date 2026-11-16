@@ -89,15 +89,15 @@ void main() {
   // # catches: treating semantic reasons as quality refusal or reviving notifications-off debt.
   for (final previousVersion in [2, 3]) {
   for (final reason in ['motion', 'offWrist', 'charging', 'sleepBreathing']) {
-    for (final state in ['owed', 'notifications off', 'sent', 'summary', 'unknown', 'pending']) {
+    for (final state in ['owed', 'notifications off', 'quiet hours', 'sent', 'summary', 'unknown', 'pending']) {
       test('v$previousVersion late $reason retracts while preserving $state ancestry', () async {
         final prior = detection();
         await store.reconcile(prior, origin: 'sync', nowMs: 1);
         // V2 and V3 rows remain correctable across V4; only V1 is frozen.
         await db.update('pulse_episode_revision', {'detector': previousVersion});
         await db.update('pulse_episode_outbox', {
-          'state': state == 'notifications off' ? 'not_sent' : state,
-          'reason': state == 'notifications off' ? state : null,
+          'state': ['notifications off', 'quiet hours'].contains(state) ? 'not_sent' : state,
+          'reason': ['notifications off', 'quiet hours'].contains(state) ? state : null,
           'token': state == 'pending' ? 'in-flight' : null,
         });
         final evidence = [for (final table in ['pulse_episode_revision', 'pulse_evidence_chunk', 'pulse_episode_alias'])
@@ -211,6 +211,42 @@ void main() {
     expect((await store.get('strap:900000'))!.id,'strap:0');
     expect(await store.owed(),isEmpty);
   });
+  // WHY/CLAIM(pulse-quiet-lineage): changing episode boundaries after quiet
+  // hours cannot turn held debt into an audible new notification.
+  // # catches: inheriting consumed claims but dropping quiet-held ancestry.
+  for (final split in [false, true]) {
+    test('quiet-held debt stays quiet through ${split ? 'split' : 'merge'}', () async {
+      final a = detection(), b = detection(offset: 900000);
+      final first = a.episodes.single.windows.take(2).toList();
+      final second = b.episodes.single.windows.take(2).toList();
+      final children = [ana.PulseEpisode('strap', first, ongoing: false),
+        ana.PulseEpisode('strap', second, ongoing: false)];
+      final joined = ana.PulseEpisode('strap',
+        [...first, a.episodes.single.windows.last, ...second], ongoing: false);
+      if (split) {
+        await store.reconcile(ana.PulseDetection(joined.windows, [joined]),
+            origin: 'sync', nowMs: 1);
+      } else {
+        await store.reconcile(ana.PulseDetection([...first, ...second], children),
+            origin: 'sync', nowMs: 1);
+      }
+      await store.deferQuiet();
+      if (!split) {
+        // Only the later contributing root was held; the earliest root must
+        // acquire its quiet reason when the two episodes merge.
+        await db.update('pulse_episode_outbox', {'reason': null},
+            where: 'episode_id=?', whereArgs: ['strap:0']);
+      }
+      await store.reconcile(split
+          ? ana.PulseDetection([...first, ...second], children)
+          : ana.PulseDetection(joined.windows, [joined]), origin: 'bulk', nowMs: 2);
+      final owed = await store.owed();
+      expect(owed, hasLength(split ? 2 : 1));
+      expect(owed.every((r) => r['reason'] == 'quiet hours'), isTrue);
+      expect(owed.every((r) => r['state'] == 'owed'), isTrue);
+    });
+  }
+
   // WHY/CLAIM(pulse-evidence): a trace survives raw removal and repeated derive without duplicate intent.
   test('retained evidence, stable identity and explicit expiry', () async {
     await store.reconcile(detection(), origin: 'sync', nowMs: 1);

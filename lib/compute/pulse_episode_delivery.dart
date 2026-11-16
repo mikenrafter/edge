@@ -3,8 +3,11 @@ import 'dart:math';
 import 'package:intl/intl.dart';
 import '../data/db.dart';
 import '../data/pulse_episode_store.dart';
+import '../l10n/date_text.dart';
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
+import '../notify/notification_prefs.dart';
+import '../state/locale_controller.dart';
 
 class PulseEpisodeDelivery {
   static final _random = Random();
@@ -15,6 +18,12 @@ class PulseEpisodeDelivery {
     final now = DateTime.now().millisecondsSinceEpoch;
     await store.initializeUpgrade(nowMs: now);
     await store.recoverClaims(beforeMs: now - grace.inMilliseconds);
+    final prefs = await NotificationPrefs.load();
+    final localNow = DateTime.now();
+    if (prefs.inQuietHours(localNow.hour * 60 + localNow.minute)) {
+      await store.deferQuiet();
+      return;
+    }
     final owed = await store.owed();
     final individual = owed
         .where((r) => r['origin'] == 'sync' && r['state'] == 'owed')
@@ -26,12 +35,12 @@ class PulseEpisodeDelivery {
     if (bulk.isNotEmpty) await _deliver(store, bulk, summary: true);
   }
 
-  static String recordedWhen(Map<String, Object?> r) {
+  static String recordedWhen(Map<String, Object?> r, {String? locale}) {
     final time = DateTime.fromMillisecondsSinceEpoch(
       r['start_ms'] as int,
       isUtc: true,
     ).add(Duration(minutes: (r['offset_min'] as int?) ?? 0));
-    return DateFormat('EEE d MMM yyyy, HH:mm').format(time);
+    return '${localizedDate(time, locale ?? 'en', withDayOfWeek: true)}, ${DateFormat.Hm(locale).format(time)}';
   }
 
   static Future<void> _deliver(
@@ -51,17 +60,24 @@ class PulseEpisodeDelivery {
     final key = summary
         ? 'pulse-episode-summary:$token'
         : owned.single['delivery_key'] as String;
-    final dates = owned.take(5).map(recordedWhen).join('; ');
+    final l = await LocaleController.currentStrings();
+    final silent = owned.any((r) => r['reason'] == 'quiet hours');
+    var dates = owned
+        .take(5)
+        .map((r) => recordedWhen(r, locale: l.localeName))
+        .join(l.localeName == 'zh' ? '、' : '; ');
+    if (owned.length > 5) {
+      dates = l.pulseSummaryDaysMore(dates, owned.length - 5);
+    }
     final event = NotificationEvent(
       dedupeKey: key,
       category: NotifCategory.health,
-      priority: NotifPriority.critical,
+      priority: NotifPriority.normal,
+      silent: silent,
       title: summary
-          ? 'Found ${owned.length} irregular pulse episodes'
-          : 'Irregular pulse pattern',
-      body:
-          '$dates${owned.length > 5 ? '; and ${owned.length - 5} more' : ''}. '
-          'A wrist pulse flag cannot identify AF or rule out a rhythm problem. A clinician can check with an ECG.',
+          ? l.pulseEpisodeSummaryTitle(owned.length)
+          : l.pulseEpisodeReadingTitle,
+      body: l.pulseEpisodeReadingBody(dates),
       date: owned.first['day'] as String,
       route: summary
           ? '/pulse-episodes'
@@ -70,6 +86,12 @@ class PulseEpisodeDelivery {
     // CLAIM(pulse-claim): transaction claim precedes any OS handoff [pulse_episode_delivery_test].
     final reached = await NotificationCenter.instance.emitReaching(event);
     final fired = await LocalDb.notifFiredAt(key);
+    final after = DateTime.now();
+    final quietHeld =
+        silent ||
+        (await NotificationPrefs.load()).inQuietHours(
+          after.hour * 60 + after.minute,
+        );
     await store.finish(
       ids,
       token: token,
@@ -82,6 +104,8 @@ class PulseEpisodeDelivery {
           ? null
           : fired != null
           ? 'delivery unknown'
+          : quietHeld
+          ? 'quiet hours'
           : 'notifications off',
       summaryKey: summary ? key : null,
       nowMs: DateTime.now().millisecondsSinceEpoch,

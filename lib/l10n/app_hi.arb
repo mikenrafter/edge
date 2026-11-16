@@ -3963,5 +3963,8 @@
   "pulseAlertQuiet": "कोई अलर्ट नहीं: शांत घंटों के कारण रोका गया",
   "pulseAlertEarlier": "ऐप के पुराने संस्करण द्वारा अलर्ट किया गया {when}",
   "observationsLoading": "अवलोकन लोड हो रहे हैं",
-  "observationsPulsePattern": "अनियमित नाड़ी का पैटर्न"
+  "observationsPulsePattern": "अनियमित नाड़ी का पैटर्न",
+  "pulseEpisodeReadingTitle": "अनियमित लय की रीडिंग",
+  "pulseEpisodeSummaryTitle": "{count, plural, =1{1 अवधि में अनियमित लय की रीडिंग} other{{count} अवधियों में अनियमित लय की रीडिंग}}",
+  "pulseEpisodeReadingBody": "{dates}। कलाई की रीडिंग में अनियमित लय दिखी। हिलने-डुलने या सेंसर के फिट से रीडिंग प्रभावित हो सकती है। यह निदान नहीं है। देखने के लिए टैप करें।"
 }

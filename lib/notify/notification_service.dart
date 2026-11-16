@@ -457,17 +457,24 @@ class NotificationService {
     }
   }
 
-  NotificationDetails detailsForEvent(NotificationEvent event) => _details(event.category);
+  /// The same platform options passed to the OS; exposed for policy tests.
+  NotificationDetails detailsForEvent(NotificationEvent event) =>
+      _details(event.category, silent: event.silent);
 
-  NotificationDetails _details(NotifCategory c) {
+  NotificationDetails _details(NotifCategory c, {bool silent = false}) {
     final ch = _channelFor(c);
     return NotificationDetails(
       android: AndroidNotificationDetails(
-        ch.id,
+        // Android channels retain their original sound/vibration settings.
+        // A separate silent channel avoids inheriting the existing health buzz.
+        silent ? '${ch.id}_silent' : ch.id,
         ch.name,
         channelDescription: ch.description,
-        importance: _importanceFor(c),
-        priority: _priorityFor(c),
+        importance: silent ? Importance.low : _importanceFor(c),
+        priority: silent ? Priority.low : _priorityFor(c),
+        playSound: !silent,
+        enableVibration: !silent,
+        silent: silent,
         icon: '@mipmap/launcher_icon',
         // Device alerts reuse FIXED ids (idLowBattery/idCharging), so a re-post
         // is an UPDATE of a card the user is already looking at — it shouldn't
@@ -478,7 +485,11 @@ class NotificationService {
         // from making noise. iOS has no equivalent on DarwinNotificationDetails.
         onlyAlertOnce: c == NotifCategory.device,
       ),
-      iOS: const DarwinNotificationDetails(),
+      iOS: silent
+          ? const DarwinNotificationDetails(
+              presentSound: false, interruptionLevel: InterruptionLevel.passive)
+          : const DarwinNotificationDetails(),
+      macOS: silent ? const DarwinNotificationDetails(presentSound: false) : null,
     );
   }
 
@@ -509,7 +520,7 @@ class NotificationService {
         e.osId ?? await NotificationIds.instance.idFor(e),
         e.title,
         e.body.isEmpty ? null : e.body,
-        _details(e.category),
+        detailsForEvent(e),
         payload: e.route,
       );
       return true;

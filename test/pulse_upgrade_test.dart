@@ -94,7 +94,7 @@ void main() {
     await seedHistory();
     await PulseEpisodeWorker.run(days, processingContext: sync);
     expect(shown, hasLength(2));
-    expect(shown.every((e) => e.title == 'Irregular pulse pattern'), isTrue);
+    expect(shown.every((e) => e.title == 'Irregular rhythm reading'), isTrue);
     await LocalDb.close();
     await PulseEpisodeWorker.run(
       days,

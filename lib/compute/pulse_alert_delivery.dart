@@ -124,7 +124,7 @@ class PulseAlertDelivery {
     final event = NotificationEvent(
       dedupeKey: key,
       category: NotifCategory.health,
-      priority: NotifPriority.critical,
+      priority: NotifPriority.normal,
       title: notice.title(l),
       body: notice.body(l),
       date: day,
@@ -156,7 +156,7 @@ class PulseAlertDelivery {
     final event = NotificationEvent(
       dedupeKey: key,
       category: NotifCategory.health,
-      priority: NotifPriority.critical,
+      priority: NotifPriority.normal,
       title: l.pulseSummaryTitle(owned.length),
       body: l.pulseSummaryBody(owned.length, list),
       date: todayLabel(),

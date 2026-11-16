@@ -136,10 +136,18 @@ class PulseEpisodeStore {
     required int nowMs,
   }) async {
     if ((await db.query('pulse_upgrade', limit: 1)).isNotEmpty) return;
-    await db.execute(
-      'INSERT OR IGNORE INTO pulse_upgrade_record(source,ts_ms) '
-      'SELECT device_id,ts_ms FROM decoded_rr',
-    );
+    // Sparse legacy databases can predate decoded storage. onOpen repairs
+    // them after this transaction; an absent RR table means no keys to capture,
+    // not corruption. Existing tables still fail loudly on invalid reads.
+    final hasRr = (await db.rawQuery(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='decoded_rr'",
+    )).isNotEmpty;
+    if (hasRr) {
+      await db.execute(
+        'INSERT OR IGNORE INTO pulse_upgrade_record(source,ts_ms) '
+        'SELECT device_id,ts_ms FROM decoded_rr',
+      );
+    }
     // A prior pilot may already have episodes. Close their debt in the same
     // transaction, before any delivery path can claim it.
     await db.rawUpdate(
@@ -357,12 +365,16 @@ class PulseEpisodeStore {
         }, conflictAlgorithm: ConflictAlgorithm.ignore);
         // Descendants inherit consumed delivery, including ambiguous claims.
         Map<String, Object?>? inherited;
+        var quietHeld = false;
         for (final old in overlaps) {
           final alerts = await txn.query(
             'pulse_episode_outbox',
             where: 'episode_id = ?',
             whereArgs: [old['id']],
           );
+          if (alerts.isNotEmpty && alerts.first['reason'] == 'quiet hours') {
+            quietHeld = true;
+          }
           if (alerts.isNotEmpty && pulseOutboxConsumed(alerts.first)) {
             inherited = alerts.first;
             break;
@@ -428,6 +440,16 @@ class PulseEpisodeStore {
               id,
               ..._retiredReasons,
             ],
+          );
+        }
+        // Quiet deferral is unconsumed ancestry: a split child or an existing
+        // merge root must remain silent, without inheriting a consumed claim.
+        if (!historical && inherited == null && quietHeld && episode.alertEligible) {
+          await txn.update(
+            'pulse_episode_outbox',
+            {'reason': 'quiet hours'},
+            where: "episode_id=? AND (state='owed' OR (state='not_sent' AND reason IN ('notifications off','quiet hours')))",
+            whereArgs: [id],
           );
         }
         // At most current + handed-off revision. Delivery tombstones are never pruned.
@@ -589,10 +611,20 @@ class PulseEpisodeStore {
     return [for (final r in rows) PulseEpisodeSnapshot(r, null)];
   }
 
+  /// Quiet hours hold only unclaimed debt. Keep this reason durable so the
+  /// first later pass can present silently without changing consumed ancestry.
+  Future<void> deferQuiet() async {
+    await db.rawUpdate(
+      "UPDATE pulse_episode_outbox SET reason='quiet hours' "
+      "WHERE episode_id IN (SELECT id FROM pulse_episode WHERE status='active') "
+      "AND (state='owed' OR (state='not_sent' AND reason IN ('notifications off','quiet hours')))",
+    );
+  }
+
   Future<List<Map<String, Object?>>> owed() =>
       db.rawQuery('''SELECT a.*, e.start_ms,e.end_ms,e.day,e.offset_min
     FROM pulse_episode_outbox a JOIN pulse_episode e ON e.id=a.episode_id
-    WHERE e.status='active' AND (a.state='owed' OR (a.state='not_sent' AND a.reason='notifications off'))
+    WHERE e.status='active' AND (a.state='owed' OR (a.state='not_sent' AND a.reason IN ('notifications off','quiet hours')))
     ORDER BY e.start_ms,e.id''');
 
   Future<List<String>> claim(
@@ -616,7 +648,7 @@ class PulseEpisodeStore {
       }
       if (await txn.rawUpdate(
             "UPDATE pulse_episode_outbox SET state='pending',token=?,at_ms=? "
-            "WHERE episode_id=? AND (state='owed' OR (state='not_sent' AND reason='notifications off'))",
+            "WHERE episode_id=? AND (state='owed' OR (state='not_sent' AND reason IN ('notifications off','quiet hours')))",
             [token, nowMs, id],
           ) ==
           1) {

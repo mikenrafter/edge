@@ -85,7 +85,9 @@ void main() {
     expect(await _hasTable(db, 'strength_set'), isTrue);
     expect(await _hasTable(db, 'exercise_def'), isTrue);
     // The pre-existing data is untouched — this step creates, never rewrites.
-    expect(await db.query('marker'), hasLength(1));
+    expect(await db.query('marker'), [{'id': 1}]);
+    expect(await db.query('pulse_upgrade'), hasLength(1));
+    expect(await db.query('pulse_upgrade_record'), isEmpty);
   });
 
   test('a fresh database has the tables too', () async {

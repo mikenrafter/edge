@@ -36,7 +36,10 @@ void main() {
   setUp(() async {
     await env.wipe();
     // These cases exercise arrivals after the upgrade boundary.
-    await PulseEpisodeWorker.run([], processingContext: ProcessingContext.reanalysis);
+    await PulseEpisodeWorker.run(
+      [],
+      processingContext: ProcessingContext.reanalysis,
+    );
     SharedPreferences.setMockInitialValues({'notif_quiet_enabled': false});
     shown.clear();
     NotificationIds.instance.resetForTest();
@@ -59,61 +62,91 @@ void main() {
   // the wearer, even when critical health alerts may override quiet hours.
   // # catches: critical pulse priority bypassing quiet hours or consuming debt.
   for (final origin in ['sync', 'bulk']) {
-    test('$origin episode waits through quiet hours without consuming delivery', () async {
-      final store = await seed(origin: origin);
-      final now = DateTime.now();
-      final minute = now.hour * 60 + now.minute;
-      await (await NotificationPrefs.load()).copyWith(
-        quietEnabled: true,
-        quietStartMin: (minute + 1380) % 1440,
-        quietEndMin: (minute + 60) % 1440,
-        criticalOverridesQuiet: true,
-      ).save();
-      await PulseEpisodeDelivery.run();
-      expect(shown, isEmpty, reason: 'no OS presentation means no sound or vibration');
-      expect((await store.get('strap:0'))!.alertState, 'owed');
-      await LocalDb.close(); // quiet deferral survives process/database reopen
-      expect(await LocalDb.notifFiredAt('pulse-episode:strap:0'), isNull);
-      await (await NotificationPrefs.load()).copyWith(quietEnabled: false).save();
-      await PulseEpisodeDelivery.run();
-      expect(shown, hasLength(1));
-      expect(shown.single.silent, isTrue);
-      final details = NotificationService.instance.detailsForEvent(shown.single);
-      expect(details.android!.playSound, isFalse);
-      expect(details.android!.enableVibration, isFalse);
-      expect(details.android!.channelId, isNot('health'),
-          reason: 'Android channel sound settings are immutable after creation');
-      expect(details.iOS!.presentSound, isFalse);
-      expect((await PulseEpisodeStore(await LocalDb.instance).get('strap:0'))!.alertState, origin == 'sync' ? 'sent' : 'summary');
-      await PulseEpisodeDelivery.run();
-      expect(shown, hasLength(1));
-    });
+    test(
+      '$origin episode waits through quiet hours without consuming delivery',
+      () async {
+        final store = await seed(origin: origin);
+        final now = DateTime.now();
+        final minute = now.hour * 60 + now.minute;
+        await (await NotificationPrefs.load())
+            .copyWith(
+              quietEnabled: true,
+              quietStartMin: (minute + 1380) % 1440,
+              quietEndMin: (minute + 60) % 1440,
+              criticalOverridesQuiet: true,
+            )
+            .save();
+        await PulseEpisodeDelivery.run();
+        expect(
+          shown,
+          isEmpty,
+          reason: 'no OS presentation means no sound or vibration',
+        );
+        expect((await store.get('strap:0'))!.alertState, 'owed');
+        await LocalDb.close(); // quiet deferral survives process/database reopen
+        expect(await LocalDb.notifFiredAt('pulse-episode:strap:0'), isNull);
+        await (await NotificationPrefs.load())
+            .copyWith(quietEnabled: false)
+            .save();
+        await PulseEpisodeDelivery.run();
+        expect(shown, hasLength(1));
+        expect(shown.single.silent, isTrue);
+        final details = NotificationService.instance.detailsForEvent(
+          shown.single,
+        );
+        expect(details.android!.playSound, isFalse);
+        expect(details.android!.enableVibration, isFalse);
+        expect(
+          details.android!.channelId,
+          isNot('health'),
+          reason: 'Android channel sound settings are immutable after creation',
+        );
+        expect(details.iOS!.presentSound, isFalse);
+        expect(
+          (await PulseEpisodeStore(
+            await LocalDb.instance,
+          ).get('strap:0'))!.alertState,
+          origin == 'sync' ? 'sent' : 'summary',
+        );
+        await PulseEpisodeDelivery.run();
+        expect(shown, hasLength(1));
+      },
+    );
   }
 
   // WHY/CLAIM(pulse-reading-copy): actual delivered text follows the app
   // language and describes a reading without presenting a diagnosis.
   // # catches: hardcoded English episode notifications or untranslated summaries.
   const readingTitles = {
-    'en': 'Irregular rhythm reading', 'de': 'Messung mit unregelmäßigem Rhythmus',
-    'es': 'Lectura de ritmo irregular', 'fr': 'Mesure de rythme irrégulier',
-    'hi': 'अनियमित लय की रीडिंग', 'ru': 'Запись нерегулярного ритма',
+    'en': 'Irregular rhythm reading',
+    'de': 'Messung mit unregelmäßigem Rhythmus',
+    'es': 'Lectura de ritmo irregular',
+    'fr': 'Mesure de rythme irrégulier',
+    'hi': 'अनियमित लय की रीडिंग',
+    'ru': 'Запись нерегулярного ритма',
     'zh': '不规则心律读数',
   };
   for (final entry in readingTitles.entries) {
     for (final origin in ['sync', 'bulk']) {
-      test('${entry.key} $origin episode uses calm translated reading copy', () async {
-        await (await SharedPreferences.getInstance()).setString('locale_override', entry.key);
-        await seed(origin: origin);
-        await PulseEpisodeDelivery.run();
-        expect(shown, hasLength(1));
-        if (origin == 'sync') expect(shown.single.title, entry.value);
-        if (origin == 'bulk') expect(shown.single.title, contains('1'));
-        expect(shown.single.body, contains('1970'));
-        if (entry.key != 'en') {
-          expect(shown.single.body, isNot(contains('A wrist pulse flag')));
-          expect(shown.single.title, isNot(startsWith('Found')));
-        }
-      });
+      test(
+        '${entry.key} $origin episode uses calm translated reading copy',
+        () async {
+          await (await SharedPreferences.getInstance()).setString(
+            'locale_override',
+            entry.key,
+          );
+          await seed(origin: origin);
+          await PulseEpisodeDelivery.run();
+          expect(shown, hasLength(1));
+          if (origin == 'sync') expect(shown.single.title, entry.value);
+          if (origin == 'bulk') expect(shown.single.title, contains('1'));
+          expect(shown.single.body, contains('1970'));
+          if (entry.key != 'en') {
+            expect(shown.single.body, isNot(contains('A wrist pulse flag')));
+            expect(shown.single.title, isNot(startsWith('Found')));
+          }
+        },
+      );
     }
   }
 
@@ -122,62 +155,203 @@ void main() {
   // # catches: phone-only quiet gating or a critical override on either route.
   for (final dispatcherEnabled in [false, true]) {
     for (final route in ['/pulse-episode?id=strap%3A0', '/pulse-episodes']) {
-      test('quiet gate covers $route with dispatcher=$dispatcherEnabled', () async {
-        final center = NotificationCenter.instance;
-        final originalDispatcher = center.dispatcher;
-        addTearDown(() async {
-          center.dispatcher = originalDispatcher;
+      test(
+        'quiet gate covers $route with dispatcher=$dispatcherEnabled',
+        () async {
+          final center = NotificationCenter.instance;
+          final originalDispatcher = center.dispatcher;
+          addTearDown(() async {
+            center.dispatcher = originalDispatcher;
+            await FeatureFlags.load();
+          });
+          await (await SharedPreferences.getInstance()).setBool(
+            FeatureFlag.alertDispatcher.prefsKey,
+            dispatcherEnabled,
+          );
           await FeatureFlags.load();
-        });
-        await (await SharedPreferences.getInstance()).setBool(
-            FeatureFlag.alertDispatcher.prefsKey, dispatcherEnabled);
-        await FeatureFlags.load();
-        var bands = 0;
-        center.dispatcher = AlertDispatcher(
-          phone: () async => false,
-          band: () async { bands++; return true; },
-          isConnected: () => true,
-          ledger: const NotificationCenterDeliveryLedger(),
-        );
-        final now = DateTime.now();
-        final minute = now.hour * 60 + now.minute;
-        await (await NotificationPrefs.load()).withAlertRule(const AlertRule(
-          id: 'health', kind: 'health', destinations: 3,
-          channelPolicyId: 'health',
-        ).toJson()).copyWith(
-          quietEnabled: true, quietStartMin: (minute + 1380) % 1440,
-          quietEndMin: (minute + 60) % 1440, criticalOverridesQuiet: true,
-        ).save();
-        final event = NotificationEvent(
-          dedupeKey: 'pulse-quiet:$route', category: NotifCategory.health,
-          priority: NotifPriority.critical, title: 'Reading', body: 'Reading',
-          date: todayLabel(), route: route,
-        );
-        expect(await center.emitReaching(event), isEmpty);
-        expect(shown, isEmpty);
-        expect(bands, 0);
-        await (await NotificationPrefs.load()).copyWith(quietEnabled: false).save();
-        expect(await center.emitReaching(event),
-            dispatcherEnabled ? {'phone', 'band'} : {'phone'});
-        expect(shown, hasLength(1));
-        expect(bands, dispatcherEnabled ? 1 : 0);
-      });
+          var bands = 0;
+          center.dispatcher = AlertDispatcher(
+            phone: () async => false,
+            band: () async {
+              bands++;
+              return true;
+            },
+            isConnected: () => true,
+            ledger: const NotificationCenterDeliveryLedger(),
+          );
+          final now = DateTime.now();
+          final minute = now.hour * 60 + now.minute;
+          await (await NotificationPrefs.load())
+              .withAlertRule(
+                const AlertRule(
+                  id: 'health',
+                  kind: 'health',
+                  destinations: 3,
+                  channelPolicyId: 'health',
+                ).toJson(),
+              )
+              .copyWith(
+                quietEnabled: true,
+                quietStartMin: (minute + 1380) % 1440,
+                quietEndMin: (minute + 60) % 1440,
+                criticalOverridesQuiet: true,
+              )
+              .save();
+          final event = NotificationEvent(
+            dedupeKey: 'pulse-quiet:$route',
+            category: NotifCategory.health,
+            priority: NotifPriority.critical,
+            title: 'Reading',
+            body: 'Reading',
+            date: todayLabel(),
+            route: route,
+          );
+          expect(await center.emitReaching(event), isEmpty);
+          expect(shown, isEmpty);
+          expect(bands, 0);
+          await (await NotificationPrefs.load())
+              .copyWith(quietEnabled: false)
+              .save();
+          expect(
+            await center.emitReaching(event),
+            dispatcherEnabled ? {'phone', 'band'} : {'phone'},
+          );
+          expect(shown, hasLength(1));
+          expect(bands, dispatcherEnabled ? 1 : 0);
+        },
+      );
     }
   }
 
+  // WHY/CLAIM(pulse-quiet): silent recovery must never fall back to band haptics.
+  // # catches: suppressing OS audio while still buzzing the connected band.
+  test('a silent current episode reaches only the phone', () async {
+    final center = NotificationCenter.instance;
+    final previous = center.dispatcher;
+    addTearDown(() => center.dispatcher = previous);
+    await (await SharedPreferences.getInstance()).setBool(
+      FeatureFlag.alertDispatcher.prefsKey,
+      true,
+    );
+    await FeatureFlags.load();
+    var bands = 0;
+    center.dispatcher = AlertDispatcher(
+      phone: () async => false,
+      band: () async {
+        bands++;
+        return true;
+      },
+      isConnected: () => true,
+      ledger: const NotificationCenterDeliveryLedger(),
+    );
+    await (await NotificationPrefs.load())
+        .withAlertRule(
+          const AlertRule(
+            id: 'health',
+            kind: 'health',
+            destinations: 3,
+            channelPolicyId: 'health',
+          ).toJson(),
+        )
+        .save();
+    final reached = await center.emitReaching(
+      NotificationEvent(
+        dedupeKey: 'silent-pulse',
+        category: NotifCategory.health,
+        title: 'Reading',
+        body: 'Reading',
+        date: todayLabel(),
+        route: '/pulse-episode?id=current',
+        silent: true,
+      ),
+    );
+    expect(reached, {'phone'});
+    expect(bands, 0);
+  });
+
+  // WHY/CLAIM(pulse-settings): quiet recovery must not bypass a disabled health rule.
+  // # catches: losing the durable quiet reason on a notifications-off retry.
+  test(
+    'quiet recovery remains silent after notifications are re-enabled',
+    () async {
+      await seed();
+      final minute = DateTime.now().hour * 60 + DateTime.now().minute;
+      await (await NotificationPrefs.load())
+          .copyWith(
+            quietEnabled: true,
+            quietStartMin: (minute + 1380) % 1440,
+            quietEndMin: (minute + 60) % 1440,
+          )
+          .save();
+      await PulseEpisodeDelivery.run();
+      await (await NotificationPrefs.load())
+          .copyWith(quietEnabled: false, healthEnabled: false)
+          .save();
+      await PulseEpisodeDelivery.run();
+      expect(shown, isEmpty);
+      expect(
+        (await PulseEpisodeStore(
+          await LocalDb.instance,
+        ).get('strap:0'))!.alertReason,
+        'quiet hours',
+      );
+      await (await NotificationPrefs.load())
+          .copyWith(healthEnabled: true)
+          .save();
+      await PulseEpisodeDelivery.run();
+      expect(shown, hasLength(1));
+      expect(shown.single.silent, isTrue);
+      await PulseEpisodeDelivery.run();
+      expect(shown, hasLength(1));
+    },
+  );
+
+  // WHY: the pulse exception must not alter other intentional critical alerts.
+  // # catches: globally disabling critical overrides instead of narrowing pulse.
+  test('other critical health alerts still follow the user override', () {
+    final now = DateTime.now();
+    final minute = now.hour * 60 + now.minute;
+    final prefs = NotificationPrefs(
+      quietEnabled: true,
+      quietStartMin: (minute + 1380) % 1440,
+      quietEndMin: (minute + 60) % 1440,
+      criticalOverridesQuiet: true,
+    );
+    final other = NotificationEvent(
+      dedupeKey: 'health-exception',
+      category: NotifCategory.health,
+      priority: NotifPriority.critical,
+      title: 'Health',
+      body: 'Health',
+      date: todayLabel(),
+      route: '/heart',
+    );
+    expect(prefs.shouldFireOs(other, minute), isTrue);
+    expect(
+      prefs.copyWith(criticalOverridesQuiet: false).shouldFireOs(other, minute),
+      isFalse,
+    );
+  });
+
   // WHY/CLAIM(health-episode-read): the production repository serves the real
   // episode/outbox read, rather than inheriting the empty-ledger default.
-  test('the repository reads stored episode summaries and delivery state', () async {
-    await seed();
-    final repo = LocalRepositoryImpl(getProfileMap: () => const {});
-    final episodes = await repo.getPulseEpisodes();
-    expect(episodes.map((e) => e.id), ['strap:0']);
-    expect(episodes.single.alertState, 'owed');
-    expect(episodes.single.evidence, isNull,
-        reason: 'the overview reads metadata without decoding evidence blobs');
-    await PulseEpisodeDelivery.run();
-    expect((await repo.getPulseEpisodes()).single.alertState, 'sent');
-  });
+  test(
+    'the repository reads stored episode summaries and delivery state',
+    () async {
+      await seed();
+      final repo = LocalRepositoryImpl(getProfileMap: () => const {});
+      final episodes = await repo.getPulseEpisodes();
+      expect(episodes.map((e) => e.id), ['strap:0']);
+      expect(episodes.single.alertState, 'owed');
+      expect(
+        episodes.single.evidence,
+        isNull,
+        reason: 'the overview reads metadata without decoding evidence blobs',
+      );
+      await PulseEpisodeDelivery.run();
+      expect((await repo.getPulseEpisodes()).single.alertState, 'sent');
+    },
+  );
 
   // WHY/CLAIM(health-episode-read): a broken ledger must reach the overview as
   // a read failure, not an empty list claiming the wearer had no episodes.

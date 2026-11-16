@@ -19562,5 +19562,22 @@
     }
   },
   "observationsLoading": "Loading observations",
-  "observationsPulsePattern": "Irregular pulse pattern"
+  "observationsPulsePattern": "Irregular pulse pattern",
+  "pulseEpisodeReadingTitle": "Irregular rhythm reading",
+  "pulseEpisodeSummaryTitle": "{count, plural, =1{Irregular rhythm readings from 1 episode} other{Irregular rhythm readings from {count} episodes}}",
+  "pulseEpisodeReadingBody": "{dates}. Wrist readings showed an irregular rhythm. Movement or sensor fit can affect readings. This is not a diagnosis. Tap to review.",
+  "@pulseEpisodeSummaryTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@pulseEpisodeReadingBody": {
+    "placeholders": {
+      "dates": {
+        "type": "String"
+      }
+    }
+  }
 }

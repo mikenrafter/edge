@@ -9867,5 +9867,8 @@
   "pulseAlertQuiet": "Оповещения нет: отложено из-за тихих часов",
   "pulseAlertEarlier": "Оповещено более ранней версией приложения {when}",
   "observationsLoading": "Загрузка наблюдений",
-  "observationsPulsePattern": "Нерегулярный пульс"
+  "observationsPulsePattern": "Нерегулярный пульс",
+  "pulseEpisodeReadingTitle": "Запись нерегулярного ритма",
+  "pulseEpisodeSummaryTitle": "{count, plural, one{Записи нерегулярного ритма за {count} эпизод} few{Записи нерегулярного ритма за {count} эпизода} many{Записи нерегулярного ритма за {count} эпизодов} other{Записи нерегулярного ритма за {count} эпизода}}",
+  "pulseEpisodeReadingBody": "{dates}. Измерения на запястье показали нерегулярный ритм. Движение или прилегание датчика могут влиять на измерения. Это не диагноз. Нажмите, чтобы посмотреть запись."
 }

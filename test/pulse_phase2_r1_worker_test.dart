@@ -68,7 +68,7 @@ void main() {
     expect(result.retryDays, {'2026-11-12'});
     expect(result.failedDays, isEmpty);
     expect(shown, hasLength(1), reason: 'the earlier day alerts in this pass');
-    expect(shown.single.body, contains('Nov 2026'));
+    expect(shown.single.body, contains('Nov 10, 2026'));
     expect((await (await store()).list()), hasLength(1));
     expect(
       await db.query('pulse_input_arrival', where: "source LIKE 'all:%'"),
@@ -173,7 +173,7 @@ void main() {
     await PulseEpisodeWorker.run(days,
         processingContext: sync({'2026-11-11': 2}));
     expect(shown, hasLength(1));
-    expect(shown.single.title, 'Irregular pulse pattern');
+    expect(shown.single.title, 'Irregular rhythm reading');
     expect(shown.single.route, startsWith('/pulse-episode?id='));
   });
 
@@ -183,7 +183,7 @@ void main() {
     await PulseEpisodeWorker.run(['2026-11-08'],
         processingContext: ProcessingContext.historical);
     expect(shown, hasLength(1));
-    expect(shown.single.title, contains('Found 1'));
+    expect(shown.single.title, 'Irregular rhythm readings from 1 episode');
     expect(shown.single.route, '/pulse-episodes');
     await PulseEpisodeDelivery.run();
     expect(shown, hasLength(1));

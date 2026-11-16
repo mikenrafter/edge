@@ -3963,5 +3963,8 @@
   "pulseAlertQuiet": "Pas d’alerte : retenue pendant les heures calmes",
   "pulseAlertEarlier": "Signalé par une version antérieure de l’application {when}",
   "observationsLoading": "Chargement des observations",
-  "observationsPulsePattern": "Pouls irrégulier"
+  "observationsPulsePattern": "Pouls irrégulier",
+  "pulseEpisodeReadingTitle": "Mesure de rythme irrégulier",
+  "pulseEpisodeSummaryTitle": "{count, plural, =1{Mesures de rythme irrégulier sur 1 épisode} other{Mesures de rythme irrégulier sur {count} épisodes}}",
+  "pulseEpisodeReadingBody": "{dates}. Les mesures au poignet ont montré un rythme irrégulier. Les mouvements ou le positionnement du capteur peuvent influencer les mesures. Ce n’est pas un diagnostic. Touchez pour consulter."
 }

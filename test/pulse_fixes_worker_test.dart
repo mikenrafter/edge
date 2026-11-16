@@ -92,30 +92,55 @@ void main() {
         : 'single respiratory fit is too weak to exclude';
     // WHY/CLAIM(pulse-sleep-pattern): preserve the owner's accepted safety trade-off.
     // # catches: blanket sleep suppression, weakened fit guard or residual floors.
-    test('sleep RR capture $capture: ${retained.contains(capture) ? why : 'breathing explains irregularity'}', () async {
-      await insertRows(await LocalDb.instance, pulseFixRows(sleepRrFixtures[i]));
-      await pulseFixContext(motion: 0.006, wrist: 1);
-      final episodes = await run();
-      if (!retained.contains(capture)) {
-        expect(episodes, isEmpty);
-        return;
-      }
-      expect(episodes, hasLength(1), reason: why);
-      final stored = await PulseEpisodeStore(await LocalDb.instance).get(episodes.single.id);
-      final windows = (stored!.evidence!['windows'] as List).cast<Map>();
-      final residuals = windows.map((w) => (w['breathing'] as Map)['residual'] as Map).toList();
-      expect(residuals, isNotEmpty);
-      if (capture == 7) {
-        expect(residuals.any((r) => r['status'] == 'supported' &&
-            (r['ratio'] as num) >= .7 && (r['pnnPct'] as num) >= 30), isTrue,
-            reason: 'breathing subtraction still leaves independent irregularity');
-      } else {
-        expect(residuals.every((r) => r['status'] == 'weak' &&
-            (r['explainedVariance'] as num) < .12), isTrue,
-            reason: 'a weak fit cannot justify exclusion even if residual floors fail');
-      }
-      expect(residuals.every((r) => r['excludes'] == false), isTrue);
-    });
+    test(
+      'sleep RR capture $capture: ${retained.contains(capture) ? why : 'breathing explains irregularity'}',
+      () async {
+        await insertRows(
+          await LocalDb.instance,
+          pulseFixRows(sleepRrFixtures[i]),
+        );
+        await pulseFixContext(motion: 0.006, wrist: 1);
+        final episodes = await run();
+        if (!retained.contains(capture)) {
+          expect(episodes, isEmpty);
+          return;
+        }
+        expect(episodes, hasLength(1), reason: why);
+        final stored = await PulseEpisodeStore(
+          await LocalDb.instance,
+        ).get(episodes.single.id);
+        final windows = (stored!.evidence!['windows'] as List).cast<Map>();
+        final residuals = windows
+            .map((w) => (w['breathing'] as Map)['residual'] as Map)
+            .toList();
+        expect(residuals, isNotEmpty);
+        if (capture == 7) {
+          expect(
+            residuals.any(
+              (r) =>
+                  r['status'] == 'supported' &&
+                  (r['ratio'] as num) >= .7 &&
+                  (r['pnnPct'] as num) >= 30,
+            ),
+            isTrue,
+            reason:
+                'breathing subtraction still leaves independent irregularity',
+          );
+        } else {
+          expect(
+            residuals.every(
+              (r) =>
+                  r['status'] == 'weak' &&
+                  (r['explainedVariance'] as num) < .12,
+            ),
+            isTrue,
+            reason:
+                'a weak fit cannot justify exclusion even if residual floors fail',
+          );
+        }
+        expect(residuals.every((r) => r['excludes'] == false), isTrue);
+      },
+    );
   }
   // WHY/CLAIM(pulse-sleep-pattern): low heart rate alone must not hide irregularity.
   // # catches: suppressing all sleeping windows or refusing missing context.
@@ -285,14 +310,24 @@ void main() {
   }
   // WHY/CLAIM(pulse-context): charging is positive off-body evidence even without wear samples.
   // # catches: supplying only wrist-off spans to the detector.
-  test('a carried charging event suppresses without any 1 Hz samples', () async {
-    final db = await LocalDb.instance;
-    final random = Random(53);
-    await insertRows(db, pulseFixRows(List.generate(5000, (_) => 950 + random.nextInt(400))));
-    await db.insert('band_events', {'device_id':'','hex':'charging-on',
-      'event_id':proto.EventId.chargingOn,'name':'CHARGING_ON',
-      'ts':pulseFixStart ~/ 1000 - 60,'captured_at':0});
-    expect(await run(),isEmpty);
-  });
-
+  test(
+    'a carried charging event suppresses without any 1 Hz samples',
+    () async {
+      final db = await LocalDb.instance;
+      final random = Random(53);
+      await insertRows(
+        db,
+        pulseFixRows(List.generate(5000, (_) => 950 + random.nextInt(400))),
+      );
+      await db.insert('band_events', {
+        'device_id': '',
+        'hex': 'charging-on',
+        'event_id': proto.EventId.chargingOn,
+        'name': 'CHARGING_ON',
+        'ts': pulseFixStart ~/ 1000 - 60,
+        'captured_at': 0,
+      });
+      expect(await run(), isEmpty);
+    },
+  );
 }
