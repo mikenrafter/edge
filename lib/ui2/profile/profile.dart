@@ -322,7 +322,7 @@ class _SettingsAccordionState extends State<_SettingsAccordionCard> {
           borderRadius: R.rLg,
           boxShadow: p.el(1),
         ),
-        child: Column(children: [
+        child: SettlingHeight(child: Column(children: [
           GuideNavigationHeader(key: _headerKey, child: Pressable(
             onTap: _toggle,
             semanticLabel: '${widget.a.title}, ${_open ? 'expanded' : 'collapsed'}',
@@ -361,7 +361,7 @@ class _SettingsAccordionState extends State<_SettingsAccordionCard> {
                   Padding(padding: const EdgeInsets.symmetric(vertical: S.x3), child: row),
                 ],
             ])))),
-        ]),
+        ])),
       )),
     );
   }

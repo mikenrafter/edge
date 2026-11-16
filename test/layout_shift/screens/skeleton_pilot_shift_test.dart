@@ -463,6 +463,7 @@ void main() {
             position.jumpTo(position.pixels.clamp(0, position.maxScrollExtent));
             await t.pump(const Duration(milliseconds: 16));
           }
+          await settleHeight(t);
           // The owner's expanded-section rule permits unknown tails to grow.
           // Pin the primary real shape rather than hiding that growth in a slot.
           final prefixKey = switch (entry.key) {

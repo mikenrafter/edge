@@ -426,41 +426,17 @@ void main() {
       await _end(t);
     });
 
-    _tw('the spinner lives in the settings button, in its on-colour',
+    _tw('sync keeps the settings icon and its accessible status, with no spinner',
         (t) async {
       final app = _App(pres: _syncing(), through: _edge);
       addTearDown(app.dispose);
       await _pump(t, app);
-
-      // The one spinner is inside the settings button; the gear icon is gone.
-      expect(_spinner, findsOneWidget);
-      expect(find.descendant(of: _settingsButton, matching: _spinner),
-          findsOneWidget);
-      expect(_gear, findsNothing);
-
-      // Same slot as the gear: far right, in the title row above row 1.
-      expect(t.getCenter(_spinner).dy, lessThan(_y(t, _status)));
-      expect(t.getTopRight(_settingsButton).dx, lessThanOrEqualTo(390));
-      expect(t.getTopLeft(_settingsButton).dx, greaterThan(300));
-
-      // Contrast: the spinner is drawn in the colour the gear icon uses on this
-      // fill (inkOnFill), and that colour reads against the fill.
-      final p = P.of(t.element(find.byType(HomeScreen)));
-      final spinner = t.widget<CircularProgressIndicator>(_spinner);
-      expect(spinner.color, p.inkOnFill);
-      final fill = p.fill(C.domHome);
-      final (hi, lo) = p.inkOnFill.computeLuminance() > fill.computeLuminance()
-          ? (p.inkOnFill, fill)
-          : (fill, p.inkOnFill);
-      expect(
-        (hi.computeLuminance() + .05) / (lo.computeLuminance() + .05),
-        greaterThanOrEqualTo(4.5),
-      );
-
-      // The button keeps its label, with "syncing" added.
-      final label = t.widget<Pressable>(_settingsButton).semanticLabel!;
-      expect(label, startsWith('Profile and settings'));
-      expect(label, contains('syncing'));
+      expect(_spinner, findsNothing);
+      expect(_settingsButton, findsOneWidget);
+      expect(t.getSize(_settingsButton).shortestSide, greaterThanOrEqualTo(44));
+      expect(t.getCenter(_settingsButton).dy, lessThan(_y(t, _status)));
+      expect(t.widget<Pressable>(_settingsButton).semanticLabel!,
+          startsWith('Profile and settings'));
       await _end(t);
     });
 
@@ -470,11 +446,11 @@ void main() {
       addTearDown(app.dispose);
       await _pump(t, app);
       expect(find.byType(MoreSettings), findsNothing);
-      await t.tap(_spinner);
+      await t.tap(_settingsButton);
       await t.pump();
       await t.pump(const Duration(milliseconds: 400));
       expect(find.byType(MoreSettings), findsOneWidget);
-      expect(app.syncs, 0, reason: 'the spinner is not a second sync button');
+      expect(app.syncs, 0, reason: 'settings is not a second sync button');
       await _end(t);
     });
 

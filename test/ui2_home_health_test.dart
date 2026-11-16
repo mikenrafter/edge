@@ -348,7 +348,11 @@ void main() {
       ),
     ]) {
       await tester.pumpWidget(_frame(w, Brightness.light, 1));
-      await tester.pumpAndSettle();
+      // A pending section pulses indefinitely. Drain publications and bounded
+      // transitions without waiting for that deliberate repaint clock.
+      for (var frame = 0; frame < 12; frame++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
       // A dash is not bare when something on the same card says why: a
       // MetricRow's status line, a SignalCard's caption, a deep-dive card's
       // line under the dash, a ring's help strip, a plan row's kind line. An

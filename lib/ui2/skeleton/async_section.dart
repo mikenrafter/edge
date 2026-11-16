@@ -7,6 +7,8 @@ import 'package:flutter/scheduler.dart';
 
 import 'placeholder_paint.dart';
 import 'load_memory.dart';
+import 'settling_height.dart';
+export 'settling_height.dart';
 export 'pending_scope.dart';
 import '../grammar.dart' show Surface, ChartFrame;
 import '../theme.dart';
@@ -183,14 +185,14 @@ class _PendingContentState extends State<PendingContent>
           descendantsAreTraversable: !widget.pending,
           child: ExcludeSemantics(excluding: widget.pending,
             child: IgnorePointer(ignoring: widget.pending,
-              child: AnimatedBuilder(animation: _fade, child: widget.memoryKey == null
+              child: AnimatedBuilder(animation: _fade, child: SettlingHeight(child: widget.memoryKey == null
                     ? widget.child
                     : RememberedLayout(
                         id: widget.memoryKey!,
                         knownShape: widget.knownShape,
                         pending: widget.pending,
                         child: widget.child,
-                      ),
+                      )),
                 builder: (_, child) => PendingTone(pulse: _PendingPulse.shared.value,
                   fade: _fade.value, child: _PendingPaint(pending: widget.pending,
                     visible: _visible, fade: _fade.value, child: child!))))))));

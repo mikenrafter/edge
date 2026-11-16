@@ -718,6 +718,10 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
       await deleteByIn(txn, 'group_row', 'day_id', sorted);
       await deleteByIn(txn, 'day_manifest', 'day_id', sorted);
     });
+    // Fence pending Home reads and queued snapshot writes only after commit.
+    // The bounded presentation cache is rebuildable, so clear it as a unit.
+    // CLAIM(home-cache-reset) [home_cache_day_deletion_test].
+    await HomeSnapshotStore.invalidate();
     return deleted;
   }
 
@@ -741,7 +745,7 @@ Future<int> _ldbWipeAll() async {
       // ([LocalDb.storeGeneration]), not by these numbers.
       deleted += await txn.delete('input_revision');
     });
-    LocalDb._markStoreReplaced();
+    await LocalDb._markStoreReplaced();
     return deleted;
   }
 
@@ -858,7 +862,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFile(String path, {required List<Str
       return await LocalDb._mergeFromDbFileBody(path,
           only: only, tolerant: tolerant, onProgress: onProgress, run: run);
     } finally {
-      if (LocalDb._mergePagesCommitted != committedBefore) LocalDb._markStoreReplaced();
+      if (LocalDb._mergePagesCommitted != committedBefore) await LocalDb._markStoreReplaced();
     }
   }
 

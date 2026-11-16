@@ -8,6 +8,9 @@ import 'package:openstrap_edge/data/auto_backup.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/prefs.dart';
+import 'package:openstrap_edge/ui2/screens/home_screen.dart';
+import 'package:openstrap_edge/models/metric.dart';
+import 'package:openstrap_edge/settings/settings_repository.dart';
 import 'package:openstrap_edge/sync/reset_gate.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -421,6 +424,17 @@ void main() {
           final saving = saveBackupFolder(folder);
           // Let the save enter the queue before reset closes it to new work.
           await Future<void>.value();
+          // why: a full reset must delete warm snapshots and fence queued saves.
+          // CLAIM(home-cache-reset); catches serializing the old process map again.
+          await Prefs.ensureLoaded();
+          final cache = HomeRingDetailCache.local;
+          cache.record('2026-10-01', 'en', const HomeData(
+            readiness: Metric(value: 22.77)), null);
+          await Future<void>.value();
+          await SettingsRepository.instance.update((_) {}, sections: const {});
+          expect(cache.read('2026-10-01', 'en')!.data.readiness.value, 22.77);
+          cache.record('2026-10-02', 'en', const HomeData(
+            readiness: Metric(value: 33.88)), null);
           final resetting = app.resetAllData();
           await saving;
           final cleanupError = await resetting;
@@ -431,6 +445,16 @@ void main() {
           expect(prefs.getString('reset_probe'), isNull);
           expect(await copy.exists(), unavailable);
           expect(ResetGate.active, isFalse);
+          cache.record('2026-11-15', 'en', HomeData(
+            readiness: Metric(value: unavailable ? 44.98 : 44.99)), null);
+          await Future<void>.value();
+          await SettingsRepository.instance.update((_) {}, sections: const {});
+          final persisted = prefs.getString(HomeRingDetailCache.prefKey) ?? '';
+          expect(persisted, isNotEmpty);
+          expect(persisted, contains(unavailable ? '44.98' : '44.99'));
+          expect(persisted, isNot(contains('22.77')));
+          expect(persisted, isNot(contains('33.88')));
+          expect(cache.read('2026-10-01', 'en'), isNull);
         } finally {
           app.dispose();
           await LocalDb.close();

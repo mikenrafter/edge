@@ -70,6 +70,7 @@ class SettingsChange {
     this.channels,
     this.patterns,
     this.appPrefs = const {},
+    this.removedAppPrefs = const {},
     this.origin,
   });
 
@@ -81,6 +82,8 @@ class SettingsChange {
 
   /// The app-pref keys written, with their values.
   final Map<String, Object> appPrefs;
+  /// App-pref keys removed in this committed edit.
+  final Set<String> removedAppPrefs;
 
   /// Whatever the caller passed as `origin`: a listener that made the change
   /// itself can tell and skip it.
@@ -90,7 +93,8 @@ class SettingsChange {
       alerts == null &&
       channels == null &&
       patterns == null &&
-      appPrefs.isEmpty;
+      appPrefs.isEmpty &&
+      removedAppPrefs.isEmpty;
 }
 
 /// The working copy an update edits. Only the sections the update declared are
@@ -112,7 +116,7 @@ class SettingsDraft {
   Map<String, ChannelConfig>? _channels;
   HapticPatternStore? _patterns;
   bool _patternsAssigned = false;
-  final Map<String, Object> _app = {};
+  final Map<String, Object?> _app = {};
 
   T _need<T>(SettingsSection s, T? v) {
     if (!_sections.contains(s) || v == null) {
@@ -164,6 +168,9 @@ class SettingsDraft {
   void setBool(String key, bool value) => _app[key] = value;
   void setInt(String key, int value) => _app[key] = value;
   void setString(String key, String value) => _app[key] = value;
+
+  /// Deletes through the same queue and rollback journal as preference writes.
+  void remove(String key) => _app[key] = null;
 }
 
 class SettingsRepository {
@@ -305,7 +312,7 @@ class SettingsRepository {
     edit(draft);
 
     // Encode first: anything that throws here has written nothing.
-    final writes = <String, Object>{};
+    final writes = <String, Object?>{};
     NotificationPrefs? alertsOut;
     Map<String, ChannelConfig>? channelsOut;
     List<SavedHapticPattern>? patternsOut;
@@ -343,7 +350,12 @@ class SettingsRepository {
       alerts: alertsOut,
       channels: channelsOut,
       patterns: patternsOut,
-      appPrefs: Map.unmodifiable(draft._app),
+      appPrefs: Map.unmodifiable({
+        for (final e in draft._app.entries) e.key: ?e.value,
+      }),
+      removedAppPrefs: Set.unmodifiable({
+        for (final e in draft._app.entries) if (e.value == null) e.key,
+      }),
       origin: origin,
     );
     if (writes.isEmpty) return change;
@@ -478,7 +490,7 @@ class SettingsRepository {
   /// recovery journal and the error says so.
   static Future<void> _write(
     SharedPreferences sp,
-    Map<String, Object> writes,
+    Map<String, Object?> writes,
   ) async {
     final before = {for (final k in writes.keys) k: sp.get(k)};
     final touched = <String>[];
@@ -486,6 +498,7 @@ class SettingsRepository {
       for (final e in writes.entries) {
         touched.add(e.key);
         final ok = switch (e.value) {
+          null => await sp.remove(e.key),
           final String v => await sp.setString(e.key, v),
           final bool v => await sp.setBool(e.key, v),
           final int v => await sp.setInt(e.key, v),

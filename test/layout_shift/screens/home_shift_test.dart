@@ -55,6 +55,7 @@ void main() {
     final run = ShiftRun(t);
     await t.pumpWidget(perfApp(app, const HomeScreen(hour: 9)));
     await t.pump(const Duration(seconds: 1));
+    await settleHeight(t);
     run.now = 0;
     run.snap();
     // A sync lands: new numbers, fresher computed_at. No Interaction.
