@@ -154,7 +154,8 @@ void main() {
     await t.pump(const Duration(milliseconds: 16)); // First drawn editor frame; read still blocked.
     expect(repo.graph.isCompleted, isFalse);
     expect(routes.pushed, hasLength(2)); // Sleep tab + exactly one editor.
-    expect(find.text('Edit sleep'), findsOneWidget);
+    expect(find.descendant(of: find.byType(SleepTimelineEditorRoute),
+      matching: find.text('Edit sleep')), findsOneWidget);
     expect(find.byKey(const ValueKey('sleep-editor-loading')), findsOneWidget);
     await t.pump(const Duration(milliseconds: 400));
     repo.graph.complete({});
