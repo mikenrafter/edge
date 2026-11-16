@@ -284,12 +284,13 @@ class BandEndedSignal {
 /// nothing, so a job that was told to stop cannot play the rest of its rhythm
 /// over the next one.
 class BandJobToken {
-  BandJobToken._(this._reservation, this._onWrite, [this._stop]);
+  BandJobToken._(this._reservation, this._onWrite, [this._stop, this._allowHandoff]);
   final BandReservation _reservation;
   final void Function()? _onWrite;
 
   /// Asked before every write: refuses it once the job's owner stopped.
   final BandStop? _stop;
+  final Future<bool> Function()? _allowHandoff;
   bool _cancelled = false;
   int _writes = 0;
   final Set<Future<void>> _inflight = <Future<void>>{};
@@ -303,6 +304,10 @@ class BandJobToken {
   /// Send one band command with [send]. False, with nothing sent, when the job
   /// is cancelled or has used its whole reservation; else what [send] says.
   Future<bool> write(Future<bool> Function() send) async {
+    if (_cancelled || (_stop?.stopRequested ?? false)) return false;
+    // A job may have waited across a quiet boundary. Check after that wait,
+    // immediately before consuming a reservation and writing to the band.
+    if (_allowHandoff != null && !await _allowHandoff()) return false;
     if (_cancelled || (_stop?.stopRequested ?? false)) return false;
     if (!_reservation.take(clock.now())) return false;
     _writes++;
@@ -329,10 +334,11 @@ class BandJobToken {
 /// own delivery deadline: [onHold] pauses it, [onRelease] restarts it, and
 /// [isStale] says whether the alert has outlived its rule while it waited.
 class BandHold {
-  BandHold({this.onHold, this.onRelease, this.isStale});
+  BandHold({this.onHold, this.onRelease, this.isStale, this.allowHandoff});
   void Function()? onHold;
   void Function()? onRelease;
   bool Function()? isStale;
+  Future<bool> Function()? allowHandoff;
 }
 
 /// Zone key under which a [BandHold] travels from the dispatcher to
@@ -1008,7 +1014,7 @@ class BandHapticQueue {
   }
 
   Future<void> _start(_Job j, BandReservation room) async {
-    final token = BandJobToken._(room, onWrite, j.stop);
+    final token = BandJobToken._(room, onWrite, j.stop, j.hold?.allowHandoff);
     BuzzDelivery? result;
     try {
       try {

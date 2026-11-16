@@ -23,7 +23,6 @@
 // Tap routing: a tapped notification's payload (a deep-link route) is pushed onto
 // [taps]; AppState listens and navigates.
 
-import 'package:clock/clock.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -33,6 +32,7 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import 'notification_event.dart';
+import 'pulse_notification_policy.dart';
 import 'notification_ids.dart';
 
 /// The next wall-clock instant at [hour]:[minute] — optionally the next
@@ -494,6 +494,10 @@ class NotificationService {
     );
   }
 
+  /// Overridable allocation seam for deterministic handoff-wait tests.
+  @visibleForTesting
+  Future<int> Function(NotificationEvent) allocateId = NotificationIds.instance.idFor;
+
   /// Present a NotificationEvent on its category channel. Same osId replaces, so
   /// re-firing the same logical event never stacks duplicates. Never throws.
   ///
@@ -504,9 +508,6 @@ class NotificationService {
   ///
   /// [allowPermissionPrompt] — see [ensurePermission]'s doc. Pass `false` from
   /// any caller that knows it's running headless/in the background.
-  @visibleForTesting
-  Future<int> Function(NotificationEvent) allocateId = NotificationIds.instance.idFor;
-
   Future<bool> presentEvent(
     NotificationEvent e, {
     bool allowPermissionPrompt = true,
@@ -520,12 +521,13 @@ class NotificationService {
       // share an id, and `show` REPLACES: one of them vanished silently.
       // e.osId overrides only for a caller that also cancels by id (see
       // NotificationEvent.osId).
+      final id = e.osId ?? await allocateId(e);
+      final outgoing = await PulseNotificationPolicy.atHandoff(e);
+      if (outgoing == null) return false;
+      // No async work between the final policy decision and the platform call.
       await _plugin.show(
-        e.osId ?? await allocateId(e),
-        e.title,
-        e.body.isEmpty ? null : e.body,
-        detailsForEvent(e),
-        payload: e.route,
+        id, outgoing.title, outgoing.body.isEmpty ? null : outgoing.body,
+        detailsForEvent(outgoing), payload: outgoing.route,
       );
       return true;
     } catch (_) {

@@ -199,6 +199,7 @@ void main() {
               .save();
           final event = NotificationEvent(
             dedupeKey: 'pulse-quiet:$route',
+            pulseSourceTime: DateTime.now(),
             category: NotifCategory.health,
             priority: NotifPriority.critical,
             title: 'Reading',

@@ -622,7 +622,7 @@ class PulseEpisodeStore {
   }
 
   Future<List<Map<String, Object?>>> owed() =>
-      db.rawQuery('''SELECT a.*, e.start_ms,e.end_ms,e.day,e.offset_min
+      db.rawQuery('''SELECT a.*, e.start_ms,e.end_ms,e.first_seen_ms,e.day,e.offset_min
     FROM pulse_episode_outbox a JOIN pulse_episode e ON e.id=a.episode_id
     WHERE e.status='active' AND (a.state='owed' OR (a.state='not_sent' AND a.reason IN ('notifications off','quiet hours')))
     ORDER BY e.start_ms,e.id''');

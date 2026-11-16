@@ -40,6 +40,7 @@ import 'fired_keys.dart';
 import 'reminder_sleep_gate.dart';
 import 'alert_dispatcher.dart';
 import 'notification_event.dart';
+import 'pulse_notification_policy.dart';
 import 'notification_prefs.dart';
 import 'notification_service.dart';
 import '../state/feature_flags.dart';
@@ -128,6 +129,9 @@ class NotificationCenter {
       eventId: e.dedupeKey,
       sourceTime: sourceTime ?? clock.now(),
       historical: historical,
+      targetAllowedAtDelivery: e.isPulse
+          ? (target) async => await PulseNotificationPolicy.atHandoff(e, target: target) != null
+          : null,
       targetAllowed: (_) => explicitAction
           ? !prefs.inQuietHours(minuteOfDay)
           : prefs.shouldFireOs(e, minuteOfDay),
@@ -233,8 +237,13 @@ class NotificationCenter {
         if (!await _fired.claim(e.dedupeKey)) return;
         var shown = false;
         try {
+          final outgoing = await PulseNotificationPolicy.atHandoff(e);
+          if (outgoing == null) {
+            await _fired.release(e.dedupeKey);
+            return;
+          }
           shown = await presentSink(
-            e,
+            outgoing,
             allowPermissionPrompt: allowPermissionPrompt,
           );
           if (!shown && (e.dedupeKey.startsWith('pulse-episode:') ||

@@ -797,9 +797,7 @@ class NotificationPrefs {
     if (inQuietHours(minuteOfDay)) {
       // Wrist rhythm readings are observations, never a reason to wake the
       // wearer. Apply this shared gate to phone and band, even for old callers.
-      if (activityRoute == kRoutePulseEpisode || activityRoute == kRoutePulseEpisodes ||
-          event.dedupeKey.endsWith(':irregular-pulse') ||
-          event.dedupeKey.startsWith('pulse-summary:')) {
+      if (event.isPulse) {
         return false;
       }
       return event.priority == NotifPriority.critical && criticalOverridesQuiet;

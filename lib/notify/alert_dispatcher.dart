@@ -99,6 +99,7 @@ class AlertDispatcher {
     T Function() onTimeout,
     DateTime sourceTime,
     Duration staleAfter,
+    Future<bool> Function()? allowHandoff,
   ) {
     final result = Completer<T>();
     Timer? timer;
@@ -114,6 +115,7 @@ class AlertDispatcher {
       onHold: () => timer?.cancel(),
       onRelease: arm,
       isStale: () => now().difference(sourceTime) > staleAfter,
+      allowHandoff: allowHandoff,
     );
     arm();
     Future<T>.sync(
@@ -140,6 +142,7 @@ class AlertDispatcher {
     Future<BuzzDelivery> Function()? bandDelivery,
     Set<String>? transportTargets,
     bool Function(String target)? targetAllowed,
+    Future<bool> Function(String target)? targetAllowedAtDelivery,
     // A band transport that legitimately runs longer than [transportTimeout]
     // (a recorded rhythm: up to 8 buzzes, 2 s apart) asks for the time it
     // needs. Never shorter than the default.
@@ -229,7 +232,9 @@ class AlertDispatcher {
                     : null);
         if (delivery != null) {
           final d = await _within(
-            delivery,
+            () async => targetAllowedAtDelivery != null &&
+                    !await targetAllowedAtDelivery(target)
+                ? BuzzDelivery.rejected : await delivery(),
             limit,
             () {
               claimed = false;
@@ -238,6 +243,7 @@ class AlertDispatcher {
             },
             sourceTime,
             typed.staleAfter,
+            targetAllowedAtDelivery == null ? null : () => targetAllowedAtDelivery(target),
           );
           switch (d) {
             case BuzzDelivery.complete:
@@ -259,7 +265,9 @@ class AlertDispatcher {
                       ? () => sequencePlayer(saved)
                       : band);
           success = await _within(
-            transport,
+            () async => targetAllowedAtDelivery != null &&
+                    !await targetAllowedAtDelivery(target)
+                ? false : await transport(),
             limit,
             () {
               claimed = false;
@@ -268,6 +276,7 @@ class AlertDispatcher {
             },
             sourceTime,
             typed.staleAfter,
+            targetAllowedAtDelivery == null ? null : () => targetAllowedAtDelivery(target),
           );
         }
         if (success) {

@@ -62,7 +62,15 @@ class PulseEpisodeDelivery {
         ? 'pulse-episode-summary:$token'
         : owned.single['delivery_key'] as String;
     final l = await LocaleController.currentStrings();
-    final silent = owned.any((r) => r['reason'] == 'quiet hours');
+    final quietAncestry = owned.any((r) => r['reason'] == 'quiet hours');
+    final silent =
+        summary ||
+        owned.any(
+          (r) =>
+              r['state'] != 'owed' ||
+              r['origin'] != 'sync' ||
+              r['reason'] != null,
+        );
     var dates = owned
         .take(5)
         .map((r) => recordedWhen(r, locale: l.localeName))
@@ -75,6 +83,14 @@ class PulseEpisodeDelivery {
       category: NotifCategory.health,
       priority: NotifPriority.normal,
       silent: silent,
+      pulseSourceTime: summary
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(
+              min(
+                owned.single['end_ms'] as int,
+                owned.single['first_seen_ms'] as int,
+              ),
+            ),
       title: summary
           ? l.pulseEpisodeSummaryTitle(owned.length)
           : l.pulseEpisodeReadingTitle,
@@ -88,11 +104,9 @@ class PulseEpisodeDelivery {
     final reached = await NotificationCenter.instance.emitReaching(event);
     final fired = await LocalDb.notifFiredAt(key);
     final after = clock.now();
-    final quietHeld =
-        silent ||
-        (await NotificationPrefs.load()).inQuietHours(
-          after.hour * 60 + after.minute,
-        );
+    final quietNow = (await NotificationPrefs.load()).inQuietHours(
+      after.hour * 60 + after.minute,
+    );
     await store.finish(
       ids,
       token: token,
@@ -100,12 +114,14 @@ class PulseEpisodeDelivery {
           ? (summary ? 'summary' : 'sent')
           : fired != null
           ? 'unknown'
+          : quietNow
+          ? 'owed'
           : 'not_sent',
       reason: reached.isNotEmpty
           ? null
           : fired != null
           ? 'delivery unknown'
-          : quietHeld
+          : quietNow || quietAncestry
           ? 'quiet hours'
           : 'notifications off',
       summaryKey: summary ? key : null,
