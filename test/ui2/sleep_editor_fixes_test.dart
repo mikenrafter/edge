@@ -10,7 +10,6 @@ import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/data/sleep_edit_write.dart';
 import 'package:openstrap_edge/state/control_operations.dart';
 import 'package:openstrap_edge/ui2/day_timeline/sleep_timeline_editor.dart';
-import 'package:openstrap_edge/ui2/day_timeline/timeline_chart.dart';
 import 'package:openstrap_edge/ui2/day_timeline/timeline_model.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
 
@@ -72,6 +71,15 @@ void main() {
     await t.tap(find.byKey(const ValueKey('sleep-editor-zoom-in')));
     await t.pumpAndSettle();
     expect(s.controller.view.span, closeTo(651 * 60, .001)); // 930 minutes × 0.7.
+    await t.tap(find.byKey(const ValueKey('sleep-editor-zoom-in')));
+    await t.pumpAndSettle();
+    expect(s.controller.view.span, closeTo(455.7 * 60, .001));
+    await t.tap(find.byKey(const ValueKey('sleep-editor-zoom-out')));
+    await t.pumpAndSettle();
+    expect(s.controller.view.span, closeTo(651 * 60, .001));
+    await t.tap(find.byKey(const ValueKey('sleep-editor-zoom-out')));
+    await t.pumpAndSettle();
+    expect(s.controller.view, home);
     await t.tap(find.byKey(const ValueKey('sleep-editor-zoom-out')));
     await t.pumpAndSettle();
     expect(s.controller.view, home);
@@ -80,6 +88,21 @@ void main() {
     await t.tap(find.byKey(SleepTimelineEditor.resetKey));
     await t.pumpAndSettle();
     expect(s.controller.view, home);
+  });
+
+  testWidgets('a short recorded night keeps its exact bounds on open and reset', (t) async {
+    final base = dtNight(withNap: false);
+    final d = SleepEditorData(day: base.day, domainStart: base.domainStart, hr: base.hr,
+      movement: base.movement,
+      main: SleepBlock('main', BlockKind.main, dtAt(160), dtAt(180)));
+    final state = await _open(t, _Saver(), data: d);
+    final home = TimelineView(dtAt(160).toDouble(), dtAt(180).toDouble());
+    expect(state.controller.view, home);
+    state.controller.glideTo(TimelineView(dtAt(150).toDouble(), dtAt(210).toDouble()));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(SleepTimelineEditor.resetKey));
+    await t.pumpAndSettle();
+    expect(state.controller.view, home);
   });
 
   testWidgets('zoom frames preserve readout Text widgets and list position', (t) async {
@@ -136,7 +159,7 @@ void main() {
     await t.ensureVisible(find.byKey(SleepTimelineEditor.saveKey));
     await t.tap(find.byKey(SleepTimelineEditor.saveKey));
     await t.pump();
-    final dynamic entry = (saver.plans.single as dynamic).entry;
+    final entry = saver.plans.single.entry!;
     expect((entry.start, entry.end, entry.main, entry.source, entry.action.name),
       (nap.start, nap.end, false, 'manual', 'automatic'));
     expect(saver.plans.single.naps, isEmpty, reason: 'Unrelated naps are untouched');
@@ -158,7 +181,7 @@ void main() {
     await t.ensureVisible(find.byKey(SleepTimelineEditor.saveKey));
     await t.tap(find.byKey(SleepTimelineEditor.saveKey));
     await t.pump();
-    final dynamic entry = (saver.plans.single as dynamic).entry;
+    final entry = saver.plans.single.entry!;
     expect((entry.start, entry.end, entry.main, entry.action.name),
       (s.blocks.first.start, s.blocks.first.end, true, 'notSleep'));
     saver.written.completeError(const SleepEditInvalid('Entry changed'));
@@ -168,12 +191,58 @@ void main() {
     expect(find.textContaining('Entry changed'), findsOneWidget);
   });
 
+  // WHY: retaining separately stored overlapping entries is display-only.
+  // Opening and immediately saving must never hand a merge to the writer.
+  testWidgets('unchanged Save with an overlapping stored nap writes nothing', (t) async {
+    final base = dtNight();
+    final saver = _Saver();
+    final nap = SleepBlock('overlap', BlockKind.nap, base.main.start + 600, base.main.start + 2400);
+    final d = SleepEditorData(day: base.day, domainStart: base.domainStart, hr: base.hr,
+      movement: base.movement, main: base.main, naps: [nap, ...base.naps],
+      napSources: {nap.id: 'manual'});
+    final s = await _open(t, saver, data: d);
+    expect(s.blocks, [base.main, nap, ...base.naps]);
+    await t.ensureVisible(find.byKey(SleepTimelineEditor.saveKey));
+    await t.tap(find.byKey(SleepTimelineEditor.saveKey));
+    await t.pumpAndSettle();
+    expect(saver.plans, isEmpty);
+    expect(find.text('Sleep tab · 2026-11-14'), findsOneWidget);
+  });
+
+  testWidgets('manual main window exposes only automatic; detected main recalculation is durable', (t) async {
+    final base = dtNight();
+    final mine = SleepEditorData(day: base.day, domainStart: base.domainStart, hr: base.hr,
+      movement: base.movement, main: base.main, naps: base.naps, mainSource: 'manual');
+    final first = _Saver();
+    await _open(t, first, data: mine);
+    expect(find.text('Back to automatic'), findsOneWidget);
+    expect(find.text('Recalculate time in bed'), findsNothing);
+    await t.tap(find.byIcon(LucideIcons.chevronLeft));
+    await t.pumpAndSettle();
+    final saver = _Saver();
+    await _open(t, saver);
+    await t.ensureVisible(find.text('Recalculate time in bed'));
+    await t.tap(find.text('Recalculate time in bed'));
+    await t.pumpAndSettle();
+    await t.ensureVisible(find.byKey(SleepTimelineEditor.saveKey));
+    await t.tap(find.byKey(SleepTimelineEditor.saveKey));
+    await t.pump();
+    final entry = saver.plans.single.entry!;
+    expect((entry.main, entry.start, entry.end, entry.action),
+      (true, base.main.start, base.main.end, SleepEntryAction.recalculate));
+    expect(saver.plans.single.naps, isEmpty);
+    expect(saver.plans.single.window, isNull);
+    saver.written.complete();
+    await t.pumpAndSettle();
+    expect(find.text('Sleep tab · 2026-11-14'), findsOneWidget);
+  });
+
   testWidgets('back returns to the same Sleep tab night without writing', (t) async {
     final saver = _Saver();
     await _open(t, saver);
     expect(find.text('Edit sleep'), findsOneWidget);
     expect(find.textContaining('14'), findsWidgets);
-    await t.pageBack();
+    await t.tap(find.byIcon(LucideIcons.chevronLeft));
     await t.pumpAndSettle();
     expect(find.text('Sleep tab · 2026-11-14'), findsOneWidget);
     expect(saver.plans, isEmpty);

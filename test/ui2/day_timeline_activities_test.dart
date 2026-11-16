@@ -184,4 +184,27 @@ void main() {
     await t.pump();
     expect(s.emphasis, isNull);
   });
+  // WHY: CLAIM(sleep-editor-stable-text). Chart glides must not rebuild the
+  // day list's text each frame, restarting row layout and async children.
+  testWidgets('zoom animation leaves day list Text widgets and scroll offset unchanged', (t) async {
+    final rig = await Apk2Rig.create(t);
+    await rig.mount(t, size: const Size(412, 1000));
+    final s = body(t);
+    s.controller.zoomAt(s.controller.view.center);
+    await t.pump(); // Allow the Reset control to appear once.
+    final texts = find.descendant(of: find.byKey(ActivitiesTimeline.listKey), matching: find.byType(Text));
+    final before = t.widgetList<Text>(texts).toList();
+    expect(before, isNotEmpty);
+    final offset = s.list.offset;
+    await t.pump(const Duration(milliseconds: 350));
+    final during = t.widgetList<Text>(texts).toList();
+    expect(during.length, before.length);
+    for (var i = 0; i < before.length; i++) {
+      expect(identical(before[i], during[i]), isTrue,
+          reason: 'Day-list text $i rebuilt during a zoom frame');
+    }
+    expect(s.list.offset, offset);
+    await t.pumpAndSettle();
+  });
+
 }
