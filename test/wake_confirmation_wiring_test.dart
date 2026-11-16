@@ -1145,6 +1145,7 @@ class _RecordingDeriveEngine extends DerivationEngine {
     void Function(String day, int index, int total)? onDayDone,
     void Function(String day)? onDayDerived,
     void Function(List<String> days)? onScopeDays,
+    DayPassResult? result,
   }) async {
     if (boom) throw StateError('derive failed');
     calls.add(((days.toList()..sort()).join(','), force));
