@@ -24,6 +24,13 @@ class InlineLoading extends StatelessWidget {
   /// would be taller than the line it stands in for.
   final bool compact;
 
+  /// True when the USER started the work this status describes (a backup they
+  /// asked for, a reply they are waiting on): a screen reader then says the
+  /// status when it changes. Default false: an automatic calculation or reload
+  /// is readable but never speaks on its own (owner rule, 2026-11-15; the
+  /// loud default broke it on Home's "Calculating today" strip). [A11Y-QUIET]
+  final bool announce;
+
   const InlineLoading({
     super.key,
     required this.status,
@@ -31,6 +38,7 @@ class InlineLoading extends StatelessWidget {
     this.height,
     this.reserveDetail = false,
     this.compact = false,
+    this.announce = false,
   });
 
   @override
@@ -46,9 +54,17 @@ class InlineLoading extends StatelessWidget {
         ),
         const SizedBox(width: S.x2),
         Expanded(
-          child: Text(
-            [status, if (d != null && d.isNotEmpty) d].join(' · '),
-            style: F.cap.copyWith(color: p.ink2),
+          // The status alone is spoken (a live region only when [announce]);
+          // the day count would make it chatter.
+          child: Semantics(
+            container: true,
+            liveRegion: announce,
+            label: status,
+            excludeSemantics: true,
+            child: Text(
+              [status, if (d != null && d.isNotEmpty) d].join(' · '),
+              style: F.cap.copyWith(color: p.ink2),
+            ),
           ),
         ),
       ]);
@@ -58,8 +74,17 @@ class InlineLoading extends StatelessWidget {
       children: [
         const PendingContent(pending: true, child: PendingRows(count: 2, rowHeight: 30)),
         const SizedBox(height: S.x2),
-        Text(status,
-            textAlign: TextAlign.center, style: F.cap.copyWith(color: p.ink2)),
+        // A live region ONLY for user-started work ([announce]): a screen
+        // reader then says the status when it changes. The spinner is silent.
+        // The detail line stays a plain node: a day count that ticks would be
+        // announced on every tick.
+        Semantics(
+          container: true,
+          liveRegion: announce,
+          child: Text(status,
+              textAlign: TextAlign.center,
+              style: F.cap.copyWith(color: p.ink2)),
+        ),
         if (d != null && d.isNotEmpty)
           Text(d,
               textAlign: TextAlign.center,

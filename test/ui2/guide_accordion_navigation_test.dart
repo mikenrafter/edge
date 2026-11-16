@@ -222,9 +222,9 @@ void main() {
           final header = find.descendant(of: accordion, matching: find.byType(Pressable)).first;
           await Scrollable.ensureVisible(t.element(header), duration: Duration.zero, alignment: .5);
           await t.pump();
-          final collapsed = find.descendant(of: header, matching: find.byWidgetPredicate((w) =>
-            w is Semantics && (w.properties.label?.endsWith(', collapsed') ?? false)));
-          if (collapsed.evaluate().isNotEmpty) {
+          // A11Y-STATE: expansion is a real control state, no longer words
+          // appended to its label. Open every lazy body before discovery.
+          if (t.widget<Pressable>(header).expanded == false) {
             await t.tap(header);
             await settleLiveGuide(t, frames: 3);
           }
@@ -255,12 +255,9 @@ void main() {
         final header = find.descendant(of: accordion, matching: find.byType(Pressable)).first;
         await Scrollable.ensureVisible(t.element(header), duration: Duration.zero, alignment: .5);
         await t.pump();
-        final labels = find.descendant(of: header, matching: find.byType(Semantics)).evaluate()
-            .map((e) => (e.widget as Semantics).properties.label ?? '');
-        if (labels.any((s) => s.endsWith(', expanded'))) await t.tap(header);
+        if (t.widget<Pressable>(header).expanded == true) await t.tap(header);
         await settleLiveGuide(t, frames: 3);
-        expect(find.descendant(of: header, matching: find.byWidgetPredicate((w) =>
-          w is Semantics && (w.properties.label?.endsWith(', collapsed') ?? false))), findsOneWidget,
+        expect(t.widget<Pressable>(header).expanded, isFalse,
           reason: 'fixture really collapsed $id through its header');
       }
       final started = await app.runner.start(r2Guide(guideId), band: null);

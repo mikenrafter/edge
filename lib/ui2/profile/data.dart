@@ -652,6 +652,8 @@ class DataScreenView extends StatelessWidget {
                 if (busy && !importing) ...[
                   const SizedBox(height: S.x6),
                   InlineLoading(
+                    // The user tapped the action that is running.
+                    announce: true,
                     status: busyStatus ??
                         l?.loadingDataBusy ??
                         'Working on your data'),

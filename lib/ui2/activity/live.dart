@@ -21,7 +21,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -35,6 +34,7 @@ import '../../l10n/display_text.dart';
 import '../../state/prefs.dart';
 import '../../state/units_controller.dart';
 import '../screens/home_screen.dart' show unitsOf;
+import '../announce.dart';
 import '../charts.dart';
 import '../grammar.dart';
 import '../paint_activity.dart';
@@ -721,8 +721,10 @@ class LiveTick extends StatelessWidget {
 /// moments a paced session actually has to announce (rest is over, work
 /// begins) were buzz-only, so a screen-reader user driving an interval workout
 /// had no signal at all.
-void say(BuildContext c, String what) =>
-    SemanticsService.sendAnnouncement(View.of(c), what, TextDirection.ltr);
+///
+/// Through the shared [announce] (lib/ui2/announce.dart): polite, and in the
+/// page's own text direction (this used to hard-code left-to-right).
+void say(BuildContext c, String what) => announce(c, what);
 
 /// [ExcludeSemantics] because it is rebuilt every second for the length of a
 /// workout: left in the tree it re-announces itself at 1 Hz, which makes a
@@ -1441,6 +1443,7 @@ class _LiveStrengthState extends State<LiveStrength> {
           ? Row(children: [
               Expanded(
                 child: BigButton('+30s',
+                    semanticLabel: AppLocalizations.of(c)?.liveAddRest30 ?? 'Add 30 seconds',
                     color: C.teal,
                     soft: true,
                     // No `setState`: nothing on the shell changes shape while
@@ -1717,7 +1720,7 @@ class _LiveStrengthState extends State<LiveStrength> {
             const cols = [C.green, C.teal, C.blue, C.orange, C.red];
             return Expanded(
               child: Pressable(
-                semanticLabel: 'RPE $v',
+                semanticLabel: AppLocalizations.of(c)?.liveRpeChoice('$v') ?? 'Effort $v of 10',
                 onTap: () => setState(() => rpe = v),
                 child: Container(
                   margin: EdgeInsets.only(right: i == 4 ? 0 : S.x2),

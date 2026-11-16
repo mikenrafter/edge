@@ -9,7 +9,13 @@
   "dayActivitiesSavedDetail": "आपके दिन के हिस्से के रूप में रखी गई",
   "dayActivitiesDiscardedDetail": "गतिविधि नहीं के रूप में चिह्नित",
   "dayActivitiesFilterCount": "फ़िल्टर, {count} प्रकार चुने गए",
-  "@dayActivitiesFilterCount": {"placeholders": {"count": {"type": "int"}}},
+  "@dayActivitiesFilterCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "sleepEditorYourSleep": "आपकी नींद",
   "sleepEditorCalculate": "चुने गए नींद ब्लॉक की अवस्थाएँ गणना करें",
   "sleepEditorResetDetected": "पहचाने गए समय पर रीसेट करें",
@@ -23,17 +29,59 @@
   "sleepEditorGhostStartTitle": "सोने का समय पहचाने गए समय पर रीसेट करें?",
   "sleepEditorGhostEndTitle": "जागने का समय पहचाने गए समय पर रीसेट करें?",
   "sleepEditorGhostStartBody": "{from} → {to}। जागने का समय {other} ही रहेगा।",
-  "@sleepEditorGhostStartBody": {"placeholders": {"from": {"type": "String"}, "to": {"type": "String"}, "other": {"type": "String"}}},
+  "@sleepEditorGhostStartBody": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      },
+      "other": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorGhostEndBody": "{from} → {to}। सोने का समय {other} ही रहेगा।",
-  "@sleepEditorGhostEndBody": {"placeholders": {"from": {"type": "String"}, "to": {"type": "String"}, "other": {"type": "String"}}},
+  "@sleepEditorGhostEndBody": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      },
+      "other": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorOverlapError": "5 मिनट से 6 घंटे तक का खाली अंतराल चुनें।",
   "sleepEditorAddStart": "हाइलाइट किए गए हिस्से में ब्लॉक शुरू होने की जगह टैप करें।",
   "sleepEditorAddEnd": "शुरुआत {time}। अब समाप्त होने की जगह टैप करें।",
-  "@sleepEditorAddEnd": {"placeholders": {"time": {"type": "String"}}},
+  "@sleepEditorAddEnd": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorSuggestedTime": "सुझाव: {time}",
-  "@sleepEditorSuggestedTime": {"placeholders": {"time": {"type": "String"}}},
+  "@sleepEditorSuggestedTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorSelectedBlock": "चयनित: {block}",
-  "@sleepEditorSelectedBlock": {"placeholders": {"block": {"type": "String"}}},
+  "@sleepEditorSelectedBlock": {
+    "placeholders": {
+      "block": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorSaveFailed": "सेव नहीं हो सका। आपके बदलाव सुरक्षित हैं।",
   "sleepEditorPreview": "पूर्वावलोकन",
   "sleepEditorAddBlock": "नींद ब्लॉक जोड़ें",
@@ -41,14 +89,41 @@
   "sleepEditorRem": "REM",
   "sleepEditorLight": "हल्की",
   "sleepEditorMinutes": "{minutes} मिनट",
-  "@sleepEditorMinutes": {"placeholders": {"minutes": {"type": "int"}}},
+  "@sleepEditorMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
   "sleepEditorHeartRate": "हृदय गति",
   "sleepEditorMovement": "गतिविधि",
   "sleepEditorAt": "समय",
   "timelineSemanticsRange": "{start} से {end} तक की समयरेखा",
-  "@timelineSemanticsRange": {"placeholders": {"start": {"type": "String"}, "end": {"type": "String"}}},
+  "@timelineSemanticsRange": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
   "timelineSemanticsScrub": "{start} से {end} तक की समयरेखा, चयनित समय {at}",
-  "@timelineSemanticsScrub": {"placeholders": {"start": {"type": "String"}, "end": {"type": "String"}, "at": {"type": "String"}}},
+  "@timelineSemanticsScrub": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      },
+      "at": {
+        "type": "String"
+      }
+    }
+  },
   "timelineFineSteps": "1 मिनट के चरण",
   "timelineCoarseSteps": "5 मिनट के चरण। एक-एक मिनट के लिए दबाकर रखें।",
   "timelineStages": "अवस्थाएँ",
@@ -4153,5 +4228,29 @@
   "sleepSummaryHeldSync": "सिंक पूरा होने की प्रतीक्षा में",
   "sleepSummaryHeldBackground": "बैकग्राउंड में रुका हुआ",
   "sleepSummaryHeldPower": "बिजली की प्रतीक्षा में",
-  "sleepSummaryOverlappingAlerts": "एक ही समय में चलने वाले जगाने के अलर्ट"
+  "sleepSummaryOverlappingAlerts": "एक ही समय में चलने वाले जगाने के अलर्ट",
+  "a11yBusyLabel": "{label}, चल रहा है",
+  "a11yCoachReplied": "कोच ने जवाब दिया: {reply}",
+  "a11ySyncFinished": "सिंक पूरा हुआ",
+  "a11yTypicalCurve": "ऊर्जा का अनुमान: सबसे ज़्यादा लगभग {peak}, सबसे कम लगभग {dip}।",
+  "a11yTypicalCorrelation": "{name}: {days} जोड़े गए दिनों में सहसंबंध {rho}",
+  "a11yTypicalCorrelationNone": "{name}: अभी कोई सहसंबंध नहीं, {days} जोड़े गए दिन",
+  "ecgWhatResultsMean": "नतीजों का मतलब",
+  "gestureFailureDismiss": "हटाएं",
+  "liveHrChartLabel": "लाइव हृदय गति",
+  "liveRpeChoice": "मेहनत 10 में से {value}",
+  "liveAddRest30": "30 सेकंड जोड़ें",
+  "patternPickerPlay": "चलाएं",
+  "hapticsOpenSection": "{title} खोलें",
+  "patternEditorStartFromTaps": "टैप से शुरू करें",
+  "patternEditorFollowRhythm": "लय का पालन करें",
+  "patternEditorAllowDynamics": "उतार-चढ़ाव की अनुमति दें",
+  "patternNotationDot": "बिंदु",
+  "sourcesTimelineLabel": "हर हिस्से का डेटा किस डिवाइस से आया, उसकी समयरेखा",
+  "sourcesResetOrder": "{signal} को डिफ़ॉल्ट क्रम पर रीसेट करें",
+  "bandNotifBuzzPattern": "वाइब्रेशन पैटर्न, {name}",
+  "bandNotifPatternCustom": "कस्टम",
+  "homeProfileSyncing": "{label}, सिंक हो रहा है",
+  "naturalWakeBuzzing": "स्वाभाविक जागना वाइब्रेट कर रहा है",
+  "naturalWakeOrTapBand": "या बैंड पर दो बार टैप करें"
 }

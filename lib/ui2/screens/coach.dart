@@ -193,6 +193,9 @@ class _CoachScreenState extends State<CoachScreen> {
     setState(() => _busy = true);
     // Read before the await: `send` can outlive this screen.
     final app = context.read<AppState>();
+    final say = Announcer.of(context);
+    final l = AppLocalizations.of(context);
+    String? reply, failure;
     var wrote = false;
     try {
       // `send` can block for up to 120 s, so every callback below can land after
@@ -200,6 +203,9 @@ class _CoachScreenState extends State<CoachScreen> {
       await engine.send(
         t,
         onItem: (it) {
+          // The LAST assistant message is the answer: the engine also emits
+          // text beside tool calls ("I will check your sleep") before it.
+          if (it.kind == CoachItemKind.assistant) reply = it.text;
           if (!mounted) return;
           setState(() => _items.add(it));
           _scrollDown();
@@ -214,19 +220,25 @@ class _CoachScreenState extends State<CoachScreen> {
         },
       );
     } catch (e) {
+      failure = e is CoachException
+          ? e.message
+          : (l?.coachSomethingWrong('$e') ?? 'Something went wrong: $e');
       if (mounted) {
         setState(() {
-          _items.add(
-            CoachItem.error(
-              e is CoachException
-                  ? e.message
-                  : (AppLocalizations.of(context)?.coachSomethingWrong('$e') ??
-                      'Something went wrong: $e'),
-            ),
-          );
+          _items.add(CoachItem.error(failure));
         });
       }
     } finally {
+      // The user sent this, so its result is spoken when it lands (A11Y-ANNOUNCE):
+      // the reply arrives seconds later, far from where the focus is.
+      // A failed turn says the failure, whatever the coach said before it.
+      final answer = reply;
+      if (failure != null) {
+        say(failure);
+      } else if (answer != null) {
+        final r = coachSpokenFirstSentence(answer);
+        if (r.isNotEmpty) say(l?.a11yCoachReplied(r) ?? 'Coach replied: $r');
+      }
       if (mounted) {
         setState(() {
           _busy = false;
@@ -449,12 +461,18 @@ class _CoachScreenState extends State<CoachScreen> {
                     ),
                     const SizedBox(width: S.x3),
                     Expanded(
-                      child: Text(
-                        coachPresentationText(
-                          AppLocalizations.of(context),
-                          _status ?? '',
+                      // A live region: the step the coach is on is spoken as
+                      // it changes ("Reading your data").
+                      child: Semantics(
+                        container: true,
+                        liveRegion: true,
+                        child: Text(
+                          coachPresentationText(
+                            AppLocalizations.of(context),
+                            _status ?? '',
+                          ),
+                          style: F.cap.copyWith(color: p.ink3),
                         ),
-                        style: F.cap.copyWith(color: p.ink3),
                       ),
                     ),
                   ],
@@ -1224,4 +1242,14 @@ class _CoachSetupState extends State<CoachSetup> {
       ),
     );
   }
+}
+
+/// The first sentence of a coach reply, without markdown marks, for the
+/// spoken "Coach replied" announcement. The whole reply is in the list.
+@visibleForTesting
+String coachSpokenFirstSentence(String reply) {
+  final plain = reply.replaceAll(RegExp(r'[*_#`>]'), '').trim();
+  final end = RegExp(r'[.!?。！？](\s|$)|\n').firstMatch(plain);
+  final first = (end == null ? plain : plain.substring(0, end.start + 1)).trim();
+  return first.length <= 240 ? first : '${first.substring(0, 240)}…';
 }

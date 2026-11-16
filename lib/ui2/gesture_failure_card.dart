@@ -9,6 +9,7 @@
 // clipboard); Report opens the sheet of links. Neither dismisses.
 
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../gestures/gesture_failures.dart';
@@ -210,8 +211,8 @@ class _GestureFailureCardState extends State<GestureFailureCard> {
             child: Pressable(
               key: const ValueKey('gesture-failure-dismiss'),
               onTap: () => widget.store.dismiss(f.gestureId),
-              semanticLabel: 'Dismiss',
-              child: Text('Dismiss',
+              semanticLabel: AppLocalizations.of(c)?.gestureFailureDismiss ?? 'Dismiss',
+              child: Text('Dismiss', // drawn word unchanged; the spoken label is localized
                   style: F.over.copyWith(
                       color: p.ink3, decoration: TextDecoration.underline)),
             ),

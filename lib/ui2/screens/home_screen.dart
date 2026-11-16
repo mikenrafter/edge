@@ -429,7 +429,8 @@ Widget _homeAvatar(BuildContext c, AppLocalizations? l) {
   return syncBusyOf(c)
       ? Pressable(
           semanticLabel:
-              '${l?.homeProfileSettings ?? 'Profile and settings'}, syncing',
+              l?.homeProfileSyncing(l.homeProfileSettings) ??
+                  'Profile and settings, syncing',
           onTap: () => go(c, const MoreSettings()),
           child: Container(
             width: 40,

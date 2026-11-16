@@ -7,6 +7,7 @@
 // is a separate Advanced action with its cost stated and a confirmation.
 
 import 'package:flutter/material.dart';
+import '../../l10n/app_localizations.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../grammar.dart';
@@ -191,7 +192,8 @@ class _SourcePriorityEditorState extends State<SourcePriorityEditor> {
             if (s['userSet'] == true && widget.onReset != null)
               Pressable(
                 onTap: () => widget.onReset!(name),
-                semanticLabel: 'Reset $signalLabel to the default order',
+                semanticLabel: AppLocalizations.of(c)?.sourcesResetOrder(signalLabel) ??
+                    'Reset $signalLabel to the default order',
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: S.x2),
                   child: Text('Back to the default order',

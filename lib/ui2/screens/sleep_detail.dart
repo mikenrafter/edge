@@ -1130,7 +1130,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         Column(key: const ValueKey('sleep-tab:timeline'),
           crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             ..._dayNav(d),
-            Surface(child: _answerSlot(c, p, d, n, summary: true)),
+            Surface(semanticLabel: l.sleepTabTimelineCardTitle, semanticChildren: true, child: _answerSlot(c, p, d, n, summary: true)),
           ])
       else
         InsideCard(key: const ValueKey('sleep-tab:timeline'),
@@ -1145,6 +1145,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
                 rejected: n['sleep_source'] == 'rejected'),
             ..._napsButton(c, l, d.day),
           ])),
+
 
       const SizedBox(height: S.x3),
       _accordion(

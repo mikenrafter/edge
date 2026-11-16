@@ -177,8 +177,16 @@ class _TypicalDayScreenState extends State<TypicalDayScreen> {
       Text(l?.typicalPattern(s.dayCount) ?? 'Your pattern so far, ${s.dayCount} days'),
       const SizedBox(height: S.x2),
       Text(l?.typicalCaffeineLimits ?? 'First recorded caffeine only. Each comparison needs 14 paired days with variation. Associations do not show causes. Missing observations stay blank.'),
+      // Read in words: "ρ = 0.42 · n = 14" was spoken as "rho equals 0.42 dot n equals 14".
       for (final row in comparisons) Padding(padding: const EdgeInsets.symmetric(vertical: S.x1),
-        child: Text('${row.$2}: ${row.$3 == null ? '—' : 'ρ = ${row.$3!.toStringAsFixed(2)}'} · n = ${s.pairedCounts[row.$1] ?? 0}')),
+        child: Semantics(
+          label: row.$3 == null
+              ? (l?.a11yTypicalCorrelationNone(row.$2, '${s.pairedCounts[row.$1] ?? 0}') ??
+                  '${row.$2}: no correlation yet, ${s.pairedCounts[row.$1] ?? 0} paired days')
+              : (l?.a11yTypicalCorrelation(row.$2, row.$3!.toStringAsFixed(2), '${s.pairedCounts[row.$1] ?? 0}') ??
+                  '${row.$2}: correlation ${row.$3!.toStringAsFixed(2)} over ${s.pairedCounts[row.$1] ?? 0} paired days'),
+          excludeSemantics: true,
+          child: Text('${row.$2}: ${row.$3 == null ? '—' : 'ρ = ${row.$3!.toStringAsFixed(2)}'} · n = ${s.pairedCounts[row.$1] ?? 0}'))),
       if (!s.enoughDays) Text(l?.typicalTooFew ?? 'Too few recorded days to compare yet.'),
       Text(l?.typicalResidual(s.latestResidualMg?.toStringAsFixed(1) ?? '—') ??
           'Latest bedtime residual from recorded doses: ${s.latestResidualMg?.toStringAsFixed(1) ?? '—'} mg'),
@@ -228,13 +236,35 @@ class _MealTimesEditorState extends State<_MealTimesEditor> {
 class TypicalDayPlot extends StatelessWidget {
   const TypicalDayPlot({super.key, required this.data});
   final TypicalDayData data;
+  // The curve is the screen's point, and it was a picture with no semantics:
+  // one spoken sentence says where it peaks and dips (A11Y-CHART). The hour
+  // ticks are axis furniture, not read.
   @override
   Widget build(BuildContext context) => Column(children: [
-    RepaintBoundary(child: SizedBox(height: 160, width: double.infinity,
-      child: CustomPaint(painter: _TypicalPainter(data, Theme.of(context).colorScheme.primary)))),
-    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [for (final h in [0, 6, 12, 18, 24]) Text(h == 24 ? '24:00' : clock(h * 60), style: F.cap)]),
+    Semantics(container: true, label: typicalDaySpoken(AppLocalizations.of(context), data),
+      child: RepaintBoundary(child: SizedBox(height: 160, width: double.infinity,
+        child: CustomPaint(painter: _TypicalPainter(data, Theme.of(context).colorScheme.primary))))),
+    ExcludeSemantics(child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [for (final h in [0, 6, 12, 18, 24]) Text(h == 24 ? '24:00' : clock(h * 60), style: F.cap)])),
   ]);
+}
+
+/// What the Typical day curve says out loud: the hours of its highest and
+/// lowest point, from the same samples the painter draws.
+String typicalDaySpoken(AppLocalizations? l, TypicalDayData data) {
+  final forecast = data.circadian.alertness.value;
+  if (forecast == null || forecast.shape.length < 2) {
+    return l?.typicalNoCurve ?? 'Not enough recent sleep data for a curve.';
+  }
+  final shape = forecast.shape;
+  var hi = 0, lo = 0;
+  for (var i = 1; i < shape.length; i++) {
+    if (shape[i] > shape[hi]) hi = i;
+    if (shape[i] < shape[lo]) lo = i;
+  }
+  String at(int i) => clock(((forecast.startHour + 18 * i / (shape.length - 1)) % 24 * 60).round() % 1440);
+  return l?.a11yTypicalCurve(at(hi), at(lo)) ??
+      'Energy forecast: highest around ${at(hi)}, lowest around ${at(lo)}.';
 }
 class _TypicalPainter extends CustomPainter implements GuidePlot {
   @override

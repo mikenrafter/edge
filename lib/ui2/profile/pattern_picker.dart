@@ -11,6 +11,7 @@
 // carry its id.
 
 import 'package:flutter/material.dart';
+import '../../l10n/app_localizations.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../haptics/haptic_player.dart' show bakedRuntimeMsFor;
@@ -239,7 +240,11 @@ class _PickerRow extends StatelessWidget {
     final p = P.of(c);
     return Pressable(
       onTap: onTap,
-      semanticLabel: '$title. $sub${selected ? ', selected' : ''}',
+      semanticLabel: '$title. $sub',
+      // "selected" is a flag, spoken in the phone's language.
+      selected: selected,
+      // The Default row holds its own Play button.
+      semanticChildren: true,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: S.x3),
         child: Row(
@@ -256,7 +261,7 @@ class _PickerRow extends StatelessWidget {
             ),
             const SizedBox(width: S.x3),
             Expanded(
-              child: Column(
+              child: ExcludeSemantics(child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title, style: F.body.copyWith(color: p.ink)),
@@ -267,12 +272,12 @@ class _PickerRow extends StatelessWidget {
                     style: F.over.copyWith(color: p.ink3),
                   ),
                 ],
-              ),
+              )),
             ),
             if (onPlay != null)
               IconButton(
                 key: const ValueKey('pattern-picker-default-play'),
-                tooltip: 'Play',
+                tooltip: AppLocalizations.of(c)?.patternPickerPlay ?? 'Play',
                 icon: Icon(LucideIcons.play, size: 16, color: p.ink2),
                 onPressed: onPlay,
               ),

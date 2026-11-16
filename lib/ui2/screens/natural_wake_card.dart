@@ -33,15 +33,25 @@ class NaturalWakeBuzzingCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  title,
-                  key: const ValueKey('natural-wake-buzzing'),
-                  style: F.t2.copyWith(color: p.ink),
+                // Drawn words stay as before the pilot (pixels bar); a screen
+                // reader says them in the phone's language.
+                Semantics(
+                  label: buzzing ? (l?.naturalWakeBuzzing ?? title) : title,
+                  excludeSemantics: true,
+                  child: Text(
+                    title,
+                    key: const ValueKey('natural-wake-buzzing'),
+                    style: F.t2.copyWith(color: p.ink),
+                  ),
                 ),
                 const SizedBox(height: S.x1),
-                Text(
-                  'or double-tap the band',
-                  style: F.cap.copyWith(color: p.ink2),
+                Semantics(
+                  label: l?.naturalWakeOrTapBand ?? 'or double-tap the band',
+                  excludeSemantics: true,
+                  child: Text(
+                    'or double-tap the band',
+                    style: F.cap.copyWith(color: p.ink2),
+                  ),
                 ),
                 const SizedBox(height: S.x3),
                 BigButton(

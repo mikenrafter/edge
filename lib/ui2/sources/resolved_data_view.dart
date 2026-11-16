@@ -7,6 +7,7 @@
 // winner and never decides it.
 
 import 'package:flutter/material.dart';
+import '../../l10n/app_localizations.dart';
 
 import '../../sources/resolved_window.dart'
     show kResolvedWindowChoices;
@@ -76,7 +77,8 @@ class _Timeline extends StatelessWidget {
   Widget build(BuildContext c) {
     final p = P.of(c);
     return Semantics(
-      label: 'Timeline of who owned each stretch',
+      label: AppLocalizations.of(c)?.sourcesTimelineLabel ??
+          'Timeline of who owned each stretch',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

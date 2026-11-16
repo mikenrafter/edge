@@ -80,19 +80,44 @@ Iterable<RenderParagraph> _looseBelow(Element e) sync* {
 
 /// Wraps one component. [component] is the Surface / Section / Pressable's own
 /// element: the identity the plan is keyed by.
+///
+/// It is also where a Pressable's child semantics are hidden (A11Y-NODE): the mark is
+/// the one render object every component already has, so hiding them here adds no
+/// render object to the tree the guide walks. And a PLACEHOLDER takes the pointer
+/// (live_guide_overlay.dart), so it takes the screen reader too: under a skeleton look
+/// the mark drops its subtree's semantics and the control's tap, and a control reads
+/// as disabled (CLAIM(A11Y-GUIDE-BLOCK) [guide_a11y_blocked_test]).
 class GuideUnitMark extends SingleChildRenderObjectWidget {
   final BuildContext component;
-  const GuideUnitMark({super.key, required this.component, required super.child});
+
+  /// The component is a control (a Pressable with a tap): blocked, it reads disabled.
+  final bool control;
+
+  /// The component's label replaces its child's semantics.
+  final bool hideChildSemantics;
+
+  /// The tap a screen reader performs, when the child's own gesture semantics are
+  /// hidden ([hideChildSemantics]) or there are none (a raw pointer Listener).
+  final VoidCallback? semanticTap;
+
+  const GuideUnitMark({super.key, required this.component, this.control = false,
+    this.hideChildSemantics = false, this.semanticTap, required super.child});
 
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      RenderGuideUnit(component as Element, GuideDimScope.controllerOf(context));
+      RenderGuideUnit(component as Element, GuideDimScope.controllerOf(context))
+        ..control = control
+        ..hideChildSemantics = hideChildSemantics
+        ..semanticTap = semanticTap;
 
   @override
   void updateRenderObject(BuildContext context, RenderGuideUnit renderObject) {
     renderObject
       ..component = component as Element
-      ..controller = GuideDimScope.controllerOf(context);
+      ..controller = GuideDimScope.controllerOf(context)
+      ..control = control
+      ..hideChildSemantics = hideChildSemantics
+      ..semanticTap = semanticTap;
   }
 }
 
@@ -126,10 +151,82 @@ class RenderGuideUnit extends RenderProxyBox {
   Element _component;
   GuideDimController? _controller;
 
+  bool _control = false;
+  set control(bool value) {
+    if (value == _control) return;
+    _control = value;
+    markNeedsSemanticsUpdate();
+  }
+
+  bool _hideChildSemantics = false;
+  set hideChildSemantics(bool value) {
+    if (value == _hideChildSemantics) return;
+    _hideChildSemantics = value;
+    markNeedsSemanticsUpdate();
+  }
+
+  VoidCallback? _semanticTap;
+  set semanticTap(VoidCallback? value) {
+    if (identical(value, _semanticTap)) return;
+    final had = _semanticTap != null;
+    _semanticTap = value;
+    if (had != (value != null)) markNeedsSemanticsUpdate();
+  }
+
+  /// Whether the plan in force makes this component (or the component that wraps
+  /// it, as a Surface wraps its Pressable) a placeholder. Only the plan's own
+  /// decisions count, never its geometric fallback for components it has not
+  /// seen: the framework asks for semantics children during layout too, where
+  /// reading sizes is not allowed, and the answer must not change between two
+  /// semantics updates. The overlay replans after any frame that changes the
+  /// page, so a component that scrolls in is planned a frame later.
+  bool _placeholder() {
+    final looks = _controller?.looks;
+    if (looks is! GuidePlan || !_component.mounted) return false;
+    if (looks.plannedLookOf(_component) == GuideUnitLook.skeleton) return true;
+    Element? parent;
+    _component.visitAncestorElements((a) {
+      parent = a;
+      return false;
+    });
+    final wrap = parent;
+    return wrap != null && isGuideComponent(wrap.widget) &&
+        looks.plannedLookOf(wrap) == GuideUnitLook.skeleton;
+  }
+
+  /// [_placeholder] as of the last semantics update. It changes only together
+  /// with [markNeedsSemanticsUpdate], as the semantics pipeline requires.
+  bool _blocked = false;
+
+  void _refreshBlocked() {
+    final now = _placeholder();
+    if (now == _blocked) return;
+    _blocked = now;
+    markNeedsSemanticsUpdate();
+  }
+
+  @override
+  void describeSemanticsConfiguration(SemanticsConfiguration config) {
+    super.describeSemanticsConfiguration(config);
+    if (_blocked) {
+      if (_control) config.isEnabled = false;
+      return;
+    }
+    final tap = _semanticTap;
+    if (tap != null) config.onTap = tap;
+  }
+
+  @override
+  void visitChildrenForSemantics(RenderObjectVisitor visitor) {
+    if (_hideChildSemantics || _blocked) return;
+    super.visitChildrenForSemantics(visitor);
+  }
+
   set component(Element value) {
     if (identical(_component, value)) return;
     _component = value;
     markNeedsPaint();
+    _refreshBlocked();
   }
 
   set controller(GuideDimController? value) {
@@ -139,6 +236,7 @@ class RenderGuideUnit extends RenderProxyBox {
     _controller = value;
     if (attached) _listen();
     markNeedsPaint();
+    _refreshBlocked();
   }
 
   /// Repaints this component asked for itself, for the tests that pin who repaints:
@@ -150,6 +248,9 @@ class RenderGuideUnit extends RenderProxyBox {
     planRepaints++;
     _followHover();
     markNeedsPaint();
+    // Two map lookups; flips the semantics only when the placeholder state
+    // does (the fade notifies every frame).
+    _refreshBlocked();
   }
 
   void _pulsed() {
@@ -195,6 +296,7 @@ class RenderGuideUnit extends RenderProxyBox {
   void attach(PipelineOwner owner) {
     super.attach(owner);
     _listen();
+    _refreshBlocked();
   }
 
   void _listen() {

@@ -279,9 +279,9 @@ class EcgLivePreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = P.of(context);
-    return Semantics(
-      label: label,
-      child: Surface(
+    // The card is a node of its own and reads its label and unit once; an
+    // outer label here used to say the label twice.
+    return Surface(
         pad: const EdgeInsets.all(S.x3),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -314,7 +314,6 @@ class EcgLivePreview extends StatelessWidget {
             ),
           ],
         ),
-      ),
     );
   }
 }

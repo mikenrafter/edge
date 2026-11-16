@@ -366,7 +366,7 @@ class _PhoneImportState extends State<PhoneImport> {
                   const SizedBox(height: S.x2),
                   if (_busy) ...[
                     const SizedBox(height: S.x6),
-                    InlineLoading(status: _busyStatus ?? ''),
+                    InlineLoading(status: _busyStatus ?? '', announce: true),
                   ],
                   if (_note != null && _note!.isNotEmpty) ...[
                     const SizedBox(height: S.x5),

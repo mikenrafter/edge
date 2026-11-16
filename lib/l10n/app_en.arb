@@ -9,7 +9,13 @@
   "dayActivitiesSavedDetail": "Kept as part of your day",
   "dayActivitiesDiscardedDetail": "Marked as not an activity",
   "dayActivitiesFilterCount": "Filter, {count} kinds selected",
-  "@dayActivitiesFilterCount": {"placeholders": {"count": {"type": "int"}}},
+  "@dayActivitiesFilterCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "sleepEditorYourSleep": "Your sleep",
   "sleepEditorCalculate": "Calculate selected sleep block stages",
   "sleepEditorResetDetected": "Reset to detected",
@@ -23,17 +29,59 @@
   "sleepEditorGhostStartTitle": "Reset fell asleep to detected?",
   "sleepEditorGhostEndTitle": "Reset wake-up to detected?",
   "sleepEditorGhostStartBody": "{from} → {to}. Wake-up stays at {other}.",
-  "@sleepEditorGhostStartBody": {"placeholders": {"from": {"type": "String"}, "to": {"type": "String"}, "other": {"type": "String"}}},
+  "@sleepEditorGhostStartBody": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      },
+      "other": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorGhostEndBody": "{from} → {to}. Fell asleep stays at {other}.",
-  "@sleepEditorGhostEndBody": {"placeholders": {"from": {"type": "String"}, "to": {"type": "String"}, "other": {"type": "String"}}},
+  "@sleepEditorGhostEndBody": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      },
+      "other": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorOverlapError": "Choose a free interval lasting 5 minutes to 6 hours.",
   "sleepEditorAddStart": "Tap where the block starts in a highlighted area.",
   "sleepEditorAddEnd": "Starts {time}. Now tap where it ends.",
-  "@sleepEditorAddEnd": {"placeholders": {"time": {"type": "String"}}},
+  "@sleepEditorAddEnd": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorSuggestedTime": "Suggested {time}",
-  "@sleepEditorSuggestedTime": {"placeholders": {"time": {"type": "String"}}},
+  "@sleepEditorSuggestedTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorSelectedBlock": "Selected: {block}",
-  "@sleepEditorSelectedBlock": {"placeholders": {"block": {"type": "String"}}},
+  "@sleepEditorSelectedBlock": {
+    "placeholders": {
+      "block": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorSaveFailed": "Could not save. Your changes are still here.",
   "sleepEditorPreview": "Preview",
   "sleepEditorAddBlock": "Add sleep block",
@@ -41,14 +89,41 @@
   "sleepEditorRem": "REM",
   "sleepEditorLight": "Light",
   "sleepEditorMinutes": "{minutes} min",
-  "@sleepEditorMinutes": {"placeholders": {"minutes": {"type": "int"}}},
+  "@sleepEditorMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
   "sleepEditorHeartRate": "Heart rate",
   "sleepEditorMovement": "Movement",
   "sleepEditorAt": "At",
   "timelineSemanticsRange": "Timeline from {start} to {end}",
-  "@timelineSemanticsRange": {"placeholders": {"start": {"type": "String"}, "end": {"type": "String"}}},
+  "@timelineSemanticsRange": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
   "timelineSemanticsScrub": "Timeline from {start} to {end}, selected {at}",
-  "@timelineSemanticsScrub": {"placeholders": {"start": {"type": "String"}, "end": {"type": "String"}, "at": {"type": "String"}}},
+  "@timelineSemanticsScrub": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      },
+      "at": {
+        "type": "String"
+      }
+    }
+  },
   "timelineFineSteps": "1-minute steps",
   "timelineCoarseSteps": "5-minute steps. Hold for single minutes.",
   "timelineStages": "Stages",
@@ -19956,5 +20031,163 @@
   "sleepSummaryHeldSync": "Waiting for sync to finish",
   "sleepSummaryHeldBackground": "Paused in the background",
   "sleepSummaryHeldPower": "Waiting for power",
-  "sleepSummaryOverlappingAlerts": "Overlapping wake alerts"
+  "sleepSummaryOverlappingAlerts": "Overlapping wake alerts",
+  "a11yBusyLabel": "{label}, working",
+  "@a11yBusyLabel": {
+    "description": "Screen reader only: a button's label while its action runs (the spinner is silent). label is the button's own text.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "a11yCoachReplied": "Coach replied: {reply}",
+  "@a11yCoachReplied": {
+    "description": "Screen reader only: spoken when the coach's reply arrives after the user sent a message. reply is the reply's first sentence.",
+    "placeholders": {
+      "reply": {
+        "type": "String"
+      }
+    }
+  },
+  "a11ySyncFinished": "Sync finished",
+  "@a11ySyncFinished": {
+    "description": "Screen reader only: spoken when a sync the user started with Sync now ends without a problem."
+  },
+  "a11yTypicalCurve": "Energy forecast: highest around {peak}, lowest around {dip}.",
+  "@a11yTypicalCurve": {
+    "description": "Screen reader only: what the Typical day energy curve shows. peak and dip are clock times.",
+    "placeholders": {
+      "peak": {
+        "type": "String"
+      },
+      "dip": {
+        "type": "String"
+      }
+    }
+  },
+  "a11yTypicalCorrelation": "{name}: correlation {rho} over {days} paired days",
+  "@a11yTypicalCorrelation": {
+    "description": "Screen reader only: one caffeine timing comparison read in words. name is the comparison, rho a number like 0.42, days a count.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "rho": {
+        "type": "String"
+      },
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "a11yTypicalCorrelationNone": "{name}: no correlation yet, {days} paired days",
+  "@a11yTypicalCorrelationNone": {
+    "description": "Screen reader only: a caffeine timing comparison with no result yet. days is a count.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "ecgWhatResultsMean": "What the results mean",
+  "@ecgWhatResultsMean": {
+    "description": "Link on the ECG screens to the page that explains the screener results."
+  },
+  "gestureFailureDismiss": "Dismiss",
+  "@gestureFailureDismiss": {
+    "description": "Button that hides a gesture failure card."
+  },
+  "liveHrChartLabel": "Live heart rate",
+  "@liveHrChartLabel": {
+    "description": "Screen reader name of the live heart rate chart."
+  },
+  "liveRpeChoice": "Effort {value} of 10",
+  "@liveRpeChoice": {
+    "description": "Screen reader only: one effort rating chip in a live workout (6 to 10).",
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "liveAddRest30": "Add 30 seconds",
+  "@liveAddRest30": {
+    "description": "Screen reader only: the +30s button that adds 30 seconds of rest."
+  },
+  "patternPickerPlay": "Play",
+  "@patternPickerPlay": {
+    "description": "Button that plays a buzz pattern without choosing it."
+  },
+  "hapticsOpenSection": "Open {title}",
+  "@hapticsOpenSection": {
+    "description": "Screen reader only: link to a haptics settings section. title is the section's name.",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "patternEditorStartFromTaps": "Start from taps",
+  "@patternEditorStartFromTaps": {
+    "description": "Screen reader only: the From taps button in the buzz pattern editor."
+  },
+  "patternEditorFollowRhythm": "Follow rhythm",
+  "@patternEditorFollowRhythm": {
+    "description": "Pattern editor option: the band keeps the rhythm exactly."
+  },
+  "patternEditorAllowDynamics": "Allow dynamics",
+  "@patternEditorAllowDynamics": {
+    "description": "Pattern editor option: the band may vary strength."
+  },
+  "patternNotationDot": "Dot",
+  "@patternNotationDot": {
+    "description": "Screen reader only: the button that adds a dot (lengthens a note by half) in the pattern editor."
+  },
+  "sourcesTimelineLabel": "Timeline of who owned each stretch",
+  "@sourcesTimelineLabel": {
+    "description": "Screen reader only: name of the timeline that shows which device supplied each stretch of data."
+  },
+  "sourcesResetOrder": "Reset {signal} to the default order",
+  "@sourcesResetOrder": {
+    "description": "Screen reader only: resets the device priority for one signal. signal is the signal's name.",
+    "placeholders": {
+      "signal": {
+        "type": "String"
+      }
+    }
+  },
+  "bandNotifBuzzPattern": "Buzz pattern, {name}",
+  "@bandNotifBuzzPattern": {
+    "description": "Screen reader only: the button that picks an app's buzz pattern. name is the pattern's name.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "bandNotifPatternCustom": "Custom",
+  "@bandNotifPatternCustom": {
+    "description": "Name of a buzz pattern the user made themselves."
+  },
+  "homeProfileSyncing": "{label}, syncing",
+  "@homeProfileSyncing": {
+    "description": "Screen reader only: the profile button while a sync runs. label is the button's name.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "naturalWakeBuzzing": "Natural Wake is buzzing",
+  "@naturalWakeBuzzing": {
+    "description": "Home card title while the band's Natural Wake alarm is buzzing."
+  },
+  "naturalWakeOrTapBand": "or double-tap the band",
+  "@naturalWakeOrTapBand": {
+    "description": "Under the Natural Wake card title: the other way to stop the buzzing."
+  }
 }

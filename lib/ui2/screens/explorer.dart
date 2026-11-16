@@ -935,14 +935,12 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
   Widget _picker(BuildContext c, P p, AppLocalizations? l) {
     Widget pick(String k, String label, Color color) {
       final on = _picks.contains(k);
-      return Semantics(
-        selected: on,
-        child: Pressable(
+      return Pressable(
+          selected: on,
           key: ValueKey('explore-pick:$k'),
           onTap: () => _toggle(k),
           child: _pill(p, color, label, on: on),
-        ),
-      );
+        );
     }
 
     if (_day) {

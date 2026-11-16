@@ -93,20 +93,20 @@ class _HelpScreenState extends State<HelpScreen> {
               child: Text(_topicName(l, group.topic), style: F.over.copyWith(color: p.ink3)),
             ),
           ),
+          // The row's Surface is its own node (a button named by the guide's
+          // title), so the key sits on it rather than on a wrapper node.
           for (final entry in group.entries)
-            Semantics(
-              key: HelpScreen.guideRowKey(entry.guide.id),
-              container: true,
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: S.x2),
-                child: Surface(
-                  onTap: () => _open(context, entry.guide),
-                  child: Row(children: [
-                    Expanded(child: Text(entry.guide.title.of(l), style: F.body.copyWith(color: p.ink))),
-                    const SizedBox(width: S.x2),
-                    Icon(LucideIcons.chevronRight, size: 18, color: p.ink3),
-                  ]),
-                ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: S.x2),
+              child: Surface(
+                key: HelpScreen.guideRowKey(entry.guide.id),
+                onTap: () => _open(context, entry.guide),
+                child: Row(children: [
+                  Expanded(child: Text(entry.guide.title.of(l), style: F.body.copyWith(color: p.ink))),
+                  const SizedBox(width: S.x2),
+                  Icon(LucideIcons.chevronRight, size: 18, color: p.ink3),
+                ]),
+
               ),
             ),
         ],

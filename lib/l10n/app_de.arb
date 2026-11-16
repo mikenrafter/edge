@@ -9,7 +9,13 @@
   "dayActivitiesSavedDetail": "Als Teil deines Tages gespeichert",
   "dayActivitiesDiscardedDetail": "Als keine Aktivität markiert",
   "dayActivitiesFilterCount": "Filter, {count} Arten ausgewählt",
-  "@dayActivitiesFilterCount": {"placeholders": {"count": {"type": "int"}}},
+  "@dayActivitiesFilterCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "sleepEditorYourSleep": "Dein Schlaf",
   "sleepEditorCalculate": "Schlafphasen des ausgewählten Blocks berechnen",
   "sleepEditorResetDetected": "Auf Erkennung zurücksetzen",
@@ -23,17 +29,59 @@
   "sleepEditorGhostStartTitle": "Einschlafzeit auf Erkennung zurücksetzen?",
   "sleepEditorGhostEndTitle": "Aufwachzeit auf Erkennung zurücksetzen?",
   "sleepEditorGhostStartBody": "{from} → {to}. Die Aufwachzeit bleibt {other}.",
-  "@sleepEditorGhostStartBody": {"placeholders": {"from": {"type": "String"}, "to": {"type": "String"}, "other": {"type": "String"}}},
+  "@sleepEditorGhostStartBody": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      },
+      "other": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorGhostEndBody": "{from} → {to}. Die Einschlafzeit bleibt {other}.",
-  "@sleepEditorGhostEndBody": {"placeholders": {"from": {"type": "String"}, "to": {"type": "String"}, "other": {"type": "String"}}},
+  "@sleepEditorGhostEndBody": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      },
+      "other": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorOverlapError": "Wähle einen freien Zeitraum von 5 Minuten bis 6 Stunden.",
   "sleepEditorAddStart": "Tippe im markierten Bereich auf den Beginn.",
   "sleepEditorAddEnd": "Beginn {time}. Tippe jetzt auf das Ende.",
-  "@sleepEditorAddEnd": {"placeholders": {"time": {"type": "String"}}},
+  "@sleepEditorAddEnd": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorSuggestedTime": "Vorschlag {time}",
-  "@sleepEditorSuggestedTime": {"placeholders": {"time": {"type": "String"}}},
+  "@sleepEditorSuggestedTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorSelectedBlock": "Ausgewählt: {block}",
-  "@sleepEditorSelectedBlock": {"placeholders": {"block": {"type": "String"}}},
+  "@sleepEditorSelectedBlock": {
+    "placeholders": {
+      "block": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorSaveFailed": "Speichern fehlgeschlagen. Deine Änderungen bleiben erhalten.",
   "sleepEditorPreview": "Vorschau",
   "sleepEditorAddBlock": "Schlafblock hinzufügen",
@@ -41,14 +89,41 @@
   "sleepEditorRem": "REM",
   "sleepEditorLight": "Leicht",
   "sleepEditorMinutes": "{minutes} Min.",
-  "@sleepEditorMinutes": {"placeholders": {"minutes": {"type": "int"}}},
+  "@sleepEditorMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
   "sleepEditorHeartRate": "Herzfrequenz",
   "sleepEditorMovement": "Bewegung",
   "sleepEditorAt": "Zeit",
   "timelineSemanticsRange": "Zeitachse von {start} bis {end}",
-  "@timelineSemanticsRange": {"placeholders": {"start": {"type": "String"}, "end": {"type": "String"}}},
+  "@timelineSemanticsRange": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
   "timelineSemanticsScrub": "Zeitachse von {start} bis {end}, ausgewählt {at}",
-  "@timelineSemanticsScrub": {"placeholders": {"start": {"type": "String"}, "end": {"type": "String"}, "at": {"type": "String"}}},
+  "@timelineSemanticsScrub": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      },
+      "at": {
+        "type": "String"
+      }
+    }
+  },
   "timelineFineSteps": "1-Minuten-Schritte",
   "timelineCoarseSteps": "5-Minuten-Schritte. Für einzelne Minuten halten.",
   "timelineStages": "Phasen",
@@ -4259,5 +4334,29 @@
   "sleepSummaryHeldSync": "Warten auf Abschluss der Synchronisierung",
   "sleepSummaryHeldBackground": "Im Hintergrund pausiert",
   "sleepSummaryHeldPower": "Warten auf Stromversorgung",
-  "sleepSummaryOverlappingAlerts": "Überlappende Wecksignale"
+  "sleepSummaryOverlappingAlerts": "Überlappende Wecksignale",
+  "a11yBusyLabel": "{label}, wird ausgeführt",
+  "a11yCoachReplied": "Coach hat geantwortet: {reply}",
+  "a11ySyncFinished": "Synchronisierung abgeschlossen",
+  "a11yTypicalCurve": "Energieprognose: am höchsten gegen {peak}, am niedrigsten gegen {dip}.",
+  "a11yTypicalCorrelation": "{name}: Korrelation {rho} über {days} gepaarte Tage",
+  "a11yTypicalCorrelationNone": "{name}: noch keine Korrelation, {days} gepaarte Tage",
+  "ecgWhatResultsMean": "Was die Ergebnisse bedeuten",
+  "gestureFailureDismiss": "Ausblenden",
+  "liveHrChartLabel": "Live-Herzfrequenz",
+  "liveRpeChoice": "Anstrengung {value} von 10",
+  "liveAddRest30": "30 Sekunden hinzufügen",
+  "patternPickerPlay": "Abspielen",
+  "hapticsOpenSection": "{title} öffnen",
+  "patternEditorStartFromTaps": "Aus Tippen erstellen",
+  "patternEditorFollowRhythm": "Rhythmus folgen",
+  "patternEditorAllowDynamics": "Dynamik erlauben",
+  "patternNotationDot": "Punkt",
+  "sourcesTimelineLabel": "Zeitleiste: welches Gerät welchen Abschnitt geliefert hat",
+  "sourcesResetOrder": "{signal} auf die Standardreihenfolge zurücksetzen",
+  "bandNotifBuzzPattern": "Vibrationsmuster, {name}",
+  "bandNotifPatternCustom": "Eigenes",
+  "homeProfileSyncing": "{label}, wird synchronisiert",
+  "naturalWakeBuzzing": "Natürliches Aufwachen vibriert",
+  "naturalWakeOrTapBand": "oder zweimal auf das Band tippen"
 }

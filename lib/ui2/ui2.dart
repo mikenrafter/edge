@@ -5,6 +5,7 @@
 // told you which. There is exactly one here, and nothing outside lib/ui2
 // should import its parts individually.
 
+export 'announce.dart';
 export 'app_shell.dart';
 export 'as_of.dart';
 export 'chart_annotations.dart';

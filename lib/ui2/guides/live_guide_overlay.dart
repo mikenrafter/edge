@@ -33,8 +33,12 @@
 // the app's own dialog is fully usable.
 //
 // Semantics: the step card's caption is a live region; the target gets a proxy
-// node "Guide target: <caption>" that performs the tap; covered content stays
-// in the semantics tree (foreign semantics cannot be excluded).
+// node "Guide target: <caption>" that performs the tap. Placeholder content
+// follows the pointer rule for a screen reader too: each component's own mark
+// drops its subtree and its tap while it is a placeholder, and a control reads
+// as disabled (CLAIM(A11Y-GUIDE-BLOCK), skeleton/unit_paint.dart,
+// [guide_a11y_blocked_test]). Dimmed content stays readable and usable; loose
+// controls in no component (a raw Material switch) are not covered yet.
 //
 // CLAIM(overlay-pass-through): lit/dimmed controls receive the original tap once;
 // placeholders absorb activation [live_guide_overlay_test 'pointer rules'].

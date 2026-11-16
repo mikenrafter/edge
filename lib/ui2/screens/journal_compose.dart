@@ -1287,6 +1287,8 @@ class _JournalAiSheetState extends State<_JournalAiSheet> {
                               padding:
                                   const EdgeInsets.symmetric(vertical: S.x1),
                               child: InlineLoading(
+                                  // The user sent the message it answers.
+                                  announce: true,
                                   status: AppLocalizations.of(c)
                                           ?.loadingAiReply ??
                                       'Waiting for the reply'),
@@ -1333,7 +1335,10 @@ class _JournalAiSheetState extends State<_JournalAiSheet> {
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x2),
-                  child: Text(_error!, style: F.over.copyWith(color: C.red)),
+                  // p.on: raw C.red text is 3.4-3.8:1 on the light cards (A11Y-CONTRAST).
+                  // A live region: the error lands after Save, under the field.
+                  child: Semantics(liveRegion: true,
+                      child: Text(_error!, style: F.over.copyWith(color: p.on(C.red)))),
                 ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x2),
@@ -1352,8 +1357,12 @@ class _JournalAiSheetState extends State<_JournalAiSheet> {
                       ),
                     ),
                     const SizedBox(width: S.x2),
+                    // Icon-only: without a label TalkBack said just "Button"
+                    // (inventory 2.01). Greyed while sending, as on screen.
                     Pressable(
                       onTap: _busy ? null : () => unawaited(_send()),
+                      control: true,
+                      semanticLabel: AppLocalizations.of(c)?.coachSendLabel ?? 'Send',
                       child: Container(
                         width: 44,
                         height: 44,

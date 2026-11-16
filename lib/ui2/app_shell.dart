@@ -287,10 +287,9 @@ class _TabBar extends StatelessWidget {
                   ),
                 ),
               if (onSettings != null)
-                Expanded(child: Semantics(
-                  key: const ValueKey('apk1-settings-tab'),
-                  selected: current == null,
-                  child: Pressable(
+                Expanded(child: Pressable(
+                    key: const ValueKey('apk1-settings-tab'),
+                    selected: current == null,
                     semanticLabel: AppLocalizations.of(c)?.settingsNavTitle ?? 'Settings',
                     onTap: onSettings,
                     child: ExcludeSemantics(child: Padding(
@@ -304,8 +303,7 @@ class _TabBar extends StatelessWidget {
                             style: F.over.copyWith(color: p.ink3)),
                       ]),
                     )),
-                  ),
-                )),
+                  )),
             ],
           ),
         ),
@@ -326,9 +324,8 @@ class _Tab extends StatelessWidget {
     final p = P.of(c);
     final ink = on ? p.on(domain.accent) : p.ink3;
     final label = domain.title(c);
-    return Semantics(
-      selected: on,
-      child: Pressable(
+    return Pressable(
+        selected: on,
         onTap: onTap,
         semanticLabel: label,
         child: Padding(
@@ -360,7 +357,6 @@ class _Tab extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 }

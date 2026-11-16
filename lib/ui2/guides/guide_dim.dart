@@ -296,6 +296,11 @@ class GuidePlan implements GuideLooseLooks, GuideKeepsControls {
     return true;
   }
 
+  /// The look the plan itself gave [unit], without the rules for components it
+  /// has not seen. A map lookup with no geometry, so it is safe in any phase
+  /// (layout, semantics): the screen reader's view of the plan (A11Y-GUIDE-BLOCK).
+  GuideUnitLook? plannedLookOf(Element unit) => _byComponent[unit];
+
   @override
   GuideUnitLook? lookOf(BuildContext unit) {
     if (unit is! Element) return null;

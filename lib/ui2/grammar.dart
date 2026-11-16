@@ -39,6 +39,7 @@ import 'older_version.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/gestures.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -77,6 +78,26 @@ class Pressable extends StatefulWidget {
   /// Announce as a link rather than a button — for text that opens a web page.
   final bool link;
 
+  /// A control even while [onTap] is null: a screen reader announces it as a
+  /// disabled button, not as plain text. For the buttons, tabs and arrows that
+  /// are greyed out rather than removed (BigButton, SubTabs, DayNav). A purely
+  /// visual Pressable (a Surface card with no tap) leaves it false and is not a
+  /// control at all.
+  final bool control;
+
+  /// Tab and pill state, spoken as "selected". Null: not a selectable item.
+  final bool? selected;
+
+  /// Accordion state, spoken as "expanded" / "collapsed". Null: not one.
+  final bool? expanded;
+
+  /// Keeps the child's own semantics under [semanticLabel]. Only for the few
+  /// rows whose child holds a control of its own (a preview button, a switch):
+  /// wrap the row's plain text in ExcludeSemantics at the call site instead.
+  /// Without it the label REPLACES the child's semantics, so a labelled card
+  /// is read once, not as its label and then its visible text.
+  final bool semanticChildren;
+
   // There is no `expand: false`. It used to exist, documented as "the hit area
   // is still expanded via the parent's slop" — no such mechanism was ever in
   // this codebase, so what it actually did was drop the 44 pt minimum at seven
@@ -94,10 +115,48 @@ class Pressable extends StatefulWidget {
     this.onPressCancel,
     this.semanticLabel,
     this.link = false,
+    this.control = false,
+    this.selected,
+    this.expanded,
+    this.semanticChildren = false,
   });
 
   @override
   State<Pressable> createState() => _PressableState();
+
+  /// PILOT, opt-in (A11Y-TAP48): Android asks for 48 dp targets, this library
+  /// guarantees 44 pt ([S.tap]). A build with `--dart-define=OS_A11Y_TAP48=true`
+  /// raises the Pressable minimum to 48 on Android, so the owner can judge the
+  /// layout on a phone. Off by default: no pixel changes. Layouts that reserve
+  /// [S.tap] themselves (SubTabs' row, HitOverhang lines) are not resized.
+  static const _tap48 = bool.fromEnvironment('OS_A11Y_TAP48');
+
+  /// Test override for the opt-in above; null follows the build.
+  @visibleForTesting
+  static bool? debugTap48;
+
+  static double get minTarget =>
+      (debugTap48 ?? _tap48) && defaultTargetPlatform == TargetPlatform.android
+          ? 48
+          : S.tap;
+}
+
+/// What a [Pressable] tells the Pressables inside it (A11Y-NODE).
+class _PressableScope extends InheritedWidget {
+  /// Some ancestor is a control: a plain card inside it adds its text (or its
+  /// label) to that control's node instead of becoming a node of its own.
+  final bool inControl;
+
+  /// The nearest labelled ancestor replaces its child's semantics: a control
+  /// in here would be invisible to a screen reader.
+  final String? hiddenBy;
+  const _PressableScope(
+      {required this.inControl, required this.hiddenBy, required super.child});
+  // Only the facts that change a descendant's node; a ticking label does not
+  // rebuild the Pressables under it.
+  @override
+  bool updateShouldNotify(_PressableScope old) =>
+      inControl != old.inControl || (hiddenBy == null) != (old.hiddenBy == null);
 }
 
 class _PressableState extends State<Pressable> {
@@ -113,10 +172,36 @@ class _PressableState extends State<Pressable> {
   // control's own Semantics: the first render object of a Pressable (what
   // `tester.getSemantics(find.byType(Pressable))` reads) stays its semantics node, so
   // a screen reader and the tree tests see exactly what they saw before guides.
+  //
+  // CLAIM(A11Y-NODE): every control is one semantics node (container), read once:
+  // a label replaces the child's own text, the role, disabled, selected and
+  // expanded states are real flags, and a card that is no control is a node of
+  // its own unless it sits inside a control [ui2_a11y_grammar_test].
   @override
   Widget build(BuildContext c) {
+    final w = widget;
+    final pressed = w.onPressStart != null || w.onPressEnd != null ||
+        w.onPressCancel != null;
+    final isControl = w.onTap != null || w.control || pressed;
+    final scope = c.dependOnInheritedWidgetOfExactType<_PressableScope>();
+    assert(() {
+      if (isControl && scope?.hiddenBy != null) {
+        throw FlutterError.fromParts([
+          ErrorSummary('A control sits inside a labelled Pressable.'),
+          ErrorDescription('The outer Pressable (label "${scope!.hiddenBy}") '
+              'replaces its child\'s semantics, so a screen reader cannot reach '
+              'this control${w.semanticLabel == null ? '' : ' ("${w.semanticLabel}")'}.'),
+          ErrorHint('Give the outer Pressable `semanticChildren: true` and wrap '
+              'its plain text in ExcludeSemantics, or move the control out.'),
+        ]);
+      }
+      return true;
+    }());
+    final label = w.semanticLabel;
+    final hides = label != null && !w.semanticChildren;
+    final tap = Pressable.minTarget;
     Widget out = ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: S.tap, minHeight: S.tap),
+      constraints: BoxConstraints(minWidth: tap, minHeight: tap),
       // widthFactor/heightFactor pin the Align to its child's size. Without
       // them Align fills every pixel it is offered, which turned each card
       // into a greedy box that ate the whole scroll view — caught by the
@@ -125,69 +210,78 @@ class _PressableState extends State<Pressable> {
         alignment: Alignment.center,
         widthFactor: 1,
         heightFactor: 1,
-        child: widget.child,
+        // Always present, so the child keeps its place (and its state) in
+        // the element tree when the tap or the label comes and goes.
+        child: _PressableScope(
+            inControl: isControl || (scope?.inControl ?? false),
+            hiddenBy: hides ? label : scope?.hiddenBy,
+            child: w.child),
       ),
     );
-    if (widget.onPressStart != null || widget.onPressEnd != null ||
-        widget.onPressCancel != null) {
+    Widget node(Widget child) => Semantics(
+          container: isControl || !(scope?.inControl ?? false),
+          button: isControl && !w.link ? true : null,
+          link: isControl && w.link ? true : null,
+          enabled: isControl && w.onTap == null && !pressed ? false : null,
+          selected: w.selected,
+          expanded: w.expanded,
+          label: label,
+          child: child,
+        );
+    // The mark (the one render object every component already has) hides the
+    // child's semantics when the label replaces them, and then carries the tap
+    // action itself; a guide placeholder drops both (skeleton/unit_paint.dart).
+    // No render object is added, so the guide's own tree walks are unchanged.
+    Widget mark(Widget child) => GuideUnitMark(
+          component: c,
+          control: isControl,
+          hideChildSemantics: hides,
+          semanticTap: hides || pressed ? (w.onTap == null ? null : _activate) : null,
+          child: child,
+        );
+    if (pressed) {
       // Raw contact timing belongs at the token boundary, so callers can
       // record a hold without tap-recognition delays or duplicate onTap calls.
-      return Semantics(
-        button: true,
-        label: widget.semanticLabel,
-        onTap: widget.onTap == null ? null : _activate,
-        excludeSemantics: true,
-        child: GuideUnitMark(component: c, child: Listener(
-          behavior: HitTestBehavior.opaque,
-          onPointerDown: (event) {
-            if (_pointer != null) return;
-            _pointer = event.pointer;
-            setState(() => _down = true);
-            widget.onPressStart?.call();
-          },
-          onPointerUp: (event) {
-            if (_pointer != event.pointer) return;
-            _pointer = null;
-            setState(() => _down = false);
-            widget.onPressEnd?.call();
-          },
-          onPointerCancel: (event) {
-            if (_pointer != event.pointer) return;
-            _pointer = null;
-            setState(() => _down = false);
-            widget.onPressCancel?.call();
-          },
-          child: AnimatedScale(
-            scale: _down ? .975 : 1,
-            duration: motion(c, Motion.fast),
-            child: out,
-          ),
-        )),
-      );
-    }
-    if (widget.onTap == null) {
-      final marked = GuideUnitMark(component: c, child: out);
-      return widget.semanticLabel == null
-          ? marked
-          : Semantics(label: widget.semanticLabel, child: marked);
-    }
-    return Semantics(
-      button: !widget.link,
-      link: widget.link,
-      label: widget.semanticLabel,
-      child: GuideUnitMark(component: c, child: GestureDetector(
+      return node(mark(Listener(
         behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap == null ? null : _activate,
-        onTapDown: (_) => setState(() => _down = true),
-        onTapUp: (_) => setState(() => _down = false),
-        onTapCancel: () => setState(() => _down = false),
+        onPointerDown: (event) {
+          if (_pointer != null) return;
+          _pointer = event.pointer;
+          setState(() => _down = true);
+          w.onPressStart?.call();
+        },
+        onPointerUp: (event) {
+          if (_pointer != event.pointer) return;
+          _pointer = null;
+          setState(() => _down = false);
+          w.onPressEnd?.call();
+        },
+        onPointerCancel: (event) {
+          if (_pointer != event.pointer) return;
+          _pointer = null;
+          setState(() => _down = false);
+          w.onPressCancel?.call();
+        },
         child: AnimatedScale(
           scale: _down ? .975 : 1,
           duration: motion(c, Motion.fast),
           child: out,
         ),
-      )),
-    );
+      )));
+    }
+    if (w.onTap == null) return node(mark(out));
+    return node(mark(GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _activate,
+      onTapDown: (_) => setState(() => _down = true),
+      onTapUp: (_) => setState(() => _down = false),
+      onTapCancel: () => setState(() => _down = false),
+      child: AnimatedScale(
+        scale: _down ? .975 : 1,
+        duration: motion(c, Motion.fast),
+        child: out,
+      ),
+    )));
   }
 }
 
@@ -1492,6 +1586,9 @@ class Surface extends StatelessWidget implements PendingSectionLabel {
   final Color? color;
   final int elevation;
   final String? semanticLabel;
+  /// Retain nested controls when this card has its own spoken label.
+  /// Exclude the visible title's semantics at the call site to read it once.
+  final bool semanticChildren;
 
   const Surface({
     super.key,
@@ -1501,6 +1598,7 @@ class Surface extends StatelessWidget implements PendingSectionLabel {
     this.color,
     this.elevation = 1,
     this.semanticLabel,
+    this.semanticChildren = false,
   });
 
   // The guide mark is INSIDE the Pressable (around the card), never outside it: the
@@ -1513,6 +1611,7 @@ class Surface extends StatelessWidget implements PendingSectionLabel {
       return Pressable(
         onTap: onTap,
         semanticLabel: semanticLabel,
+        semanticChildren: semanticChildren,
         child: GuideUnitMark(component: c, child: Container(
           width: double.infinity,
           padding: pad.copyWith(left: 0, right: 0),
@@ -1523,6 +1622,7 @@ class Surface extends StatelessWidget implements PendingSectionLabel {
     return Pressable(
       onTap: onTap,
       semanticLabel: semanticLabel,
+      semanticChildren: semanticChildren,
       child: GuideUnitMark(component: c, child: Container(
         width: double.infinity,
         padding: pad,
@@ -1602,15 +1702,20 @@ class Section extends StatelessWidget implements PendingSectionLabel {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Flexible(
-                child: PendingStatic(
-                  child: Text(
-                  title,
-                  style: F.head.copyWith(color: p.ink),
-                  maxLines: wrapTitle ? null : 2,
-                  overflow: wrapTitle
-                      ? TextOverflow.visible
-                      : TextOverflow.ellipsis,
-                  ),
+                // A heading of its own (A11Y-HEAD): TalkBack's heading
+                // navigation stops here, and the title is not read into
+                // the section's first card.
+                child: Semantics(
+                  container: true,
+                  header: true,
+                  child: PendingStatic(child: Text(
+                    title,
+                    style: F.head.copyWith(color: p.ink),
+                    maxLines: wrapTitle ? null : 2,
+                    overflow: wrapTitle
+                        ? TextOverflow.visible
+                        : TextOverflow.ellipsis,
+                  )),
                 ),
               ),
               if (action != null)
@@ -3551,9 +3656,12 @@ class _SubTabsState extends State<SubTabs> {
                       child: Pressable(
                         key: widget.itemKeys?[i],
                         onTap: off ? null : () => widget.onTap(i),
-                        // `Pressable` drops `Semantics(button: true)` when `onTap` is
-                        // null, so without this a screen reader announced a disabled
-                        // pill exactly like a working one.
+                        // A disabled pill is a disabled control, and the active
+                        // one says "selected" (A11Y-STATE). The "unavailable"
+                        // label stays: it says why (this device cannot supply
+                        // the metric), which "disabled" alone does not.
+                        control: true,
+                        selected: on,
                         semanticLabel: off
                             ? (AppLocalizations.of(
                                     c,
@@ -3707,11 +3815,19 @@ class ScreenTitle extends StatelessWidget {
                         text = shortTitle!;
                       }
                     }
-                    return Text(
-                      text,
-                      style: style,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    // A tab root's title is a heading (A11Y-HEAD), always the
+                    // full title even when the short one is drawn.
+                    return Semantics(
+                      container: true,
+                      header: true,
+                      label: title,
+                      excludeSemantics: true,
+                      child: Text(
+                        text,
+                        style: style,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     );
                   }),
                 ),
@@ -3788,9 +3904,14 @@ class BigButton extends StatelessWidget {
   final VoidCallback? onPressEnd;
   final VoidCallback? onPressCancel;
 
+  /// What a screen reader says instead of [label], when the visible text is a
+  /// symbol ("+30s" reads "Add 30 seconds").
+  final String? semanticLabel;
+
   const BigButton(
     this.label, {
     super.key,
+    this.semanticLabel,
     this.icon,
     this.color = C.green,
     this.soft = false,
@@ -3811,7 +3932,13 @@ class BigButton extends StatelessWidget {
       onPressStart: onPressStart,
       onPressEnd: onPressEnd,
       onPressCancel: onPressCancel,
-      semanticLabel: label,
+      // A greyed button is still a button, announced as disabled; the spinner
+      // is silent, so the label says the work is under way.
+      control: true,
+      semanticLabel: busy
+          ? (AppLocalizations.of(c)?.a11yBusyLabel(semanticLabel ?? label) ??
+              '${semanticLabel ?? label}, working')
+          : semanticLabel ?? label,
       child: Container(
         // A minimum, never a fixed height — at accessibility text sizes the
         // label is taller than 52 and a fixed box would clip it.
@@ -4728,15 +4855,20 @@ class NavBar extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                      PendingStatic(
-                        child: Text(
-                      title,
-                      style: F.head.copyWith(color: p.ink),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    // The page's name (A11Y-HEAD): announced when the page is
+                    // pushed, as Material's AppBar title is, and a heading.
+                    Semantics(
+                      container: true,
+                      header: true,
+                      namesRoute: true,
+                      child: PendingStatic(child: Text(
+                        title,
+                        style: F.head.copyWith(color: p.ink),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      )),
                     ),
-                      ),
-                      if (sub.isNotEmpty)
+                    if (sub.isNotEmpty)
                       Text(
                         sub,
                         style: F.over.copyWith(color: p.ink3),

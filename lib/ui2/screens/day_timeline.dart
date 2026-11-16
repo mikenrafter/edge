@@ -2489,8 +2489,10 @@ class _MomentGroupRowState extends State<MomentGroupRow> {
       children: [
         Pressable(
           onTap: () => setState(() => _open = !_open),
-          semanticLabel:
-              '${f.title}, ${g.count} times, ${_open ? 'expanded' : 'collapsed'}',
+          // The localized group title, and the open state as a flag: the
+          // label used to say "times", "expanded" and "collapsed" in English.
+          semanticLabel: groupTitle,
+          expanded: _open,
           child: Row(
             children: [
               Expanded(

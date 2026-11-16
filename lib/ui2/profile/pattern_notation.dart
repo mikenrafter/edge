@@ -4,6 +4,7 @@
 // Dot and dynamics buttons.
 
 import 'package:flutter/material.dart';
+import '../../l10n/app_localizations.dart';
 
 import '../../gestures/pattern_transcript.dart';
 import '../ui2.dart';
@@ -273,11 +274,10 @@ class PatternDotButton extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    return Semantics(
-      selected: selected,
-      child: Pressable(
+    return Pressable(
+        selected: selected,
         onTap: onTap,
-        semanticLabel: 'Dot',
+        semanticLabel: AppLocalizations.of(c)?.patternNotationDot ?? 'Dot',
         child: Container(
           width: double.infinity,
           alignment: Alignment.center,
@@ -309,8 +309,7 @@ class PatternDotButton extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
@@ -333,9 +332,8 @@ class PatternDynamicButton extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    return Semantics(
-      selected: selected,
-      child: Pressable(
+    return Pressable(
+        selected: selected,
         onTap: onTap,
         semanticLabel: dynamic == PatternDynamic.any
             ? 'Dynamic any loudness'
@@ -364,8 +362,7 @@ class PatternDynamicButton extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 

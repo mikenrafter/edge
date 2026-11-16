@@ -9,7 +9,13 @@
   "dayActivitiesSavedDetail": "已保留为当天的活动",
   "dayActivitiesDiscardedDetail": "已标记为非活动",
   "dayActivitiesFilterCount": "筛选，已选择 {count} 类",
-  "@dayActivitiesFilterCount": {"placeholders": {"count": {"type": "int"}}},
+  "@dayActivitiesFilterCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "sleepEditorYourSleep": "你的睡眠",
   "sleepEditorCalculate": "计算所选睡眠时段的分期",
   "sleepEditorResetDetected": "恢复为检测时间",
@@ -23,17 +29,59 @@
   "sleepEditorGhostStartTitle": "将入睡时间恢复为检测时间？",
   "sleepEditorGhostEndTitle": "将醒来时间恢复为检测时间？",
   "sleepEditorGhostStartBody": "{from} → {to}。醒来时间仍为 {other}。",
-  "@sleepEditorGhostStartBody": {"placeholders": {"from": {"type": "String"}, "to": {"type": "String"}, "other": {"type": "String"}}},
+  "@sleepEditorGhostStartBody": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      },
+      "other": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorGhostEndBody": "{from} → {to}。入睡时间仍为 {other}。",
-  "@sleepEditorGhostEndBody": {"placeholders": {"from": {"type": "String"}, "to": {"type": "String"}, "other": {"type": "String"}}},
+  "@sleepEditorGhostEndBody": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      },
+      "other": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorOverlapError": "请选择 5 分钟至 6 小时的空闲时段。",
   "sleepEditorAddStart": "在高亮区域点按时段的开始位置。",
   "sleepEditorAddEnd": "开始于 {time}。现在点按结束位置。",
-  "@sleepEditorAddEnd": {"placeholders": {"time": {"type": "String"}}},
+  "@sleepEditorAddEnd": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorSuggestedTime": "建议时间：{time}",
-  "@sleepEditorSuggestedTime": {"placeholders": {"time": {"type": "String"}}},
+  "@sleepEditorSuggestedTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorSelectedBlock": "已选择：{block}",
-  "@sleepEditorSelectedBlock": {"placeholders": {"block": {"type": "String"}}},
+  "@sleepEditorSelectedBlock": {
+    "placeholders": {
+      "block": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorSaveFailed": "无法保存。你的更改仍保留在此处。",
   "sleepEditorPreview": "预览",
   "sleepEditorAddBlock": "添加睡眠时段",
@@ -41,14 +89,41 @@
   "sleepEditorRem": "REM",
   "sleepEditorLight": "浅睡",
   "sleepEditorMinutes": "{minutes} 分钟",
-  "@sleepEditorMinutes": {"placeholders": {"minutes": {"type": "int"}}},
+  "@sleepEditorMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
   "sleepEditorHeartRate": "心率",
   "sleepEditorMovement": "活动",
   "sleepEditorAt": "时间",
   "timelineSemanticsRange": "从 {start} 到 {end} 的时间线",
-  "@timelineSemanticsRange": {"placeholders": {"start": {"type": "String"}, "end": {"type": "String"}}},
+  "@timelineSemanticsRange": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
   "timelineSemanticsScrub": "从 {start} 到 {end} 的时间线，已选择 {at}",
-  "@timelineSemanticsScrub": {"placeholders": {"start": {"type": "String"}, "end": {"type": "String"}, "at": {"type": "String"}}},
+  "@timelineSemanticsScrub": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      },
+      "at": {
+        "type": "String"
+      }
+    }
+  },
   "timelineFineSteps": "每次调整 1 分钟",
   "timelineCoarseSteps": "每次调整 5 分钟。长按可逐分钟调整。",
   "timelineStages": "分期",
@@ -4153,5 +4228,29 @@
   "sleepSummaryHeldSync": "等待同步完成",
   "sleepSummaryHeldBackground": "已在后台暂停",
   "sleepSummaryHeldPower": "等待供电",
-  "sleepSummaryOverlappingAlerts": "时间重叠的唤醒提醒"
+  "sleepSummaryOverlappingAlerts": "时间重叠的唤醒提醒",
+  "a11yBusyLabel": "{label}，正在进行",
+  "a11yCoachReplied": "教练已回复：{reply}",
+  "a11ySyncFinished": "同步完成",
+  "a11yTypicalCurve": "精力预测：约 {peak} 最高，约 {dip} 最低。",
+  "a11yTypicalCorrelation": "{name}：{days} 个配对日的相关系数 {rho}",
+  "a11yTypicalCorrelationNone": "{name}：暂无相关性，{days} 个配对日",
+  "ecgWhatResultsMean": "结果是什么意思",
+  "gestureFailureDismiss": "关闭",
+  "liveHrChartLabel": "实时心率",
+  "liveRpeChoice": "用力程度 {value}/10",
+  "liveAddRest30": "增加 30 秒",
+  "patternPickerPlay": "播放",
+  "hapticsOpenSection": "打开{title}",
+  "patternEditorStartFromTaps": "从轻点开始",
+  "patternEditorFollowRhythm": "跟随节奏",
+  "patternEditorAllowDynamics": "允许强弱变化",
+  "patternNotationDot": "附点",
+  "sourcesTimelineLabel": "各时段数据来源的时间线",
+  "sourcesResetOrder": "将{signal}恢复为默认顺序",
+  "bandNotifBuzzPattern": "振动模式，{name}",
+  "bandNotifPatternCustom": "自定义",
+  "homeProfileSyncing": "{label}，正在同步",
+  "naturalWakeBuzzing": "自然唤醒正在振动",
+  "naturalWakeOrTapBand": "或在手环上轻点两下"
 }

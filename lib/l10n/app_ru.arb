@@ -9,7 +9,13 @@
   "dayActivitiesSavedDetail": "Сохранены как часть вашего дня",
   "dayActivitiesDiscardedDetail": "Помечены как не являющиеся активностью",
   "dayActivitiesFilterCount": "Фильтр, выбрано типов: {count}",
-  "@dayActivitiesFilterCount": {"placeholders": {"count": {"type": "int"}}},
+  "@dayActivitiesFilterCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "sleepEditorYourSleep": "Ваш сон",
   "sleepEditorCalculate": "Рассчитать стадии выбранного блока сна",
   "sleepEditorResetDetected": "Вернуть определённое время",
@@ -23,17 +29,59 @@
   "sleepEditorGhostStartTitle": "Вернуть определённое время засыпания?",
   "sleepEditorGhostEndTitle": "Вернуть определённое время пробуждения?",
   "sleepEditorGhostStartBody": "{from} → {to}. Пробуждение остаётся в {other}.",
-  "@sleepEditorGhostStartBody": {"placeholders": {"from": {"type": "String"}, "to": {"type": "String"}, "other": {"type": "String"}}},
+  "@sleepEditorGhostStartBody": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      },
+      "other": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorGhostEndBody": "{from} → {to}. Засыпание остаётся в {other}.",
-  "@sleepEditorGhostEndBody": {"placeholders": {"from": {"type": "String"}, "to": {"type": "String"}, "other": {"type": "String"}}},
+  "@sleepEditorGhostEndBody": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      },
+      "other": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorOverlapError": "Выберите свободный промежуток от 5 минут до 6 часов.",
   "sleepEditorAddStart": "Нажмите на начало блока в выделенной области.",
   "sleepEditorAddEnd": "Начало в {time}. Теперь нажмите на конец.",
-  "@sleepEditorAddEnd": {"placeholders": {"time": {"type": "String"}}},
+  "@sleepEditorAddEnd": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorSuggestedTime": "Предложено: {time}",
-  "@sleepEditorSuggestedTime": {"placeholders": {"time": {"type": "String"}}},
+  "@sleepEditorSuggestedTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorSelectedBlock": "Выбрано: {block}",
-  "@sleepEditorSelectedBlock": {"placeholders": {"block": {"type": "String"}}},
+  "@sleepEditorSelectedBlock": {
+    "placeholders": {
+      "block": {
+        "type": "String"
+      }
+    }
+  },
   "sleepEditorSaveFailed": "Не удалось сохранить. Ваши изменения остались на экране.",
   "sleepEditorPreview": "Предпросмотр",
   "sleepEditorAddBlock": "Добавить блок сна",
@@ -41,14 +89,41 @@
   "sleepEditorRem": "REM",
   "sleepEditorLight": "Лёгкий",
   "sleepEditorMinutes": "{minutes} мин",
-  "@sleepEditorMinutes": {"placeholders": {"minutes": {"type": "int"}}},
+  "@sleepEditorMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
   "sleepEditorHeartRate": "Пульс",
   "sleepEditorMovement": "Движение",
   "sleepEditorAt": "Время",
   "timelineSemanticsRange": "Шкала времени от {start} до {end}",
-  "@timelineSemanticsRange": {"placeholders": {"start": {"type": "String"}, "end": {"type": "String"}}},
+  "@timelineSemanticsRange": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
   "timelineSemanticsScrub": "Шкала времени от {start} до {end}, выбрано {at}",
-  "@timelineSemanticsScrub": {"placeholders": {"start": {"type": "String"}, "end": {"type": "String"}, "at": {"type": "String"}}},
+  "@timelineSemanticsScrub": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      },
+      "at": {
+        "type": "String"
+      }
+    }
+  },
   "timelineFineSteps": "Шаг 1 минута",
   "timelineCoarseSteps": "Шаг 5 минут. Удерживайте для шага в минуту.",
   "timelineStages": "Стадии",
@@ -10096,5 +10171,29 @@
   "sleepSummaryHeldSync": "Ожидание завершения синхронизации",
   "sleepSummaryHeldBackground": "Приостановлено в фоновом режиме",
   "sleepSummaryHeldPower": "Ожидание питания",
-  "sleepSummaryOverlappingAlerts": "Перекрывающиеся сигналы пробуждения"
+  "sleepSummaryOverlappingAlerts": "Перекрывающиеся сигналы пробуждения",
+  "a11yBusyLabel": "{label}, выполняется",
+  "a11yCoachReplied": "Тренер ответил: {reply}",
+  "a11ySyncFinished": "Синхронизация завершена",
+  "a11yTypicalCurve": "Прогноз энергии: выше всего около {peak}, ниже всего около {dip}.",
+  "a11yTypicalCorrelation": "{name}: корреляция {rho} за {days} парных дней",
+  "a11yTypicalCorrelationNone": "{name}: корреляции пока нет, парных дней: {days}",
+  "ecgWhatResultsMean": "Что значат результаты",
+  "gestureFailureDismiss": "Скрыть",
+  "liveHrChartLabel": "Текущий пульс",
+  "liveRpeChoice": "Нагрузка {value} из 10",
+  "liveAddRest30": "Добавить 30 секунд",
+  "patternPickerPlay": "Воспроизвести",
+  "hapticsOpenSection": "Открыть: {title}",
+  "patternEditorStartFromTaps": "Начать с касаний",
+  "patternEditorFollowRhythm": "Следовать ритму",
+  "patternEditorAllowDynamics": "Разрешить динамику",
+  "patternNotationDot": "Точка",
+  "sourcesTimelineLabel": "Шкала: какое устройство дало каждый отрезок",
+  "sourcesResetOrder": "Сбросить порядок для «{signal}»",
+  "bandNotifBuzzPattern": "Шаблон вибрации, {name}",
+  "bandNotifPatternCustom": "Свой",
+  "homeProfileSyncing": "{label}, идёт синхронизация",
+  "naturalWakeBuzzing": "Естественное пробуждение: вибрация",
+  "naturalWakeOrTapBand": "или дважды коснитесь браслета"
 }

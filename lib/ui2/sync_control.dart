@@ -14,6 +14,7 @@ import '../settings/settings_repository.dart';
 import '../state/app_state.dart';
 import '../state/derive_progress.dart';
 import '../sync/import_gate.dart';
+import 'announce.dart';
 import 'grammar.dart';
 import 'inline_loading.dart';
 import 'profile/devices.dart' show formatDayTime;
@@ -201,10 +202,7 @@ class _SyncControlState extends State<SyncControl> {
         // Open (the person asked): it grows to hold the whole sentence.
         final rowChildren = <Widget>[
             Expanded(
-              child: Semantics(
-                expanded: _open,
-                child: Pressable(onTap: _toggle, child: status),
-              ),
+              child: Pressable(expanded: _open, onTap: _toggle, child: status),
             ),
             if (!below && !s.busy && onSync != null) ...[
               const SizedBox(width: S.x2),
@@ -275,6 +273,24 @@ class _SyncTicker {
 /// band page's inline list and Home's bottom sheet draw the same rows.
 List<Widget> syncStepRows(SyncPresentationState s, DateTime now) =>
     [for (final step in s.steps) _StepRow(step: step, now: now)];
+
+/// Runs the sync the user asked for and says how it ended (A11Y-ANNOUNCE): the
+/// link that started it is gone while it runs, and the result lands in a
+/// status line far from the focus. A sync nobody asked for (connect, the
+/// backfill timer) never comes through here, so it stays quiet.
+Future<void> syncNowAndSay(BuildContext c) async {
+  final app = c.read<AppState>();
+  final say = Announcer.of(c);
+  final l = AppLocalizations.of(c);
+  await app.syncNow();
+  final s = app.syncPresentation;
+  final problem = syncProblem(s, l);
+  if (problem != null) {
+    say(problem.text);
+  } else if (s.phase == 'completed') {
+    say(l?.a11ySyncFinished ?? 'Sync finished');
+  }
+}
 
 /// The short problem a settled sync left behind, or null when there is none.
 /// A sync that is running has no problem yet, and "offline" is the band being
@@ -958,7 +974,7 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
               ),
             if (!s.busy)
               Pressable(
-                onTap: () => c.read<AppState>().syncNow(),
+                onTap: () => syncNowAndSay(c),
                 child: Text(action, style: link),
               ),
           ];

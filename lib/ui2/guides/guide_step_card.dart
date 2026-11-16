@@ -172,9 +172,11 @@ class _GuideStepCardState extends State<GuideStepCard> with RememberedExpansion<
     // [guide_r5_test R5-5]. CLAIM(exit-one-place).
     final links = <Widget>[];
     if (model is GuideCardOnStep && model.missingHelp != null) {
-      links.add(Flexible(child: Semantics(
-        key: GuideStepCard.dontSeeItKey, container: true, button: true, expanded: _expanded,
-        child: action(l.guideDontSeeIt, () => toggleSection('guide_missing_help')),
+      links.add(Flexible(child: Pressable(
+        key: GuideStepCard.dontSeeItKey, expanded: _expanded,
+        onTap: () => toggleSection('guide_missing_help'),
+        child: Text(l.guideDontSeeIt, style: F.cap.copyWith(color: p.on(C.blue))),
+
       )));
     }
     if (model is GuideCardOffPath && widget.onBackToGuide != null) {
