@@ -1,4 +1,22 @@
 {
+  "sleepEditorChooseEntry": "Choisir une entrée de sommeil",
+  "sleepEditorSourceAutomatic": "Détecté",
+  "sleepEditorSourceManual": "Défini par vous",
+  "sleepEditorSourceConfirmed": "Confirmé",
+  "sleepEditorSourceLegacy": "Historique conservé",
+  "sleepEditorSourceRejected": "Marqué comme éveil",
+  "sleepEditorSourceUnknown": "Source inconnue",
+  "sleepEditorSourceDraft": "Non enregistré",
+  "sleepEditorActionCancelled": "Action non enregistrée annulée.",
+  "sleepEditorActionEditReason": "Enregistrez ou annulez cette action avant de modifier les horaires.",
+  "sleepEditorEntryNumber": "Entrée {number}",
+  "@sleepEditorEntryNumber": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
   "sleepEditorTitle": "Modifier le sommeil",
   "sleepEditorZoomIn": "Zoom avant",
   "sleepEditorZoomOut": "Zoom arrière",

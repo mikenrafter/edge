@@ -262,6 +262,8 @@ class DayTimelineChart extends StatefulWidget {
     this.annotationListener,
     this.blocks = const [],
     this.activeBlock,
+    this.chooseBlock,
+    this.blockEditingEnabled = true,
     this.blockLabels = const {},
     this.listener,
     this.haptics = const PhoneTimelineHaptics(),
@@ -283,6 +285,11 @@ class DayTimelineChart extends StatefulWidget {
   final AnnotationListener? annotationListener;
   final List<SleepBlock> blocks;
   final String? activeBlock;
+
+  /// Resolves overlapping entries without relying on paint order. Null keeps
+  /// the shared chart's original selection behavior for non-editor callers.
+  final Future<String?> Function(List<SleepBlock>)? chooseBlock;
+  final bool blockEditingEnabled;
 
   /// A band's label per block id ("Main sleep ✎").
   final Map<String, String> blockLabels;
@@ -310,6 +317,7 @@ class _DayTimelineChartState extends State<DayTimelineChart>
   Timer? _hold;
   int? _lastMinute;
   Offset? _doubleTapAt;
+  bool _choosingBlock = false;
 
   @override
   void initState() {
@@ -358,8 +366,33 @@ class _DayTimelineChartState extends State<DayTimelineChart>
 
   SleepBlock? _bandAt(double t) => widget.blocks.where((b) => b.contains(t)).firstOrNull;
 
-  void _tapUp(TapUpDetails d, double width) {
+  // CLAIM(sleep-editor-overlap-choice): ambiguous taps name every matching
+  // entry before selecting one [sleep_editor_review_r1_test].
+  Future<bool> _chooseOverlap(double t, {required bool zoom}) async {
+    final choose = widget.chooseBlock;
+    final matches = widget.blocks.where((b) => b.contains(t)).toList();
+    if (choose == null || matches.length < 2) return false;
+    if (_choosingBlock) return true;
+    _choosingBlock = true;
+    try {
+      final id = await choose(matches);
+      if (!mounted || id == null) return true;
+      final band = widget.blocks.where((b) => b.id == id).firstOrNull;
+      if (band == null) return true;
+      widget.listener?.blockSelected(id, zoom: zoom);
+      if (zoom) {
+        final c = widget.controller;
+        c.glideTo(framing(band.start, band.end, c.domainStart, c.domainEnd));
+      }
+    } finally {
+      _choosingBlock = false;
+    }
+    return true;
+  }
+
+  Future<void> _tapUp(TapUpDetails d, double width) async {
     final t = _tAt(d.localPosition.dx, width);
+    if (await _chooseOverlap(t, zoom: false) || !mounted) return;
     final band = _bandAt(t);
     if (band != null && band.id != widget.activeBlock && widget.listener != null) {
       widget.listener!.blockSelected(band.id, zoom: false);
@@ -369,10 +402,11 @@ class _DayTimelineChartState extends State<DayTimelineChart>
     widget.listener?.scrubbed(t);
   }
 
-  void _doubleTap(double width) {
+  Future<void> _doubleTap(double width) async {
     final at = _doubleTapAt;
     if (at == null) return;
     final t = _tAt(at.dx, width);
+    if (await _chooseOverlap(t, zoom: true) || !mounted) return;
     final band = _bandAt(t);
     final c = widget.controller;
     if (band != null && widget.listener != null) {
@@ -392,7 +426,7 @@ class _DayTimelineChartState extends State<DayTimelineChart>
       return;
     }
     final a = _active;
-    if (a != null) {
+    if (a != null && widget.blockEditingEnabled) {
       final ds = (x - _xOf(a.start.toDouble(), width)).abs();
       final de = (x - _xOf(a.end.toDouble(), width)).abs();
       if (math.min(ds, de) <= DayTimelineChart.handleReach) {
@@ -515,7 +549,7 @@ class _DayTimelineChartState extends State<DayTimelineChart>
                     stages: widget.stages,
                     stagesArePreview: widget.stagesArePreview,
                     blocks: widget.blocks,
-                    active: widget.activeBlock,
+                    active: widget.blockEditingEnabled ? widget.activeBlock : null,
                     blockLabels: widget.blockLabels,
                     scrub: c.scrub,
                     zoom: c.zoomSelection,

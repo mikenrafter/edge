@@ -2152,6 +2152,34 @@ class LocalRepositoryImpl extends LocalRepository {
   });
 
   @override
+  Future<Map<String, dynamic>> getSleepEditorNaps(String date) =>
+      ReadPerf.reading('getSleepEditorNaps', () async {
+    _focusCheck('getSleepEditorNaps');
+    final published = await getDayNaps(date);
+    final assertions = await LocalDb.napEdits(date);
+    final byStart = {for (final row in assertions) row['start_ts'] as int: row};
+    final represented = <int>{};
+    Map<String, dynamic> entry(Map row) => {
+      'start': row['start_ts'], 'end': row['end_ts'], 'source': row['source'],
+    };
+    // CLAIM(sleep-editor-legacy): a published projection cannot hide a newer
+    // assertion or the rejection needed to restore retained history
+    // [sleep_editor_legacy_contract_test]. sleep_nap's identity is day/start.
+    final naps = <Map<String, dynamic>>[];
+    for (final value in (published['naps'] as List?) ?? const []) {
+      if (value is! Map || value['start'] is! num) continue;
+      final start = (value['start'] as num).toInt();
+      final assertion = byStart[start];
+      naps.add(assertion == null ? Map<String, dynamic>.from(value) : entry(assertion));
+      represented.add(start);
+    }
+    for (final row in assertions) {
+      if (!represented.contains(row['start_ts'])) naps.add(entry(row));
+    }
+    return {...published, 'naps': naps};
+  });
+
+  @override
   Future<Map<String, dynamic>> getDayNaps(String date) => ReadPerf.reading('getDayNaps', () async {
     _focusCheck('getDayNaps');
     // THE EXACT DAY, never the latest-complete fallback: this list is editable,

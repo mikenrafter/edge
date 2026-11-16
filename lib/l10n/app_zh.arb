@@ -1,4 +1,22 @@
 {
+  "sleepEditorChooseEntry": "选择睡眠记录",
+  "sleepEditorSourceAutomatic": "已检测到",
+  "sleepEditorSourceManual": "由你设置",
+  "sleepEditorSourceConfirmed": "已确认",
+  "sleepEditorSourceLegacy": "保留的历史记录",
+  "sleepEditorSourceRejected": "已标记为非睡眠",
+  "sleepEditorSourceUnknown": "来源未知",
+  "sleepEditorSourceDraft": "未保存",
+  "sleepEditorActionCancelled": "已取消未保存的操作。",
+  "sleepEditorActionEditReason": "更改时间前，请先保存或取消此操作。",
+  "sleepEditorEntryNumber": "记录 {number}",
+  "@sleepEditorEntryNumber": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
   "sleepEditorTitle": "编辑睡眠",
   "sleepEditorZoomIn": "放大",
   "sleepEditorZoomOut": "缩小",

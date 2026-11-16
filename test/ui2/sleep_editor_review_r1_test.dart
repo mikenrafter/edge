@@ -2,6 +2,7 @@
 // CLAIM(sleep-editor-visible-action). Drive actual chart gestures and native
 // dialog buttons; calling blockSelected would bypass the bug being pinned.
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -15,6 +16,7 @@ import 'package:openstrap_edge/ui2/day_timeline/timeline_model.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
 
 import '../support/day_timeline_fixtures.dart';
+import '../support/pin_tz.dart';
 
 class _Saver implements SleepEditSaver {
   final plans = <SleepEditPlan>[];
@@ -25,9 +27,17 @@ class _Saver implements SleepEditSaver {
   }
 }
 
+class _HeldSaver implements SleepEditSaver {
+  final written = Completer<void>();
+  SleepEditPlan? plan;
+  @override
+  ({Future<void> written, Future<SleepOperationResult> done}) save(SleepEditPlan value) {
+    plan = value;
+    return (written: written.future, done: Future.value(const SleepOperationResult(success: true)));
+  }
+}
+
 Future<SleepTimelineEditorState> openEditor(WidgetTester t, SleepEditSaver saver, SleepEditorData data) async {
-  final semantics = t.ensureSemantics();
-  addTearDown(semantics.dispose);
   t.view.physicalSize = const Size(412, 1000);
   t.view.devicePixelRatio = 1;
   addTearDown(t.view.reset);
@@ -54,18 +64,22 @@ Offset at(WidgetTester t, SleepTimelineEditorState state, int epoch) {
 }
 
 Future<void> tapTime(WidgetTester t, SleepTimelineEditorState state, int epoch) async {
-  await t.ensureVisible(find.byKey(DayTimelineChart.chartKey));
+  await Scrollable.ensureVisible(t.element(find.byKey(DayTimelineChart.chartKey)), alignment: .5);
+  await t.pumpAndSettle();
   await t.tapAt(at(t, state, epoch));
+  await t.pump(const Duration(milliseconds: 350)); // Resolve the chart double-tap timer.
   await t.pumpAndSettle();
 }
 
 Future<void> stage(WidgetTester t, String label) async {
   await t.ensureVisible(find.text(label).last);
+  await t.pumpAndSettle();
   await t.tap(find.text(label).last);
   await t.pumpAndSettle();
 }
 
 void main() {
+  pinProcessTimeZone("${Platform.environment['TZDIR'] ?? '/usr/share/zoneinfo'}/America/Denver");
   final main = dtNight(withNap: false).main;
   final cases = [
     ('contained nap', [SleepBlock('inside', BlockKind.nap, dtAt(300), dtAt(330))],
@@ -109,9 +123,65 @@ void main() {
     });
   }
 
+  testWidgets('chooser distinguishes repeated wall times by exact UTC offsets on a DST night', (t) async {
+    int epoch(DateTime time) => time.millisecondsSinceEpoch ~/ 1000;
+    final early = SleepBlock('early', BlockKind.nap, epoch(DateTime.utc(2026, 11, 1, 7, 10)),
+      epoch(DateTime.utc(2026, 11, 1, 7, 40)));
+    final late = SleepBlock('late', BlockKind.nap, epoch(DateTime.utc(2026, 11, 1, 8, 10)),
+      epoch(DateTime.utc(2026, 11, 1, 8, 40)));
+    final data = SleepEditorData(day: '2026-11-01',
+      domainStart: epoch(DateTime(2026, 10, 31, 20)), hr: List.filled(1500, null),
+      movement: List.filled(1500, null),
+      main: SleepBlock('main', BlockKind.main, epoch(DateTime.utc(2026, 11, 1, 5)),
+        epoch(DateTime.utc(2026, 11, 1, 15))), naps: [early, late]);
+    await openEditor(t, _Saver(), data);
+    await t.tap(find.byKey(const ValueKey('sleep-editor-choose-entry')));
+    await t.pumpAndSettle();
+    expect(t.getSemantics(find.byKey(const ValueKey('sleep-editor-entry:early'))).label,
+      contains('2026-11-01 01:10:00 UTC-06:00'));
+    expect(t.getSemantics(find.byKey(const ValueKey('sleep-editor-entry:late'))).label,
+      contains('2026-11-01 01:10:00 UTC-07:00'));
+  });
+
+  testWidgets('double tapping overlapping entries also chooses before zooming and saving main sleep', (t) async {
+    final saver = _Saver();
+    final nap = SleepBlock('inside', BlockKind.nap, dtAt(300), dtAt(330));
+    final state = await openEditor(t, saver, dataWith([nap]));
+    final point = at(t, state, dtAt(315));
+    await t.tapAt(point);
+    await t.pump(const Duration(milliseconds: 60));
+    await t.tapAt(point);
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('sleep-editor-entry-chooser')), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('sleep-editor-entry:main')));
+    await t.pumpAndSettle();
+    expect(state.active, 'main');
+    await stage(t, 'Not sleep');
+    await t.tap(find.byKey(SleepTimelineEditor.saveKey));
+    await t.pumpAndSettle();
+    final entry = saver.plans.single.entry!;
+    expect((entry.main, entry.start, entry.end, entry.action),
+      (true, main.start, main.end, SleepEntryAction.notSleep));
+  });
+
+  testWidgets('an action being durably written stays visible when another entry is tapped', (t) async {
+    final saver = _HeldSaver();
+    final base = dtNight();
+    final state = await openEditor(t, saver, base);
+    await stage(t, 'Not sleep');
+    await t.tap(find.byKey(SleepTimelineEditor.saveKey));
+    await t.pump();
+    await tapTime(t, state, base.naps.single.start + 600);
+    expect(state.active, 'main');
+    expect(find.byKey(const ValueKey('sleep-editor-pending-action')), findsOneWidget);
+    expect(find.byKey(const ValueKey('sleep-editor-action-cancelled')), findsNothing);
+    expect(saver.plan!.entry!.main, isTrue);
+    saver.written.complete();
+    await t.pumpAndSettle();
+    expect(find.byType(SleepTimelineEditor), findsNothing);
+  });
+
   testWidgets('identical entries have distinct accessible labels and keyboard selection', (t) async {
-    final handle = t.ensureSemantics();
-    addTearDown(handle.dispose);
     final naps = [SleepBlock('a', BlockKind.nap, dtAt(300), dtAt(330)),
       SleepBlock('b', BlockKind.nap, dtAt(300), dtAt(330))];
     final state = await openEditor(t, _Saver(), dataWith(naps, sources: {'a': 'legacy', 'b': 'legacy'}));
@@ -119,6 +189,7 @@ void main() {
     // so chart coordinates are never required to discover an overlapping entry.
     final button = find.byKey(const ValueKey('sleep-editor-choose-entry'));
     await t.ensureVisible(button);
+    await t.pumpAndSettle();
     await t.tap(button);
     await t.pumpAndSettle();
     final a = find.byKey(const ValueKey('sleep-editor-entry:a'));
@@ -135,8 +206,6 @@ void main() {
 
   for (final action in ['Not sleep', 'Recalculate time in bed', 'Back to automatic']) {
     testWidgets('$action is cancelled and announced only when selection actually changes', (t) async {
-      final handle = t.ensureSemantics();
-      addTearDown(handle.dispose);
       final base = dtNight();
       final data = SleepEditorData(day: base.day, domainStart: base.domainStart, hr: base.hr,
         movement: base.movement, main: base.main, naps: base.naps,
@@ -152,9 +221,13 @@ void main() {
       expect(find.byKey(SleepTimelineEditor.cancelKey).hitTestable(), findsOneWidget);
       await tapTime(t, state, dtAt(400)); // Same main entry: just scrub.
       expect(find.byKey(const ValueKey('sleep-editor-action-cancelled')), findsNothing);
+      await t.ensureVisible(find.byKey(const ValueKey('sleep-editor-zoom-in')));
+      await t.pumpAndSettle();
       await t.tap(find.byKey(const ValueKey('sleep-editor-zoom-in')));
       await t.pumpAndSettle();
       expect(pending, findsOneWidget);
+      await t.ensureVisible(find.byKey(SleepTimelineEditor.resetKey));
+      await t.pumpAndSettle();
       await t.tap(find.byKey(SleepTimelineEditor.resetKey));
       await t.pumpAndSettle();
       await tapTime(t, state, base.naps.single.start + 600);
@@ -162,9 +235,10 @@ void main() {
       expect(pending, findsNothing);
       final notice = find.byKey(const ValueKey('sleep-editor-action-cancelled'));
       expect(notice, findsOneWidget);
-      expect(t.getSemantics(notice).hasFlag(SemanticsFlag.isLiveRegion), isTrue);
+      expect(t.getSemantics(notice).flagsCollection.isLiveRegion, isTrue);
       expect(find.text('Unsaved action cancelled.'), findsOneWidget);
-      await t.ensureVisible(find.byKey(SleepTimelineEditor.saveKey));
+      await t.scrollUntilVisible(find.byKey(SleepTimelineEditor.saveKey), 180);
+      await t.pumpAndSettle();
       await t.tap(find.byKey(SleepTimelineEditor.saveKey));
       await t.pumpAndSettle();
       expect(saver.plans, isEmpty, reason: 'Save cannot submit the cancelled, hidden action');
@@ -178,8 +252,9 @@ void main() {
     await stage(t, 'Not sleep');
     expect(find.text('Save or cancel this action before changing times.'), findsOneWidget);
     final reason = find.byKey(const ValueKey('sleep-editor-action-edit-reason'));
-    expect(t.getSemantics(reason).hasFlag(SemanticsFlag.isLiveRegion), isTrue);
-    await t.ensureVisible(find.byKey(DayTimelineChart.chartKey));
+    expect(t.getSemantics(reason).flagsCollection.isLiveRegion, isTrue);
+    await Scrollable.ensureVisible(t.element(find.byKey(DayTimelineChart.chartKey)), alignment: .5);
+    await t.pumpAndSettle();
     final gesture = await t.startGesture(at(t, state, original.end));
     await gesture.moveBy(const Offset(-35, 0));
     await t.pump();
@@ -188,7 +263,8 @@ void main() {
     await t.pumpAndSettle();
     expect(state.blocks.first, original);
     final suggestions = find.byKey(const ValueKey('sleep-editor-suggestions'));
-    await t.ensureVisible(suggestions);
+    await t.scrollUntilVisible(suggestions, 150);
+    await t.pumpAndSettle();
     final use = find.descendant(of: suggestions, matching: find.text('Use'));
     expect(use, findsNothing, reason: 'Suggested-time edits are disabled while the action is staged');
     await t.tap(find.byKey(SleepTimelineEditor.saveKey));

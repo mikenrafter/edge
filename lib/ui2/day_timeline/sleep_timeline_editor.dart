@@ -69,7 +69,7 @@ class SleepEditorData {
     final sources = <String, String>{};
     for (final date in [prev, day]) {
       graphs.add(dayGraph(await repo.getDayTimeline(date)));
-      final n = await repo.getDayNaps(date);
+      final n = await repo.getSleepEditorNaps(date);
       for (final x in (n['naps'] as List?) ?? const []) {
         if (x is! Map) continue;
         final a = (x['start'] as num?)?.round(), b = (x['end'] as num?)?.round();
@@ -165,7 +165,9 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
   String active = 'main';
   bool _askSide = false, _saving = false, _readoutScrub = false;
   String? _saveError;
-  SleepEntryEdit? _entry;
+  ({String id, SleepEntryEdit edit})? _action;
+  SleepEntryEdit? get _entry => _action?.edit;
+  bool _actionCancelled = false;
   double? _lastScrub;
   late List<SleepStage?> stages;
   int _napSeq = 0;
@@ -238,19 +240,36 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
   SleepBlock get _active => blocks.firstWhere((b) => b.id == active);
 
   @override
-  void blocksChanged(List<SleepBlock> b) => setState(() {
-        blocks = b;
-        controller.home = _nightRegion;
-        _entry = null;
-        _readoutScrub = false;
-        _restage();
-      });
+  void blocksChanged(List<SleepBlock> b) {
+    // Staged entry actions and time edits are exclusive. The chart and
+    // suggestions disable editing, and this guard covers other callers.
+    if (_action != null || _saving) return;
+    setState(() {
+      blocks = b;
+      controller.home = _nightRegion;
+      _readoutScrub = false;
+      _restage();
+    });
+  }
+
+  void _cancelEntryAction({bool announce = false}) {
+    if (_action == null) return;
+    _action = null;
+    if (announce) _actionCancelled = true;
+  }
 
   @override
-  void blockSelected(String id, {required bool zoom}) => setState(() {
-        active = id;
-        _readoutScrub = false;
-      });
+  void blockSelected(String id, {required bool zoom}) {
+    if (_saving || !blocks.any((b) => b.id == id)) return;
+    setState(() {
+      // CLAIM(sleep-editor-visible-action): a different entry cancels the
+      // unsaved action; scrub/zoom/same-entry selection keep it visible
+      // [sleep_editor_review_r1_test].
+      if (id != active) _cancelEntryAction(announce: true);
+      active = id;
+      _readoutScrub = false;
+    });
+  }
 
   @override
   void scrubbed(double t) {
@@ -261,6 +280,7 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
   void dragEnded() {}
 
   void _addNap(bool before) {
+    if (_saving) return;
     final nap = placeNap(blocks, before: before, domainStart: d.domainStart,
         domainEnd: d.domainEnd, id: 'new:${_napSeq++}');
     setState(() => _askSide = false);
@@ -268,7 +288,7 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
     setState(() {
       blocks = [...blocks, nap];
       controller.home = _nightRegion;
-      _entry = null;
+      _cancelEntryAction(announce: true);
       active = nap.id;
       _readoutScrub = false;
       _restage();
@@ -280,12 +300,16 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
   }
 
   void _doneNap() {
-    setState(() => active = 'main');
+    blockSelected('main', zoom: false);
     controller.reset();
   }
 
   Future<void> _save() async {
     if (_saving) return;
+    if (_action != null && _action!.id != active) {
+      setState(() => _cancelEntryAction(announce: true));
+      return;
+    }
     final plan = _entry == null ? planOf(d, blocks) : SleepEditPlan(day: d.day, entry: _entry);
     if (plan.isEmpty) {
       Navigator.of(context).pop();
@@ -333,9 +357,14 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
         '${MaterialLocalizations.of(c).formatMediumDate(night)}';
     return Scaffold(
       backgroundColor: p.bg,
+      bottomNavigationBar: _action == null ? null : _pendingActionBar(c),
       body: SafeArea(
         child: Column(children: [
           NavBar(l.sleepEditorTitle, onBack: () => Navigator.of(c).maybePop()),
+          if (_actionCancelled)
+            Semantics(key: const ValueKey('sleep-editor-action-cancelled'), liveRegion: true,
+              child: Padding(padding: const EdgeInsets.symmetric(horizontal: S.x4, vertical: S.x2),
+                child: Text(l.sleepEditorActionCancelled, style: F.cap.copyWith(color: p.ink)))),
           Expanded(
             child: ListView(padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x6), children: [
               Surface(
@@ -345,6 +374,13 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
                         on: _askSide, onTap: () => setState(() => _askSide = !_askSide)),
                   ]),
                   Text(span, style: F.over.copyWith(color: p.ink3)),
+                  TextButton.icon(key: const ValueKey('sleep-editor-choose-entry'),
+                    style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                    onPressed: () async {
+                      final id = await _chooseEntry(blocks);
+                      if (mounted && id != null) blockSelected(id, zoom: false);
+                    },
+                    icon: const Icon(LucideIcons.list, size: 18), label: Text(l.sleepEditorChooseEntry)),
                   Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                     _zoomButton('zoom-in', l.sleepEditorZoomIn, LucideIcons.zoomIn,
                         () => controller.zoomAt((controller.target ?? controller.view).center)),
@@ -371,6 +407,8 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
                     annotations: _annotations,
                     blocks: blocks,
                     activeBlock: active,
+                    chooseBlock: _chooseEntry,
+                    blockEditingEnabled: _action == null && !_saving,
                     listener: this,
                     haptics: widget.haptics,
                   ),
@@ -396,7 +434,7 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
                       style: F.cap.copyWith(color: p.on(C.red))),
                 ),
               const SizedBox(height: S.x3),
-              Row(children: [
+              if (_action == null) Row(children: [
                 Expanded(
                     child: BigButton(l.actionCancel, key: SleepTimelineEditor.cancelKey, soft: true,
                         color: C.n500, dense: true, onTap: () => Navigator.of(c).pop())),
@@ -412,6 +450,79 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
     );
   }
 
+  String _entryKind(AppLocalizations l, SleepBlock block) =>
+      block.kind == BlockKind.main ? l.sleepEditorMainEntry : l.sleepEditorNapEntry;
+
+  String _provenance(AppLocalizations l, SleepBlock block) {
+    if (![d.main, ...d.naps].any((b) => b.id == block.id)) return l.sleepEditorSourceDraft;
+    final source = block.kind == BlockKind.main ? d.mainSource : d.napSources[block.id];
+    return switch (source) {
+      'manual' => l.sleepEditorSourceManual,
+      'confirmed' => l.sleepEditorSourceConfirmed,
+      'legacy' => l.sleepEditorSourceLegacy,
+      'rejected' => l.sleepEditorSourceRejected,
+      'auto' || 'auto_fallback' => l.sleepEditorSourceAutomatic,
+      null when block.kind == BlockKind.nap => l.sleepEditorSourceAutomatic,
+      _ => l.sleepEditorSourceUnknown,
+    };
+  }
+
+  String _exactTime(int epoch) {
+    final local = DateTime.fromMillisecondsSinceEpoch(epoch * 1000);
+    final offset = local.timeZoneOffset.inMinutes;
+    final hours = (offset.abs() ~/ 60).toString().padLeft(2, '0');
+    final minutes = (offset.abs() % 60).toString().padLeft(2, '0');
+    final dateTime = local.toIso8601String().split('.').first.replaceFirst('T', ' ');
+    return '$dateTime UTC${offset < 0 ? '-' : '+'}$hours:$minutes';
+  }
+
+  Future<String?> _chooseEntry(List<SleepBlock> choices) {
+    final l = AppLocalizations.of(context) ?? lookupAppLocalizations(const Locale('en'));
+    return showDialog<String>(context: context, builder: (dialog) => SimpleDialog(
+      key: const ValueKey('sleep-editor-entry-chooser'), title: Text(l.sleepEditorChooseEntry),
+      children: [for (final block in choices)
+        Semantics(selected: block.id == active,
+          child: TextButton(key: ValueKey('sleep-editor-entry:${block.id}'),
+            autofocus: block.id == active,
+            style: TextButton.styleFrom(minimumSize: const Size(double.infinity, 48),
+              alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: S.x4, vertical: S.x3)),
+            onPressed: () => Navigator.of(dialog).pop(block.id),
+            child: Text('${_entryKind(l, block)} · ${l.sleepEditorEntryNumber(blocks.indexWhere((b) => b.id == block.id) + 1)}'
+              '\n${_provenance(l, block)}\n${_exactTime(block.start)} →\n${_exactTime(block.end)}'),
+          )),
+      ],
+    ));
+  }
+
+  Widget _pendingActionBar(BuildContext c) {
+    final l = AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));
+    final action = _action!;
+    final block = blocks.firstWhere((b) => b.id == action.id);
+    final label = switch (action.edit.action) {
+      SleepEntryAction.recalculate => l.sleepEditorRecalculate,
+      SleepEntryAction.automatic => l.sleepDetailBackToAutomatic,
+      SleepEntryAction.notSleep => l.sleepDetailNotSleep,
+    };
+    return SafeArea(top: false, child: Padding(padding: const EdgeInsets.all(S.x3),
+      child: Surface(key: const ValueKey('sleep-editor-pending-action'),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('$label · ${_entryKind(l, block)} · ${l.sleepEditorEntryNumber(blocks.indexWhere((b) => b.id == block.id) + 1)}', style: F.body.copyWith(color: P.of(c).ink)),
+          Text('${_provenance(l, block)} · ${_clock(action.edit.start)} – ${_clock(action.edit.end)}', style: F.cap),
+          Semantics(key: const ValueKey('sleep-editor-action-edit-reason'), liveRegion: true,
+            child: Text(l.sleepEditorActionEditReason, style: F.cap)),
+          const SizedBox(height: S.x2),
+          Row(children: [
+            Expanded(child: BigButton(l.actionCancel, key: SleepTimelineEditor.cancelKey, soft: true,
+              dense: true, color: C.n500, onTap: _saving ? null : () => setState(_cancelEntryAction))),
+            const SizedBox(width: S.x2),
+            Expanded(child: BigButton(l.actionSave, key: SleepTimelineEditor.saveKey,
+              dense: true, color: C.green, onTap: _save)),
+          ]),
+        ]),
+      ),
+    ));
+  }
+
   Widget _zoomButton(String id, String label, IconData icon, VoidCallback onTap) =>
       SizedBox(width: 48, height: 48, key: ValueKey('sleep-editor-$id'),
         child: IconButton(tooltip: label, onPressed: onTap, icon: Icon(icon, size: 20)));
@@ -422,15 +533,17 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
     if (original == null) return const SizedBox.shrink();
     final main = original.kind == BlockKind.main;
     final source = main ? d.mainSource : d.napSources[original.id];
-    final mine = const {'manual', 'confirmed', 'rejected'}.contains(source);
-    final pending = _entry;
-    final selected = pending != null && pending.main == main &&
-        pending.start == original.start && pending.end == original.end;
+    // Legacy history is persisted/owned for writer validation, but only an
+    // explicit override or rejection can be restored to automatic.
+    // CLAIM(sleep-editor-legacy) [sleep_editor_legacy_contract_test].
+    final mine = switch (source) {
+      'manual' || 'confirmed' || 'rejected' => true,
+      _ => false,
+    };
     void stage(SleepEntryAction action) => setState(() {
-      // Actions and time changes cannot be mixed. Keep the staged times until
-      // explicitly cancelled, instead of discarding edits behind a button.
-      _entry = SleepEntryEdit(start: original.start, end: original.end,
-          main: main, source: source, action: action);
+      _actionCancelled = false;
+      _action = (id: original.id, edit: SleepEntryEdit(start: original.start, end: original.end,
+          main: main, source: source, action: action));
     });
     final dirty = !planOf(d, blocks).isEmpty;
     return Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -444,11 +557,7 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
       if (source != 'rejected') TextButton(
         onPressed: dirty || _saving ? null : () => stage(SleepEntryAction.notSleep),
         child: Text(l.sleepDetailNotSleep)),
-      if (selected) ...[
-        Text(l.sleepEditorActionPending, style: F.cap),
-        TextButton(onPressed: _saving ? null : () => setState(() => _entry = null),
-            child: Text(l.actionCancel)),
-      ],
+
     ]));
   }
 
@@ -557,7 +666,7 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
               x.reason == SuggestionReason.movementSettled
                   ? 'Movement settled here'
                   : 'Movement rose here',
-              () => blocksChanged(moveBlockEnd(blocks, a.id, x.which, x.at,
+              _action != null || _saving ? null : () => blocksChanged(moveBlockEnd(blocks, a.id, x.which, x.at,
                   domainStart: d.domainStart, domainEnd: d.domainEnd)),
               key: ValueKey('sleep-editor-suggestion:${x.which.name}'),
             ),

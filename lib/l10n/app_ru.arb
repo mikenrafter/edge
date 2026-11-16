@@ -1,4 +1,22 @@
 {
+  "sleepEditorChooseEntry": "Выбрать запись сна",
+  "sleepEditorSourceAutomatic": "Обнаружено",
+  "sleepEditorSourceManual": "Задано вами",
+  "sleepEditorSourceConfirmed": "Подтверждено",
+  "sleepEditorSourceLegacy": "Сохранённая история",
+  "sleepEditorSourceRejected": "Отмечено как не сон",
+  "sleepEditorSourceUnknown": "Источник неизвестен",
+  "sleepEditorSourceDraft": "Не сохранено",
+  "sleepEditorActionCancelled": "Несохранённое действие отменено.",
+  "sleepEditorActionEditReason": "Сохраните или отмените это действие перед изменением времени.",
+  "sleepEditorEntryNumber": "Запись {number}",
+  "@sleepEditorEntryNumber": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
   "sleepEditorTitle": "Изменить сон",
   "sleepEditorZoomIn": "Приблизить",
   "sleepEditorZoomOut": "Отдалить",

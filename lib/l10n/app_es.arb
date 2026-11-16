@@ -1,4 +1,22 @@
 {
+  "sleepEditorChooseEntry": "Elegir registro de sueño",
+  "sleepEditorSourceAutomatic": "Detectado",
+  "sleepEditorSourceManual": "Definido por ti",
+  "sleepEditorSourceConfirmed": "Confirmado",
+  "sleepEditorSourceLegacy": "Historial conservado",
+  "sleepEditorSourceRejected": "Marcado como no dormido",
+  "sleepEditorSourceUnknown": "Origen desconocido",
+  "sleepEditorSourceDraft": "Sin guardar",
+  "sleepEditorActionCancelled": "Acción sin guardar cancelada.",
+  "sleepEditorActionEditReason": "Guarda o cancela esta acción antes de cambiar los horarios.",
+  "sleepEditorEntryNumber": "Registro {number}",
+  "@sleepEditorEntryNumber": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
   "sleepEditorTitle": "Editar sueño",
   "sleepEditorZoomIn": "Acercar",
   "sleepEditorZoomOut": "Alejar",

@@ -1,4 +1,22 @@
 {
+  "sleepEditorChooseEntry": "Schlafeintrag auswählen",
+  "sleepEditorSourceAutomatic": "Erkannt",
+  "sleepEditorSourceManual": "Selbst festgelegt",
+  "sleepEditorSourceConfirmed": "Bestätigt",
+  "sleepEditorSourceLegacy": "Aufbewahrter Verlauf",
+  "sleepEditorSourceRejected": "Als kein Schlaf markiert",
+  "sleepEditorSourceUnknown": "Quelle unbekannt",
+  "sleepEditorSourceDraft": "Nicht gespeichert",
+  "sleepEditorActionCancelled": "Ungespeicherte Aktion verworfen.",
+  "sleepEditorActionEditReason": "Speichere oder verwirf diese Aktion, bevor du Zeiten änderst.",
+  "sleepEditorEntryNumber": "Eintrag {number}",
+  "@sleepEditorEntryNumber": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
   "sleepEditorTitle": "Schlaf bearbeiten",
   "sleepEditorZoomIn": "Vergrößern",
   "sleepEditorZoomOut": "Verkleinern",

@@ -3,7 +3,6 @@
 // Stored history is owned for validation but is not a user time override.
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/data/bundle_store.dart';
@@ -16,6 +15,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../backup/backup_support.dart';
 import '../support/day_timeline_fixtures.dart';
+import '../support/as_of_recalc_fakes.dart' show settle;
 import 'sleep_editor_review_r1_test.dart' as rig;
 
 class _DatabaseSaver implements SleepEditSaver {
@@ -23,10 +23,16 @@ class _DatabaseSaver implements SleepEditSaver {
   final Database db;
   SleepEditPlan? plan;
   Future<void>? written;
+  bool completed = false;
+  Object? error;
   @override
   ({Future<void> written, Future<SleepOperationResult> done}) save(SleepEditPlan value) {
     plan = value;
     final receipt = written = writeSleepEdit(db, value);
+    receipt.then((_) => completed = true, onError: (Object e) {
+      error = e;
+      completed = true;
+    });
     return (written: receipt, done: receipt.then((_) => const SleepOperationResult(success: true),
       onError: (Object _) => const SleepOperationResult(success: false)));
   }
@@ -72,7 +78,7 @@ void main() {
       final repo = LocalRepositoryImpl(getProfileMap: () => const {});
       final data = await t.runAsync(() => SleepEditorData.load(repo, day,
         window: (dtAt(160), dtAt(690))));
-      expect(data!.napSources.values, ['legacy']);
+      expect(data!.napSources.values, contains('legacy'));
       final saver = _DatabaseSaver(db);
       final state = await rig.openEditor(t, saver, data);
       // Real chart tap, not a direct State selection call.
@@ -80,9 +86,12 @@ void main() {
       expect(find.text('Back to automatic'), findsNothing);
       expect(find.text('Recalculate time in bed'), findsOneWidget);
       await rig.stage(t, label);
+      await t.scrollUntilVisible(find.byKey(SleepTimelineEditor.saveKey), 200);
+      await t.pumpAndSettle();
       await t.tap(find.byKey(SleepTimelineEditor.saveKey));
       await t.pump();
-      await t.runAsync(() => saver.written!);
+      await settle(t, until: () => saver.completed, what: 'legacy durable write');
+      expect(saver.error, isNull);
       await t.pumpAndSettle();
       expect(saver.plan!.entry!.source, 'legacy');
       expect(saver.plan!.entry!.action, action);
@@ -96,9 +105,24 @@ void main() {
       await t.runAsync(() async { await LocalDb.close(); db = await LocalDb.instance; });
       expect((await t.runAsync(target))!['payload_json'], snapshot);
       if (action == SleepEntryAction.notSleep) {
-        await t.runAsync(() => writeSleepEdit(db, SleepEditPlan(day: day,
-          entry: SleepEntryEdit(start: start, end: end, main: false,
-            source: 'rejected', action: SleepEntryAction.automatic))));
+        // A queued recomputation must not make the rejected entry disappear
+        // from the editor. Restore it through the real UI after reopening.
+        final reopened = await t.runAsync(() => SleepEditorData.load(repo, day,
+          window: (dtAt(160), dtAt(690))));
+        final rejected = reopened!.naps.singleWhere((n) => n.start == start);
+        expect(reopened.napSources[rejected.id], 'rejected');
+        expect(reopened.naps.map((n) => n.start), contains(otherStart));
+        final restoreSaver = _DatabaseSaver(db);
+        final restoredEditor = await rig.openEditor(t, restoreSaver, reopened);
+        await rig.tapTime(t, restoredEditor, start + 600);
+        expect(find.text('Recalculate time in bed'), findsNothing);
+        expect(find.text('Not sleep'), findsNothing);
+        await rig.stage(t, 'Back to automatic');
+        await t.tap(find.byKey(SleepTimelineEditor.saveKey));
+        await t.pump();
+        await settle(t, until: () => restoreSaver.completed, what: 'legacy restore');
+        expect(restoreSaver.error, isNull);
+        expect(restoreSaver.plan!.entry!.source, 'rejected');
         final restored = await t.runAsync(target);
         expect(restored!['source'], 'legacy');
         expect(restored['payload_json'], snapshot);

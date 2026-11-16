@@ -1,4 +1,22 @@
 {
+  "sleepEditorChooseEntry": "नींद की प्रविष्टि चुनें",
+  "sleepEditorSourceAutomatic": "पता चला",
+  "sleepEditorSourceManual": "आपने तय किया",
+  "sleepEditorSourceConfirmed": "पुष्टि की गई",
+  "sleepEditorSourceLegacy": "सहेजा गया इतिहास",
+  "sleepEditorSourceRejected": "नींद नहीं के रूप में चिह्नित",
+  "sleepEditorSourceUnknown": "स्रोत अज्ञात",
+  "sleepEditorSourceDraft": "सहेजा नहीं गया",
+  "sleepEditorActionCancelled": "बिना सहेजी कार्रवाई रद्द कर दी गई।",
+  "sleepEditorActionEditReason": "समय बदलने से पहले यह कार्रवाई सहेजें या रद्द करें।",
+  "sleepEditorEntryNumber": "प्रविष्टि {number}",
+  "@sleepEditorEntryNumber": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
   "sleepEditorTitle": "नींद संपादित करें",
   "sleepEditorZoomIn": "ज़ूम इन करें",
   "sleepEditorZoomOut": "ज़ूम आउट करें",

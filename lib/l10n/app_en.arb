@@ -1,4 +1,53 @@
 {
+  "sleepEditorChooseEntry": "Choose sleep entry",
+  "@sleepEditorChooseEntry": {
+    "description": "Horizontal sleep editor entry chooser or staged action status."
+  },
+  "sleepEditorSourceAutomatic": "Detected",
+  "@sleepEditorSourceAutomatic": {
+    "description": "Horizontal sleep editor entry chooser or staged action status."
+  },
+  "sleepEditorSourceManual": "User-set",
+  "@sleepEditorSourceManual": {
+    "description": "Horizontal sleep editor entry chooser or staged action status."
+  },
+  "sleepEditorSourceConfirmed": "Confirmed",
+  "@sleepEditorSourceConfirmed": {
+    "description": "Horizontal sleep editor entry chooser or staged action status."
+  },
+  "sleepEditorSourceLegacy": "Retained history",
+  "@sleepEditorSourceLegacy": {
+    "description": "Horizontal sleep editor entry chooser or staged action status."
+  },
+  "sleepEditorSourceRejected": "Marked not sleep",
+  "@sleepEditorSourceRejected": {
+    "description": "Horizontal sleep editor entry chooser or staged action status."
+  },
+  "sleepEditorSourceUnknown": "Source unknown",
+  "@sleepEditorSourceUnknown": {
+    "description": "Horizontal sleep editor entry chooser or staged action status."
+  },
+  "sleepEditorSourceDraft": "Unsaved",
+  "@sleepEditorSourceDraft": {
+    "description": "Horizontal sleep editor entry chooser or staged action status."
+  },
+  "sleepEditorActionCancelled": "Unsaved action cancelled.",
+  "@sleepEditorActionCancelled": {
+    "description": "Horizontal sleep editor entry chooser or staged action status."
+  },
+  "sleepEditorActionEditReason": "Save or cancel this action before changing times.",
+  "@sleepEditorActionEditReason": {
+    "description": "Horizontal sleep editor entry chooser or staged action status."
+  },
+  "sleepEditorEntryNumber": "Entry {number}",
+  "@sleepEditorEntryNumber": {
+    "description": "Stable display ordinal distinguishes entries with identical times and provenance.",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
   "sleepEditorTitle": "Edit sleep",
   "@sleepEditorTitle": {
     "description": "Horizontal sleep editor control or entry action status."
