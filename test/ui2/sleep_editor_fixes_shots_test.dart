@@ -26,7 +26,7 @@ void main() {
     t.view.physicalSize = const Size(412, 1300);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
-    await loadFonts();
+    await t.runAsync(loadFonts);
     const shotKey = ValueKey('editor-fixes-shot');
     Future<void> shot(String name) async {
       expect(t.takeException(), isNull);

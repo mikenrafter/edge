@@ -38,11 +38,15 @@ class TimelineController extends ChangeNotifier {
     required this.domainEnd,
     required TimelineView home,
     double? scrub,
-  })  : home = home.clampTo(domainStart, domainEnd),
-        _view = home.clampTo(domainStart, domainEnd),
+    this.minimumSpan = kMinViewSec,
+  })  : home = home.clampTo(domainStart, domainEnd, minimumSpan: minimumSpan),
+        _view = home.clampTo(domainStart, domainEnd, minimumSpan: minimumSpan),
         _scrub = scrub;
 
   final double domainStart, domainEnd;
+
+  /// A short recorded night may use its exact span as the zoom floor.
+  final double minimumSpan;
 
   /// The default range "Reset zoom" glides back to.
   TimelineView home;
@@ -103,7 +107,7 @@ class TimelineController extends ChangeNotifier {
 
   /// Glide to [v] (made legal first) over [zoomDuration].
   void glideTo(TimelineView v) {
-    final to = v.clampTo(domainStart, domainEnd);
+    final to = v.clampTo(domainStart, domainEnd, minimumSpan: minimumSpan);
     _ticker?.stop();
     _from = _view;
     _duration = zoomDuration(_view, to);
@@ -125,7 +129,7 @@ class TimelineController extends ChangeNotifier {
   }
 
   /// The double tap on empty space.
-  void zoomAt(double t) => glideTo((_to ?? _view).zoomAt(t, domainStart, domainEnd));
+  void zoomAt(double t) => glideTo((_to ?? _view).zoomAt(t, domainStart, domainEnd, minimumSpan: minimumSpan));
 
   void setScrub(double? t) {
     _scrub = t?.clamp(domainStart, domainEnd);
@@ -838,7 +842,11 @@ class TimelinePainter extends CustomPainter {
         final style = F.over.copyWith(color: p.on(accent), fontWeight: FontWeight.w700, height: 1);
         // "✎" is the Lucide pencil: the text fonts have no such glyph.
         final pen = LucideIcons.pencil;
-        final tp = TextPainter(text: TextSpan(text: '$text ', style: style, children: [
+        final tp = TextPainter(text: TextSpan(style: style, children: [
+              if (b.kind == BlockKind.nap)
+                TextSpan(text: '${String.fromCharCode(annotationIcon(AnnotationKind.nap).codePoint)} ',
+                    style: style.copyWith(fontFamily: pen.fontFamily, package: pen.fontPackage)),
+              TextSpan(text: '$text '),
               TextSpan(text: String.fromCharCode(pen.codePoint),
                   style: style.copyWith(fontFamily: pen.fontFamily, package: pen.fontPackage)),
             ]),

@@ -5,10 +5,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/data/sleep_edit_write.dart';
 import 'package:openstrap_edge/state/control_operations.dart';
+import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/ui2/screens/sleep_detail.dart';
 import 'package:openstrap_edge/ui2/day_timeline/sleep_timeline_editor.dart';
 import 'package:openstrap_edge/ui2/day_timeline/timeline_model.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
@@ -235,6 +238,36 @@ void main() {
     saver.written.complete();
     await t.pumpAndSettle();
     expect(find.text('Sleep tab · 2026-11-14'), findsOneWidget);
+  });
+
+  // WHY: navigation must use the selected SleepDetail night, not today.
+  // Exercise the production openTimeline method and the real navigation stack.
+  testWidgets('Sleep tab opens its selected historical night and back preserves the tab state', (t) async {
+    final app = AppState.forTesting()..repo = _Repo([]);
+    addTearDown(app.dispose);
+    final base = dtNight(withNap: false);
+    t.view.physicalSize = const Size(412, 1300);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(ChangeNotifierProvider<AppState>.value(value: app,
+      child: MaterialApp(theme: buildTheme(Brightness.dark), home: SleepDetail(
+        day: base.day, data: SleepData(day: base.day, night: {
+          'onset_ts': base.main.start, 'wake_ts': base.main.end,
+          'sleep_source': 'manual', 'duration_min': 480, 'in_bed_min': 530,
+        }),
+      ))));
+    await t.pumpAndSettle();
+    final tab = t.state(find.byType(SleepDetail));
+    unawaited((tab as dynamic).openTimeline() as Future<void>);
+    await t.pumpAndSettle();
+    final editor = t.state<SleepTimelineEditorState>(find.byType(SleepTimelineEditor));
+    expect(editor.widget.data.day, '2026-11-14');
+    expect((editor.widget.data.main.start, editor.widget.data.main.end),
+      (base.main.start, base.main.end));
+    await t.tap(find.byIcon(LucideIcons.chevronLeft));
+    await t.pumpAndSettle();
+    expect(identical(t.state(find.byType(SleepDetail)), tab), isTrue);
+    expect(t.widget<SleepDetail>(find.byType(SleepDetail)).day, '2026-11-14');
   });
 
   testWidgets('back returns to the same Sleep tab night without writing', (t) async {

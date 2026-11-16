@@ -4074,5 +4074,14 @@
   "pulseAlertEarlier": "Von einer früheren Version der App gemeldet {when}",
   "homeLastKnownUpdating": "Letzter Stand {time} · wird aktualisiert",
   "homeLastKnownFailed": "Letzter Stand {time} · Aktualisierung fehlgeschlagen",
-  "homeLastKnownSource": "{status}. Gelesen {readTime}. Berechnet {computedTime}."
+  "homeLastKnownSource": "{status}. Gelesen {readTime}. Berechnet {computedTime}.",
+  "sleepEditorTitle": "Schlaf bearbeiten",
+  "sleepEditorZoomIn": "Vergrößern",
+  "sleepEditorZoomOut": "Verkleinern",
+  "sleepEditorFullNight": "Ganze Nacht",
+  "sleepEditorRecalculate": "Bettzeit neu berechnen",
+  "sleepEditorMainEntry": "Hauptschlaf",
+  "sleepEditorNapEntry": "Nickerchen",
+  "sleepEditorSaveTimesFirst": "Speichere oder verwirf zuerst deine Zeitänderungen.",
+  "sleepEditorActionPending": "Diese Änderung wird beim Speichern übernommen."
 }

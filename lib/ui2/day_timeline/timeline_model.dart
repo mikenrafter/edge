@@ -69,14 +69,14 @@ class TimelineView {
   /// [kMinViewSec] wide (widened about its centre), then shifted (not
   /// squeezed) back inside the domain. A domain narrower than the floor is
   /// shown whole.
-  TimelineView clampTo(double domainStart, double domainEnd) {
+  TimelineView clampTo(double domainStart, double domainEnd, {double minimumSpan = kMinViewSec}) {
     final domain = domainEnd - domainStart;
-    if (domain <= kMinViewSec) return TimelineView(domainStart, domainEnd);
+    if (domain <= minimumSpan) return TimelineView(domainStart, domainEnd);
     var s = start, e = end;
-    if (e - s < kMinViewSec) {
+    if (e - s < minimumSpan) {
       final c = (s + e) / 2;
-      s = c - kMinViewSec / 2;
-      e = c + kMinViewSec / 2;
+      s = c - minimumSpan / 2;
+      e = c + minimumSpan / 2;
     }
     if (e - s > domain) return TimelineView(domainStart, domainEnd);
     if (s < domainStart) {
@@ -92,9 +92,9 @@ class TimelineView {
 
   /// The double-tap zoom: [kDoubleTapZoom] of this span, centred on [t],
   /// then made legal ([clampTo]).
-  TimelineView zoomAt(double t, double domainStart, double domainEnd) {
+  TimelineView zoomAt(double t, double domainStart, double domainEnd, {double minimumSpan = kMinViewSec}) {
     final s = span * kDoubleTapZoom;
-    return TimelineView(t - s / 2, t + s / 2).clampTo(domainStart, domainEnd);
+    return TimelineView(t - s / 2, t + s / 2).clampTo(domainStart, domainEnd, minimumSpan: minimumSpan);
   }
 
   TimelineView lerp(TimelineView to, double k) =>

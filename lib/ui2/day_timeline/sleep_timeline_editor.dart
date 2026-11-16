@@ -1,11 +1,5 @@
-// The sleep timeline editor, "Not sure?" (pilot day-timeline spec §3).
-//
-// The shared timeline over the night (default 8 PM -> 12 PM; the data runs 24
-// hours, 8 PM to 8 PM, for naps). Exactly one block is active and has
-// handles; every other block is a labelled band. Blocks never overlap. The
-// stage wave and the readout's totals come from the PREVIEW stager and say
-// so; Save stores the window and naps durably and the full calculation
-// stages the night afterwards.
+// Mutable horizontal editor for one night. This State owns staged blocks and
+// entry actions; SleepEditSaver owns the durable acknowledgement.
 
 import 'dart:async';
 
@@ -15,11 +9,12 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../data/day_label.dart';
 import '../../data/local_repository.dart';
 import '../../data/sleep_edit_write.dart';
+import '../../l10n/app_localizations.dart';
 import '../../state/control_operations.dart' show SleepOperationResult;
 import '../chart_annotations.dart';
 import '../charts.dart' show Hypnogram, SleepStage, SleepStageX;
 import '../grammar.dart';
-import '../screens/day_timeline.dart' show dayGraph;
+import '../screens/day_timeline.dart' show DayGraph, dayGraph;
 import '../theme.dart';
 import 'preview_stager.dart';
 import 'timeline_chart.dart';
@@ -33,6 +28,7 @@ class SleepEditorData {
     required this.hr,
     required this.movement,
     required this.main,
+    this.mainSource,
     this.naps = const [],
     this.napSources = const {},
     this.usualBed,
@@ -42,10 +38,11 @@ class SleepEditorData {
   /// The night, by its wake date.
   final String day;
 
-  /// 8 PM the evening before, epoch seconds; the data runs 24 hours on.
+  /// First signal minute, epoch seconds. Calendar boundaries include DST.
   final int domainStart;
   final List<double?> hr, movement;
   final SleepBlock main;
+  final String? mainSource;
   final List<SleepBlock> naps;
 
   /// A stored nap's `source` by block id (absent: a detected nap).
@@ -56,43 +53,57 @@ class SleepEditorData {
 
   /// The night read from the repository: two calendar days' minutes stitched
   /// from 8 PM to 8 PM, the main window (or [fallback] when there is none) and
-  /// the naps inside the 24 hours.
+  /// naps intersecting that calendar interval, including overlapping entries.
   static Future<SleepEditorData> load(LocalRepository repo, String day,
       {(int, int)? window, (int, int)? fallback, (int, int)? usual}) async {
     final d = DateTime.parse(day);
     final prev = dayLabelOf(DateTime(d.year, d.month, d.day - 1));
-    final start = DateTime(d.year, d.month, d.day - 1, 20).millisecondsSinceEpoch ~/ 1000;
-    final hr = List<double?>.filled(1440, null), mv = List<double?>.filled(1440, null);
+    final baseStart = DateTime(d.year, d.month, d.day - 1, 20).millisecondsSinceEpoch ~/ 1000;
+    final baseEnd = DateTime(d.year, d.month, d.day, 20).millisecondsSinceEpoch ~/ 1000;
+    final w = window ?? fallback ??
+        (DateTime(d.year, d.month, d.day - 1, 23).millisecondsSinceEpoch ~/ 1000,
+            DateTime(d.year, d.month, d.day, 7).millisecondsSinceEpoch ~/ 1000);
+    final night = await repo.getDaySleepV2(day);
+    final graphs = <DayGraph>[];
     final naps = <SleepBlock>[];
     final sources = <String, String>{};
     for (final date in [prev, day]) {
-      final g = dayGraph(await repo.getDayTimeline(date));
-      final s = g.dayStart;
-      if (s != null) {
-        for (var i = 0; i < 1440; i++) {
-          final m = (start + i * 60 - s) ~/ 60;
-          if (m < 0 || m >= g.slots) continue;
-          if (m < g.hr.length && g.hr[m] != null) hr[i] = g.hr[m];
-          if (m < g.movement.length && g.movement[m] != null) mv[i] = g.movement[m];
-        }
-      }
+      graphs.add(dayGraph(await repo.getDayTimeline(date)));
       final n = await repo.getDayNaps(date);
       for (final x in (n['naps'] as List?) ?? const []) {
         if (x is! Map) continue;
-        final a = x['start'] as int, b = x['end'] as int;
-        if (b <= start || a >= start + 86400) continue;
-        final id = 'nap:$a';
+        final a = (x['start'] as num?)?.round(), b = (x['end'] as num?)?.round();
+        if (a == null || b == null || b <= a || b <= baseStart || a >= baseEnd) continue;
+        // Display keeps even overlapping entries separate. Their stored identity
+        // is passed back to the writer, never merged by the chart.
+        final id = 'nap:$date:$a:$b:${x['source'] ?? 'detected'}';
         naps.add(SleepBlock(id, BlockKind.nap, a, b));
         if (x['source'] != null) sources[id] = x['source'] as String;
       }
     }
-    final w = window ?? fallback ??
-        (DateTime(d.year, d.month, d.day - 1, 23).millisecondsSinceEpoch ~/ 1000,
-            DateTime(d.year, d.month, d.day, 7).millisecondsSinceEpoch ~/ 1000);
-    final main = SleepBlock('main', BlockKind.main, w.$1, w.$2);
+    var start = w.$1 < baseStart ? w.$1 : baseStart;
+    var end = w.$2 > baseEnd ? w.$2 : baseEnd;
+    for (final n in naps) {
+      if (n.start < start) start = n.start;
+      if (n.end > end) end = n.end;
+    }
+    final slots = (end - start + 59) ~/ 60;
+    final hr = List<double?>.filled(slots, null), mv = List<double?>.filled(slots, null);
+    for (final g in graphs) {
+      final int? signalStart = g.dayStart;
+      if (signalStart == null) continue;
+      for (var i = 0; i < slots; i++) {
+        final offset = start + i * 60 - signalStart;
+        if (offset < 0) continue;
+        final m = offset ~/ 60;
+        if (m < 0 || m >= g.slots) continue;
+        if (m < g.hr.length && g.hr[m] != null) hr[i] = g.hr[m];
+        if (m < g.movement.length && g.movement[m] != null) mv[i] = g.movement[m];
+      }
+    }
     return SleepEditorData(day: day, domainStart: start, hr: hr, movement: mv,
-        main: main,
-        naps: [for (final n in naps) if (n.end <= main.start || n.start >= main.end) n],
+        main: SleepBlock('main', BlockKind.main, w.$1, w.$2),
+        mainSource: night['sleep_source'] as String?, naps: naps,
         napSources: sources, usualBed: usual?.$1, usualWake: usual?.$2);
   }
 }
@@ -154,6 +165,8 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
   String active = 'main';
   bool _askSide = false, _saving = false, _readoutScrub = false;
   String? _saveError;
+  SleepEntryEdit? _entry;
+  double? _lastScrub;
   late List<SleepStage?> stages;
   int _napSeq = 0;
 
@@ -165,21 +178,55 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
   @override
   void initState() {
     super.initState();
-    // 8 PM -> 12 PM by default (16 hours of the 24).
+    // CLAIM(sleep-editor-night-region): home is the exact union extent of
+    // the main window and every nap [sleep_editor_fixes_test].
     controller = TimelineController(
-      domainStart: d.domainStart.toDouble(),
-      domainEnd: d.domainEnd.toDouble(),
-      home: TimelineView(d.domainStart.toDouble(), d.domainStart + 16 * 3600.0),
+      domainStart: _nightRegion.start < d.domainStart ? _nightRegion.start : d.domainStart.toDouble(),
+      domainEnd: _nightRegion.end > d.domainEnd ? _nightRegion.end : d.domainEnd.toDouble(),
+      home: _nightRegion,
+      minimumSpan: _nightRegion.span < kMinViewSec ? _nightRegion.span : kMinViewSec,
       scrub: widget.initialScrub,
     );
+    _lastScrub = controller.scrub;
+    controller.addListener(_controllerChanged);
     _readoutScrub = widget.initialScrub != null;
     _restage();
   }
 
   @override
   void dispose() {
+    controller.removeListener(_controllerChanged);
     controller.dispose();
     super.dispose();
+  }
+
+  TimelineView get _nightRegion {
+    var start = blocks.first.start, end = blocks.first.end;
+    for (final b in blocks.skip(1)) {
+      if (b.start < start) start = b.start;
+      if (b.end > end) end = b.end;
+    }
+    return TimelineView(start.toDouble(), end.toDouble());
+  }
+
+  // CLAIM(sleep-editor-stable-text): zoom ticks repaint only the chart.
+  // Text changes only when its scrub value changes [sleep_editor_fixes_test].
+  void _controllerChanged() {
+    if (_lastScrub == controller.scrub) {
+      return;
+    }
+    _lastScrub = controller.scrub;
+    if (mounted) setState(() {});
+  }
+
+  void _zoomOut() {
+    final v = controller.target ?? controller.view;
+    final span = v.span / kDoubleTapZoom;
+    if (span >= controller.home.span - .001) {
+      controller.reset();
+    } else {
+      controller.glideTo(TimelineView(v.center - span / 2, v.center + span / 2));
+    }
   }
 
   void _restage() {
@@ -193,6 +240,8 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
   @override
   void blocksChanged(List<SleepBlock> b) => setState(() {
         blocks = b;
+        controller.home = _nightRegion;
+        _entry = null;
         _readoutScrub = false;
         _restage();
       });
@@ -218,6 +267,8 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
     if (nap == null) return;
     setState(() {
       blocks = [...blocks, nap];
+      controller.home = _nightRegion;
+      _entry = null;
       active = nap.id;
       _readoutScrub = false;
       _restage();
@@ -235,7 +286,7 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
 
   Future<void> _save() async {
     if (_saving) return;
-    final plan = planOf(d, blocks);
+    final plan = _entry == null ? planOf(d, blocks) : SleepEditPlan(day: d.day, entry: _entry);
     if (plan.isEmpty) {
       Navigator.of(context).pop();
       return;
@@ -244,16 +295,17 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
       _saving = true;
       _saveError = null;
     });
-    final r = widget.save.save(plan);
+    ({Future<void> written, Future<SleepOperationResult> done})? receipt;
     try {
-      await r.written;
+      receipt = widget.save.save(plan);
+      await receipt.written;
     } catch (e) {
       // Not written: the edits stay on screen to try again.
-      unawaited(r.done.then((_) {}, onError: (_) {}));
+      unawaited(receipt?.done.then((_) {}, onError: (_) {}));
       if (mounted) setState(() => (_saving = false, _saveError = '$e'));
       return;
     }
-    if (mounted) Navigator.of(context).pop(SleepEditorResult(r.done));
+    if (mounted) Navigator.of(context).pop(SleepEditorResult(receipt.done));
   }
 
   String _clock(int t) => const AppClockText().of(t);
@@ -268,26 +320,22 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
       ];
 
   @override
-  Widget build(BuildContext c) => AnimatedBuilder(
-    animation: controller,
-    builder: (c, _) => _build(c),
-  );
+  Widget build(BuildContext c) => _build(c);
 
   Widget _build(BuildContext c) {
     final p = P.of(c);
+    final l = AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));
     final a = _active;
     final isNap = a.kind == BlockKind.nap;
     final night = DateTime.parse(d.day);
     final from = DateTime(night.year, night.month, night.day - 1);
-    const wd = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const mo = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    final span = '${wd[from.weekday - 1]} ${from.day} → ${wd[night.weekday - 1]} '
-        '${night.day} ${mo[night.month - 1]}';
+    final span = '${MaterialLocalizations.of(c).formatMediumDate(from)} → '
+        '${MaterialLocalizations.of(c).formatMediumDate(night)}';
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          NavBar('Sleep timeline', onBack: () => Navigator.of(c).maybePop()),
+          NavBar(l.sleepEditorTitle, onBack: () => Navigator.of(c).maybePop()),
           Expanded(
             child: ListView(padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x6), children: [
               Surface(
@@ -295,12 +343,13 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
                   TimelineTitleRow('Your sleep', subtitle: span, pills: [
                     TimelinePill('Add sleep block', key: SleepTimelineEditor.addKey, icon: LucideIcons.plus,
                         on: _askSide, onTap: () => setState(() => _askSide = !_askSide)),
-                    if (controller.zoomed)
-                      TimelinePill('Reset zoom', key: SleepTimelineEditor.resetKey,
-                          onTap: () {
-                        setState(() => active = 'main');
-                        controller.reset();
-                      }),
+
+                  ]),
+                  Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                    _zoomButton('zoom-in', l.sleepEditorZoomIn, LucideIcons.zoomIn,
+                        () => controller.zoomAt((controller.target ?? controller.view).center)),
+                    _zoomButton('zoom-out', l.sleepEditorZoomOut, LucideIcons.zoomOut, _zoomOut),
+                    _zoomButton('reset', l.sleepEditorFullNight, LucideIcons.maximize, controller.reset),
                   ]),
                   if (_askSide)
                     _Banner(
@@ -325,7 +374,7 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
                     listener: this,
                     haptics: widget.haptics,
                   ),
-                  _readout(c, p, a),
+                  RepaintBoundary(child: _readout(c, p, a)),
                   Padding(
                     padding: const EdgeInsets.only(top: S.x2),
                     child: Text(
@@ -335,6 +384,8 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
                   ),
                 ]),
               ),
+              const SizedBox(height: S.x3),
+              _entryActions(c, a),
               const SizedBox(height: S.x3),
               _suggestions(c, p, a),
               if (_saveError != null)
@@ -347,11 +398,11 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
               const SizedBox(height: S.x3),
               Row(children: [
                 Expanded(
-                    child: BigButton('Cancel', key: SleepTimelineEditor.cancelKey, soft: true,
+                    child: BigButton(l.actionCancel, key: SleepTimelineEditor.cancelKey, soft: true,
                         color: C.n500, dense: true, onTap: () => Navigator.of(c).pop())),
                 const SizedBox(width: S.x2),
                 Expanded(
-                    child: BigButton('Save', key: SleepTimelineEditor.saveKey, dense: true,
+                    child: BigButton(l.actionSave, key: SleepTimelineEditor.saveKey, dense: true,
                         color: C.green, onTap: _save)),
               ]),
             ]),
@@ -359,6 +410,46 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
         ]),
       ),
     );
+  }
+
+  Widget _zoomButton(String id, String label, IconData icon, VoidCallback onTap) =>
+      SizedBox(width: 48, height: 48, key: ValueKey('sleep-editor-$id'),
+        child: IconButton(tooltip: label, onPressed: onTap, icon: Icon(icon, size: 20)));
+
+  Widget _entryActions(BuildContext c, SleepBlock block) {
+    final l = AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));
+    final original = [d.main, ...d.naps].where((b) => b.id == block.id).firstOrNull;
+    if (original == null) return const SizedBox.shrink();
+    final main = original.kind == BlockKind.main;
+    final source = main ? d.mainSource : d.napSources[original.id];
+    final mine = const {'manual', 'confirmed', 'rejected'}.contains(source);
+    final pending = _entry;
+    final selected = pending != null && pending.main == main &&
+        pending.start == original.start && pending.end == original.end;
+    void stage(SleepEntryAction action) => setState(() {
+      // Actions and time changes cannot be mixed. Keep the staged times until
+      // explicitly cancelled, instead of discarding edits behind a button.
+      _entry = SleepEntryEdit(start: original.start, end: original.end,
+          main: main, source: source, action: action);
+    });
+    final dirty = !planOf(d, blocks).isEmpty;
+    return Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text(main ? l.sleepEditorMainEntry : l.sleepEditorNapEntry,
+          style: F.head.copyWith(color: P.of(c).ink)),
+      Text('${_clock(original.start)} – ${_clock(original.end)}', style: F.cap),
+      if (dirty) Text(l.sleepEditorSaveTimesFirst, style: F.cap),
+      TextButton(onPressed: dirty || _saving ? null : () => stage(
+          mine ? SleepEntryAction.automatic : SleepEntryAction.recalculate),
+        child: Text(mine ? l.sleepDetailBackToAutomatic : l.sleepEditorRecalculate)),
+      if (source != 'rejected') TextButton(
+        onPressed: dirty || _saving ? null : () => stage(SleepEntryAction.notSleep),
+        child: Text(l.sleepDetailNotSleep)),
+      if (selected) ...[
+        Text(l.sleepEditorActionPending, style: F.cap),
+        TextButton(onPressed: _saving ? null : () => setState(() => _entry = null),
+            child: Text(l.actionCancel)),
+      ],
+    ]));
   }
 
   Widget _readout(BuildContext c, P p, SleepBlock a) {
@@ -414,6 +505,10 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
       decoration: BoxDecoration(color: p.card2, borderRadius: R.rLg),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
+          if (a.kind == BlockKind.nap) ...[
+            Icon(annotationIcon(AnnotationKind.nap), size: 18, color: p.on(C.indigo)),
+            const SizedBox(width: S.x2),
+          ],
           Expanded(
             child: Text(head.toUpperCase(),
                 style: F.over.copyWith(color: p.on(C.blue), fontWeight: FontWeight.w700,

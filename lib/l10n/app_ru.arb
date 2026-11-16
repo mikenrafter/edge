@@ -9872,5 +9872,14 @@
   "pulseAlertEarlier": "Оповещено более ранней версией приложения {when}",
   "homeLastKnownUpdating": "Последние данные {time} · обновление",
   "homeLastKnownFailed": "Последние данные {time} · ошибка обновления",
-  "homeLastKnownSource": "{status}. Прочитано {readTime}. Рассчитано {computedTime}."
+  "homeLastKnownSource": "{status}. Прочитано {readTime}. Рассчитано {computedTime}.",
+  "sleepEditorTitle": "Изменить сон",
+  "sleepEditorZoomIn": "Приблизить",
+  "sleepEditorZoomOut": "Отдалить",
+  "sleepEditorFullNight": "Вся ночь",
+  "sleepEditorRecalculate": "Пересчитать время в постели",
+  "sleepEditorMainEntry": "Основной сон",
+  "sleepEditorNapEntry": "Дневной сон",
+  "sleepEditorSaveTimesFirst": "Сначала сохраните или отмените изменения времени.",
+  "sleepEditorActionPending": "Изменение вступит в силу после сохранения."
 }

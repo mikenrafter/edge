@@ -3968,5 +3968,14 @@
   "pulseAlertEarlier": "Signalé par une version antérieure de l’application {when}",
   "homeLastKnownUpdating": "Dernières données {time} · mise à jour",
   "homeLastKnownFailed": "Dernières données {time} · échec de la mise à jour",
-  "homeLastKnownSource": "{status}. Lecture {readTime}. Calcul {computedTime}."
+  "homeLastKnownSource": "{status}. Lecture {readTime}. Calcul {computedTime}.",
+  "sleepEditorTitle": "Modifier le sommeil",
+  "sleepEditorZoomIn": "Zoom avant",
+  "sleepEditorZoomOut": "Zoom arrière",
+  "sleepEditorFullNight": "Nuit entière",
+  "sleepEditorRecalculate": "Recalculer le temps au lit",
+  "sleepEditorMainEntry": "Sommeil principal",
+  "sleepEditorNapEntry": "Sieste",
+  "sleepEditorSaveTimesFirst": "Enregistrez ou annulez d’abord vos changements d’horaires.",
+  "sleepEditorActionPending": "Ce changement s’applique à l’enregistrement."
 }

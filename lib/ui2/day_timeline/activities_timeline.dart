@@ -81,6 +81,7 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
   void initState() {
     super.initState();
     controller = _controllerFor(widget.data);
+    controller.addListener(_controllerChanged);
   }
 
   TimelineController _controllerFor(TimelineData d) {
@@ -96,16 +97,37 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
     if (oldWidget.data.day != widget.data.day ||
         oldWidget.data.graph.dayStart != widget.data.graph.dayStart) {
       final c = controller;
+      c.removeListener(_controllerChanged);
       controller = _controllerFor(widget.data);
+      controller.addListener(_controllerChanged);
       WidgetsBinding.instance.addPostFrameCallback((_) => c.dispose());
     }
   }
 
   @override
   void dispose() {
+    controller.removeListener(_controllerChanged);
     controller.dispose();
     list.dispose();
     super.dispose();
+  }
+
+  double? _lastScrub;
+  ZoomSelection? _lastSelection;
+  bool _lastZoomed = false;
+
+  // CLAIM(sleep-editor-stable-text): day-list text has no dependency on zoom
+  // animation frames [day_timeline_activities_test].
+  void _controllerChanged() {
+    if (_lastScrub == controller.scrub &&
+        identical(_lastSelection, controller.zoomSelection) &&
+        _lastZoomed == controller.zoomed) {
+      return;
+    }
+    _lastScrub = controller.scrub;
+    _lastSelection = controller.zoomSelection;
+    _lastZoomed = controller.zoomed;
+    if (mounted) setState(() {});
   }
 
   bool _awaiting(String id) {
@@ -231,10 +253,7 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
   }
 
   @override
-  Widget build(BuildContext c) => AnimatedBuilder(
-    animation: controller,
-    builder: (c, _) => _build(c),
-  );
+  Widget build(BuildContext c) => _build(c);
 
   Widget _build(BuildContext c) {
     final p = P.of(c);
