@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../day_timeline/pilot_flags.dart';
 import '../ui2.dart';
 import 'beats.dart';
 import 'circadian_detail.dart';
@@ -45,6 +46,28 @@ class AdvancedScreen extends StatelessWidget {
         l?.advancedRhythmSub ??
             'Sleep hour by hour, variability while still, the predicted shape of today',
         () => go(c, const CircadianDetail(advanced: true)),
+      ),
+      const SizedBox(height: S.x5),
+      // Pilot day-timeline: per-screen opt-in; off leaves the screen unchanged.
+      Text('Pilots', style: F.head.copyWith(color: p.ink)),
+      ValueListenableBuilder<int>(
+        valueListenable: DayTimelinePilot.revision,
+        builder: (c, _, _) => Column(children: [
+          for (final (pilot, title, sub) in [
+            (DayTimelinePilot.sleep, 'Sleep timeline',
+                'The new night card and the sleep timeline editor'),
+            (DayTimelinePilot.activities, 'Activities timeline',
+                'The day review on the shared timeline'),
+          ])
+            SwitchListTile(
+              key: ValueKey('pilot-switch:${pilot.name}'),
+              contentPadding: EdgeInsets.zero,
+              title: Text(title, style: F.body.copyWith(color: p.ink)),
+              subtitle: Text(sub, style: F.cap.copyWith(color: p.ink2)),
+              value: pilot.on,
+              onChanged: (v) => pilot.on = v,
+            ),
+        ]),
       ),
     ]);
   }

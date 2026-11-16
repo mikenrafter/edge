@@ -105,6 +105,7 @@ abstract class LocalRepository {
     List<ReviewRange> ranges = const [],
     List<MomentWorkoutDecision> workouts = const [],
     Map<AssumedGlass, bool> glasses = const {},
+    SavedReviewEdits savedEdits = const SavedReviewEdits(),
   }) => throw UnimplementedError('saveDayReview');
 
   /// Days that kept an older result, with why (current version only).

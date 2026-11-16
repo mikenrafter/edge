@@ -1,6 +1,8 @@
 // Decisions belong to the open day breakdown. Persistence belongs to the
 // existing activity and moment stores, joined by LocalRepository.saveDayReview.
 import '../gestures/moment_follow_ups.dart';
+import 'moment_label.dart';
+import 'sleep_edit_write.dart';
 import '../gestures/moment_review_queue.dart';
 import '../models/activity_suggestion.dart';
 
@@ -35,4 +37,27 @@ class MomentWorkoutDecision {
   const MomentWorkoutDecision(this.moment, this.window);
   final PendingMoment moment;
   final WorkoutWindow window;
+}
+
+/// Edits of existing rows staged by the pilot's outer Activities draft.
+class SavedMomentEdit {
+  const SavedMomentEdit(this.before, this.decision);
+  final MomentLabel before;
+  final ReviewDecision decision;
+}
+
+class SavedWorkoutEdit {
+  SavedWorkoutEdit(Map<String, dynamic> before, this.window)
+      : before = Map.unmodifiable(before);
+  final Map<String, dynamic> before;
+  final WorkoutWindow window;
+}
+
+class SavedReviewEdits {
+  const SavedReviewEdits({this.moments = const [], this.naps = const [],
+      this.workouts = const []});
+  final List<SavedMomentEdit> moments;
+  final List<SleepEditPlan> naps;
+  final List<SavedWorkoutEdit> workouts;
+  bool get isEmpty => moments.isEmpty && naps.isEmpty && workouts.isEmpty;
 }

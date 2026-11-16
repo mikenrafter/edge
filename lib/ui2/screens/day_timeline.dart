@@ -58,6 +58,8 @@ import '../../models/activity_suggestion.dart';
 import '../../gestures/moment_follow_ups.dart';
 import '../../gestures/moment_review_service.dart';
 import 'day_review.dart';
+import '../day_timeline/activities_timeline.dart';
+import '../day_timeline/pilot_flags.dart';
 import 'typical_day.dart';
 import 'moment_follow_up.dart' show MomentAnswerEditScreen, MomentReviewEditor;
 import '../../gestures/symptom_description.dart' show StoredSymptom;
@@ -74,7 +76,7 @@ import 'investigate.dart' show Investigate;
 import 'log_workout.dart' show LogWorkout, bumpInsights;
 import 'naps.dart' show NapsScreen;
 import 'home_screen.dart' show clockOfTs, go, repoOf;
-import 'metric_detail.dart' show DayNav, pickDay;
+import 'metric_detail.dart' show DayNav, dayNavRow, pickDay;
 
 /// One thing that happened, at a time it is known to have happened at.
 @immutable
@@ -1122,8 +1124,13 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   bool _allowPop = false;
   bool _askingLeave = false;
 
+  /// Pilot day-timeline: Activities on the shared timeline.
+  bool get _pilot => DayTimelinePilot.activities.on;
+
   @override
   void dispose() {
+    // Pilot: unsaved decisions are kept as this day's draft, never dropped.
+    if (_pilot) _review?.keepDraft();
     _highlightTimer?.cancel();
     _listController.dispose();
     _review?.removeListener(_onReview);
@@ -1161,6 +1168,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         service: widget.reviewService,
         moments: widget.reviewMoments,
         editor: widget.reviewEditor, activities: widget.reviewActivities, snapshot: widget.reviewSnapshot,
+        pilot: _pilot,
         enabledSince: context.read<AppState>().gestureSettings.followUpMoments
             ? context.read<AppState>().gestureSettings.followUpMomentsSince : null);
     _review!.addListener(_onReview);
@@ -1168,6 +1176,11 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   }
 
   Future<bool> _canLeave() async {
+    if (_pilot) {
+      // No exit prompt: the staged decisions stay as a draft.
+      _review?.keepDraft();
+      return true;
+    }
     if (_review?.busy == true || _askingLeave) return false;
     if (_review?.hasChanges != true) return true;
     _askingLeave = true;
@@ -1199,7 +1212,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
 
   Future<void> _leave() async {
     if (!await _canLeave() || !mounted) return;
-    await _review?.discardDraft();
+    if (!_pilot) await _review?.discardDraft();
     if (!mounted) return;
     setState(() => _allowPop = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1237,6 +1250,10 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   /// Opens the editor of a saved row (a nap, a workout) and reloads after.
   @override
   Future<void> openRowEditor(Moment m) async {
+    if (_review?.pilot == true) {
+      await _review!.editSavedRow(context, m);
+      return;
+    }
     final ref = m.editRef, day = _day ?? _d?.day;
     if (ref == null || day == null) return;
     if (ref.startsWith('moment:')) {
@@ -1402,6 +1419,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     final l = AppLocalizations.of(context);
     final releasePrefetch = ReadPrefetch.shared.visibleRead('review-day');
     try {
+      final refreshReview = _pilot && _review != null && _review!.day == _day;
       final reviewRead = _day != null && _review?.day != _day ? _readReview(_day!) : Future<void>.value();
       final d = await TimelineData.load(repo, want: _day, l: l, onPrimary: (primary) async {
         await reviewRead;
@@ -1422,6 +1440,11 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         // The chart can take its actual shape while the saved-review read finishes.
         setState(() => _d = d);
         await reviewRead;
+        if (!mounted || token != _loadToken) return;
+        if (refreshReview && _review?.day == d.day && !_review!.busy) {
+          // New detections join this day without discarding staged choices.
+          unawaited(_review!.load());
+        }
         if (_review?.day != d.day && d.day != null) await _readReview(d.day!);
         if (!mounted || token != _loadToken) return;
         _review?.reconcileSettled(d.computedAtMs);
@@ -1532,7 +1555,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
 
   Future<void> _goDay(String day) async {
     if (day == (_day ?? _d?.day) || !await _canLeave() || !mounted) return;
-    await _review?.discardDraft();
+    if (!_pilot) await _review?.discardDraft();
     if (!mounted) return;
     _review?.removeListener(_onReview);
     _review?.dispose();
@@ -1610,6 +1633,10 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
           ? a.row.moment.at.compareTo(b.row.moment.at)
           : a.rank.compareTo(b.rank));
     final rows = [for (final e in ranked) e.row];
+    final reviewing = review?.reviewing == true;
+    if (_pilot && (_loading || d.graph.dayStart != null)) {
+      return _pilotScaffold(c, d, rows, review, reviewing);
+    }
     final title = widget.reviewEntry
         ? (l?.homeReviewActivities ?? 'Review activities')
         : (l?.dayTimelineTitle ?? 'Breakdown of your day');
@@ -1741,6 +1768,54 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
             (review?.hasChanges == true || review?.busy == true))
           EdgeSwipeBack(listener: this),
         ]),
+      ),
+    );
+  }
+}
+
+extension on _DayTimelineScreenState {
+  /// Pilot day-timeline: the chart, the synced list viewport and the
+  /// Save/Cancel bar. Leaving keeps the draft, so popping is never blocked.
+  Widget _pilotScaffold(BuildContext c, TimelineData d,
+      List<({String id, Moment moment})> rows, DayReviewController? review, bool reviewing) {
+    final l = AppLocalizations.of(c), p = P.of(c);
+    final title = reviewing
+        ? '${l?.homeReviewActivities ?? 'Review activities'} · ${review!.ids.length}'
+        : (l?.dayTimelineTitle ?? 'Breakdown of your day');
+    return PopScope(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) review?.keepDraft();
+      },
+      child: Scaffold(
+        backgroundColor: p.bg,
+        body: SafeArea(
+          child: Column(children: [
+            NavBar(title, key: reviewing ? const ValueKey('day-review-nav') : null,
+                onBack: () => Navigator.of(c).maybePop()),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: S.x4),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                ...dayNavRow(_day ?? d.day, d.days, _goDay),
+                DayReviewNotices(controller: review, reloader: this),
+              ]),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x2),
+                child: _loading
+                    ? InlineLoading(status: l?.loadingDayTimeline ?? "Reading this day's timeline")
+                    : ActivitiesTimeline(
+                        key: ValueKey('activities:${d.day}'),
+                        data: d,
+                        rows: rows,
+                        review: review,
+                        editor: this,
+                      ),
+              ),
+            ),
+            ActivitiesSaveBar(controller: review),
+          ]),
+        ),
       ),
     );
   }

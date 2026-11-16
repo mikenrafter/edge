@@ -396,8 +396,9 @@ class MomentAnswerWriter {
   /// Replaces the saved answer [saved] with [choice] (and [value], [note] or
   /// [symptom], checked exactly as [answer] / [answerSymptom] check theirs).
   /// The write is `LocalDb.changeMomentAnswer`: one transaction that takes back
-  /// what the old answer added and adds what the new one does. It is never part
-  /// of the day-review batch, so [transaction] is not used. Returns the stored
+  /// what the old answer added and adds what the new one does. It joins
+  /// [transaction] when the pilot stages a saved-row edit; storage errors then
+  /// throw to abort that batch. Returns the stored
   /// answer or why nothing changed (stale, missing, refused, failed).
   /// A water answer takes no amount: one glass, as in [answer].
   Future<MomentAnswerChange> change(
@@ -424,6 +425,7 @@ class MomentAnswerWriter {
     final at = (now ?? DateTime.now()).millisecondsSinceEpoch;
     final trimmed = choice == MomentChoice.symptom ? null : note?.trim();
     return LocalDb.changeMomentAnswer(
+      transaction: transaction,
       before: saved,
       after: MomentLabel(
           date: saved.date,

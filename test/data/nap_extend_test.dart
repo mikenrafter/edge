@@ -224,6 +224,34 @@ void main() {
     });
   });
 
+  group('flag-off nap paths and bare windows', () {
+    // WHY: day-timeline review r2 B1: the S1 fix made the shared resolver read bare
+    // window_json, so with the pilot off a nap touching the detected night rewrote it.
+    // catches: a nap path that reads the engine's bare window.
+    test('a nap touching a bare detected night is not absorbed (flag off)', () async {
+      final on = t0, off = t0 + 8 * 3600;
+      await dayResult(
+        dayOf(off),
+        windowJson: jsonEncode({'onset_ms': on * 1000, 'offset_ms': off * 1000, 'spt_sec': 8 * 3600}),
+      );
+      final r = await repo.resolveNapKeep(off - 1800, off + 1800);
+      expect((r.startTs, r.endTs), (off - 1800, off + 1800));
+      expect(r.extended, isEmpty);
+    });
+
+    test('the sleep-edit validator still sees the bare detected night', () async {
+      final on = t0, off = t0 + 8 * 3600;
+      await dayResult(
+        dayOf(off),
+        windowJson: jsonEncode({'onset_ms': on * 1000, 'offset_ms': off * 1000, 'spt_sec': 8 * 3600}),
+      );
+      final blocks = await NapResolver.blocks(db, off - 1800, off + 1800, includeBareWindows: true);
+      expect(blocks.where((b) => b.kind == 'main_sleep').map((b) => (b.startTs, b.endTs)), [(on, off)]);
+      final legacy = await NapResolver.blocks(db, off - 1800, off + 1800);
+      expect(legacy.where((b) => b.kind == 'main_sleep'), isEmpty);
+    });
+  });
+
   group('commit', () {
     test('containment keeps the nap and adds no row (no duplicate credit)',
         () async {

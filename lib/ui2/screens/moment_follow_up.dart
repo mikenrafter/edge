@@ -1084,9 +1084,13 @@ class MomentAnswerEditScreen extends StatefulWidget {
     this.symptom,
     this.writer = const MomentAnswerWriter(),
     this.now,
+    this.stageOnly = false,
+    this.initialDecision,
   });
 
   final MomentLabel saved;
+  final bool stageOnly;
+  final ReviewDecision? initialDecision;
 
   /// The description stored for a symptom answer, null for any other.
   final StoredSymptom? symptom;
@@ -1098,7 +1102,7 @@ class MomentAnswerEditScreen extends StatefulWidget {
 }
 
 class _MomentAnswerEditScreenState extends State<MomentAnswerEditScreen> {
-  late MomentChoice? _choice = MomentChoice.fromId(widget.saved.label);
+  late MomentChoice? _choice = widget.initialDecision?.choice ?? MomentChoice.fromId(widget.saved.label);
   final _text = TextEditingController();
   _SymptomDraft? _draft;
   bool _busy = false, _amountError = false;
@@ -1129,17 +1133,18 @@ class _MomentAnswerEditScreenState extends State<MomentAnswerEditScreen> {
     _text.clear();
     _draft?.dispose();
     _draft = null;
-    final same = c != null && c.id == widget.saved.label;
+    final staged = widget.initialDecision;
+    final same = c != null && c.id == (staged?.choice?.id ?? widget.saved.label);
     if (c == MomentChoice.symptom) {
       _draft = _SymptomDraft();
-      final d = widget.symptom?.description;
+      final d = staged?.symptom ?? widget.symptom?.description;
       if (same && d != null) _draft!.load(d);
     } else if (c == MomentChoice.other) {
-      if (same) _text.text = widget.saved.note ?? '';
+      if (same) _text.text = (staged == null ? widget.saved.note : staged.note) ?? '';
     } else if (c?.journalField != null && c != MomentChoice.water && same) {
-      final v = c == MomentChoice.caffeine
+      final v = staged != null ? staged.value : (c == MomentChoice.caffeine
           ? widget.saved.caffeineMg
-          : widget.saved.metricValue;
+          : widget.saved.metricValue);
       if (v != null && v > 0) _text.text = _plain(v);
     }
   }
@@ -1182,6 +1187,12 @@ class _MomentAnswerEditScreenState extends State<MomentAnswerEditScreen> {
         setState(() => _amountError = true);
         return;
       }
+    }
+    if (widget.stageOnly) {
+      Navigator.of(context).pop(symptom != null
+          ? ReviewDecision.symptom(symptom)
+          : ReviewDecision.label(c, value: value, note: note));
+      return;
     }
     setState(() {
       _busy = true;

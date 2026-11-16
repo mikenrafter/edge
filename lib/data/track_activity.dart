@@ -61,13 +61,14 @@ class TrackActivity {
 
   /// "No" to a minimum-count question is an explicit absence, unless the day
   /// already holds a logged occurrence.
-  static Future<void> answerNo(
+  /// True when this call wrote the absence row (none was there before).
+  static Future<bool> answerNo(
     DatabaseExecutor tx,
     ActivitySuggestion expected,
     String dayId,
   ) async {
     final trackId = expected.trackId;
-    if (trackId == null) return;
+    if (trackId == null) return false;
     final logged = await tx.query(
       'track_event_feed',
       columns: ['id'],
@@ -75,10 +76,14 @@ class TrackActivity {
       whereArgs: [trackId, dayId],
       limit: 1,
     );
-    if (logged.isNotEmpty) return;
+    if (logged.isNotEmpty) return false;
+    final had = await tx.query('track_absence',
+        where: 'track_id = ? AND date = ?', whereArgs: [trackId, dayId], limit: 1);
+    if (had.isNotEmpty) return false;
     await tx.insert('track_absence', {
       'track_id': trackId,
       'date': dayId,
     }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    return true;
   }
 }
