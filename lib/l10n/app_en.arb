@@ -7874,7 +7874,7 @@
   "@sleepDetailAsleep": {
     "description": "Inline metric label for asleep percentage (efficiency)."
   },
-  "sleepDetailWatchedExplain": "The band covered {watched} of your {inBed} in bed. Sleep and stage figures use only that time.",
+  "sleepDetailWatchedExplain": "The band recorded {watched} of your {inBed} sleep window. Sleep and stage figures use only that time.",
   "@sleepDetailWatchedExplain": {
     "description": "Explanatory sentence under the total-sleep card about the watched vs. in-bed window.",
     "placeholders": {
@@ -8172,7 +8172,7 @@
   "@sleepDetailAskDeep": {
     "description": "Against-your-usual row for deep sleep, phrased as a plain question."
   },
-  "sleepDetailAskSleptThrough": "Did you sleep through your time in bed?",
+  "sleepDetailAskSleptThrough": "Did you sleep through your sleep window?",
   "@sleepDetailAskSleptThrough": {
     "description": "Against-your-usual row for sleep efficiency (asleep while in bed), phrased as a plain question."
   },
@@ -19598,7 +19598,7 @@
       }
     }
   },
-  "sleepSummaryCoverage": "{watched} watched · {missing} not recorded.\nThe asleep percentage uses watched time.",
+  "sleepSummaryCoverage": "{watched} watched · {missing} not recorded.",
   "@sleepSummaryCoverage": {
     "placeholders": {
       "watched": {
@@ -19691,5 +19691,50 @@
         "type": "String"
       }
     }
-  }
+  },
+  "sleepSummaryWindow": "{time} sleep window",
+  "sleepSummaryPercentageExplanation": "Asleep percentage is time asleep out of the time the band recorded in your sleep window.",
+  "sleepSummaryTimeToWake": "Time to wake",
+  "sleepSummaryTimeToWakeExplanation": "From first sent alert to “I’m up”.",
+  "sleepSummarySentExplanation": "Alerts were sent; band vibration is unconfirmed.",
+  "sleepSummaryNatural": "Natural Wake",
+  "sleepSummaryGradual": "Gradual Wake",
+  "sleepSummaryAlertRange": "{range} · {count, plural, one{1 alert} other{{count} alerts}}",
+  "sleepSummaryWindowUpdated": "{window} · updated {time}",
+  "@sleepSummaryWindow": {
+    "description": "Duration of the sleep window, without claiming the wearer was in bed.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "@sleepSummaryAlertRange": {
+    "description": "Collapsed run of sent wake alerts. Range is local clock time.",
+    "placeholders": {
+      "range": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@sleepSummaryWindowUpdated": {
+    "description": "Sleep-window figure followed by the latest recording included in the served result.",
+    "placeholders": {
+      "window": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryUpdating": "Updating this night",
+  "sleepSummaryHeldWorkout": "Paused during workout",
+  "sleepSummaryHeldSync": "Waiting for sync to finish",
+  "sleepSummaryHeldBackground": "Paused in the background",
+  "sleepSummaryHeldPower": "Waiting for power",
+  "sleepSummaryOverlappingAlerts": "Overlapping wake alerts"
 }

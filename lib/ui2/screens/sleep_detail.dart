@@ -906,7 +906,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   /// "As of <time>" while this night is being recalculated; the night on
   /// screen stays. Its own row's time, so stepping to another night never
   /// borrows this one's.
-  Widget _asOf(SleepData d) => AsOfHold(
+  Widget _asOf(SleepData d, {bool statusOnly = false}) => AsOfHold(
         shown: d,
         day: d.day,
         computedAt: computedAtOf(d.night['computed_at']),
@@ -914,7 +914,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             shownDay: d.day,
             computedAt: computedAtOf(d.night['computed_at']),
             recalc: recalc),
-        builder: (c, at) => AsOfLabel(at: at),
+        builder: (c, at) => AsOfLabel(at: at, statusOnly: statusOnly),
       );
 
   /// Another night. The scrub cursor belongs to the night it was placed on, so
@@ -1751,7 +1751,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           : mine && !d.hasNight && _storedRanges(n) != null ? l.sleepDetailTimesSavedRanges : null,
       intervals: intervals,
       wake: d.wakeTimeline,
-      context: _asOf(d),
+      updatedAt: computedAtOf(n['recordings_through']),
+      context: _asOf(d, statusOnly: true),
       onEdit: _loading ? null : openTimeline,
     );
   }
@@ -2194,7 +2195,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           Text(l?.sleepDetailWatchedExplain(
             hm(math.max(0, (n['in_bed_min'] as num) - d.unobservedMin!)),
             hm(n['in_bed_min'] as num)) ??
-            'The band covered ${hm(math.max(0, (n['in_bed_min'] as num) - d.unobservedMin!))} of your ${hm(n['in_bed_min'] as num)} in bed. Sleep and stage figures use only that time.',
+            'The band covered ${hm(math.max(0, (n['in_bed_min'] as num) - d.unobservedMin!))} of your ${hm(n['in_bed_min'] as num)} sleep window. Sleep and stage figures use only that time.',
             style: F.over.copyWith(color: p.ink3, height: 1.5)),
         ],
         if (_shape(c, d) case final shape?) ...[
@@ -2853,7 +2854,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     if (eff != null) {
       rows.add(_Compare(
         label: l?.sleepDetailAskSleptThrough ??
-            'Did you sleep through your time in bed?',
+            'Did you sleep through your sleep window?',
         value: _pct(eff * 100),
         tonight: eff * 100,
           pending: d.historyPending,

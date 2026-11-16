@@ -44,7 +44,7 @@ void main() {
     expect(events.map((e) => e.label), ['Fell asleep', 'Natural Wake sent · v7',
       "I'm up from a dream", "I'm up normally", "I'm up"]);
     final acks = events.where((e) => e.ack).toList();
-    expect(acks.map((e) => e.detail), ['5m 0s after first wake alert sent', '', 'Dream/normal not answered']);
+    expect(acks.map((e) => e.detail), ['', '', 'Dream/normal not answered']);
     expect(events.where((e) => e.label == 'Sleep ended'), isEmpty);
   });
 
@@ -67,7 +67,7 @@ void main() {
       WakeNightEvent(kind: WakeNightEventKind.ack, at: at(0), wakeEpochSec: 1),
     ]));
     expect(events[1].label, 'Alarm reported by band');
-    expect(events.last.detail, '1m 0s after band-reported alarm · Dream/normal not answered');
+    expect(events.last.detail, 'Dream/normal not answered');
   });
 
   test('distinct instants in the same formatted minute retain sleep end', () {

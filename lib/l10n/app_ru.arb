@@ -4125,7 +4125,7 @@
   "sleepDetailWatched": "НАБЛЮДАЛОСЬ",
   "sleepDetailAsleepOfThat": "ИЗ НИХ ВО СНЕ",
   "sleepDetailAsleep": "СОН",
-  "sleepDetailWatchedExplain": "Браслет записал {watched} из {inBed}, проведённых в постели. Данные о сне и стадиях считаются только по этому времени.",
+  "sleepDetailWatchedExplain": "Браслет записал {watched} из вашего окна сна длительностью {inBed}. Показатели сна и стадий учитывают только это время.",
   "@sleepDetailWatchedExplain": {
     "placeholders": {
       "watched": {
@@ -4244,7 +4244,7 @@
   "sleepDetailTimeAsleep": "Время сна",
   "sleepDetailAskEnough": "Вы спали достаточно?",
   "sleepDetailAskDeep": "Глубокого сна было как обычно?",
-  "sleepDetailAskSleptThrough": "Вы спали всё время в постели?",
+  "sleepDetailAskSleptThrough": "Вы спали в течение всего окна сна?",
   "sleepDetailAskOnTime": "Вы заснули в обычное время?",
   "sleepDetailShorterThanUsual": "короче обычного",
   "sleepDetailLongerThanUsual": "дольше обычного",
@@ -9876,7 +9876,7 @@
   "sleepSummaryEdit": "Изменить сон",
   "sleepSummaryAsleep": "во сне",
   "sleepSummaryInBed": "{time} в постели",
-  "sleepSummaryCoverage": "{watched} наблюдалось · {missing} не записано.\nПроцент сна рассчитан по наблюдаемому времени.",
+  "sleepSummaryCoverage": "{watched} наблюдалось · {missing} не записано.",
   "sleepSummaryNoWindow": "Период сна не записан",
   "sleepSummaryFellAsleep": "Засыпание",
   "sleepSummaryMainSleep": "Основной сон",
@@ -9911,5 +9911,20 @@
   "sleepSummaryChanged": "Изменено {time}",
   "sleepSummaryPanEarlier": "Показать раньше",
   "sleepSummaryPanLater": "Показать позже",
-  "sleepSummaryAfterAlarm": "{time} после будильника, о котором сообщил браслет"
+  "sleepSummaryAfterAlarm": "{time} после будильника, о котором сообщил браслет",
+  "sleepSummaryWindow": "Окно сна: {time}",
+  "sleepSummaryPercentageExplanation": "Процент сна — это время сна от всего времени, записанного браслетом в вашем окне сна.",
+  "sleepSummaryTimeToWake": "Время до пробуждения",
+  "sleepSummaryTimeToWakeExplanation": "От первого отправленного сигнала до «Я встал».",
+  "sleepSummarySentExplanation": "Сигналы отправлены; вибрация браслета не подтверждена.",
+  "sleepSummaryNatural": "Естественное пробуждение",
+  "sleepSummaryGradual": "Постепенное пробуждение",
+  "sleepSummaryAlertRange": "{range} · {count, plural, one{{count} сигнал} few{{count} сигнала} many{{count} сигналов} other{{count} сигнала}}",
+  "sleepSummaryWindowUpdated": "{window} · обновлено {time}",
+  "sleepSummaryUpdating": "Обновляем эту ночь",
+  "sleepSummaryHeldWorkout": "Приостановлено во время тренировки",
+  "sleepSummaryHeldSync": "Ожидание завершения синхронизации",
+  "sleepSummaryHeldBackground": "Приостановлено в фоновом режиме",
+  "sleepSummaryHeldPower": "Ожидание питания",
+  "sleepSummaryOverlappingAlerts": "Перекрывающиеся сигналы пробуждения"
 }

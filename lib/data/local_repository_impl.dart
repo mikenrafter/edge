@@ -1803,6 +1803,11 @@ class LocalRepositoryImpl extends LocalRepository {
       // When the row behind this night was computed (epoch ms) — "As of" while
       // a newer one is being calculated.
       'computed_at': computedAt,
+      // CLAIM(sleep-summary-included-time): use this served row's input edge
+      // [engine/day_compute.dart; sleep_summary_recordings_through_test]. The
+      // day fingerprint can move after a declined derive kept an older row.
+      if (b['data_edge_sec'] case final num edge when edge.isFinite && edge > 0)
+        'recordings_through': (edge * 1000).round(),
       'sleep_edit': b['sleep_edit'],
       'sleep_source': sleepSource,
       'duration_min': (tst / 60).round(),

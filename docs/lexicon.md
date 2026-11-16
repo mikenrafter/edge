@@ -190,3 +190,6 @@ in the same change that introduces it (AGENTS.md §6).
 - **Load timing**: an opt-in (Developer, off by default), bounded local diagnostic sample identifying a stored read, reader acquisition, writer queue, transaction or decode span. Elapsed parallel reads overlap and are never summed into load time.
 
 - **Sleep entry**: one stored main-sleep window or nap. The editor targets one entry by its original bounds and source. Display grouping can join connector lines without merging or deleting entries.
+
+- **Sleep window**: the stored start-to-end interval for a sleep entry. It does not claim the wearer was in bed or asleep throughout. The asleep percentage uses only the time the band recorded within that window.
+- **Time to wake**: elapsed time from the first successfully sent app wake alert to the acknowledgement in that alert’s own wake epoch. Either endpoint missing means unavailable; it does not measure leaving bed.
