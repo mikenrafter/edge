@@ -2021,7 +2021,7 @@ part 'engine/settled.dart';
 // still applies nap assertions before completing its edit receipt. Reuse the
 // retained night verbatim; only nap projections/totals and dependents change.
 // 124: explicit selected-nap staging reuses the forced-window stager, with fixed bounds.
-// 125: combine exact Sleep summary/editor assertions and nap staging with pulse v4.
+// 125: combine Sleep summary/editor assertions, exact nap bounds and staging, and pulse v4.
 const int kAlgoVersion = 125;
 
 

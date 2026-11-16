@@ -11,7 +11,6 @@ import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/data/sleep_edit_write.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/day_timeline/activities_timeline.dart';
-import 'package:openstrap_edge/ui2/day_timeline/night_card.dart';
 import 'package:openstrap_edge/ui2/day_timeline/pilot_flags.dart';
 import 'package:openstrap_edge/ui2/day_timeline/sleep_timeline_editor.dart';
 import 'package:openstrap_edge/ui2/day_timeline/timeline_chart.dart';
@@ -20,7 +19,6 @@ import 'package:openstrap_edge/ui2/screens/day_review.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'package:openstrap_edge/ui2/screens/sleep_detail.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
-import 'package:openstrap_edge/ui2/grammar.dart';
 
 import '../support/day_timeline_fixtures.dart';
 
@@ -145,12 +143,12 @@ void main() {
         })))));
     await t.pumpAndSettle();
     final tab = t.state(find.byType(SleepDetail));
-    final entry = find.byKey(NightCard.askKey);
+    final entry = find.widgetWithText(TextButton, 'Edit sleep');
     await t.ensureVisible(entry);
     await t.pumpAndSettle();
     // Deliver a burst through the actual entry control's callback. Capturing
     // it also covers queued taps after the incoming route blocks hit testing.
-    final tap = t.widget<Pressable>(entry).onTap!;
+    final tap = t.widget<TextButton>(entry).onPressed!;
     for (var i = 0; i < 3; i++) { tap(); }
     await t.pump(); // Starts the route transition at opacity zero.
     await t.pump(const Duration(milliseconds: 16)); // First drawn editor frame; read still blocked.
