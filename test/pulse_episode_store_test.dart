@@ -94,7 +94,7 @@ void main() {
         await db.update('pulse_episode_outbox', {
           'state': state == 'notifications off' ? 'not_sent' : state,
           'reason': state == 'notifications off' ? state : null,
-          'claim_token': state == 'pending' ? 'in-flight' : null,
+          'token': state == 'pending' ? 'in-flight' : null,
         });
         final evidence = [for (final table in ['pulse_episode_revision', 'pulse_evidence_chunk', 'pulse_episode_alias'])
           jsonEncode(await db.query(table))];
