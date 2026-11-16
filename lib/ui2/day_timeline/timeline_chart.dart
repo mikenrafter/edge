@@ -20,10 +20,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show CustomSemanticsAction;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../../state/clock_format.dart' show formatClockOf;
 import '../chart_annotations.dart';
 import '../charts.dart' show Hypnogram, SleepStage;
@@ -259,12 +261,13 @@ class DayTimelineChart extends StatefulWidget {
     this.stagesArePreview = false,
     this.annotations = const [],
     this.emphasis,
-    this.annotationListener,
+    this.annotationListener, this.showAnnotationLabel=true,
     this.blocks = const [],
     this.activeBlock,
     this.chooseBlock,
     this.blockEditingEnabled = true,
-    this.blockLabels = const {},
+    this.pickTime, this.interceptTap, this.signalStart,
+    this.blockLabels = const {}, this.blockSemanticLabels=const {},
     this.listener,
     this.haptics = const PhoneTimelineHaptics(),
     this.plotHeight = 156,
@@ -283,6 +286,7 @@ class DayTimelineChart extends StatefulWidget {
   final List<ChartAnnotation> annotations;
   final Set<String>? emphasis;
   final AnnotationListener? annotationListener;
+  final bool showAnnotationLabel;
   final List<SleepBlock> blocks;
   final String? activeBlock;
 
@@ -290,9 +294,12 @@ class DayTimelineChart extends StatefulWidget {
   /// the shared chart's original selection behavior for non-editor callers.
   final Future<String?> Function(List<SleepBlock>)? chooseBlock;
   final bool blockEditingEnabled;
+  final ValueChanged<double>? pickTime;
+  final bool Function(double)? interceptTap;
+  final double? signalStart;
 
   /// A band's label per block id ("Main sleep ✎").
-  final Map<String, String> blockLabels;
+  final Map<String, String> blockLabels, blockSemanticLabels;
   final TimelineListener? listener;
   final TimelineHaptics haptics;
   final double plotHeight;
@@ -392,6 +399,8 @@ class _DayTimelineChartState extends State<DayTimelineChart>
 
   Future<void> _tapUp(TapUpDetails d, double width) async {
     final t = _tAt(d.localPosition.dx, width);
+    if(widget.pickTime!=null){widget.pickTime!(t);return;}
+    if(widget.interceptTap?.call(t)==true)return;
     if (await _chooseOverlap(t, zoom: false) || !mounted) return;
     final band = _bandAt(t);
     if (band != null && band.id != widget.activeBlock && widget.listener != null) {
@@ -406,6 +415,7 @@ class _DayTimelineChartState extends State<DayTimelineChart>
     final at = _doubleTapAt;
     if (at == null) return;
     final t = _tAt(at.dx, width);
+    if(widget.pickTime!=null){widget.pickTime!(t);return;}
     if (await _chooseOverlap(t, zoom: true) || !mounted) return;
     final band = _bandAt(t);
     final c = widget.controller;
@@ -501,6 +511,7 @@ class _DayTimelineChartState extends State<DayTimelineChart>
   @override
   Widget build(BuildContext context) {
     final p = P.of(context);
+    final l = AppLocalizations.of(context)??lookupAppLocalizations(const Locale('en'));
     final c = widget.controller;
     final scaler = MediaQuery.textScalerOf(context);
     final header = ChartAnnotationLane.headerFor(scaler, Directionality.of(context));
@@ -518,8 +529,21 @@ class _DayTimelineChartState extends State<DayTimelineChart>
       final dragValue = _drag?.value;
       return Semantics(
         container: true,
-        label: 'Timeline ${widget.clock.of(v.start.round())} to ${widget.clock.of(v.end.round())}'
-            '${c.scrub == null ? '' : ', line at ${widget.clock.of(c.scrub!.round())}'}',
+        label: c.scrub==null
+          ?l.timelineSemanticsRange(widget.clock.of(v.start.round()),widget.clock.of(v.end.round()))
+          :l.timelineSemanticsScrub(widget.clock.of(v.start.round()),widget.clock.of(v.end.round()),widget.clock.of(c.scrub!.round())),
+        customSemanticsActions:{
+          if(widget.pickTime==null)for(final block in widget.blocks)
+            CustomSemanticsAction(label:widget.blockSemanticLabels[block.id]??
+              '${widget.blockLabels[block.id]??block.id} ${widget.clock.of(block.start)} – ${widget.clock.of(block.end)}'):
+                ()=>widget.listener?.blockSelected(block.id,zoom:false),
+          if(widget.annotationListener!=null)for(final annotation in widget.annotations)
+            CustomSemanticsAction(label:'${annotation.label} ${widget.clock.of(annotation.at.round())}'):
+              ()=>widget.annotationListener!.annotationTapped(annotation.id),
+        },
+        onIncrease:()=>c.setScrub(((c.scrub??v.center)+60).clamp(v.start,v.end)),
+        onDecrease:()=>c.setScrub(((c.scrub??v.center)-60).clamp(v.start,v.end)),
+        onTap:widget.pickTime==null?null:()=>widget.pickTime!(c.scrub??v.center),
         child: GestureDetector(
           key: DayTimelineChart.chartKey,
           behavior: HitTestBehavior.opaque,
@@ -540,7 +564,8 @@ class _DayTimelineChartState extends State<DayTimelineChart>
                   painter: TimelinePainter(
                     p: p,
                     view: v,
-                    domainStart: c.domainStart,
+                    domainStart: widget.signalStart??c.domainStart,
+                    stageLabel:l.timelineStages,moveLabel:l.timelineMovement,previewLabel:l.sleepEditorPreview,
                     header: header,
                     plotHeight: widget.plotHeight,
                     lanes: laneLayout(widget.plotHeight, lanes),
@@ -563,6 +588,7 @@ class _DayTimelineChartState extends State<DayTimelineChart>
                 width: plotW,
                 top: 0,
                 child: ChartAnnotationLane(
+                  showLabel:widget.showAnnotationLabel,
                   set: AnnotationSet(
                     items: widget.annotations,
                     domainStart: v.start,
@@ -622,7 +648,9 @@ class _Magnifier extends StatelessWidget {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Text(clock.of(value),
             style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w700, height: 1.2)),
-        Text(fine ? '1-minute steps' : '5-minute steps · hold for minutes',
+        Text(fine
+            ?(AppLocalizations.of(context)??lookupAppLocalizations(const Locale('en'))).timelineFineSteps
+            :(AppLocalizations.of(context)??lookupAppLocalizations(const Locale('en'))).timelineCoarseSteps,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: F.over.copyWith(color: fine ? p.on(C.green) : p.ink3, height: 1.2)),
@@ -691,6 +719,7 @@ class TimelinePainter extends CustomPainter {
     required this.zoom,
     required this.clock,
     required this.textScaler,
+    this.stageLabel='Stages',this.moveLabel='Move',this.previewLabel='PREVIEW',
   });
 
   final P p;
@@ -707,6 +736,7 @@ class TimelinePainter extends CustomPainter {
   final ZoomSelection? zoom;
   final ClockText clock;
   final TextScaler textScaler;
+  final String stageLabel,moveLabel,previewLabel;
 
   static const double _l = DayTimelineChart.gutter, _r = DayTimelineChart.rightPad;
 
@@ -804,10 +834,10 @@ class TimelinePainter extends CustomPainter {
         case TimelineLane.stages:
           final s = stages;
           if (s == null) break;
-          _text(canvas, 'Stages', Offset(0, y0 + 2),
+          _text(canvas, stageLabel, Offset(0, y0 + 2),
               label.copyWith(color: p.ink2, fontWeight: FontWeight.w700));
           if (stagesArePreview) {
-            _text(canvas, 'PREVIEW', Offset(0, y0 + 14),
+            _text(canvas, previewLabel, Offset(0, y0 + 14),
                 label.copyWith(color: p.on(C.orange), fontWeight: FontWeight.w700, fontSize: 9));
           }
           final cols = Hypnogram.cols(p);
@@ -836,7 +866,7 @@ class TimelinePainter extends CustomPainter {
             }
           }
         case TimelineLane.movement:
-          _text(canvas, 'Move', Offset(0, y0 + 2),
+          _text(canvas, moveLabel, Offset(0, y0 + 2),
               label.copyWith(color: p.on(C.purple), fontWeight: FontWeight.w700));
           final bar = Paint()..color = p.on(C.purple).withValues(alpha: .75);
           final pxPerMin = w * 60 / view.span;
@@ -1032,10 +1062,11 @@ class TimelinePill extends StatelessWidget {
 class TimelineZoomControls extends StatelessWidget {
   const TimelineZoomControls({super.key, required this.controller,
     required this.zoomLabel, required this.resetLabel,
-    required this.zoomKey, required this.resetKey});
+    required this.zoomKey, required this.resetKey,this.singleButton=false});
   final TimelineController controller;
   final String zoomLabel, resetLabel;
   final Key zoomKey, resetKey;
+  final bool singleButton;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -1045,11 +1076,11 @@ class TimelineZoomControls extends StatelessWidget {
       MergeSemantics(key: zoomKey, child: Semantics(
         selected: controller.zoomSelection != null, child: TextButton.icon(
         style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-        onPressed: controller.toggleZoomSelection,
+        onPressed: singleButton&&controller.zoomed?controller.reset:controller.toggleZoomSelection,
         icon: const Icon(LucideIcons.search, size: 16),
-        label: Text(zoomLabel),
+        label: Text(singleButton&&controller.zoomed?resetLabel:zoomLabel),
       ))),
-      if (controller.zoomed)
+      if (!singleButton&&controller.zoomed)
         TextButton(key: resetKey,
           style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
           onPressed: controller.reset, child: Text(resetLabel)),

@@ -32,9 +32,9 @@ void main() {
     return out;
   }
 
-  test('kAlgoVersion is 119', () {
-    expect(kAlgoVersion, 119);
-    expect(int.parse(m.group(1)!), 119);
+  test('kAlgoVersion is 124', () {
+    expect(kAlgoVersion, 124);
+    expect(int.parse(m.group(1)!), 124);
   });
 
   test('the 114 entry is kept: names its base and the decisions it covers', () {
@@ -89,13 +89,12 @@ void main() {
         greaterThan(at118));
   });
 
-  test('the 119 entry names the HMM fix, says cardio is unchanged, and closes '
-      'the changelog', () {
+  test('the 119 entry names the HMM fix and says cardio is unchanged', () {
     final b = block();
     final at119 = b.lastIndexWhere((l) => l.startsWith('// 119:'));
     final at118 = b.lastIndexWhere((l) => l.startsWith('// 118:'));
     expect(at119, greaterThan(at118));
-    expect(b.lastIndexWhere((l) => RegExp(r'^// \d+:').hasMatch(l)), at119);
+    expect(b.lastIndexWhere((l)=>l.startsWith('// 124:')),greaterThan(at119));
     final entry = b.sublist(at119).join('\n');
     expect(entry, contains('d876c427'));
     expect(entry, contains('HMM'));
@@ -106,4 +105,12 @@ void main() {
     expect(entry, contains('Cardio output'));
     expect(entry, contains('unchanged'));
   });
+  test('124 closes the changelog and identifies exact-bound nap staging',(){
+    final b=block();
+    final last=b.lastIndexWhere((l)=>RegExp(r'^// \d+:').hasMatch(l));
+    expect(b[last],startsWith('// 124:'));
+    expect(b.sublist(last).join(' '),contains('nap'));
+    expect(b.sublist(last).join(' '),contains('bounds'));
+  });
+
 }

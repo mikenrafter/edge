@@ -1095,6 +1095,9 @@ Future<Database> _ldbPrivOpen() async {
                 "WHERE s.key = 'irregular_rhythm_flag' AND s.value = 1");
           }
         }
+        if (oldV < 89) {
+          await LocalDb._createSleepOverride(db);
+        }
         if (oldV < 88) {
           await SleepEditStore.create(db);
         }

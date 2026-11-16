@@ -11,6 +11,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../chart_annotations.dart';
 import '../grammar.dart';
 import '../screens/day_review.dart';
@@ -20,7 +21,7 @@ import '../theme.dart';
 import 'timeline_chart.dart';
 import 'timeline_model.dart';
 
-enum DiscardFilter { hide, all, only }
+enum ActivityVisibility { pending, saved, discarded }
 
 class ActivitiesTimeline extends StatefulWidget {
   const ActivitiesTimeline({
@@ -45,8 +46,8 @@ class ActivitiesTimeline extends StatefulWidget {
   static const listKey = ValueKey('activities-list');
   static const zoomKey = ValueKey('activities-zoom');
   static const resetKey = ValueKey('activities-reset');
+  static const filterButtonKey = ValueKey('activities-filter');
   static ValueKey<String> itemKey(String id) => ValueKey('activities-item:$id');
-  static ValueKey<String> filterKey(DiscardFilter f) => ValueKey('activities-filter:${f.name}');
   static ValueKey<String> restoreKey(String id) => ValueKey('activities-restore:$id');
 
   @override
@@ -66,7 +67,9 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
   late TimelineController controller;
   final list = ScrollController();
   final _keys = <String, GlobalKey>{};
-  DiscardFilter filter = DiscardFilter.hide;
+  final _selectedKinds = <ActivityVisibility>{ActivityVisibility.pending,ActivityVisibility.saved};
+  AppLocalizations get l=>AppLocalizations.of(context)??lookupAppLocalizations(const Locale('en'));
+
 
   /// The item the line is on (highlighted).
   String? focus;
@@ -81,6 +84,7 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
   void initState() {
     super.initState();
     controller = _controllerFor(widget.data);
+    _lastScrub=controller.scrub;
     controller.addListener(_controllerChanged);
   }
 
@@ -99,6 +103,7 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
       final c = controller;
       c.removeListener(_controllerChanged);
       controller = _controllerFor(widget.data);
+      _lastScrub=controller.scrub;
       controller.addListener(_controllerChanged);
       WidgetsBinding.instance.addPostFrameCallback((_) => c.dispose());
     }
@@ -113,20 +118,12 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
   }
 
   double? _lastScrub;
-  ZoomSelection? _lastSelection;
-  bool _lastZoomed = false;
 
   // CLAIM(sleep-editor-stable-text): day-list text has no dependency on zoom
   // animation frames [day_timeline_activities_test].
   void _controllerChanged() {
-    if (_lastScrub == controller.scrub &&
-        identical(_lastSelection, controller.zoomSelection) &&
-        _lastZoomed == controller.zoomed) {
-      return;
-    }
+    if (_lastScrub == controller.scrub) return;
     _lastScrub = controller.scrub;
-    _lastSelection = controller.zoomSelection;
-    _lastZoomed = controller.zoomed;
     if (mounted) setState(() {});
   }
 
@@ -135,16 +132,21 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
     return r != null && !r.loading && r.needsReview(id) && r.choice(id) == null;
   }
 
+  ActivityVisibility _kind(String id)=>widget.review?.needsReview(id)==true
+      ?ActivityVisibility.pending:ActivityVisibility.saved;
+
   List<ActivitiesItem> get items {
     final r = widget.review;
     final out = <ActivitiesItem>[];
-    if (filter != DiscardFilter.only) {
-      for (final g in groupRepeatedEvents([for (final x in widget.rows) x.moment])) {
+    final visibleRows=[for(final x in widget.rows)
+      if(_selectedKinds.contains(_kind(x.id)))x];
+    {
+      for (final g in groupRepeatedEvents([for (final x in visibleRows) x.moment])) {
         final row = widget.rows.firstWhere((x) => identical(x.moment, g.first));
         out.add(ActivitiesItem(row.id, row.moment, group: g.count > 1 || g.isWake ? g : null));
       }
     }
-    if (filter != DiscardFilter.hide && r != null) {
+    if (_selectedKinds.contains(ActivityVisibility.discarded) && r != null) {
       for (final d in r.discardedRows(context)) {
         out.add(ActivitiesItem(d.id, d.moment, discarded: true));
       }
@@ -228,10 +230,11 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
 
   List<ChartAnnotation> get _annotations {
     final r = widget.review;
-    final stored = dayAnnotations(widget.data.moments);
+    final stored = _selectedKinds.contains(ActivityVisibility.saved) ? dayAnnotations(widget.data.moments) : <ChartAnnotation>[];
     final waiting = [
       for (final x in widget.rows)
-        if (r != null && r.needsReview(x.id))
+        if (r != null && r.needsReview(x.id) &&
+            _selectedKinds.contains(_kind(x.id)))
           ChartAnnotation(
             id: x.id,
             kind: x.id.startsWith('activity:')
@@ -242,13 +245,18 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
             icon: x.moment.icon,
           ),
     ];
-    return [...stored, ...waiting];
+    final discarded = _selectedKinds.contains(ActivityVisibility.discarded)&&r!=null
+      ? [for(final x in r.discardedRows(context))ChartAnnotation(id:x.id,
+          kind:x.moment.icon==LucideIcons.bedDouble?AnnotationKind.nap:AnnotationKind.workout,
+          at:x.moment.at.toDouble(),until:x.moment.until?.toDouble(),label:x.moment.title,icon:x.moment.icon)]
+      : <ChartAnnotation>[];
+    return [...stored, ...waiting,...discarded];
   }
 
   /// Review emphasis: while items await review, they are bold and outlined
   /// and every other annotation is dimmed; with none left, no emphasis.
   Set<String>? get emphasis {
-    final ids = {for (final x in widget.rows) if (_awaiting(x.id)) x.id};
+    final ids = {for (final x in widget.rows) if (_selectedKinds.contains(ActivityVisibility.pending)&&_awaiting(x.id)) x.id};
     return ids.isEmpty ? null : ids;
   }
 
@@ -265,11 +273,7 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Surface(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          TimelineTitleRow('Your day', pills: [
-            TimelineZoomControls(controller: controller,
-              zoomLabel: 'Zoom', resetLabel: 'Reset zoom',
-              zoomKey: ActivitiesTimeline.zoomKey, resetKey: ActivitiesTimeline.resetKey),
-          ]),
+          TimelineTitleRow('Your day'),
           const SizedBox(height: S.x2),
           DayTimelineChart(
             controller: controller,
@@ -281,7 +285,7 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
             listener: this,
             plotHeight: 150,
           ),
-          Container(
+          Container(key:const ValueKey('activities-scrub-detail'),
             margin: const EdgeInsets.only(top: S.x2),
             padding: const EdgeInsets.fromLTRB(S.x3, S.x2, S.x3, S.x2),
             decoration: BoxDecoration(color: p.card2, borderRadius: R.rLg),
@@ -294,8 +298,9 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
                       style: F.over.copyWith(color: p.on(C.blue), fontWeight: FontWeight.w700,
                           letterSpacing: .6)),
                 ),
-                if (controller.zoomSelection != null)
-                  Text('choosing zoom', style: F.over.copyWith(color: p.ink3)),
+                ListenableBuilder(listenable:controller,builder:(context,child)=>
+                  controller.zoomSelection==null?const SizedBox.shrink():
+                    Text('choosing zoom',style:F.over.copyWith(color:p.ink3))),
               ]),
               const SizedBox(height: S.x1),
               Wrap(spacing: S.x4, children: [
@@ -311,14 +316,18 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
                 ]),
               ]),
               const SizedBox(height: S.x2),
-              Wrap(spacing: S.x2, children: [
-                for (final (f, label) in const [
-                  (DiscardFilter.hide, 'Hide discarded'),
-                  (DiscardFilter.all, 'All'),
-                  (DiscardFilter.only, 'Only discarded'),
-                ])
-                  TimelinePill(label, key: ActivitiesTimeline.filterKey(f), on: filter == f,
-                      onTap: () => setState(() => filter = f)),
+              Wrap(alignment:WrapAlignment.spaceBetween,crossAxisAlignment:WrapCrossAlignment.center,children:[
+                TimelineZoomControls(controller:controller,singleButton:true,
+                  zoomLabel:l.sleepEditorZoomIn,resetLabel:l.sleepEditorResetZoom,
+                  zoomKey:ActivitiesTimeline.zoomKey,resetKey:ActivitiesTimeline.resetKey),
+                TextButton(key:ActivitiesTimeline.filterButtonKey,onPressed:_showFilter,
+                  style:TextButton.styleFrom(minimumSize:const Size(48,48)),
+                  child:Semantics(label:l.dayActivitiesFilterCount(_selectedKinds.length),excludeSemantics:true,
+                    child:Row(mainAxisSize:MainAxisSize.min,children:[
+                      Container(width:22,height:22,alignment:Alignment.center,
+                        decoration:BoxDecoration(color:p.on(C.blue),shape:BoxShape.circle),
+                        child:Text('${_selectedKinds.length}',style:F.cap.copyWith(color:p.card))),
+                      const SizedBox(width:S.x2),Text(l.dayActivitiesFilter)]))),
               ]),
             ]),
           ),
@@ -333,7 +342,7 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
           child: NotificationListener<ScrollNotification>(
             onNotification: _onScroll,
             child: xs.isEmpty
-                ? Center(child: Text(filter == DiscardFilter.only ? 'Nothing discarded on this day'
+                ? Center(child: Text(_selectedKinds.length==1&&_selectedKinds.contains(ActivityVisibility.discarded) ? 'Nothing discarded on this day'
                     : 'Nothing here', style: F.cap.copyWith(color: p.ink3)))
                 : SingleChildScrollView(
                     key: ActivitiesTimeline.listKey,
@@ -346,6 +355,15 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
         ),
       ),
     ]);
+  }
+
+  void _toggleKind(ActivityVisibility kind,bool value){
+    if(!mounted||(!value&&_selectedKinds.length==1&&_selectedKinds.contains(kind)))return;
+    setState((){if(value){_selectedKinds.add(kind);}else{_selectedKinds.remove(kind);}});
+  }
+  Future<void> _showFilter() async {
+    await showModalBottomSheet<void>(context:context,isScrollControlled:true,
+      builder:(_)=>_ActivityFilterSheet(owner:this));
   }
 
   Widget _item(BuildContext c, P p, ActivitiesItem x) {
@@ -405,6 +423,32 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
         child: body,
       ),
     );
+  }
+}
+
+class _ActivityFilterSheet extends StatefulWidget {
+  const _ActivityFilterSheet({required this.owner});
+  final ActivitiesTimelineState owner;
+  @override
+  State<_ActivityFilterSheet> createState()=>_ActivityFilterSheetState();
+}
+class _ActivityFilterSheetState extends State<_ActivityFilterSheet> {
+  @override
+  Widget build(BuildContext context){
+    final owner=widget.owner,l=owner.l;
+    return SafeArea(child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,
+      crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      Padding(padding:const EdgeInsets.all(S.x4),child:Text(l.dayActivitiesShow,style:F.head)),
+      for(final (kind,title,detail) in [
+        (ActivityVisibility.pending,l.dayActivitiesPending,l.dayActivitiesPendingDetail),
+        (ActivityVisibility.saved,l.dayActivitiesSaved,l.dayActivitiesSavedDetail),
+        (ActivityVisibility.discarded,l.dayActivitiesDiscarded,l.dayActivitiesDiscardedDetail)])
+        CheckboxListTile(key:ValueKey('activity-kind:${kind.name}'),title:Text(title),subtitle:Text(detail),
+          value:owner._selectedKinds.contains(kind),
+          onChanged:owner._selectedKinds.length==1&&owner._selectedKinds.contains(kind)?null:(value){
+            owner._toggleKind(kind,value==true);setState((){});
+          }),
+    ])));
   }
 }
 

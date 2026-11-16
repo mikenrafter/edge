@@ -73,8 +73,16 @@ void main() {
     // Hidden by default; "Only discarded" shows it with Restore.
     const restoreId = 'discarded:activity:apk2-nap-b';
     expect(find.byKey(ActivitiesTimeline.restoreKey(restoreId)), findsNothing);
-    await apk2Tap(t, find.byKey(ActivitiesTimeline.filterKey(DiscardFilter.only)));
-    await t.pump();
+    await apk2Tap(t,find.byKey(ActivitiesTimeline.filterButtonKey));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('activity-kind:discarded')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('activity-kind:pending')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('activity-kind:saved')));
+    await t.pumpAndSettle();
+    Navigator.of(t.element(find.text('Show activities'))).pop();
+    await t.pumpAndSettle();
     expect(find.byKey(ActivitiesTimeline.restoreKey(restoreId)), findsOneWidget);
     await apk2Tap(t, find.byKey(ActivitiesTimeline.restoreKey(restoreId)));
     await t.pump();
@@ -83,7 +91,15 @@ void main() {
     await apk2Tap(t, find.byKey(ActivitiesSaveBar.saveKey));
     await settle(t);
     expect(await rig.status(t, apk2NapB), ActivityReviewStatus.pending);
-    await apk2Tap(t, find.byKey(ActivitiesTimeline.filterKey(DiscardFilter.hide)));
+    await apk2Tap(t,find.byKey(ActivitiesTimeline.filterButtonKey));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('activity-kind:pending')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('activity-kind:saved')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('activity-kind:discarded')));
+    await t.pumpAndSettle();
+    Navigator.of(t.element(find.text('Show activities'))).pop();
     await settle(t);
     expect(apk2Keep(apk2NapB), findsOneWidget, reason: 'back for review');
   });
@@ -190,12 +206,12 @@ void main() {
     final rig = await Apk2Rig.create(t);
     await rig.mount(t, size: const Size(412, 1000));
     final s = body(t);
-    s.controller.zoomAt(s.controller.view.center);
-    await t.pump(); // Allow the Reset control to appear once.
     final texts = find.descendant(of: find.byKey(ActivitiesTimeline.listKey), matching: find.byType(Text));
     final before = t.widgetList<Text>(texts).toList();
     expect(before, isNotEmpty);
     final offset = s.list.offset;
+    s.controller.zoomAt(s.controller.view.center);
+    await t.pump();
     await t.pump(const Duration(milliseconds: 350));
     final during = t.widgetList<Text>(texts).toList();
     expect(during.length, before.length);

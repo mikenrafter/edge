@@ -1330,6 +1330,7 @@ class _DayBlocksInput {
 
   /// The user's nap edits for this day, replayed over the detector's output.
   final List<NapEdit> napEdits;
+  final ana.StagingMethod stagingMethod;
 
   /// Strap-reported off-wrist spans ([startSec, endSec]) over the nap window.
   /// A band on a table is motionless and reads as deep rest — this is the
@@ -1391,6 +1392,7 @@ class _DayBlocksInput {
     required this.savedSessions,
     this.typicalMealMinutes = const [],
     this.napEdits = const [],
+    this.stagingMethod = ana.StagingMethod.cardio,
     required this.wristOffSpans,
     required this.chargingSpans,
     this.blankedSpans = const [],

@@ -863,6 +863,7 @@ class ChartAnnotationLane extends StatefulWidget {
     required this.cursor,
     required this.plotHeight,
     this.emphasis,
+    this.showLabel=true,
   });
   final AnnotationSet set;
   final double? cursor;
@@ -872,6 +873,7 @@ class ChartAnnotationLane extends StatefulWidget {
   /// ids are drawn bold and outlined and every other item is dimmed. Null (the
   /// default) draws every item as before.
   final Set<String>? emphasis;
+  final bool showLabel;
 
   static const double iconSize = 24;
 
@@ -921,8 +923,8 @@ class ChartAnnotationLane extends StatefulWidget {
   State<ChartAnnotationLane> createState() => _ChartAnnotationLaneState();
 }
 
-/// How far a 44 pt tap target overhangs the 24 pt icon on each side.
-const double _tap = 44;
+/// How far a 48 dp tap target overhangs the 24 pt icon on each side.
+const double _tap = 48;
 const double _overhang = (_tap - ChartAnnotationLane.iconSize) / 2;
 
 class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
@@ -1030,7 +1032,7 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
               ),
             ),
           ),
-        if (layout.labelText != null)
+        if (widget.showLabel && layout.labelText != null)
           Positioned(
             left: 0,
             right: 0,
@@ -1051,21 +1053,21 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
             ),
           ),
         for (final i in layout.items) ...[
-          // The tap target is 44 pt (Pressable) around a 24 pt icon: it
+          // The tap target is 48 dp around a 24 dp icon: it
           // overhangs the icon's box rather than pushing the lane apart.
           Positioned(
             left: i.iconLeft - _overhang,
             top: labelH - _overhang,
             child: Pressable(
               onTap: () => step(i),
-              child: Opacity(
+              child: SizedBox.square(dimension:_tap,child:Center(child:Opacity(
                 opacity: emphasis != null && !i.memberIds.any(stressed) ? .3 : 1,
                 child: AnnotationIcon(
                     key: ChartAnnotationLane.iconKey(i.id),
                     kind: i.kind,
                     icon: byId[i.id]?.icon,
                     bold: i.focused || i.memberIds.any(stressed)),
-              ),
+              ))),
             ),
           ),
           if (i.more > 0)
@@ -1074,7 +1076,7 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
               top: labelH - _overhang,
               child: Pressable(
                 onTap: () => step(i),
-                child: SizedBox(
+                child: SizedBox(width:math.max(_tap,i.badgeWidth),height:_tap,child:Center(child:SizedBox(
                   width: i.badgeWidth,
                   height: ChartAnnotationLane.iconSize,
                   child: Align(
@@ -1096,7 +1098,7 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
                       ),
                     ),
                   ),
-                ),
+                ))),
               ),
             ),
         ],

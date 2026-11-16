@@ -59,15 +59,15 @@ void main() {
     addTearDown(t.view.reset);
     final base = dtNight(withNap: false);
     // Equal inputs isolate behavior from the intentionally different home ranges.
-    final data = SleepEditorData(day: base.day, domainStart: base.domainStart,
+    final data = SleepEditorData(day: base.day, domainStart: DateTime(2026,11,14).millisecondsSinceEpoch~/1000,
       hr: base.hr, movement: base.movement,
-      main: SleepBlock('main', BlockKind.main, base.domainStart, base.domainEnd));
+      main: SleepBlock('main', BlockKind.main, DateTime(2026,11,14).millisecondsSinceEpoch~/1000,DateTime(2026,11,15).millisecondsSinceEpoch~/1000));
     final traces = <List<TimelineView>>[];
     for (final sleep in [false, true]) {
       await t.pumpWidget(const SizedBox());
       await t.pumpWidget(MaterialApp(theme: buildTheme(Brightness.dark), home: sleep
         ? SleepTimelineEditor(data: data, save: _Saver())
-        : Scaffold(body: Padding(padding: const EdgeInsets.symmetric(horizontal: 16),
+        : Scaffold(body: Padding(padding: const EdgeInsets.symmetric(horizontal: 8),
           child: ActivitiesTimeline(data: TimelineData(day: data.day,
             graph: DayGraph(dayStart: data.domainStart, hr: data.hr, movement: data.movement)),
             rows: const [], review: null, editor: _Editor())))));
@@ -94,6 +94,9 @@ void main() {
       expect(controller.view.span, closeTo(705.6 * 60, .001));
       final zoom = find.byKey(ValueKey(sleep ? 'sleep-editor-zoom' : 'activities-zoom'));
       expect(zoom, findsOneWidget);
+      await t.tap(zoom); // The single control resets a zoomed view first.
+      await t.pumpAndSettle();
+      trace.add(controller.view);
       await t.tap(zoom);
       await t.pumpAndSettle();
       expect(controller.zoomSelection, isNotNull);
@@ -110,7 +113,7 @@ void main() {
       await t.pumpAndSettle();
       expect(controller.scrub, isNotNull);
       trace.add(controller.view); // Scrub changes no zoom range.
-      await t.tap(find.byKey(ValueKey(sleep ? 'sleep-editor-reset' : 'activities-reset')));
+      await t.tap(zoom);
       await t.pump();
       trace.add(controller.target!);
       await t.pumpAndSettle();

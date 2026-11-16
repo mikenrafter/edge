@@ -185,7 +185,7 @@ void main() {
     testWidgets('default, day zoom selection and reset frame exactly the stored night', (t) async {
       final s = await open(t, data: dtNight(withNap: false));
       final main = s.blocks.first;
-      final home = TimelineView(main.start.toDouble(), main.end.toDouble());
+      final home = sleepEditorDay(main.start,main.end);
       expect(s.controller.view, home);
       final zoom = find.byKey(const ValueKey('sleep-editor-zoom'));
       expect(zoom, findsOneWidget);
@@ -196,7 +196,7 @@ void main() {
       expect(s.controller.view.span, lessThan(home.span));
       s.controller.glideTo(TimelineView(main.start + 1200.0, main.start + 4800.0));
       await t.pumpAndSettle();
-      await t.tap(find.byKey(SleepTimelineEditor.resetKey));
+      await t.tap(find.byKey(const ValueKey('sleep-editor-zoom')));
       await t.pumpAndSettle();
       expect(s.controller.view, home);
     });
@@ -216,9 +216,8 @@ void main() {
       await t.pump(const Duration(milliseconds: 400));
       expect(s.active, nap.id);
       expect(s.controller.lastGlide, isNull);
-      expect(find.text('Adjusting nap: drag its ends'), findsOneWidget);
-      // Done goes back to the main sleep.
-      await t.tap(find.byKey(const ValueKey('sleep-editor-banner:Done')));
+      // Selecting main sleep is a direct band tap as well.
+      await t.tapAt(at(t,s,s.blocks.first.start+3600.0));
       await t.pump(const Duration(seconds: 3));
       expect(s.active, 'main');
     });
@@ -228,10 +227,11 @@ void main() {
       final s = await open(t, data: dtNight(withNap: false));
       await t.tap(find.byKey(SleepTimelineEditor.addKey));
       await t.pump();
-      expect(find.text('Before or after the main sleep?'), findsOneWidget);
-      await t.tap(find.byKey(const ValueKey('sleep-editor-banner:After')));
-      await t.pump();
-      await t.pump(const Duration(seconds: 3));
+      expect(find.byKey(const ValueKey('sleep-editor-add-start')),findsOneWidget);
+      await t.tapAt(at(t,s,dtAt(800).toDouble()));
+      await t.pump(const Duration(milliseconds:400));await t.pumpAndSettle();
+      await t.tapAt(at(t,s,dtAt(840).toDouble()));
+      await t.pump(const Duration(milliseconds:400));await t.pumpAndSettle();
       expect(s.blocks, hasLength(2));
       final nap = s.blocks.last;
       expect(nap.kind, BlockKind.nap);
@@ -253,9 +253,7 @@ void main() {
       expect(saved.single.window, (edited.start, edited.end));
       // Not written yet: still on screen, still usable.
       expect(find.byType(SleepTimelineEditor), findsOneWidget);
-      await t.tap(find.byKey(SleepTimelineEditor.addKey));
-      await t.pump();
-      expect(find.text('Before or after the main sleep?'), findsOneWidget);
+      expect(t.widget<TextButton>(find.byKey(SleepTimelineEditor.addKey)).onPressed,isNull);
       written.complete();
       await t.pumpAndSettle();
       // Gone at the write, with the recalculation still running.
@@ -290,7 +288,7 @@ void main() {
     testWidgets('the stage wave and totals are labelled PREVIEW and update while dragging',
         (t) async {
       final s = await open(t);
-      expect(find.byKey(const ValueKey('preview-label')), findsOneWidget);
+      expect(find.byKey(const ValueKey('sleep-editor-preview-label')), findsOneWidget);
       final before = s.stages.where((x) => x != null).length;
       await dragMainEnd(t, s);
       expect(s.stages.where((x) => x != null).length, isNot(before));

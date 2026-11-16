@@ -2,6 +2,7 @@
 // Use real SQLite, LocalRepositoryImpl, editor controls and the durable writer.
 // Stored history is owned for validation but is not a user time override.
 import 'dart:convert';
+import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
@@ -43,7 +44,7 @@ void main() {
   late BackupEnv env;
   late Database db;
   const day = '2026-11-14';
-  final start = dtAt(1050), end = dtAt(1090), otherStart = dtAt(1150);
+  final start = dtAt(800), end = dtAt(840), otherStart = dtAt(900);
   late String snapshot;
   late Map<String, Object?> unrelated;
 
@@ -71,8 +72,8 @@ void main() {
     (await db.query('sleep_nap', where: 'start_ts = ?', whereArgs: [start])).single;
 
   for (final (label, action, sourceAfter) in [
-    ('Recalculate time in bed', SleepEntryAction.recalculate, 'legacy'),
-    ('Not sleep', SleepEntryAction.notSleep, 'rejected'),
+    ('Calculate selected sleep block stages', SleepEntryAction.stages, 'legacy'),
+    ('Remove selected sleep block', SleepEntryAction.remove, 'rejected'),
   ]) {
     testWidgets('legacy editor $label commits the exact row and durable job, preserving snapshots and other naps', (t) async {
       final repo = LocalRepositoryImpl(getProfileMap: () => const {});
@@ -84,7 +85,7 @@ void main() {
       // Real chart tap, not a direct State selection call.
       await rig.tapTime(t, state, start + 600);
       expect(find.text('Back to automatic'), findsNothing);
-      expect(find.text('Recalculate time in bed'), findsOneWidget);
+      expect(find.text('Calculate selected sleep block stages'), findsOneWidget);
       await rig.stage(t, label);
       await t.scrollUntilVisible(find.byKey(SleepTimelineEditor.saveKey), 200);
       await t.pumpAndSettle();
@@ -97,14 +98,14 @@ void main() {
       expect(saver.plan!.entry!.action, action);
       final row = await t.runAsync(target);
       expect(row!['source'], sourceAfter);
-      expect(row['payload_json'], snapshot);
+      expect(sleepEditorDetected((await t.runAsync(()=>sleepEditorPayload(row['payload_json'])))!),jsonDecode(snapshot));
       expect(await t.runAsync(() => db.query('sleep_nap', where: 'start_ts = ?', whereArgs: [otherStart])), [unrelated]);
       final jobs = await t.runAsync(() => db.query('sleep_edit_job'));
       expect(jobs!.map((r) => [r['day_id'], r['phase'], r['revision']]), [[day, 'queued', 1]]);
       // Reopen the durable ledger: history cannot depend on a widget/cache.
       await t.runAsync(() async { await LocalDb.close(); db = await LocalDb.instance; });
-      expect((await t.runAsync(target))!['payload_json'], snapshot);
-      if (action == SleepEntryAction.notSleep) {
+      expect(sleepEditorDetected((await t.runAsync(()async=>sleepEditorPayload((await target())['payload_json'])))!),jsonDecode(snapshot));
+      if (action == SleepEntryAction.remove) {
         // A queued recomputation must not make the rejected entry disappear
         // from the editor. Restore it through the real UI after reopening.
         final reopened = await t.runAsync(() => SleepEditorData.load(repo, day,
@@ -115,9 +116,9 @@ void main() {
         final restoreSaver = _DatabaseSaver(db);
         final restoredEditor = await rig.openEditor(t, restoreSaver, reopened);
         await rig.tapTime(t, restoredEditor, start + 600);
-        expect(find.text('Recalculate time in bed'), findsNothing);
-        expect(find.text('Not sleep'), findsNothing);
-        await rig.stage(t, 'Back to automatic');
+        expect(t.widget<TextButton>(find.byKey(const ValueKey('sleep-editor-calculate'))).onPressed,isNull);
+        expect(t.widget<TextButton>(find.byKey(const ValueKey('sleep-editor-remove'))).onPressed,isNull);
+        await rig.stage(t, 'Reset to detected (restore nap)');
         await t.tap(find.byKey(SleepTimelineEditor.saveKey));
         await t.pump();
         await settle(t, until: () => restoreSaver.completed, what: 'legacy restore');
@@ -125,7 +126,7 @@ void main() {
         expect(restoreSaver.plan!.entry!.source, 'rejected');
         final restored = await t.runAsync(target);
         expect(restored!['source'], 'legacy');
-        expect(restored['payload_json'], snapshot);
+        expect(sleepEditorDetected((await t.runAsync(()=>sleepEditorPayload(restored['payload_json'])))!),jsonDecode(snapshot));
         expect(await t.runAsync(() => db.query('sleep_nap', where: 'start_ts = ?', whereArgs: [otherStart])), [unrelated]);
         final receipt = await t.runAsync(() => db.query('sleep_edit_job'));
         expect(receipt!.single['revision'], 2);
@@ -138,7 +139,7 @@ void main() {
     final before = await db.query('sleep_nap', orderBy: 'start_ts');
     await expectLater(writeSleepEdit(db, SleepEditPlan(day: day,
       entry: SleepEntryEdit(start: start, end: end, main: false,
-        source: 'legacy', action: SleepEntryAction.notSleep))), throwsA(isA<SleepEditInvalid>()));
+        source: 'legacy', action: SleepEntryAction.remove))), throwsA(isA<SleepEditInvalid>()));
     expect(await db.query('sleep_nap', orderBy: 'start_ts'), before);
     expect(await db.query('sleep_edit_job'), isEmpty);
   });
@@ -148,7 +149,7 @@ void main() {
     await expectLater(db.transaction((tx) async {
       await writeSleepEditInTransaction(tx, SleepEditPlan(day: day,
         entry: SleepEntryEdit(start: start, end: end, main: false,
-          source: 'legacy', action: SleepEntryAction.notSleep)));
+          source: 'legacy', action: SleepEntryAction.remove)));
       expect((await tx.query('sleep_nap', where: 'start_ts = ?', whereArgs: [start])).single['source'], 'rejected');
       expect((await tx.query('sleep_edit_job')).single['phase'], 'queued');
       throw StateError('roll back the surrounding transaction');

@@ -112,12 +112,12 @@ void main() {
       await t.tap(row);
       await t.pumpAndSettle();
       expect(state.active, target.id);
-      await stage(t, 'Not sleep');
+      await stage(t, 'Remove selected sleep block');
       await t.tap(find.byKey(SleepTimelineEditor.saveKey));
       await t.pumpAndSettle();
       final entry = saver.plans.single.entry!;
       expect((entry.main, entry.start, entry.end, entry.source, entry.action),
-        (false, target.start, target.end, sources[target.id], SleepEntryAction.notSleep));
+        (false, target.start, target.end, sources[target.id], SleepEntryAction.remove));
       expect(saver.plans.single.window, isNull);
       expect(saver.plans.single.naps, isEmpty);
     });
@@ -127,7 +127,7 @@ void main() {
     final saver = _Saver();
     final nap = SleepBlock('inside', BlockKind.nap, dtAt(300), dtAt(330));
     final state = await openEditor(t, saver, dataWith([nap]));
-    await stage(t, 'Not sleep');
+    await stage(t, 'Remove selected sleep block');
     await tapTime(t, state, dtAt(315));
     expect(find.byKey(const ValueKey('sleep-editor-entry-chooser')), findsOneWidget);
     await t.tap(find.byKey(const ValueKey('sleep-editor-entry:main')));
@@ -145,13 +145,13 @@ void main() {
     await t.pumpAndSettle();
     final entry = saver.plans.single.entry!;
     expect((entry.main, entry.start, entry.end, entry.action),
-      (true, main.start, main.end, SleepEntryAction.notSleep));
+      (true, main.start, main.end, SleepEntryAction.remove));
   });
 
   testWidgets('chooser distinguishes repeated wall times by exact UTC offsets on a DST night', (t) async {
     int epoch(DateTime time) => time.millisecondsSinceEpoch ~/ 1000;
     final early = SleepBlock('early', BlockKind.nap, epoch(DateTime.utc(2026, 11, 1, 7, 10)),
-      epoch(DateTime.utc(2026, 11, 1, 7, 40)));
+      epoch(DateTime.utc(2026, 11, 1, 8, 50)));
     final late = SleepBlock('late', BlockKind.nap, epoch(DateTime.utc(2026, 11, 1, 8, 10)),
       epoch(DateTime.utc(2026, 11, 1, 8, 40)));
     final data = SleepEditorData(day: '2026-11-01',
@@ -159,9 +159,8 @@ void main() {
       movement: List.filled(1500, null),
       main: SleepBlock('main', BlockKind.main, epoch(DateTime.utc(2026, 11, 1, 5)),
         epoch(DateTime.utc(2026, 11, 1, 15))), naps: [early, late]);
-    await openEditor(t, _Saver(), data);
-    await t.tap(find.byKey(const ValueKey('sleep-editor-choose-entry')));
-    await t.pumpAndSettle();
+    final state=await openEditor(t, _Saver(), data);
+    await tapTime(t,state,epoch(DateTime.utc(2026,11,1,8,20)));
     expect(t.getSemantics(find.byKey(const ValueKey('sleep-editor-entry:early'))).label,
       contains('2026-11-01 01:10:00 UTC-06:00'));
     expect(t.getSemantics(find.byKey(const ValueKey('sleep-editor-entry:late'))).label,
@@ -181,19 +180,19 @@ void main() {
     await t.tap(find.byKey(const ValueKey('sleep-editor-entry:main')));
     await t.pumpAndSettle();
     expect(state.active, 'main');
-    await stage(t, 'Not sleep');
+    await stage(t, 'Remove selected sleep block');
     await t.tap(find.byKey(SleepTimelineEditor.saveKey));
     await t.pumpAndSettle();
     final entry = saver.plans.single.entry!;
     expect((entry.main, entry.start, entry.end, entry.action),
-      (true, main.start, main.end, SleepEntryAction.notSleep));
+      (true, main.start, main.end, SleepEntryAction.remove));
   });
 
   testWidgets('an action being durably written stays visible when another entry is tapped', (t) async {
     final saver = _HeldSaver();
     final base = dtNight();
     final state = await openEditor(t, saver, base);
-    await stage(t, 'Not sleep');
+    await stage(t, 'Remove selected sleep block');
     await t.tap(find.byKey(SleepTimelineEditor.saveKey));
     await t.pump();
     await tapTime(t, state, base.naps.single.start + 600);
@@ -210,13 +209,7 @@ void main() {
     final naps = [SleepBlock('a', BlockKind.nap, dtAt(300), dtAt(330)),
       SleepBlock('b', BlockKind.nap, dtAt(300), dtAt(330))];
     final state = await openEditor(t, _Saver(), dataWith(naps, sources: {'a': 'legacy', 'b': 'legacy'}));
-    // The persistent entry button is also reachable by keyboard/screen reader,
-    // so chart coordinates are never required to discover an overlapping entry.
-    final button = find.byKey(const ValueKey('sleep-editor-choose-entry'));
-    await t.ensureVisible(button);
-    await t.pumpAndSettle();
-    await t.tap(button);
-    await t.pumpAndSettle();
+    await tapTime(t,state,dtAt(315));
     final a = find.byKey(const ValueKey('sleep-editor-entry:a'));
     final b = find.byKey(const ValueKey('sleep-editor-entry:b'));
     expect(t.getSemantics(a).label, isNot(t.getSemantics(b).label));
@@ -229,12 +222,15 @@ void main() {
     expect(state.active, 'b');
   });
 
-  for (final action in ['Not sleep', 'Recalculate time in bed', 'Back to automatic']) {
+  for (final action in ['Remove selected sleep block', 'Calculate selected sleep block stages', 'Reset to detected']) {
     testWidgets('$action is cancelled and announced only when selection actually changes', (t) async {
-      final base = dtNight();
+      final initial = dtNight();
+      final base = SleepEditorData(day:initial.day,domainStart:initial.domainStart,hr:initial.hr,movement:initial.movement,
+        main:initial.main,naps:[initial.naps.single.copyWith(start:dtAt(800),end:dtAt(840))]);
       final data = SleepEditorData(day: base.day, domainStart: base.domainStart, hr: base.hr,
         movement: base.movement, main: base.main, naps: base.naps,
-        mainSource: action == 'Back to automatic' ? 'manual' : null);
+        mainSource: action == 'Reset to detected' ? 'manual' : null,
+        detected:action=='Reset to detected'?{'main':base.main.copyWith(start:base.main.start-600)}:const{});
       final saver = _Saver();
       final state = await openEditor(t, saver, data);
       await stage(t, action);
@@ -253,9 +249,9 @@ void main() {
       await t.tap(find.byKey(const ValueKey('sleep-editor-zoom')));
       await t.pumpAndSettle();
       expect(pending, findsOneWidget);
-      await t.ensureVisible(find.byKey(SleepTimelineEditor.resetKey));
+      await t.ensureVisible(find.byKey(const ValueKey('sleep-editor-zoom')));
       await t.pumpAndSettle();
-      await t.tap(find.byKey(SleepTimelineEditor.resetKey));
+      await t.tap(find.byKey(const ValueKey('sleep-editor-zoom')));
       await t.pumpAndSettle();
       await tapTime(t, state, base.naps.single.start + 600);
       expect(state.active, base.naps.single.id);
@@ -276,10 +272,9 @@ void main() {
     final saver = _Saver();
     final state = await openEditor(t, saver, dtNight(withNap: false));
     final original = state.blocks.first;
-    await stage(t, 'Not sleep');
+    await stage(t, 'Remove selected sleep block');
     expect(find.text('Save or cancel this action before changing times.'), findsOneWidget);
-    final reason = find.byKey(const ValueKey('sleep-editor-action-edit-reason'));
-    expect(t.getSemantics(reason).flagsCollection.isLiveRegion, isTrue);
+    expect(t.getSemantics(find.byKey(const ValueKey('sleep-editor-pending-action'))).flagsCollection.isLiveRegion, isTrue);
     await Scrollable.ensureVisible(t.element(find.byKey(DayTimelineChart.chartKey)), alignment: .5);
     await t.pumpAndSettle();
     final gesture = await t.startGesture(at(t, state, original.end));
@@ -289,16 +284,12 @@ void main() {
     await gesture.up();
     await t.pumpAndSettle();
     expect(state.blocks.first, original);
-    final suggestions = find.byKey(const ValueKey('sleep-editor-suggestions'));
-    await t.scrollUntilVisible(suggestions, 150);
-    await t.pumpAndSettle();
-    final use = find.descendant(of: suggestions, matching: find.text('Use'));
-    expect(use, findsNothing, reason: 'Suggested-time edits are disabled while the action is staged');
+    expect(t.widget<DayTimelineChart>(find.byType(DayTimelineChart)).annotations.where((a)=>a.id.startsWith('suggestion:')),isEmpty);
     await t.tap(find.byKey(SleepTimelineEditor.saveKey));
     await t.pumpAndSettle();
     final entry = saver.plans.single.entry!;
     expect((entry.start, entry.end, entry.action),
-      (original.start, original.end, SleepEntryAction.notSleep));
+      (original.start, original.end, SleepEntryAction.remove));
     expect(saver.plans.single.window, isNull);
   });
 }

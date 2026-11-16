@@ -75,7 +75,7 @@ void main() {
     // catches: queueing after commit or only queueing the selected night.
     test('batch receipt queues both nap dates and releases only its own pin atomically', () async {
       await db.insert('sync_cursor', {'name': LocalDb.kFrozenHeadlineCursor,
-        'value': jsonEncode({'day': day, 'readiness': 71})},
+        'value': jsonEncode({'day': day, 'value': 71}), 'updated_at': 1},
         conflictAlgorithm: ConflictAlgorithm.replace);
       await db.transaction((tx) async {
         await writeSleepEditInTransaction(tx, SleepEditPlan(day: day,
@@ -98,6 +98,111 @@ void main() {
       expect(await rows('sleep_override'), isEmpty);
       expect(await rows('sleep_edit_job'), before);
     });
+
+    // WHY: CLAIM(sleep-editor-entry). Rejecting/restoring main sleep must
+    // preserve unrelated logged naps and durably queue the selected night.
+    test('entry actions survive restart and preserve every unrelated nap', () async {
+      await writeSleepEdit(db, SleepEditPlan(day: day,
+        window: (at(23, 0, 13), at(7)), naps: [
+          NapWrite(start: at(14), end: at(14, 30)),
+          NapWrite(start: at(16), end: at(16, 40))]));
+      final originalNaps = await rows('sleep_nap');
+      Future<void> mainAction(SleepEntryAction action) => writeSleepEdit(db,
+        SleepEditPlan(day: day, entry: SleepEntryEdit(main: true,
+          start: at(23, 0, 13), end: at(7),
+          source: action == SleepEntryAction.automatic ? 'rejected' : 'manual', action: action)));
+      await mainAction(SleepEntryAction.notSleep);
+      await LocalDb.close(); db = await LocalDb.instance;
+      expect((await rows('sleep_override')).single['source'], 'rejected');
+      expect(await rows('sleep_nap'), originalNaps);
+      expect((await rows('sleep_edit_job')).single['revision'], 2);
+      await mainAction(SleepEntryAction.automatic);
+      expect(await rows('sleep_override'), isEmpty);
+      expect(await rows('sleep_nap'), originalNaps);
+      await writeSleepEdit(db, SleepEditPlan(day: day, entry: SleepEntryEdit(
+        main: false, start: at(14), end: at(14, 30), source: 'manual',
+        action: SleepEntryAction.notSleep)));
+      await LocalDb.close(); db = await LocalDb.instance;
+      final naps = await rows('sleep_nap');
+      expect(naps.map((r) => [r['start_ts'], r['source']]), [
+        [at(16), 'manual'], [at(14), 'rejected']]);
+      expect((await rows('sleep_edit_job')).single['revision'], 4);
+      expect((await rows('sleep_edit_job')).single['phase'], 'queued');
+    });
+
+    // WHY: CLAIM(sleep-editor-entry). A late action must not reject a newer
+    // manual night just because it still has the same source name.
+    test('stale entry actions refuse without changing the newer receipt', () async {
+      await writeSleepEdit(db, SleepEditPlan(day: day, window: (at(23, 0, 13), at(7))));
+      await writeSleepEdit(db, SleepEditPlan(day: day, window: (at(23, 30, 13), at(8))));
+      final before = await rows('sleep_override');
+      final jobs = await rows('sleep_edit_job');
+      await expectLater(writeSleepEdit(db, SleepEditPlan(day: day,
+        entry: SleepEntryEdit(main: true, start: at(23, 0, 13), end: at(7),
+          source: 'manual', action: SleepEntryAction.notSleep))), throwsA(isA<SleepEditInvalid>()));
+      expect(await rows('sleep_override'), before);
+      expect(await rows('sleep_edit_job'), jobs);
+    });
+
+    // WHY: CLAIM(sleep-legacy-entry). A retained snapshot is persisted identity,
+    // not a user assertion to erase. Reject/restore must preserve its measures.
+    test('R1 legacy recalculate reject automatic retain snapshot after restart', () async {
+      final snapshot = jsonEncode({'start': at(14), 'end': at(14, 30),
+        'duration_min': 21, 'in_bed_min': 30, 'source': 'legacy', 'confidence': .8});
+      await db.insert('sleep_nap', {'day_id': day, 'start_ts': at(14),
+        'end_ts': at(14, 30), 'source': 'legacy', 'created_at': 1, 'payload_json': snapshot});
+      await writeSleepEdit(db, SleepEditPlan(day: day,
+        naps: [NapWrite(start: at(16), end: at(16, 40))]));
+      final other = (await rows('sleep_nap')).last;
+      Future<void> act(String source, SleepEntryAction action) => writeSleepEdit(db,
+        SleepEditPlan(day: day, entry: SleepEntryEdit(main: false,
+          start: at(14), end: at(14, 30), source: source, action: action)));
+      await act('legacy', SleepEntryAction.recalculate);
+      await act('legacy', SleepEntryAction.automatic);
+      await act('legacy', SleepEntryAction.notSleep);
+      await LocalDb.close(); db = await LocalDb.instance;
+      expect((await rows('sleep_nap')).where((r) => r['start_ts'] == at(14)).single['source'], 'rejected');
+      await act('rejected', SleepEntryAction.automatic);
+      await LocalDb.close(); db = await LocalDb.instance;
+      final naps = await rows('sleep_nap');
+      final restored = naps.where((r) => r['start_ts'] == at(14)).single;
+      expect([restored['source'], restored['payload_json']], ['legacy', snapshot]);
+      expect(naps.where((r) => r['start_ts'] == at(16)).single, other);
+      expect((await rows('sleep_edit_job')).single['revision'], 5);
+    });
+
+    // WHY: boundary edits must not erase a legacy detector snapshot. Automatic
+    // restores original bounds and asleep minutes, including a moved start.
+    for (final shift in [0, 10, 1440]) {
+      test('R1 legacy moved by $shift minutes restores the preserved snapshot', () async {
+        final snapshot = jsonEncode({'start': at(14), 'end': at(14, 30),
+          'duration_min': 21, 'in_bed_min': 30, 'source': 'legacy', 'confidence': .8});
+        await db.insert('sleep_nap', {'day_id': day, 'start_ts': at(14),
+          'end_ts': at(14, 30), 'source': 'legacy', 'created_at': 1, 'payload_json': snapshot});
+        await writeSleepEdit(db, SleepEditPlan(day: day,
+          naps: [NapWrite(start: at(16), end: at(16, 40))]));
+        final other = (await rows('sleep_nap')).last;
+        await writeSleepEdit(db, SleepEditPlan(day: day, naps: [NapWrite(
+          start: at(14, shift), end: at(14, shift + 40), fromStart: at(14),
+          fromEnd: at(14, 30), fromSource: 'legacy')]));
+        await LocalDb.close(); db = await LocalDb.instance;
+        final edits = await ActivityStore.napEdits(db, shift == 1440 ? '2026-11-15' : day);
+        final userNap = edits.where((e) => e.startSec == at(14, shift)).single;
+        expect(userNap.snapshot, isNull, reason: 'a moved manual window has no measured split');
+        await writeSleepEdit(db, SleepEditPlan(day: day, entry: SleepEntryEdit(
+          main: false, start: at(14, shift), end: at(14, shift + 40), source: 'manual',
+          action: SleepEntryAction.automatic)));
+        await LocalDb.close(); db = await LocalDb.instance;
+        final naps = await rows('sleep_nap');
+        expect(naps, hasLength(2));
+        final restored = naps.where((r) => r['start_ts'] == at(14)).single;
+        expect([restored['source'], restored['end_ts']], ['legacy', at(14, 30)]);
+        expect(jsonDecode(restored['payload_json'] as String), jsonDecode(snapshot));
+        expect(naps.where((r) => r['start_ts'] == at(16)).single, other);
+        expect({for (final j in await rows('sleep_edit_job')) j['day_id']: j['revision']},
+          {day: 3, if (shift == 1440) '2026-11-15': 2});
+      });
+    }
 
     test('an invalid edit writes nothing at all', () async {
       final before = {for (final t in ['sleep_override', 'sleep_nap']) t: await rows(t)};

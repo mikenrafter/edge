@@ -5,7 +5,16 @@ import 'nap_edits.dart';
 void composeAcceptedNaps(Map<String, dynamic> bundle, List<NapEdit> edits) {
   final old = bundle['naps'] as Map?;
   if (old == null && edits.isEmpty) return;
-  final accepted = applyNapEdits(const [], edits);
+  final staged = (old?['value'] as List?)?.whereType<Map>().toList() ?? const <Map>[];
+  final accepted = applyNapEdits(const [], edits).map((entry) {
+    if (entry['_stage_only'] != true) return entry;
+    final bounds = [entry['start'], entry['end']];
+    final measured = staged.where((n) {
+      final at = n['_staged_bounds'];
+      return at is List && at.length == 2 && at[0] == bounds[0] && at[1] == bounds[1];
+    }).firstOrNull;
+    return measured == null ? entry : Map<String,dynamic>.from(measured);
+  }).toList();
   // Whether the detector judged the day, persisted so a later compose cannot
   // turn an unjudged day into a measured zero once its logged naps are gone.
   // Rows from before the flag: an unjudged day only carried a value when the
@@ -50,6 +59,8 @@ void composeAcceptedNaps(Map<String, dynamic> bundle, List<NapEdit> edits) {
         'efficiency': n['efficiency'],
         'confidence': n['confidence'],
         'source': n['source'],
+        for(final key in ['deep_min','rem_min','light_min','hypnogram'])
+          if(n.containsKey(key)) key:n[key],
       },
   ];
   final known =

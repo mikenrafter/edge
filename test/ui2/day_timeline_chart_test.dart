@@ -196,7 +196,7 @@ void main() {
     final g = await tester.startGesture(at(tester, mainBlock.end.toDouble()));
     await g.moveBy(const Offset(24, 0));
     await tester.pump();
-    expect(find.text('5-minute steps · hold for minutes'), findsOneWidget);
+    expect(find.text('5-minute steps. Hold for single minutes.'), findsOneWidget);
     expect(host.blocks.single.end % 300, 0);
     await tester.pump(const Duration(milliseconds: 650)); // held still
     expect(find.text('1-minute steps'), findsOneWidget);

@@ -25,6 +25,7 @@ import '../data/db/group_row_store.dart' show captureInputStampBestEffort, captu
 import '../data/db/input_read_tracker.dart';
 import '../data/db/input_revision_store.dart' show observeInputZone, inputRevSnapshot;
 import 'accepted_naps.dart' show composeAcceptedNaps;
+import 'sleep_editor_staging.dart';
 import 'meal_candidates.dart';
 import '../data/typical_day_model.dart' show TypicalMealTimes;
 import '../models/activity_suggestion.dart';
@@ -2004,7 +2005,8 @@ part 'engine/settled.dart';
 // 123 (sleep summary R1): an unchanged measured night with expired raw
 // still applies nap assertions before completing its edit receipt. Reuse the
 // retained night verbatim; only nap projections/totals and dependents change.
-const int kAlgoVersion = 123;
+// 124: explicit selected-nap staging reuses the forced-window stager, with fixed bounds.
+const int kAlgoVersion = 124;
 
 enum SleepEditCalculation { complete, incomplete, superseded }
 
@@ -8256,6 +8258,7 @@ class DerivationEngine {
     int tonightSleepOffsetSec = 0,
     List<List<int>> blanked = const [],
   }) {
+
     try {
       final n = s.length;
       if (n < 60) {
@@ -8849,7 +8852,7 @@ class DerivationEngine {
       wristOff: inp.wristOffSpans,
       charging: inp.chargingSpans,
       blanked: inp.blankedSpans,
-      napEdits: inp.napEdits,
+      napEdits: restageEditorNapsHeavy(inp.napSub,inp.napEdits,method:inp.stagingMethod),
       candidates: napSuggestions,
       napExcludeEndSec: inp.napExcludeEndSec ?? offset,
       tonightSleepOnsetSec: inp.tonightSleepOnsetSec,

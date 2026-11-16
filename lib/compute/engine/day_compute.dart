@@ -633,6 +633,7 @@ extension _EngineDayCompute on DerivationEngine {
         daySub: daySub,
         napSub: day.napSub,
         napEdits: napEdits,
+        stagingMethod: Prefs.sleepStagingMethod,
         sleepSub: sleepSub,
         profile: profile,
         onsetSec: day.sleepOnsetSec,

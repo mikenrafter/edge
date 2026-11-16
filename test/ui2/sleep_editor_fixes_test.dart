@@ -57,9 +57,9 @@ Future<SleepTimelineEditorState> _open(WidgetTester t, _Saver saver,
 
 void main() {
   // Round 2 replaces editor step buttons with the day view's selection control.
-  testWidgets('full night includes the afternoon nap; shared selection and reset preserve it exactly', (t) async {
+  testWidgets('full containing day uses shared selection and resets exactly', (t) async {
     final s = await _open(t, _Saver());
-    final home = TimelineView(dtAt(160).toDouble(), dtAt(1090).toDouble());
+    final home = sleepEditorDay(dtAt(160),dtAt(690));
     expect(s.controller.view, home);
     final zoom = find.byKey(const ValueKey('sleep-editor-zoom'));
     expect(t.getSize(zoom).height, greaterThanOrEqualTo(48));
@@ -71,7 +71,7 @@ void main() {
     await t.tap(zoom);
     await t.pumpAndSettle();
     expect(s.controller.view.span, lessThan(home.span));
-    final reset = find.byKey(SleepTimelineEditor.resetKey);
+    final reset = find.byKey(const ValueKey('sleep-editor-zoom'));
     expect(t.getSize(reset).height, greaterThanOrEqualTo(48));
     await t.tap(reset);
     await t.pumpAndSettle();
@@ -84,30 +84,30 @@ void main() {
       movement: base.movement,
       main: SleepBlock('main', BlockKind.main, dtAt(160), dtAt(180)));
     final state = await _open(t, _Saver(), data: d);
-    final home = TimelineView(dtAt(160).toDouble(), dtAt(180).toDouble());
+    final home = sleepEditorDay(dtAt(160),dtAt(180));
     expect(state.controller.view, home);
     state.controller.glideTo(TimelineView(dtAt(150).toDouble(), dtAt(210).toDouble()));
     await t.pumpAndSettle();
-    await t.tap(find.byKey(SleepTimelineEditor.resetKey));
+    await t.tap(find.byKey(const ValueKey('sleep-editor-zoom')));
     await t.pumpAndSettle();
     expect(state.controller.view, home);
     // The full-region invariant also applies after dragging a window shorter.
     state.blocksChanged([d.main.copyWith(end: dtAt(170))]);
     state.controller.reset();
     await t.pumpAndSettle();
-    expect(state.controller.view, TimelineView(dtAt(160).toDouble(), dtAt(170).toDouble()));
+    expect(state.controller.view, sleepEditorDay(dtAt(160),dtAt(170)));
   });
 
   testWidgets('zoom frames preserve readout Text widgets and list position', (t) async {
     final s = await _open(t, _Saver());
     final readout = find.descendant(of: find.byKey(SleepTimelineEditor.readoutKey), matching: find.byType(Text));
-    final before = t.widgetList<Text>(readout).toList();
-    final list = t.state<ScrollableState>(find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)));
+    final before = t.widgetList<Text>(readout).where((w)=>w.data!='Zoom in'&&w.data!='Reset zoom').toList();
+    final list = t.state<ScrollableState>(find.descendant(of: find.byKey(const ValueKey('sleep-editor-scroll')), matching: find.byType(Scrollable)));
     final offset = list.position.pixels;
     s.controller.zoomAt(s.controller.view.center);
     await t.pump();
     await t.pump(const Duration(milliseconds: 400));
-    final during = t.widgetList<Text>(readout).toList();
+    final during = t.widgetList<Text>(readout).where((w)=>w.data!='Zoom in'&&w.data!='Reset zoom').toList();
     expect(during.length, before.length);
     for (var i = 0; i < before.length; i++) {
       expect(identical(before[i], during[i]), isTrue, reason: 'Static readout text $i rebuilt during zoom');
@@ -125,27 +125,22 @@ void main() {
       '2026-11-01', window: (a - 3600, b + 3600));
     expect(d.naps.map((n) => (n.start, n.end)).toList(), [(a, b), (a, b)],
       reason: 'Display retains each returned entry, including overlaps');
-    final expectedEnd = DateTime(2026, 11, 1, 20).millisecondsSinceEpoch ~/ 1000;
+    final expectedEnd = DateTime(2026, 11, 1, 12).millisecondsSinceEpoch ~/ 1000;
     expect(d.domainEnd, expectedEnd);
   });
 
-  testWidgets('entry controls are exclusive and target the selected manual nap through Save', (t) async {
+  testWidgets('stages-only action targets the selected manual nap through Save', (t) async {
     final base = dtNight();
     final nap = base.naps.single;
     final d = SleepEditorData(day: base.day, domainStart: base.domainStart, hr: base.hr,
       movement: base.movement, main: base.main, naps: base.naps, napSources: {nap.id: 'manual'});
     final saver = _Saver();
     final s = await _open(t, saver, data: d);
-    expect(find.text('Recalculate time in bed'), findsOneWidget);
-    expect(find.text('Back to automatic'), findsNothing);
     s.blockSelected(nap.id, zoom: false);
     await t.pumpAndSettle();
-    expect(find.byIcon(LucideIcons.bedDouble), findsWidgets);
-    expect(find.text('Recalculate time in bed'), findsNothing);
-    final automatic = find.text('Back to automatic');
-    expect(automatic, findsOneWidget);
-    await t.ensureVisible(automatic);
-    await t.tap(automatic);
+    expect(t.widget<TextButton>(find.byKey(const ValueKey('sleep-editor-detected'))).onPressed,isNull,
+      reason:'Unknown detected history cannot be invented for a manual nap');
+    await t.tap(find.byKey(const ValueKey('sleep-editor-calculate')));
     await t.pumpAndSettle();
     // Choosing the action only stages it. Cancel/back can still leave safely.
     expect(saver.plans, isEmpty);
@@ -154,7 +149,7 @@ void main() {
     await t.pump();
     final entry = saver.plans.single.entry!;
     expect((entry.start, entry.end, entry.main, entry.source, entry.action.name),
-      (nap.start, nap.end, false, 'manual', 'automatic'));
+      (nap.start, nap.end, false, 'manual', 'stages'));
     expect(saver.plans.single.naps, isEmpty, reason: 'Unrelated naps are untouched');
     expect(find.byType(SleepTimelineEditor), findsOneWidget);
     saver.written.complete();
@@ -166,7 +161,7 @@ void main() {
   testWidgets('Not sleep is entry scoped and write failure keeps the editor open', (t) async {
     final saver = _Saver();
     final s = await _open(t, saver);
-    final notSleep = find.text('Not sleep');
+    final notSleep = find.byKey(const ValueKey('sleep-editor-remove'));
     await t.ensureVisible(notSleep);
     await t.tap(notSleep);
     await t.pumpAndSettle();
@@ -176,12 +171,12 @@ void main() {
     await t.pump();
     final entry = saver.plans.single.entry!;
     expect((entry.start, entry.end, entry.main, entry.action.name),
-      (s.blocks.first.start, s.blocks.first.end, true, 'notSleep'));
+      (s.blocks.first.start, s.blocks.first.end, true, 'remove'));
     saver.written.completeError(const SleepEditInvalid('Entry changed'));
     saver.done.complete(const SleepOperationResult(success: false));
     await t.pumpAndSettle();
     expect(find.byType(SleepTimelineEditor), findsOneWidget);
-    expect(find.textContaining('Entry changed'), findsOneWidget);
+    expect(find.text('Could not save. Your changes are still here.'), findsOneWidget);
   });
 
   // WHY: retaining separately stored overlapping entries is display-only.
@@ -202,27 +197,27 @@ void main() {
     expect(find.text('Sleep tab · 2026-11-14'), findsOneWidget);
   });
 
-  testWidgets('manual main window exposes only automatic; detected main recalculation is durable', (t) async {
+  testWidgets('manual main with no detection cannot reset; stages action is durable', (t) async {
     final base = dtNight();
     final mine = SleepEditorData(day: base.day, domainStart: base.domainStart, hr: base.hr,
       movement: base.movement, main: base.main, naps: base.naps, mainSource: 'manual');
     final first = _Saver();
     await _open(t, first, data: mine);
-    expect(find.text('Back to automatic'), findsOneWidget);
-    expect(find.text('Recalculate time in bed'), findsNothing);
+    expect(t.widget<TextButton>(find.byKey(const ValueKey('sleep-editor-detected'))).onPressed,isNull);
+    expect(t.widget<TextButton>(find.byKey(const ValueKey('sleep-editor-calculate'))).onPressed,isNotNull);
     await t.tap(find.byIcon(LucideIcons.chevronLeft));
     await t.pumpAndSettle();
     final saver = _Saver();
     await _open(t, saver);
-    await t.ensureVisible(find.text('Recalculate time in bed'));
-    await t.tap(find.text('Recalculate time in bed'));
+    await t.ensureVisible(find.byKey(const ValueKey('sleep-editor-calculate')));
+    await t.tap(find.byKey(const ValueKey('sleep-editor-calculate')));
     await t.pumpAndSettle();
     await t.ensureVisible(find.byKey(SleepTimelineEditor.saveKey));
     await t.tap(find.byKey(SleepTimelineEditor.saveKey));
     await t.pump();
     final entry = saver.plans.single.entry!;
     expect((entry.main, entry.start, entry.end, entry.action),
-      (true, base.main.start, base.main.end, SleepEntryAction.recalculate));
+      (true, base.main.start, base.main.end, SleepEntryAction.stages));
     expect(saver.plans.single.naps, isEmpty);
     expect(saver.plans.single.window, isNull);
     saver.written.complete();

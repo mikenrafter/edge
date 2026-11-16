@@ -271,6 +271,9 @@ abstract class LocalRepository {
   /// continue to use [getDayNaps]. No derived values are calculated here.
   Future<Map<String, dynamic>> getSleepEditorNaps(String date) => getDayNaps(date);
 
+  /// Current bounds plus preserved detection for the mutable editor only.
+  Future<Map<String, dynamic>> getSleepEditorMain(String date) => getDaySleepV2(date);
+
   Future<Map<String, dynamic>> getDayHrv(String date) =>
       throw UnimplementedError('re-layer: getDayHrv');
 

@@ -13,6 +13,7 @@ import 'day_label.dart';
 import 'db.dart' show LocalDb;
 import 'nap_resolution.dart';
 import 'sleep_edit_store.dart';
+import 'json_payload_lane.dart';
 import 'track_activity.dart';
 import 'db/input_read_tracker.dart';
 
@@ -754,24 +755,15 @@ class ActivityStore {
     String day,
   ) async {
     InputReads.note('sleep_nap', day);
-    return [
-    for (final row in await tx.query(
-      'sleep_nap',
-      where: 'day_id = ?',
-      whereArgs: [day],
-    ))
-      NapEdit(
-        kind: row['source'] == 'rejected'
-            ? NapEditKind.rejected
-            : NapEditKind.added,
-        startSec: row['start_ts'] as int,
-        endSec: row['end_ts'] as int,
-        snapshot: row['source'] != 'manual' && row['payload_json'] is String
-            ? Map<String, dynamic>.from(
-                jsonDecode(row['payload_json'] as String) as Map,
-              )
-            : null,
-      ),
-    ];
+    final rows=await tx.query('sleep_nap',where:'day_id = ?',whereArgs:[day]);
+    if(rows.isEmpty)return [];
+    final decoded=await const IsolateJsonPayloadLane().run(JsonPayloadsInput(
+      values:[for(final row in rows)row['payload_json']],encode:false));
+    return [for(final (i,row) in rows.indexed)
+      NapEdit(kind:row['source']=='rejected'?NapEditKind.rejected:NapEditKind.added,
+        startSec:row['start_ts'] as int,endSec:row['end_ts'] as int,
+        snapshot:decoded.values[i] is Map&&(row['source']!='manual'||
+          (decoded.values[i] as Map)['_stage_only']==true)
+            ?Map<String,dynamic>.from(decoded.values[i] as Map):null)];
   }
 }

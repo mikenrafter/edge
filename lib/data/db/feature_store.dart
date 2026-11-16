@@ -586,11 +586,13 @@ Future<void> _ldbPutSleepOverride({required String dayId, required int onsetTs, 
     // goes with it (otherwise a crash between the two leaves an edit the next
     // pass would still truncate).
     await LocalDb.timedTransaction(db, 'sleep edit receipt',InlineTransactionWork( (txn) async {
+      final previous=(await txn.query('sleep_override',where:'day_id = ?',whereArgs:[dayId])).firstOrNull;
       await txn.insert('sleep_override', {
         'day_id': dayId,
         'onset_ts': onsetTs,
         'offset_ts': offsetTs,
         'source': source,
+        'payload_json':previous?['payload_json'],
         'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
       await txn.delete('wake_confirmation',
@@ -808,7 +810,7 @@ Future<MomentAnswerChange> _ldbChangeMomentAnswer({required MomentLabel before, 
             };
         final tracks = {
           for (final t in [substance(priorField), substance(newField)])
-            if (t != null) t,
+            ?t,
         };
         final doseBefore = {
           for (final t in tracks) t: await LocalDb._trackDoseSummary(txn, date, t),
@@ -1497,7 +1499,7 @@ Future<void> _ldbDeleteNapEdit(String dayId, int startTs, {Transaction? transact
             restoreDay = snapshot.remove('_legacy_day') as String? ?? dayId;
             restoreStart = (snapshot['start'] as num?)?.toInt() ?? startTs;
             restoreEnd = (snapshot['end'] as num?)?.toInt() ?? restoreEnd;
-            restorePayload = jsonEncode(snapshot);
+            restorePayload = await JsonPayloadLane.shared.encode(snapshot);
           }
         } else if (rows.single['source'] == 'rejected') {
           // A rejection from before activity review has no snapshot, and a
@@ -1508,7 +1510,7 @@ Future<void> _ldbDeleteNapEdit(String dayId, int startTs, {Transaction? transact
           if (startTs < cutoff) {
             final min = (((rows.single['end_ts'] as int) - startTs) / 60).round();
             restoreSource = 'legacy';
-            restorePayload = jsonEncode({
+            restorePayload = await JsonPayloadLane.shared.encode({
               'duration_min': min, 'in_bed_min': min,
               'confidence': null, 'source': 'legacy',
             });

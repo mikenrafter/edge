@@ -23,13 +23,13 @@ void main() {
     expect(d.hr.length, 1500);
     expect(d.movement.length, 1500);
     expect(d.domainEnd - d.domainStart, 25 * 3600);
-    expect(DateTime.fromMillisecondsSinceEpoch(d.domainEnd * 1000), DateTime(2026, 11, 1, 20));
+    expect(DateTime.fromMillisecondsSinceEpoch(d.domainEnd * 1000), DateTime(2026, 11, 1, 12));
     expect(d.mainSource, 'manual');
   });
   test('spring-forward night loads 1380 elapsed minutes to the next local evening', () async {
     final d = await SleepEditorData.load(_Repo(), '2026-03-08');
     expect(d.hr.length, 1380);
     expect(d.domainEnd - d.domainStart, 23 * 3600);
-    expect(DateTime.fromMillisecondsSinceEpoch(d.domainEnd * 1000), DateTime(2026, 3, 8, 20));
+    expect(DateTime.fromMillisecondsSinceEpoch(d.domainEnd * 1000), DateTime(2026, 3, 8, 12));
   });
 }

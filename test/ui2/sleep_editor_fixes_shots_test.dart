@@ -115,14 +115,10 @@ void main() {
     await shot('r1-overlap-chooser');
     await t.tap(find.byKey(const ValueKey('sleep-editor-entry:inside')));
     await t.pumpAndSettle();
-    await rig.stage(t, 'Not sleep');
+    await rig.stage(t, 'Remove selected sleep block');
     expect(find.byKey(SleepTimelineEditor.saveKey).hitTestable(), findsOneWidget);
     await shot('r1-staged-nap');
-    final choose = find.byKey(const ValueKey('sleep-editor-choose-entry'));
-    await t.ensureVisible(choose);
-    await t.pumpAndSettle();
-    await t.tap(choose);
-    await t.pumpAndSettle();
+    await rig.tapTime(t,state,dtAt(315));
     await t.tap(find.byKey(const ValueKey('sleep-editor-entry:main')));
     await t.pumpAndSettle();
     expect(find.text('Unsaved action cancelled.'), findsOneWidget);
