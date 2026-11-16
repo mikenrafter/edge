@@ -41,9 +41,11 @@ class HelpEntry extends StatelessWidget {
               ),
             );
           },
-          child: Text(
-            l.helpLookingForSomething,
-            semanticsLabel: l.helpOpenForTab(tab),
+          // Keep Text's RenderParagraph available to guide line geometry.
+          child: Semantics(
+            label: l.helpOpenForTab(tab),
+            excludeSemantics: true,
+            child: Text(l.helpLookingForSomething),
           ),
         ),
       ),

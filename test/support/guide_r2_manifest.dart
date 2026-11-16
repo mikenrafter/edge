@@ -150,7 +150,7 @@ Map<String, Object?> r2Manifest(WidgetTester t, R2Mounted mounted, R2Scene scene
     'alarm-schedule/open-alarm' => r2Locale.settingsAlarmRowTitle,
     // The day on/off row prints "Alarm" in every language (guide_alarm_schedule.dart).
     'alarm-schedule/pick-day' => 'Alarm',
-    'alarm-schedule/set-wake-time' => r2Locale.alarmWakeTimeRowTitle,
+    'alarm-schedule/set-wake-time' => 'Save',
     'add-nap/open-naps' => r2Locale.sleepDetailEditNaps,
     'add-nap/log-nap' => r2Locale.napsLogANap,
     'remove-detected/open-detected' => r2Locale.homeReviewActivities,

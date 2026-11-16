@@ -123,7 +123,7 @@ void main() {
   // Wake time input, or a Save target that only finishes without persisting.
   testWidgets('alarm picker leaves the guide unfinished, Save persists chosen time', (t) async {
     final captureKey = GlobalKey();
-    final app = await pumpLiveGuideApp(t, size: const Size(412, 1000), brightness: Brightness.dark, captureKey: captureKey);
+    final app = await pumpLiveGuideApp(t, size: const Size(412, 915), brightness: Brightness.dark, captureKey: captureKey);
     await app.runner.start(r2Guide('alarm-schedule'), band: null);
     await settleLiveGuide(t, frames: 40);
     var overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));

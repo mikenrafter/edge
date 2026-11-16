@@ -285,7 +285,7 @@ void main() {
     const expected = <String, (bool, bool)>{
       'alarm-schedule/open-alarm': (false, false), // one row to tap
       'alarm-schedule/pick-day': (true, false), // "Tap the tab of the day you want": seven day tabs
-      'alarm-schedule/set-wake-time': (false, false), // one row
+      'alarm-schedule/set-wake-time': (true, false), // Wake time picker, then Save target
       'add-nap/open-naps': (false, false), // one button
       'add-nap/log-nap': (false, false), // one button; the two questions are the app's dialogs
       'remove-detected/open-detected': (false, false), // one card
