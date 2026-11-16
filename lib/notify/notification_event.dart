@@ -148,6 +148,8 @@ class NotificationEvent {
   /// Present without sound or vibration, including band transport.
   final bool silent;
 
+  final DateTime? pulseRecordedAt;
+
   /// Deep-link route to open on tap (e.g. '/heart', '/today', '/recap').
   final String? route;
 
@@ -171,6 +173,7 @@ class NotificationEvent {
     this.route,
     this.osId,
     this.silent = false,
+    this.pulseRecordedAt,
   });
 
   // The OS notification id is NOT derived here any more. It used to be

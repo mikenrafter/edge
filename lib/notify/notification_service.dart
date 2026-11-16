@@ -23,6 +23,7 @@
 // Tap routing: a tapped notification's payload (a deep-link route) is pushed onto
 // [taps]; AppState listens and navigates.
 
+import 'package:clock/clock.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -503,6 +504,9 @@ class NotificationService {
   ///
   /// [allowPermissionPrompt] — see [ensurePermission]'s doc. Pass `false` from
   /// any caller that knows it's running headless/in the background.
+  @visibleForTesting
+  Future<int> Function(NotificationEvent) allocateId = NotificationIds.instance.idFor;
+
   Future<bool> presentEvent(
     NotificationEvent e, {
     bool allowPermissionPrompt = true,
@@ -517,7 +521,7 @@ class NotificationService {
       // e.osId overrides only for a caller that also cancels by id (see
       // NotificationEvent.osId).
       await _plugin.show(
-        e.osId ?? await NotificationIds.instance.idFor(e),
+        e.osId ?? await allocateId(e),
         e.title,
         e.body.isEmpty ? null : e.body,
         detailsForEvent(e),

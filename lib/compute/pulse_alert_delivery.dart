@@ -13,6 +13,7 @@
 //     foreground and the background can never both name a day. A `pending` row
 //     left behind by a dead pass becomes `unknown` and is never sent again.
 // Nothing here changes a flag, a day result or any analytics output.
+import 'package:clock/clock.dart';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
@@ -77,7 +78,7 @@ class PulseAlertDelivery {
     Duration pendingGrace = kPulseClaimGrace,
   }) async {
     await LocalDb.markStalePulseUnknown(
-      DateTime.now().millisecondsSinceEpoch - pendingGrace.inMilliseconds,
+      clock.now().millisecondsSinceEpoch - pendingGrace.inMilliseconds,
     );
     final owed = await LocalDb.pulseDaysToAlert();
     if (owed.isEmpty) return;
@@ -101,7 +102,7 @@ class PulseAlertDelivery {
   }
 
   static String _token(String key) =>
-      '$key#${DateTime.now().microsecondsSinceEpoch}-${_nonce.nextInt(1 << 32)}';
+      '$key#${clock.now().microsecondsSinceEpoch}-${_nonce.nextInt(1 << 32)}';
 
   static Future<void> _announce(String day, AppLocalizations l) async {
     final key = '$day:irregular-pulse';
@@ -109,7 +110,7 @@ class PulseAlertDelivery {
     final owned = await LocalDb.claimPulseDays(
       [day],
       token: token,
-      atMs: DateTime.now().millisecondsSinceEpoch,
+      atMs: clock.now().millisecondsSinceEpoch,
     );
     if (owned.isEmpty) return;
     // The key was claimed by an earlier pass that died before the screen: the
@@ -135,12 +136,12 @@ class PulseAlertDelivery {
 
   static Future<void> _summarize(List<String> days, AppLocalizations l) async {
     final key = 'pulse-summary:${_fingerprint(days)}:'
-        '${DateTime.now().microsecondsSinceEpoch}';
+        '${clock.now().microsecondsSinceEpoch}';
     final token = _token(key);
     final owned = await LocalDb.claimPulseDays(
       days,
       token: token,
-      atMs: DateTime.now().millisecondsSinceEpoch,
+      atMs: clock.now().millisecondsSinceEpoch,
     );
     if (owned.isEmpty) return;
     final shown = owned.length > kMaxSummaryDays
@@ -181,7 +182,7 @@ class PulseAlertDelivery {
     final reached = await probe.emit(event) ??
         await NotificationCenter.instance.emitReaching(event);
     await probe.afterPresent();
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = clock.now().millisecondsSinceEpoch;
     if (reached.isNotEmpty) {
       await LocalDb.finishPulseDays(days,
           token: token, state: okState, atMs: now, summaryKey: summaryKey);
@@ -201,7 +202,7 @@ class PulseAlertDelivery {
     if (!rule.enabled || !rule.phoneSelected || !prefs.categoryEnabled(event.category)) {
       return PulseAlertReason.off;
     }
-    final at = DateTime.now();
+    final at = clock.now();
     final minute = at.hour * 60 + at.minute;
     if (prefs.inQuietHours(minute) && !prefs.shouldFireOs(event, minute)) {
       return PulseAlertReason.quiet;

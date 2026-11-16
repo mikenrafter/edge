@@ -1,4 +1,5 @@
 // Owner: pulse episode delivery. Store claims, not OS return timing, own once-only delivery.
+import 'package:clock/clock.dart';
 import 'dart:math';
 import 'package:intl/intl.dart';
 import '../data/db.dart';
@@ -15,11 +16,11 @@ class PulseEpisodeDelivery {
   /// A pending claim older than two minutes is ambiguous, never retried.
   static Future<void> run({Duration grace = const Duration(minutes: 2)}) async {
     final store = PulseEpisodeStore(await LocalDb.instance);
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = clock.now().millisecondsSinceEpoch;
     await store.initializeUpgrade(nowMs: now);
     await store.recoverClaims(beforeMs: now - grace.inMilliseconds);
     final prefs = await NotificationPrefs.load();
-    final localNow = DateTime.now();
+    final localNow = clock.now();
     if (prefs.inQuietHours(localNow.hour * 60 + localNow.minute)) {
       await store.deferQuiet();
       return;
@@ -48,7 +49,7 @@ class PulseEpisodeDelivery {
     List<Map<String, Object?>> rows, {
     required bool summary,
   }) async {
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = clock.now().millisecondsSinceEpoch;
     final token = '$now-${_random.nextInt(1 << 32)}';
     final ids = await store.claim(
       [for (final r in rows) r['episode_id'] as String],
@@ -86,7 +87,7 @@ class PulseEpisodeDelivery {
     // CLAIM(pulse-claim): transaction claim precedes any OS handoff [pulse_episode_delivery_test].
     final reached = await NotificationCenter.instance.emitReaching(event);
     final fired = await LocalDb.notifFiredAt(key);
-    final after = DateTime.now();
+    final after = clock.now();
     final quietHeld =
         silent ||
         (await NotificationPrefs.load()).inQuietHours(
@@ -108,7 +109,7 @@ class PulseEpisodeDelivery {
           ? 'quiet hours'
           : 'notifications off',
       summaryKey: summary ? key : null,
-      nowMs: DateTime.now().millisecondsSinceEpoch,
+      nowMs: clock.now().millisecondsSinceEpoch,
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -55,7 +56,7 @@ class AlertDispatcher {
     this.transportTimeout = const Duration(seconds: 10),
     this.bandQueueWait = Duration.zero,
     this.sequenceTimeout,
-  }) : now = now ?? DateTime.now;
+  }) : now = now ?? (() => clock.now());
 
   final Future<bool> Function() phone;
   final Future<bool> Function() band;
