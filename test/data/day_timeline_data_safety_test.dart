@@ -144,6 +144,33 @@ void main() {
       expect(await rows('sleep_edit_job'), jobs);
     });
 
+    // WHY: CLAIM(sleep-legacy-entry). A retained snapshot is persisted identity,
+    // not a user assertion to erase. Reject/restore must preserve its measures.
+    test('R1 legacy recalculate reject automatic retain snapshot after restart', () async {
+      final snapshot = jsonEncode({'start': at(14), 'end': at(14, 30),
+        'duration_min': 21, 'in_bed_min': 30, 'source': 'legacy', 'confidence': .8});
+      await db.insert('sleep_nap', {'day_id': day, 'start_ts': at(14),
+        'end_ts': at(14, 30), 'source': 'legacy', 'created_at': 1, 'payload_json': snapshot});
+      await writeSleepEdit(db, SleepEditPlan(day: day,
+        naps: [NapWrite(start: at(16), end: at(16, 40))]));
+      final other = (await rows('sleep_nap')).last;
+      Future<void> act(String source, SleepEntryAction action) => writeSleepEdit(db,
+        SleepEditPlan(day: day, entry: SleepEntryEdit(main: false,
+          start: at(14), end: at(14, 30), source: source, action: action)));
+      await act('legacy', SleepEntryAction.recalculate);
+      await act('legacy', SleepEntryAction.automatic);
+      await act('legacy', SleepEntryAction.notSleep);
+      await LocalDb.close(); db = await LocalDb.instance;
+      expect((await rows('sleep_nap')).where((r) => r['start_ts'] == at(14)).single['source'], 'rejected');
+      await act('rejected', SleepEntryAction.automatic);
+      await LocalDb.close(); db = await LocalDb.instance;
+      final naps = await rows('sleep_nap');
+      final restored = naps.where((r) => r['start_ts'] == at(14)).single;
+      expect([restored['source'], restored['payload_json']], ['legacy', snapshot]);
+      expect(naps.where((r) => r['start_ts'] == at(16)).single, other);
+      expect((await rows('sleep_edit_job')).single['revision'], 5);
+    });
+
     test('an invalid edit writes nothing at all', () async {
       final before = {for (final t in ['sleep_override', 'sleep_nap']) t: await rows(t)};
       for (final bad in [

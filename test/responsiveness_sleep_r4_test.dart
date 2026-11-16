@@ -7,6 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/activity_store.dart';
+import 'package:openstrap_edge/data/sleep_edit_write.dart';
+import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/sleep_edit_store.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'backup/backup_support.dart';
@@ -106,6 +109,77 @@ void main() {
       400,
     );
   });
+
+  // WHY: CLAIM(retained-nap-receipt). Main-window reuse cannot certify a
+  // nap-only edit. Real runner + reopen prove projection and receipt agree.
+  for (final action in ['add', 'move', 'reject']) {
+    test('R1 pruned night applies $action nap before dependents and done', () async {
+      await seed(daytime: false, manual: false);
+      final db = await LocalDb.instance;
+      int at(int h) => DateTime.parse('${p.old}T${h.toString().padLeft(2, '0')}:00:00')
+          .millisecondsSinceEpoch ~/ 1000;
+      final target = {'start': at(10), 'end': at(10) + 1800,
+        'duration_min': 20, 'in_bed_min': 30, 'source': 'legacy', 'confidence': .8};
+      final unrelated = {'start': at(16), 'end': at(16) + 1800,
+        'duration_min': 25, 'in_bed_min': 30, 'source': 'legacy', 'confidence': .9};
+      final main = {'is_main': true, 'onset_ts': at(0) - 3600,
+        'wake_ts': at(7), 'duration_min': 400, 'efficiency': .91};
+      final row = (await LocalDb.dayResult(p.old))!;
+      final bundle = Map<String, dynamic>.from(jsonDecode(row['payload_json'] as String) as Map);
+      bundle['naps'] = {'value': [target, unrelated], 'assessment_complete': true};
+      (bundle['scalars'] as Map)['nap_min'] = 45.0;
+      bundle['sleep_periods'] = {'periods': [main], 'total_asleep_min': 445};
+      await db.update('day_result', {'payload_json': jsonEncode(bundle)},
+        where: 'day_id = ?', whereArgs: [p.old]);
+      await db.transaction((tx) => ActivityStore.preserveLegacyNaps(tx, p.old, bundle));
+      if (action == 'reject') {
+        // The low-level assertion deliberately isolates the worker regression
+        // from the separate legacy entry-action guard tested in data safety.
+        await LocalDb.putNapEdit(dayId: p.old, startTs: at(10),
+          endTs: at(10) + 1800, source: 'rejected');
+        await SleepEditStore.recalculate(p.old);
+      } else {
+        await writeSleepEdit(db, SleepEditPlan(day: p.old, naps: [NapWrite(
+          start: at(14), end: at(14) + 1800,
+          fromStart: action == 'move' ? at(10) : null,
+          fromEnd: action == 'move' ? at(10) + 1800 : null,
+          fromSource: action == 'move' ? 'legacy' : null)]));
+      }
+      await LocalDb.close();
+      final expected = action == 'add' ? 75 : action == 'move' ? 55 : 25;
+      var dependentRan = false;
+      DerivationEngine.debugSecondHalfHook = (day) async {
+        if (day != p.b) return;
+        dependentRan = true;
+        expect((await SleepEditStore.status(p.old))!['phase'], 'dependents');
+        final applied = jsonDecode((await LocalDb.dayResult(p.old))!['payload_json'] as String) as Map;
+        expect((applied['scalars'] as Map)['nap_min'], expected);
+      };
+      final app = AppState.forTesting();
+      try {
+        await app.sleepEditRunner.start().timeout(const Duration(seconds: 120));
+        final result = (await LocalDb.dayResult(p.old))!;
+        final saved = jsonDecode(result['payload_json'] as String) as Map;
+        final scalars = saved['scalars'] as Map;
+        expect(scalars['nap_min'], expected);
+        expect({...scalars}..remove('nap_min'), {'strain': 5, 'steps': 1234,
+          'rmssd': 55, 'tst_min': 400, 'readiness': 70, 'rhr': 52});
+        expect(result['rmssd'], 55);
+        final periods = saved['sleep_periods'] as Map;
+        expect((periods['periods'] as List).where((p) => (p as Map)['is_main'] == true).single, main);
+        expect(periods['total_asleep_min'], 400 + expected);
+        final naps = (saved['naps'] as Map)['value'] as List;
+        expect(naps.where((n) => (n as Map)['start'] == at(16)).single, unrelated);
+        expect(naps.map((n) => (n as Map)['start']), action == 'add'
+          ? [at(10), at(14), at(16)] : action == 'move' ? [at(14), at(16)] : [at(16)]);
+        final repo = LocalRepositoryImpl(getProfileMap: () => {});
+        expect((await repo.getDayNaps(p.old))['nap_min'], expected);
+        final job = (await SleepEditStore.status(p.old))!;
+        expect([job['phase'], job['applied_revision']], ['done', job['revision']]);
+        expect(dependentRan, isTrue);
+      } finally { app.dispose(); }
+    });
+  }
 
   for (final daytime in [false, true]) {
     final input = daytime ? 'daytime raw only' : 'fully pruned';

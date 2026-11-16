@@ -109,6 +109,22 @@ void main() {
     });
   }
 
+  // WHY: CLAIM(sleep-summary-accessibility). A decorative empty arc must
+  // not expose a fabricated determinate zero to screen readers.
+  for (final efficiency in [null, double.nan, double.infinity, -.1, 1.1, 0.0, .87]) {
+    testWidgets('R1 efficiency semantics distinguish unavailable from $efficiency', (t) async {
+      final semantics = t.ensureSemantics();
+      addTearDown(semantics.dispose);
+      await t.pumpWidget(MaterialApp(theme: buildTheme(Brightness.dark), home: Scaffold(
+        body: SingleChildScrollView(child: SleepSummary(efficiency: efficiency,
+          sourceText: '', onEdit: () {})))));
+      final data = t.getSemantics(find.byKey(const ValueKey('sleep-efficiency-ring'))).getSemanticsData();
+      final valid = efficiency != null && efficiency.isFinite && efficiency >= 0 && efficiency <= 1;
+      expect(data.label, valid ? 'Sleep efficiency' : 'Sleep efficiency, unavailable');
+      expect(data.value, valid ? '${(efficiency! * 100).round()}%' : '');
+    });
+  }
+
   test('every shipped language has translated summary and editor actions', () {
     for (final locale in AppLocalizations.supportedLocales) {
       final l = lookupAppLocalizations(locale);
