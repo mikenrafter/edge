@@ -19587,5 +19587,109 @@
   "homeLastKnownFailed": "Last known {time} · update failed",
   "@homeLastKnownFailed": {"placeholders": {"time": {"type": "String"}}},
   "homeLastKnownSource": "{status}. Read {readTime}. Calculated {computedTime}.",
-  "@homeLastKnownSource": {"placeholders": {"status": {"type": "String"}, "readTime": {"type": "String"}, "computedTime": {"type": "String"}}}
+  "@homeLastKnownSource": {"placeholders": {"status": {"type": "String"}, "readTime": {"type": "String"}, "computedTime": {"type": "String"}}},
+  "sleepSummaryEdit": "Edit sleep",
+  "sleepSummaryAsleep": "asleep",
+  "sleepSummaryInBed": "{time} in bed",
+  "@sleepSummaryInBed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryCoverage": "{watched} watched · {missing} not recorded.\nThe asleep percentage uses watched time.",
+  "@sleepSummaryCoverage": {
+    "placeholders": {
+      "watched": {
+        "type": "String"
+      },
+      "missing": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryNoWindow": "No recorded sleep window",
+  "sleepSummaryFellAsleep": "Fell asleep",
+  "sleepSummaryMainSleep": "Main sleep",
+  "sleepSummaryNapStarted": "Nap started",
+  "sleepSummaryNapEnded": "Nap ended",
+  "sleepSummaryLogged": "You logged this",
+  "sleepSummaryDetected": "Detected",
+  "sleepSummaryNapAsleep": "{time} asleep",
+  "@sleepSummaryNapAsleep": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryUpDream": "I'm up from a dream",
+  "sleepSummaryUpNormal": "I'm up normally",
+  "sleepSummaryUnanswered": "Dream/normal not answered",
+  "sleepSummaryAfterAlert": "{time} after first wake alert sent",
+  "@sleepSummaryAfterAlert": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryNaturalSent": "Natural Wake sent",
+  "sleepSummaryRepeatSent": "Natural Wake repeat sent",
+  "sleepSummaryGradualSent": "Gradual Wake sent",
+  "sleepSummaryAlarmReported": "Alarm reported by band",
+  "sleepSummarySleepEnded": "Sleep ended",
+  "sleepSummaryDuration": "{hours}h {minutes}m",
+  "@sleepSummaryDuration": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryElapsed": "{minutes}m {seconds}s",
+  "@sleepSummaryElapsed": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      },
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "sleepSummaryRecalculate": "Recalculate time in bed",
+  "sleepSummaryZoomIn": "Zoom in",
+  "sleepSummaryZoomOut": "Zoom out",
+  "sleepSummaryResetZoom": "Reset zoom",
+  "sleepSummaryBackNight": "Back to this night",
+  "sleepSummaryNoWake": "Wake alert and “I'm up” not recorded.",
+  "sleepSummaryConfirmed": "Detected · confirmed by you",
+  "sleepSummaryRecorded": "Recorded nap",
+  "sleepSummaryNap": "Nap",
+  "sleepSummarySaveChanges": "Save your time changes before changing this entry.",
+  "sleepSummaryEntryChanged": "This sleep entry changed while you were editing. Open it again.",
+  "sleepSummaryNotSaved": "Not saved",
+  "sleepSummaryChanged": "Changed {time}",
+  "@sleepSummaryChanged": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryPanEarlier": "Pan earlier",
+  "sleepSummaryPanLater": "Pan later",
+  "sleepSummaryAfterAlarm": "{time} after band-reported alarm",
+  "@sleepSummaryAfterAlarm": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  }
 }

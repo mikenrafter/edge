@@ -90,7 +90,7 @@ void main(){
     await settle(t);
     expect(find.byType(SleepTimelineEditor), findsOneWidget);
     expect(t.widget<SleepTimelineEditor>(find.byType(SleepTimelineEditor)).data.day, data.day);
-    await t.tap(find.byKey(SleepTimelineEditor.cancelKey));
+    Navigator.of(t.element(find.byType(SleepTimelineEditor))).pop();
     await settle(t);
     expect(find.byType(SleepTimelineEditor), findsNothing);
     expect(within('timeline', find.text('Edit sleep')), findsOneWidget);
@@ -174,7 +174,7 @@ void main(){
       await takePilotShot(t,'sleep-${pilot ? 'on' : 'off'}-$id');
       expect(t.takeException(),isNull);
       if (id == 'timeline') {
-        final actions = pilot ? find.byKey(NightCard.cardKey)
+        final actions = pilot ? find.byKey(const ValueKey('sleep-summary'))
             : find.byKey(const ValueKey('card:window'));
         await Scrollable.ensureVisible(t.element(actions), alignment: 0);
         await t.pump();

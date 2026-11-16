@@ -50,6 +50,8 @@ String localizedText(AppLocalizations? l, String text) {
     return l.findingLowReadinessScoredDetail(int.parse(lowScore[1]!));
   }
   return switch (text) {
+    'This sleep entry changed while you were editing. Open it again.' => l.sleepSummaryEntryChanged,
+    'Save your time changes before changing this entry.' => l.sleepSummarySaveChanges,
     "Resting heart rate has been raised" => l.findingIllnessTitle,
     "Recent nights put your resting heart rate above your usual, from one very high night or a few slightly raised ones. One signal: a pattern, not a cause." =>
       l.findingIllnessDetail,
