@@ -7377,7 +7377,8 @@ class LocalDb {
   /// throw is the race/programmatic-caller backstop.
   static Future<void> putJournalFieldDef(JournalFieldSpec spec) => _ldbPutJournalFieldDef(spec);
 
-  static Future<Map<String, int>> applyPendingActivityReviews() => _ldbApplyPendingActivityReviews();
+  static Future<Map<String, int>> applyPendingActivityReviews({Transaction? transaction, String? onlyDay}) =>
+      _ldbApplyPendingActivityReviews(transaction: transaction, onlyDay: onlyDay);
 
   static Future<void> finishActivityReviews(Map<String, int> revisions) async {
     final db = await instance;
@@ -7400,7 +7401,8 @@ class LocalDb {
     Transaction? transaction,
   }) => _ldbPutNapEdit(dayId: dayId, startTs: startTs, endTs: endTs, source: source, expected: expected, transaction: transaction);
 
-  static Future<void> deleteNapEdit(String dayId, int startTs) => _ldbDeleteNapEdit(dayId, startTs);
+  static Future<void> deleteNapEdit(String dayId, int startTs, {Transaction? transaction}) =>
+      _ldbDeleteNapEdit(dayId, startTs, transaction: transaction);
 
   static Future<List<Map<String, dynamic>>> napEdits(String dayId) async {
     final db = await instance;

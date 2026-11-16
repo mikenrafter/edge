@@ -766,7 +766,7 @@ class ActivityStore {
             : NapEditKind.added,
         startSec: row['start_ts'] as int,
         endSec: row['end_ts'] as int,
-        snapshot: row['payload_json'] is String
+        snapshot: row['source'] != 'manual' && row['payload_json'] is String
             ? Map<String, dynamic>.from(
                 jsonDecode(row['payload_json'] as String) as Map,
               )
