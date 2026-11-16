@@ -12,6 +12,7 @@ import 'package:openstrap_edge/wake/wake_stores.dart';
 import '../backup/backup_support.dart';
 import '../support/wake_fakes.dart';
 import 'fixtures.dart';
+import 'package:openstrap_edge/wake/wake_timeline.dart';
 
 Future<void> seedNight(
   int day, {
@@ -56,6 +57,7 @@ Future<void> seedNight(
   final e = alarm.millisecondsSinceEpoch ~/ 1000;
   for (final (kind, minutes, data) in [
     ('natural', -20, <String, Object?>{'reason': 'fire'}),
+    ('natural_haptic', -20, <String, Object?>{'phase': 'result', 'result': 'sent', 'delivered': ['band']}),
     (
       'ack',
       -19,
@@ -148,6 +150,8 @@ void main() {
       await const DbWakeTraceStore().append(
         row('natural', -20, {'reason': 'fire'}),
       );
+      await const DbWakeTraceStore().append(row('natural_haptic', -20,
+        {'phase': 'result', 'result': 'sent'}));
       final batch = (await LocalDb.instance).batch();
       for (var i = 1; i <= 420; i++) {
         batch.insert('wake_trace', {
@@ -353,6 +357,34 @@ void main() {
       ]);
     },
   );
+
+  // WHY: CLAIM(wake-summary-epoch). Day-wide event lists must retain the
+  // answer on each epoch's own acknowledgement, even when only one fired.
+  // catches: assigning primary.dream to every acknowledgement in the day.
+  test('two epochs in one day retain their own answers and never borrow an alert', () async {
+    await seedNight(0);
+    final trace = const DbWakeTraceStore();
+    await trace.append(row('ack', 30, {
+      'dreamAnswer': 'normal', 'wakePath': 'alarm',
+      'dreamAnsweredAtMs': atMinute(31).millisecondsSinceEpoch,
+    }, epoch + 1800));
+    await trace.append(row('snooze', 20, {'count': 1}, epoch + 1800));
+    final n = await const DbWakeJournal().forDay('2026-10-26');
+    expect(n.firstFireAt, atMinute(-20));
+    expect(n.ackAt, atMinute(-19));
+    expect(n.timeToWake, const Duration(minutes: 1));
+    expect(n.dream?.answer, DreamAnswer.dream);
+    expect(n.snoozeCount, 1);
+    final acks = n.events.where((e) => e.kind == WakeNightEventKind.ack).toList();
+    expect(acks.map((e) => [e.wakeEpochSec, e.at, e.dream?.answer]), [
+      [epoch, atMinute(-19), DreamAnswer.dream],
+      [epoch + 1800, atMinute(30), DreamAnswer.normal],
+    ]);
+    final other = await const DbWakeJournal().forEpoch(epoch + 1800);
+    expect(other.firstFireAt, isNull);
+    expect(other.timeToWake, isNull);
+    expect((await const DbWakeJournal().forDay('2026-10-27')).events, isEmpty);
+  });
 
   test('existing day timeline loader includes durable wake moments', () async {
     await seedNight(0);

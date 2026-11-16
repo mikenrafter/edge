@@ -6,8 +6,8 @@
 // Naps are written as plain rows, never through the nap-extension resolver:
 // the resolver reads the main sleep from the stored day result, which is the
 // window this very Save replaces, so it would merge a nap into the OLD night.
-// The editor has already made the blocks non-overlapping; that is checked
-// again here before anything is written.
+// Existing overlaps stay visible for correction. Every changed interval is
+// validated against unchanged stored entries before anything is written.
 
 import 'package:sqflite/sqflite.dart';
 
@@ -17,6 +17,7 @@ import 'activity_store.dart';
 import 'day_label.dart';
 import 'db.dart';
 import 'nap_resolution.dart';
+import 'sleep_edit_store.dart';
 
 /// One nap as the editor leaves it. [fromStart]/[fromSource] describe the
 /// stored nap it was dragged from (null: a new nap). [fromSource] null is a
@@ -31,23 +32,38 @@ class NapWrite {
   bool get moved => fromStart != start || fromEnd != end;
 }
 
+enum SleepEntryAction { recalculate, automatic, notSleep }
+
+/// One existing entry, identified before opening the editor. An action never
+/// operates on other naps in the same night [sleep_summary_editor_test].
+class SleepEntryEdit {
+  const SleepEntryEdit({required this.start, required this.end,
+    required this.main, required this.action, this.source});
+  final int start, end;
+  final bool main;
+  final String? source;
+  final SleepEntryAction action;
+}
+
 class SleepEditPlan {
-  const SleepEditPlan({required this.day, this.window, this.naps = const []});
+  const SleepEditPlan({required this.day, this.window, this.naps = const [], this.entry});
 
   /// The night (its wake date).
   final String day;
+  final SleepEntryEdit? entry;
 
   /// The main sleep (onset, wake), epoch seconds; null: unchanged.
   final (int, int)? window;
 
   /// Only naps that are new or moved.
   final List<NapWrite> naps;
-  bool get isEmpty => window == null && naps.isEmpty;
+  bool get isEmpty => window == null && naps.isEmpty && entry == null;
 
   /// The days whose results this plan changes (a nap before the main sleep
   /// can belong to the evening before).
   Set<String> get days => {
         if (window != null) day,
+        if (entry != null) entry!.main ? day : _dayOf(entry!.start),
         for (final n in naps) ...[
           _dayOf(n.start),
           if (n.fromStart != null) _dayOf(n.fromStart!),
@@ -66,10 +82,9 @@ class SleepEditInvalid implements Exception {
 
 /// Checks [plan] and writes it in one transaction. Throws [SleepEditInvalid]
 /// (writing nothing) for a window that ends before it starts, a nap outside
-/// 5 minutes to 6 hours, or blocks that overlap.
+/// 5 minutes to 6 hours, overlapping replacements, or a stale entry action.
 Future<void> writeSleepEdit(Database db, SleepEditPlan plan) async {
   await db.transaction((tx) => writeSleepEditInTransaction(tx, plan));
-  if (plan.window != null) await LocalDb.releaseFrozenHeadline(plan.day);
 }
 
 /// Joins the Activities batch; all refusal and writes share its transaction.
@@ -77,6 +92,50 @@ Future<void> writeSleepEditInTransaction(Transaction tx, SleepEditPlan plan) asy
   final w = plan.window;
   final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
   await _validateSleepEdit(tx, plan);
+  final edit = plan.entry;
+  if (edit != null) {
+    if (plan.window != null || plan.naps.isNotEmpty) {
+      throw const SleepEditInvalid('Save your time changes before changing this entry.');
+    }
+    final day = edit.main ? plan.day : _dayOf(edit.start);
+    final rows = await tx.query(edit.main ? 'sleep_override' : 'sleep_nap',
+      where: edit.main ? 'day_id = ?' : 'day_id = ? AND start_ts = ?',
+      whereArgs: edit.main ? [day] : [day, edit.start]);
+    final row = rows.firstOrNull;
+    final mine = const {'manual', 'confirmed', 'rejected'}.contains(edit.source);
+    if (mine && (row == null || row['source'] != edit.source ||
+        (!edit.main && row['end_ts'] != edit.end) ||
+        (edit.main && edit.source != 'rejected' &&
+          (row['onset_ts'] != edit.start || row['offset_ts'] != edit.end))) ||
+        !mine && row != null && row['source'] != 'rejected') {
+      throw const SleepEditInvalid('This sleep entry changed while you were editing. Open it again.');
+    }
+    if (edit.main) {
+      switch (edit.action) {
+        case SleepEntryAction.automatic:
+          await tx.delete('sleep_override', where: 'day_id = ?', whereArgs: [day]);
+        case SleepEntryAction.notSleep:
+          await tx.insert('sleep_override', {'day_id': day, 'onset_ts': edit.start,
+            'offset_ts': edit.end, 'source': 'rejected', 'created_at': now},
+            conflictAlgorithm: ConflictAlgorithm.replace);
+        case SleepEntryAction.recalculate:
+          break;
+      }
+      await tx.delete('wake_confirmation', where: 'day_id = ?', whereArgs: [day]);
+    } else {
+      switch (edit.action) {
+        case SleepEntryAction.automatic:
+          await tx.delete('sleep_nap', where: 'day_id = ? AND start_ts = ? AND end_ts = ?',
+            whereArgs: [day, edit.start, edit.end]);
+        case SleepEntryAction.notSleep:
+          await LocalDb.putNapEdit(dayId: day, startTs: edit.start, endTs: edit.end,
+            source: 'rejected', transaction: tx);
+        case SleepEntryAction.recalculate:
+          break;
+      }
+    }
+    await ActivityStore.markDayChanged(tx, day);
+  }
   if (w != null) {
     await tx.insert('sleep_override', {
       'day_id': plan.day,
@@ -118,6 +177,11 @@ Future<void> writeSleepEditInTransaction(Transaction tx, SleepEditPlan plan) asy
     }, conflictAlgorithm: ConflictAlgorithm.replace);
     await ActivityStore.supersede(tx, ActivityKind.nap, n.start, n.end);
     await ActivityStore.markDayChanged(tx, day);
+  }
+  // CLAIM(sleep-editor-receipt): the durable assertion, affected-day jobs and
+  // frozen-headline release commit together [day_timeline_data_safety_test].
+  for (final day in plan.days) {
+    await SleepEditStore.enqueue(tx, day);
   }
 }
 

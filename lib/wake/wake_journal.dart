@@ -156,10 +156,12 @@ class DbWakeJournal {
     // acknowledgement to manufacture a duration.
     return WakeNightTimeline(
       events: events,
+      deliveries: [for (final n in nights) ...n.deliveries],
       adjustedFor: {for (final n in nights) ...n.adjustedFor},
       firstFireAt: primary?.firstFireAt,
       ackAt: primary?.ackAt,
       timeToWake: primary?.timeToWake,
+      dream: primary?.dream,
       snoozeCount: nights.fold(0, (sum, n) => sum + n.snoozeCount),
     );
   }

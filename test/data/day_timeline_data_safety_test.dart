@@ -75,7 +75,7 @@ void main() {
     // catches: queueing after commit or only queueing the selected night.
     test('batch receipt queues both nap dates and releases only its own pin atomically', () async {
       await db.insert('sync_cursor', {'name': LocalDb.kFrozenHeadlineCursor,
-        'value': jsonEncode({'day': day, 'readiness': 71})},
+        'value': jsonEncode({'day': day, 'value': 71}), 'updated_at': 1},
         conflictAlgorithm: ConflictAlgorithm.replace);
       await db.transaction((tx) async {
         await writeSleepEditInTransaction(tx, SleepEditPlan(day: day,
@@ -97,6 +97,51 @@ void main() {
       }), throwsStateError);
       expect(await rows('sleep_override'), isEmpty);
       expect(await rows('sleep_edit_job'), before);
+    });
+
+    // WHY: CLAIM(sleep-editor-entry). Rejecting/restoring main sleep must
+    // preserve unrelated logged naps and durably queue the selected night.
+    test('entry actions survive restart and preserve every unrelated nap', () async {
+      await writeSleepEdit(db, SleepEditPlan(day: day,
+        window: (at(23, 0, 13), at(7)), naps: [
+          NapWrite(start: at(14), end: at(14, 30)),
+          NapWrite(start: at(16), end: at(16, 40))]));
+      final originalNaps = await rows('sleep_nap');
+      Future<void> mainAction(SleepEntryAction action) => writeSleepEdit(db,
+        SleepEditPlan(day: day, entry: SleepEntryEdit(main: true,
+          start: at(23, 0, 13), end: at(7),
+          source: action == SleepEntryAction.automatic ? 'rejected' : 'manual', action: action)));
+      await mainAction(SleepEntryAction.notSleep);
+      await LocalDb.close(); db = await LocalDb.instance;
+      expect((await rows('sleep_override')).single['source'], 'rejected');
+      expect(await rows('sleep_nap'), originalNaps);
+      expect((await rows('sleep_edit_job')).single['revision'], 2);
+      await mainAction(SleepEntryAction.automatic);
+      expect(await rows('sleep_override'), isEmpty);
+      expect(await rows('sleep_nap'), originalNaps);
+      await writeSleepEdit(db, SleepEditPlan(day: day, entry: SleepEntryEdit(
+        main: false, start: at(14), end: at(14, 30), source: 'manual',
+        action: SleepEntryAction.notSleep)));
+      await LocalDb.close(); db = await LocalDb.instance;
+      final naps = await rows('sleep_nap');
+      expect(naps.map((r) => [r['start_ts'], r['source']]), [
+        [at(16), 'manual'], [at(14), 'rejected']]);
+      expect((await rows('sleep_edit_job')).single['revision'], 4);
+      expect((await rows('sleep_edit_job')).single['phase'], 'queued');
+    });
+
+    // WHY: CLAIM(sleep-editor-entry). A late action must not reject a newer
+    // manual night just because it still has the same source name.
+    test('stale entry actions refuse without changing the newer receipt', () async {
+      await writeSleepEdit(db, SleepEditPlan(day: day, window: (at(23, 0, 13), at(7))));
+      await writeSleepEdit(db, SleepEditPlan(day: day, window: (at(23, 30, 13), at(8))));
+      final before = await rows('sleep_override');
+      final jobs = await rows('sleep_edit_job');
+      await expectLater(writeSleepEdit(db, SleepEditPlan(day: day,
+        entry: SleepEntryEdit(main: true, start: at(23, 0, 13), end: at(7),
+          source: 'manual', action: SleepEntryAction.notSleep))), throwsA(isA<SleepEditInvalid>()));
+      expect(await rows('sleep_override'), before);
+      expect(await rows('sleep_edit_job'), jobs);
     });
 
     test('an invalid edit writes nothing at all', () async {

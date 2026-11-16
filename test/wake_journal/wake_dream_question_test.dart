@@ -84,6 +84,8 @@ void main() {
         await const DbWakeTraceStore().append(
           row('natural', -20, {'reason': 'fire'}),
         );
+        await const DbWakeTraceStore().append(row('natural_haptic', -20,
+          {'phase': 'result', 'result': 'sent'}));
         await const DbWakeTraceStore().append(row('ack', 8));
       });
       await pump(t, WakePath.natural);
