@@ -15,30 +15,38 @@ class HelpEntry extends StatelessWidget {
   const HelpEntry({super.key, required this.topic});
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: S.x4),
-    child: SizedBox(
-      width: double.infinity,
-      child: TextButton(
-        style: TextButton.styleFrom(
-          foregroundColor: P.of(context).ink3,
-          minimumSize: const Size(0, 48),
-          textStyle: F.cap,
-        ),
-        onPressed: () {
-          final band = bandGenerationOf(context.read<AppState>().paired);
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => HelpScreen(topic: topic, band: band),
-            ),
-          );
-        },
-        child: Text(
-          (AppLocalizations.of(context) ??
-                  lookupAppLocalizations(const Locale('en')))
-              .helpLookingForSomething,
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context) ?? lookupAppLocalizations(const Locale('en'));
+    final tab = switch (topic) {
+      GuideTopic.today => l.tabToday,
+      GuideTopic.sleep => l.tabSleep,
+      GuideTopic.activity => l.tabActivity,
+      GuideTopic.health => l.tabHealth,
+    };
+    return Padding(
+      padding: const EdgeInsets.only(top: S.x4),
+      child: SizedBox(
+        width: double.infinity,
+        child: TextButton(
+          style: TextButton.styleFrom(
+            foregroundColor: P.of(context).ink3,
+            minimumSize: const Size(0, 48),
+            textStyle: F.cap,
+          ),
+          onPressed: () {
+            final band = bandGenerationOf(context.read<AppState>().paired);
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => HelpScreen(topic: topic, band: band),
+              ),
+            );
+          },
+          child: Text(
+            l.helpLookingForSomething,
+            semanticsLabel: l.helpOpenForTab(tab),
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }

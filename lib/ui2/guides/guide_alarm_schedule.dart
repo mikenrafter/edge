@@ -2,12 +2,12 @@
 //
 //   Sleep tab, expand the containing section if folded  ->  "Alarm"  ->  Alarm screen:
 //   pick a day tab, turn that day on (the first row under the tabs)  ->  its
-//   "Wake time".
+//   "Wake time", choose the time, then Save.
 //
 // Also: Settings -> "Alarm" (footer 1). On integrate/next the alarm screen has
 // no separate "weekly schedule" list: the seven day tabs choose a day, and
 // ONE section under them (Alarm on/off, Wake time, ...) edits that day. So the
-// path is: tabs + on/off row (step 2), then Wake time (step 3).
+// path is: tabs + on/off row (step 2), then Wake time and Save (step 3).
 //
 // CLAIM(alarm-keys): step 2 and 3 stand on keys, because two of the rows are
 // not localised on this screen ("Alarm" prints in English in every language) and
@@ -69,8 +69,10 @@ Guide get alarmScheduleGuide => Guide(
           GuideStep(
             id: 'set-wake-time',
             node: GuideNode.alarm,
-            target: _wakeTime,
+            target: GuideTarget.label(ScreenLabel.alarmSave),
+            // Save exists even with every day off. Wake time gates this step.
             anchor: _wakeTime,
+            alsoTap: [TargetContent(_wakeTime)],
             action: GuideAction.tap,
             caption: GuideCopy.alarmCaptionSetWakeTime,
           ),

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
+import 'package:openstrap_edge/ui2/guides/guide_step_card.dart';
 import '../../test/support/bundled_fonts.dart';
 import '../../test/support/guide_r2_scenes.dart';
 import '../../test/support/guide_r7_scenes.dart';
@@ -50,6 +51,14 @@ void main() {
           findsNothing,
           reason: 'do not compare a loading page',
         );
+        final napRules = Platform.environment['HELP_NAP_RULES'] == '1' && scene.id == 'add-nap/log-nap';
+        if (napRules) {
+          // Capture the existing completion state where the rules footer lives.
+          mounted.run.targetTapped();
+          await settleLiveGuide(t, frames: 20);
+          await t.ensureVisible(find.byKey(GuideStepCard.footerKey(1)));
+          await settleLiveGuide(t, frames: 20);
+        }
         final boundary = t.renderObject<RenderRepaintBoundary>(find.byKey(key));
         await t.runAsync(() async {
           t.binding.rootPipelineOwner.flushPaint();
@@ -58,7 +67,7 @@ void main() {
             final bytes = await image.toByteData(
               format: ui.ImageByteFormat.png,
             );
-            final path = '$_out/${scene.id.replaceAll('/', '-')}';
+            final path = '$_out/${napRules ? 'add-nap-rules' : scene.id.replaceAll('/', '-')}';
             await File('$path.png').parent.create(recursive: true);
             await File('$path.png').writeAsBytes(bytes!.buffer.asUint8List());
             await File('$path.json').writeAsString(

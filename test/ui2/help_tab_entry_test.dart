@@ -136,6 +136,8 @@ void main() {
     testWidgets('${locale.languageCode} footer wraps at large text size', (
       t,
     ) async {
+      final semantics = t.ensureSemantics();
+      try {
       skTallView(t, w: 320, h: 844);
       await t.pumpWidget(
         skHost(
@@ -159,10 +161,17 @@ void main() {
       final label = _labels[locale.languageCode]!.$1;
       final button = find.widgetWithText(TextButton, label);
       expect(button.hitTestable(), findsOneWidget);
+      final reviewed = jsonDecode(File('test/fixtures/help_review_copy.json').readAsStringSync()) as Map<String, dynamic>;
+      final expectedName = (reviewed[locale.languageCode]['helpOpenForTab'] as String)
+          .replaceAll('{tab}', lookupAppLocalizations(locale).tabSleep);
+      expect(t.getSemantics(button).getSemanticsData().label, expectedName);
       expect(t.getRect(button).left, greaterThanOrEqualTo(0));
       expect(t.getRect(button).right, lessThanOrEqualTo(320));
       expect(t.getSize(button).height, greaterThanOrEqualTo(48));
       expect(t.takeException(), isNull);
+      } finally {
+        semantics.dispose();
+      }
     });
   }
   // why: every supported language needs translated discovery and escape labels.

@@ -1,4 +1,6 @@
 {
+  "helpOpenForTab": "Open Help for {tab}",
+  "@helpOpenForTab": {"description": "Accessible name of the tab footer. Names Help and its tab destination.", "placeholders": {"tab": {"type": "String", "description": "Localized tab name"}}},
   "@@locale": "en",
   "chartPanelLatest": "LATEST",
   "chartPanelSelected": "SELECTED",
@@ -18807,9 +18809,9 @@
       }
     }
   },
-  "guideAlarmStep3": "Then tap **{wake}** under that day and pick the time. Every day can have its own time.",
+  "guideAlarmStep3": "Tap **{wake}**, choose the time, then tap **Save**.",
   "@guideAlarmStep3": {
-    "description": "Step 3 caption. {wake} is the in-app name of the Wake time row that appears under a day that is on.",
+    "description": "Final step: choose the time, then persist it. {wake} is the Wake time row. Save is the literal label printed by the fork alarm screen in every locale.",
     "placeholders": {
       "wake": {
         "type": "String",
@@ -18909,7 +18911,7 @@
   "@guideAddNapRulesTitle": {
     "description": "Footer card title: the user tried to log a nap and it was refused."
   },
-  "guideAddNapRulesBody": "A nap lasts between {minMinutes} minutes and {maxHours} hours, has to be over already, and can't overlap another nap or your main sleep.",
+  "guideAddNapRulesBody": "A nap lasts between {minMinutes} minutes and {maxHours} hours and must have ended. It cannot overlap another nap. If it overlaps or directly touches your main sleep, the app combines both into one main sleep window, from the earlier start to the later end. It does not save a separate nap.",
   "@guideAddNapRulesBody": {
     "description": "Footer card body: nap limits come from the shared form validation caps.",
     "placeholders": {
@@ -19231,7 +19233,7 @@
       }
     }
   },
-  "guideLogPastStep2": "Scroll to the bottom and tap **{log}**.",
+  "guideLogPastStep2": "Tap **{log}** above your sessions.",
   "@guideLogPastStep2": {
     "description": "Step 2 caption. {log} is the Log a past workout button.",
     "placeholders": {
@@ -19273,7 +19275,7 @@
       }
     }
   },
-  "guideLogPastMissingBody": "It sits at the very bottom of **{history}**, below your sessions. Scroll all the way down.",
+  "guideLogPastMissingBody": "In **{history}**, look above your sessions for the action.",
   "@guideLogPastMissingBody": {
     "description": "Footer card body.",
     "placeholders": {

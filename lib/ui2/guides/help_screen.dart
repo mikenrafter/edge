@@ -114,8 +114,8 @@ class _HelpScreenState extends State<HelpScreen> {
   }
 
   /// Starts a live run of [guide]. The Help screen is a route above the shell:
-  /// the runner pops to the shell root first, so this screen is gone when the
-  /// run begins.
+  /// the runner dismisses Help, retains a matching guide screen, or navigates
+  /// to the first step when the retained screen does not match.
   ///
   /// A guide with only band-specific variants and no known band asks which band
   /// first ([HelpScreen.bandPickerKey]); a band the guide does not cover says so

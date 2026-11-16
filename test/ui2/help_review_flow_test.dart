@@ -1,6 +1,8 @@
 // Cross-screen regressions found in the first fork Help review.
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
@@ -8,10 +10,13 @@ import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/ui2/guides/guide_navigation.dart';
 import 'package:openstrap_edge/ui2/guides/guide_run.dart';
 import 'package:openstrap_edge/ui2/guides/help_screen.dart';
+import 'package:openstrap_edge/ui2/profile/alarm.dart';
 import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
 import 'package:openstrap_edge/ui2/ui2.dart' show SubTabs;
 import '../support/guide_r2_scenes.dart' show r2OpenDb, r2Tab, r2Guide;
 import '../support/live_guide_harness.dart';
+import '../support/bundled_fonts.dart';
+import '../support/skeleton_fixture.dart' show skLoadAppFonts;
 
 Future<void> _footer(WidgetTester t) async {
   final button = find.widgetWithText(TextButton, 'Looking for something?');
@@ -25,7 +30,13 @@ Future<void> _footer(WidgetTester t) async {
 }
 
 void main() {
-  setUpAll(() => r2OpenDb('help_review_flow.db'));
+  setUpAll(() async {
+    await r2OpenDb('help_review_flow.db');
+    if (Platform.environment['HELP_REVIEW_SHOTS'] != null) {
+      await loadFonts();
+      await skLoadAppFonts();
+    }
+  });
   tearDownAll(LocalDb.close);
   // WHY: translated directions must agree with the verified fork controls and
   // nap union policy. This fixture is reviewed copy, independent of production.
@@ -81,12 +92,38 @@ void main() {
     }
   }
 
+  // WHY: CLAIM(help-start-in-place). A matching pushed page may have a dirty
+  // draft. Starting its guide must retain that page, not invoke its leave guard.
+  // catches: always popping to the shell even when a later guide step matches.
+  testWidgets('Help retains a matching pushed alarm page and its draft', (t) async {
+    final app = await pumpLiveGuideApp(t);
+    app.navigator.push(MaterialPageRoute<void>(builder: (_) => const AlarmScreen()));
+    await settleLiveGuide(t, frames: 30);
+    await t.tap(find.byKey(const ValueKey('alarm-day-enabled')));
+    await settleLiveGuide(t);
+    final page = find.byType(AlarmScreenView).evaluate().single;
+    expect(find.textContaining('Unsaved changes.'), findsOneWidget);
+    app.navigator.push(MaterialPageRoute<void>(builder: (_) => const HelpScreen()));
+    await settleLiveGuide(t);
+    await t.ensureVisible(find.byKey(HelpScreen.guideRowKey('alarm-schedule')));
+    await t.tap(find.byKey(HelpScreen.guideRowKey('alarm-schedule')).hitTestable());
+    await settleLiveGuide(t, frames: 35);
+    expect(app.runner.activeRun?.currentStep?.id, 'set-wake-time');
+    expect(find.byType(AlarmScreenView).evaluate().single, same(page));
+    expect(find.byType(AlertDialog), findsNothing, reason: 'starting in place must not ask to discard the draft');
+    expect(find.textContaining('Unsaved changes.'), findsOneWidget);
+    app.runner.exit();
+    await t.pumpWidget(const SizedBox());
+    await t.pump();
+  });
+
   // WHY: CLAIM(alarm-guide-save). A picker only changes a draft; the final
   // instruction must expose Save and use the production AlarmScreen/AppState/DB.
   // catches: Wake time as final target, Save as always-present anchor, blocked
   // Wake time input, or a Save target that only finishes without persisting.
   testWidgets('alarm picker leaves the guide unfinished, Save persists chosen time', (t) async {
-    final app = await pumpLiveGuideApp(t, size: const Size(412, 1000));
+    final captureKey = GlobalKey();
+    final app = await pumpLiveGuideApp(t, size: const Size(412, 1000), brightness: Brightness.dark, captureKey: captureKey);
     await app.runner.start(r2Guide('alarm-schedule'), band: null);
     await settleLiveGuide(t, frames: 40);
     var overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
@@ -118,6 +155,22 @@ void main() {
     await settleLiveGuide(t);
     overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
     expect(overlay.targetRect!.overlaps(t.getRect(find.text('Save'))), isTrue);
+    final shots = Platform.environment['HELP_REVIEW_SHOTS'];
+    if (shots != null) {
+      final boundary = t.renderObject<RenderRepaintBoundary>(find.byKey(captureKey));
+      await t.runAsync(() async {
+        t.binding.rootPipelineOwner.flushPaint();
+        final image = await boundary.toImage(pixelRatio: 1);
+        try {
+          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+          final file = File('$shots/alarm-save-after-picker.png');
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(bytes!.buffer.asUint8List());
+        } finally {
+          image.dispose();
+        }
+      });
+    }
     await t.tapAt(overlay.targetRect!.center);
     await settleLiveGuide(t, frames: 40);
     expect(app.runner.activeRun!.state, isA<GuideFinished>());
