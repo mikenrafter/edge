@@ -53,7 +53,9 @@ void main() {
   test('previous detector history and delivery remain byte-identical', () async {
     final old = detection();
     await store.reconcile(old, origin: 'sync', nowMs: 1);
-    await db.update('pulse_episode_revision', {'detector': 0});
+    await db.update('pulse_episode_revision', {'detector': ana.pulseDetectorVersion - 1});
+    final claimed = await store.claim(['strap:0'], token: 'previous', nowMs: 2);
+    await store.finish(claimed, token: 'previous', state: 'sent', nowMs: 3);
     final before = [for (final table in pulseEpisodeTables.take(5))
       jsonEncode(await db.query(table))];
     final quiet = ana.PulseDetection([
@@ -64,10 +66,23 @@ void main() {
         sd1: w.sd1, sd2: w.sd2, ratio: w.ratio, pnnPct: w.pnnPct,
         pending: false, qualified: false, reasons: const [], beats: w.beats)
     ], const []);
-    await store.reconcile(quiet, origin: 'bulk', nowMs: 2);
-    await store.reconcile(old, origin: 'bulk', nowMs: 3);
+    await store.reconcile(quiet, origin: 'bulk', nowMs: 4);
+    await store.reconcile(old, origin: 'bulk', nowMs: 5);
     expect([for (final table in pulseEpisodeTables.take(5))
       jsonEncode(await db.query(table))], before);
+    expect(await store.owed(), isEmpty);
+  });
+  // WHY/CLAIM(pulse-version-history): protecting old history must not hide a new tail.
+  // # catches: dropping an entire new episode because its prefix overlaps history.
+  test('a qualifying tail beyond protected history creates its own alert once', () async {
+    await store.reconcile(detection(), origin: 'sync', nowMs: 1);
+    await db.update('pulse_episode_revision', {'detector': ana.pulseDetectorVersion - 1});
+    final old = jsonEncode(await db.query('pulse_episode', where: 'id=?', whereArgs: ['strap:0']));
+    await store.reconcile(detection(offset: 600000), origin: 'sync', nowMs: 2);
+    expect(jsonEncode(await db.query('pulse_episode', where: 'id=?', whereArgs: ['strap:0'])), old);
+    expect((await store.list()).map((e) => e.id), ['strap:900000','strap:0']);
+    await store.reconcile(detection(offset: 600000), origin: 'sync', nowMs: 3);
+    expect(await db.query('pulse_episode_outbox'), hasLength(2));
   });
   // WHY/CLAIM(pulse-atomic): storage failure cannot authorize an alert.
   test(

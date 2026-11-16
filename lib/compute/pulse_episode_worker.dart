@@ -5,7 +5,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:sqflite/sqflite.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
+import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 import '../data/db.dart';
+import '../data/day_label.dart';
 import '../data/pulse_episode_store.dart';
 import '../util/heavy.dart';
 import '../util/worker_init.dart';
@@ -133,13 +135,15 @@ class PulseEpisodeWorker {
     // Windows start in [lo, hi); each one decides on its whole five-minute
     // context, so the rows reach that far past both ends and the verdict does
     // not depend on which day's run looks at the window.
-    final readLo = lo - _support - _slack, readHi = hi + _support + _slack;
+    final readLo = lo - ana.pulseBaselineLookbackMs - _support - _slack,
+        readHi = hi + _support + _slack;
     final startBucket = readLo ~/ 900000, endBucket = (readHi - 1) ~/ 900000;
     final revisions = await db.rawQuery(
       'SELECT COALESCE(SUM(rev),0) AS rev FROM input_rev WHERE bucket BETWEEN ? AND ?',
       [startBucket, endBucket],
     );
     final revision = revisions.first['rev'] as int;
+    final contextRevision = await pulseContextRevision(db);
     final rows = await db.rawQuery(
       '''SELECT device_id,ts_ms,rec_ts,beat_index,beat_ts_ms,rr_ms,
         EXISTS(SELECT 1 FROM pulse_upgrade_record u
@@ -155,8 +159,14 @@ class PulseEpisodeWorker {
       'pulse_source_complete',
       orderBy: 'source',
     );
+    final certificateStamp = certificates
+        .map((c) {
+          final source = c['source'] as String;
+          return '${source.length}:$source:${c['through_ms']}';
+        })
+        .join(';');
     final digest =
-        'upgrade:1:rev:$revision:complete:$watermark:cert:${jsonEncode(certificates)}';
+        'upgrade:1:rev:$revision:context:$contextRevision:complete:$watermark:cert:$certificateStamp';
     final checkpoint = await db.query(
       'pulse_input_arrival',
       where: 'source=? AND start_ms=? AND end_ms=? AND digest=?',
@@ -181,6 +191,74 @@ class PulseEpisodeWorker {
       sourceStarts[source] =
           (first.first['t'] as int) ~/ ana.pulseWindowMs * ana.pulseWindowMs;
     }
+    final contextRows = await db.rawQuery(
+      """SELECT device_id AS source,rec_ts/300*300000 AS start_ms,
+        COUNT(*) AS samples,
+        COUNT(dyn_accel_g) AS motion_samples,
+        SUM(CASE WHEN dyn_accel_g > ${ana.pulseMotionThresholdG} THEN 1 ELSE 0 END) AS moving_samples,
+        MIN(on_wrist) AS wrist,COUNT(on_wrist) AS wear_samples,
+        SUM(CASE WHEN band_sleep_state=2 THEN 1 ELSE 0 END) AS sleep_samples,
+        SUM(CASE WHEN band_sleep_state BETWEEN 0 AND 3 THEN 1 ELSE 0 END) AS sleep_known
+        FROM decoded_onehz WHERE rec_ts>=? AND rec_ts<? AND ${derivableSourceSql()}
+        GROUP BY device_id,rec_ts/300 ORDER BY device_id,rec_ts/300""",
+      [readLo ~/ 1000, readHi ~/ 1000],
+    );
+    final labels = <String>[];
+    var dateCursor = DateTime.fromMillisecondsSinceEpoch(readLo);
+    final lastDate = DateTime.fromMillisecondsSinceEpoch(readHi);
+    while (!dateCursor.isAfter(lastDate)) {
+      labels.add(dayLabelOf(dateCursor));
+      dateCursor = DateTime(
+        dateCursor.year,
+        dateCursor.month,
+        dateCursor.day + 1,
+      );
+    }
+    final sleepRows = await LocalDb.sleepWindowRowsFor(labels);
+    final wearEvents = <Map<String, Object?>>[];
+    final offSpans = <String, List<List<int>>>{};
+    final chargingSpans = <String, List<List<int>>>{};
+    for (final source in sourceStarts.keys) {
+      wearEvents.addAll(
+        await db.rawQuery(
+          'SELECT device_id AS source,ts,event_id FROM band_events WHERE device_id=? '
+          'AND ts<? AND event_id IN (?,?) ORDER BY ts DESC,event_id LIMIT 1',
+          [
+            source,
+            readLo ~/ 1000,
+            proto.EventId.wristOn,
+            proto.EventId.wristOff,
+          ],
+        ),
+      );
+      wearEvents.addAll(
+        await db.rawQuery(
+          'SELECT device_id AS source,ts,event_id FROM band_events WHERE device_id=? '
+          'AND ts>=? AND ts<? AND event_id IN (?,?) ORDER BY ts,event_id',
+          [
+            source,
+            readLo ~/ 1000,
+            readHi ~/ 1000,
+            proto.EventId.wristOn,
+            proto.EventId.wristOff,
+          ],
+        ),
+      );
+      offSpans[source] = await LocalDb.wristOffSpans(
+        readLo ~/ 1000,
+        readHi ~/ 1000,
+        deviceId: source,
+      );
+      chargingSpans[source] = await LocalDb.chargingSpans(
+        readLo ~/ 1000,
+        readHi ~/ 1000,
+        deviceId: source,
+      );
+    }
+    final baselineEpisodes = await db.rawQuery(
+      'SELECT source,start_ms,end_ms FROM pulse_episode WHERE end_ms>? AND start_ms<?',
+      [readLo - 1800000, readHi + 1800000],
+    );
     final input = PulseDetectionInput(
       rows,
       watermark,
@@ -188,6 +266,14 @@ class PulseEpisodeWorker {
       evaluateTo: hi,
       sourceStarts: sourceStarts,
       sourceCompletions: certificates,
+      contextRows: contextRows,
+      wearEvents: wearEvents,
+      sleepWindows: [
+        for (final row in sleepRows.values) row['window_json'] as String,
+      ],
+      offSpans: offSpans,
+      chargingSpans: chargingSpans,
+      baselineEpisodes: baselineEpisodes,
       requireCertified: processingContext.origin == ProcessingOrigin.recentSync,
     );
     await probe?.afterRead(day);
@@ -215,7 +301,12 @@ class PulseEpisodeWorker {
       syncDays: syncDays,
       nowMs: now,
       heartRate: hrRows,
-      inputStamp: PulseInputStamp(startBucket, endBucket, revision),
+      inputStamp: PulseInputStamp(
+        startBucket,
+        endBucket,
+        revision,
+        contextRevision: contextRevision,
+      ),
     );
     // Explicit checkpoint even on refusal: no fabricated trace or notification.
     await db.insert('pulse_input_arrival', {
@@ -240,13 +331,18 @@ class PulseDetectionInput {
   final List<Map<String, Object?>> rows;
 
   /// [start] and [evaluateTo] bound the window starts decided; [rows] reach
-  /// five minutes further on both sides. [sourceStarts] holds each source's real
+  /// fourteen days earlier for baseline history and five minutes further on
+  /// both sides for cleaning. [sourceStarts] holds each source's real
   /// first instant (absent: the source starts at [start]).
   final int watermark, start;
   final int? evaluateTo;
   final Map<String, int> sourceStarts;
   final List<Map<String, Object?>> sourceCompletions;
   final bool requireCertified;
+  final List<Map<String, Object?>> contextRows, baselineEpisodes, wearEvents;
+  final List<List<int>> sleepSpans;
+  final List<String> sleepWindows;
+  final Map<String, List<List<int>>> offSpans, chargingSpans;
   const PulseDetectionInput(
     this.rows,
     this.watermark,
@@ -255,6 +351,13 @@ class PulseDetectionInput {
     this.sourceStarts = const {},
     this.sourceCompletions = const [],
     this.requireCertified = false,
+    this.contextRows = const [],
+    this.wearEvents = const [],
+    this.sleepSpans = const [],
+    this.sleepWindows = const [],
+    this.offSpans = const {},
+    this.chargingSpans = const {},
+    this.baselineEpisodes = const [],
   });
 }
 
@@ -296,6 +399,136 @@ PulseDetectionResult detectPulseEpisodesHeavy(PulseDetectionInput input) {
     );
   }
 
+  final sleepSpans = [...input.sleepSpans];
+  for (final encoded in input.sleepWindows) {
+    final decoded = jsonDecode(encoded);
+    if (decoded is! Map) continue;
+    final window = decoded['value'] is Map ? decoded['value'] as Map : decoded;
+    final onset = window['onset_ms'], offset = window['offset_ms'];
+    if (onset is num && offset is num && offset > onset) {
+      sleepSpans.add([onset.toInt(), offset.toInt()]);
+    }
+  }
+  final contexts = <String, Map<int, ana.PulseWindowContext>>{};
+  final knownWorn = <String, List<List<int>>>{};
+  for (final source in inputs.map((b) => b.source).toSet()) {
+    final events = input.wearEvents.where((e) => e['source'] == source).toList()
+      ..sort((a, b) {
+        final time = (a['ts'] as int).compareTo(b['ts'] as int);
+        // A contradictory same-time OFF wins conservatively.
+        return time != 0
+            ? time
+            : a['event_id'] == proto.EventId.wristOff
+            ? 1
+            : -1;
+      });
+    int? wornStart;
+    for (final e in events) {
+      final t = (e['ts'] as int) * 1000;
+      if (e['event_id'] == proto.EventId.wristOn) {
+        wornStart ??= t;
+      } else if (wornStart != null) {
+        (knownWorn[source] ??= []).add([wornStart, t]);
+        wornStart = null;
+      }
+    }
+    if (wornStart != null) {
+      (knownWorn[source] ??= []).add([
+        wornStart,
+        input.evaluateTo ?? input.watermark,
+      ]);
+    }
+  }
+  bool overlaps(List<List<int>> spans, int start, int end, {int scale = 1}) =>
+      spans.any((s) => s[0] * scale < end && s[1] * scale > start);
+  for (final r in input.contextRows) {
+    final source = r['source'] as String, start = r['start_ms'] as int;
+    final end = start + ana.pulseWindowMs;
+    final motionSamples = r['motion_samples'] as int;
+    final movingSamples = r['moving_samples'] as int;
+    final isOff = overlaps(
+      input.offSpans[source] ?? const [],
+      start,
+      end,
+      scale: 1000,
+    );
+    final charging = overlaps(
+      input.chargingSpans[source] ?? const [],
+      start,
+      end,
+      scale: 1000,
+    );
+    final canonicalSleep =
+        source.isEmpty &&
+        sleepSpans.any(
+          (s) =>
+              (s[1].clamp(start, end) - s[0].clamp(start, end)) >=
+              ana.pulseContextMinSamples * 1000,
+        );
+    (contexts[source] ??= {})[start] = ana.PulseWindowContext(
+      day: dayLabelOf(DateTime.fromMillisecondsSinceEpoch(start)),
+      asleep:
+          canonicalSleep ||
+              (r['sleep_samples'] as int) >= ana.pulseContextMinSamples
+          ? true
+          : (r['sleep_known'] as int) >= ana.pulseContextMinSamples
+          ? false
+          : null,
+      motion: movingSamples >= ana.pulseMovingMinSamples
+          ? true
+          : motionSamples >= ana.pulseContextMinSamples
+          ? false
+          : null,
+      wear: isOff || r['wrist'] == 0
+          ? false
+          : ((r['wear_samples'] as int) >= ana.pulseContextMinSamples &&
+                    r['wrist'] == 1) ||
+                (knownWorn[source] ?? const []).any(
+                  (s) => s[0] <= start && s[1] >= end,
+                )
+          ? true
+          : null,
+      charging: charging ? true : null,
+    );
+  }
+  // Toggle evidence can exist without a single 1 Hz sample. It still vetoes.
+  for (final source in inputs.map((b) => b.source).toSet()) {
+    for (
+      var start = input.start - ana.pulseBaselineLookbackMs;
+      start < (input.evaluateTo ?? input.watermark);
+      start += ana.pulseWindowMs
+    ) {
+      final end = start + ana.pulseWindowMs;
+      final off = overlaps(
+        input.offSpans[source] ?? const [],
+        start,
+        end,
+        scale: 1000,
+      );
+      final charging = overlaps(
+        input.chargingSpans[source] ?? const [],
+        start,
+        end,
+        scale: 1000,
+      );
+      if (!off && !charging) continue;
+      final prior = contexts[source]?[start];
+      (contexts[source] ??= {})[start] = ana.PulseWindowContext(
+        day: dayLabelOf(DateTime.fromMillisecondsSinceEpoch(start)),
+        asleep: prior?.asleep,
+        motion: prior?.motion,
+        wear: off ? false : prior?.wear,
+        charging: charging ? true : prior?.charging,
+      );
+    }
+  }
+  final exclusions = <String, List<List<int>>>{};
+  for (final e in input.baselineEpisodes) {
+    (exclusions[e['source'] as String] ??= []).add([
+      e['start_ms'] as int,
+      e['end_ms'] as int,
+    ]);
+  }
   final certificates = {
     for (final c in input.sourceCompletions)
       c['source'] as String: c['through_ms'] as int,
@@ -312,6 +545,8 @@ PulseDetectionResult detectPulseEpisodesHeavy(PulseDetectionInput input) {
       sourceStartMs: input.sourceStarts[source] ?? input.start,
       evaluateFromMs: input.start,
       evaluateToMs: input.evaluateTo,
+      context: contexts[source] ?? const {},
+      baselineExclusions: exclusions,
     );
     windows.addAll(result.windows);
     episodes.addAll(result.episodes);

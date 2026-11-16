@@ -23,6 +23,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_analytics/onehz.dart' show CalculationMode;
+import 'package:crypto/crypto.dart' show sha256;
+import 'package:openstrap_edge/compute/pulse_episode_worker.dart';
+import 'package:openstrap_edge/data/pulse_episode_store.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/crossday_pipeline.dart';
 import 'package:openstrap_edge/compute/day_checkpoint_fold.dart';
@@ -51,6 +54,7 @@ import 'package:openstrap_edge/wake/legacy_smart_wake.dart';
 import 'package:openstrap_edge/wake/wake_confounders.dart';
 import 'package:openstrap_edge/wake/wake_night_context_db.dart';
 
+import '../../pulse_episode_store_test.dart' as pulse_fixture;
 import '../../support/day_stream_fixture.dart';
 import '../../support/incremental_day_fixture.dart';
 import '../../support/sample_heavy_fixtures.dart';
@@ -70,6 +74,43 @@ Future<void> _sameInWorker<T>(
 }
 
 final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
+  // WHY/CLAIM(pulse-worker): registered pulse inputs and outputs must cross
+  // real isolates as the context contract grows, with deterministic answers.
+  'detectPulseEpisodesHeavy': (
+    roundTrip: () async {
+      final input = PulseDetectionInput([
+        {'device_id':'strap','ts_ms':1000,'rec_ts':1,'beat_index':0,
+          'beat_ts_ms':1000,'rr_ms':840},
+      ],600000,0,contextRows:[
+        {'source':'strap','start_ms':0,'motion_samples':300,'moving_samples':0,
+          'wrist':1,'wear_samples':300,'sleep_samples':300,'sleep_known':300}
+      ],sleepWindows:['{"onset_ms":0,"offset_ms":300000}']);
+      await _sameInWorker(() => detectPulseEpisodesHeavy(input),
+        json:(r)=>r.detection.toJson());
+      final result = await Isolate.run(()=>detectPulseEpisodesHeavy(input));
+      expect(result.detection.windows.first.motion,isFalse);
+      expect(result.detection.windows.first.beats.single.rawMs,840);
+    },
+  ),
+  'preparePulseEvidenceHeavy': (
+    roundTrip: () async {
+      final input = PulsePreparationInput(pulse_fixture.detection(),const []);
+      await _sameInWorker(() => preparePulseEvidenceHeavy(input),
+        json:(r)=>r.episodes);
+      final result = await Isolate.run(()=>preparePulseEvidenceHeavy(input));
+      expect(result.episodes.keys,['strap:0']);
+    },
+  ),
+  'decodePulseEvidenceHeavy': (
+    roundTrip: () async {
+      final bytes = gzip.encode(utf8.encode('{"schema":1,"beats":[{"raw":840}]}'));
+      final checksum = sha256.convert(bytes).toString();
+      await _sameInWorker(() => decodePulseEvidenceHeavy(bytes,checksum),
+        json:(r)=>r.document);
+      final result = await Isolate.run(()=>decodePulseEvidenceHeavy(bytes,checksum));
+      expect(result.document['beats'],[{'raw':840}]);
+    },
+  ),
   'typicalCaffeineHeavy': (
     roundTrip: () async {
       int ts(int day, int hour) =>

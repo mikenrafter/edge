@@ -1995,7 +1995,11 @@ part 'engine/settled.dart';
 // accounting, stored payload and published night baselines) is unchanged.
 // 120: closed five-minute pulse episodes, ten-minute qualification, bounded
 // cleaning evidence and measurable quality gates. Legacy finalized rows stay frozen.
-const int kAlgoVersion = 120;
+// 121: pulse detector v2 adds sleep breathing and positive motion/wear gates,
+// with bounded personal baselines that preserve fixed floors for irregular RR.
+// Analytics fork 686c173 adds the versioned policy; a local override is
+// required until that unpublished commit is made available by the owner.
+const int kAlgoVersion = 121;
 class DerivationEngine {
   DerivationEngine({
     this.log,

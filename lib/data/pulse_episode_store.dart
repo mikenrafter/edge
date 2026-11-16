@@ -1,6 +1,7 @@
 // Owner: PulseEpisodeStore. Episode reconciliation, evidence and delivery claims
 // share this transaction boundary; no FK points to prunable signal tables.
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'dart:io';
 import 'dart:isolate';
 import 'package:crypto/crypto.dart';
@@ -120,9 +121,8 @@ class PulseEpisodeStore {
   }
 
   /// Fallback for fresh installs, which have no onUpgrade transaction.
-  Future<void> initializeUpgrade({required int nowMs}) => db.transaction(
-    (txn) => captureUpgrade(txn, nowMs: nowMs),
-  );
+  Future<void> initializeUpgrade({required int nowMs}) =>
+      db.transaction((txn) => captureUpgrade(txn, nowMs: nowMs));
 
   /// CLAIM(pulse-upgrade): schema migration commits the immutable record-key
   /// snapshot, prior-pilot sweep and marker before sync can add new records
@@ -194,7 +194,41 @@ class PulseEpisodeStore {
     Set<String>? syncDays,
     Set<String> beforeVersion = const {},
   }) async {
-    final input = PulsePreparationInput(detection, heartRate);
+    final frozen = await _protectedEpisodes(db);
+    final admitted = <ana.PulseEpisode>[];
+    final historicalIds = {...beforeVersion};
+    for (final episode in detection.episodes) {
+      var run = <ana.PulseWindow>[];
+      void finish(bool ongoing) {
+        if (run.length >= 2) {
+          final child = ana.PulseEpisode(
+            episode.source,
+            List.unmodifiable(run),
+            ongoing: ongoing,
+          );
+          admitted.add(child);
+          if (beforeVersion.contains(episode.id)) historicalIds.add(child.id);
+        }
+        run = [];
+      }
+
+      for (final window in episode.windows) {
+        if (frozen.any(
+          (old) =>
+              old['source'] == episode.source &&
+              (old['start_ms'] as int) < window.endMs &&
+              (old['end_ms'] as int) > window.startMs,
+        )) {
+          finish(false);
+        } else {
+          run.add(window);
+        }
+      }
+      finish(episode.ongoing);
+    }
+    // A new qualifying tail outside old history remains independently visible.
+    final admittedDetection = ana.PulseDetection(detection.windows, admitted);
+    final input = PulsePreparationInput(admittedDetection, heartRate);
     final preparation = await Isolate.run(
       () => preparePulseEvidenceHeavy(input),
     );
@@ -205,13 +239,30 @@ class PulseEpisodeStore {
           'SELECT COALESCE(SUM(rev),0) AS rev FROM input_rev WHERE bucket BETWEEN ? AND ?',
           [inputStamp.startBucket, inputStamp.endBucket],
         );
-        if (rev.first['rev'] != inputStamp.revision) {
+        if (rev.first['rev'] != inputStamp.revision ||
+            (inputStamp.contextRevision != null &&
+                await pulseContextRevision(txn) !=
+                    inputStamp.contextRevision)) {
           throw const PulseInputChanged();
         }
       }
-      final previousEpisodes = await txn.query('pulse_episode');
+      // CLAIM(pulse-version-history): a new detector leaves old evidence and
+      // delivery ancestry intact [pulse_episode_store_test]. Any overlap is
+      // already represented by history, so it cannot create fresh alert debt.
+      final protected = await _protectedEpisodes(txn);
+      if (protected.length != frozen.length ||
+          !protected.indexed.every(
+            (pair) => mapEquals(pair.$2, frozen[pair.$1]),
+          )) {
+        throw const PulseInputChanged();
+      }
+      final protectedIds = {for (final e in protected) e['id']};
+      final previousEpisodes = (await txn.query(
+        'pulse_episode',
+      )).where((e) => !protectedIds.contains(e['id'])).toList();
       final finalIds = <String>[];
-      for (final episode in detection.episodes) {
+      final admittedEpisodes = admitted;
+      for (final episode in admittedEpisodes) {
         final encoded = prepared[episode.id]!;
         final overlaps =
             previousEpisodes
@@ -317,7 +368,7 @@ class PulseEpisodeStore {
             break;
           }
         }
-        final historical = beforeVersion.contains(episode.id);
+        final historical = historicalIds.contains(episode.id);
         await txn.insert('pulse_episode_outbox', {
           'episode_id': id,
           'delivery_key': 'pulse-episode:$id',
@@ -395,18 +446,18 @@ class PulseEpisodeStore {
         final oldId = old['id'] as String;
         if (old['status'] != 'active' || finalIds.contains(oldId)) continue;
         final over = [
-          for (var i = 0; i < detection.episodes.length; i++)
-            if (detection.episodes[i].source == old['source'] &&
-                detection.episodes[i].startMs < (old['end_ms'] as int) &&
-                detection.episodes[i].endMs > (old['start_ms'] as int))
+          for (var i = 0; i < admittedEpisodes.length; i++)
+            if (admittedEpisodes[i].source == old['source'] &&
+                admittedEpisodes[i].startMs < (old['end_ms'] as int) &&
+                admittedEpisodes[i].endMs > (old['start_ms'] as int))
               i,
         ];
         if (over.isEmpty) continue;
         final seed = old['seed_ms'] as int;
         final holder = over.where(
           (i) =>
-              detection.episodes[i].startMs <= seed &&
-              seed < detection.episodes[i].endMs,
+              admittedEpisodes[i].startMs <= seed &&
+              seed < admittedEpisodes[i].endMs,
         );
         final joined = holder.isNotEmpty;
         await txn.insert('pulse_episode_alias', {
@@ -435,7 +486,8 @@ class PulseEpisodeStore {
         where: "status = 'active'",
       );
       for (final old in candidates) {
-        if (detection.episodes.any(
+        if (protectedIds.contains(old['id'])) continue;
+        if (admittedEpisodes.any(
           (e) =>
               e.source == old['source'] &&
               e.startMs < (old['end_ms'] as int) &&
@@ -470,6 +522,14 @@ class PulseEpisodeStore {
       }
     });
   }
+
+  Future<List<Map<String, Object?>>> _protectedEpisodes(
+    DatabaseExecutor executor,
+  ) => executor.rawQuery(
+    'SELECT DISTINCT e.* FROM pulse_episode e JOIN pulse_episode_revision r '
+    'ON r.episode_id=e.id WHERE r.detector < ? ORDER BY e.id',
+    [ana.pulseDetectorVersion],
+  );
 
   Future<PulseEpisodeSnapshot?> get(String episodeId) async {
     var id = episodeId;
@@ -793,10 +853,32 @@ class PulsePreparedEvidence {
   const PulsePreparedEvidence(this.episodes);
 }
 
+/// Revision of context inputs that are not indexed by the raw 15-minute buckets.
+Future<String> pulseContextRevision(DatabaseExecutor db) async {
+  final events = await db.rawQuery(
+    "SELECT COALESCE(SUM(rev),0) AS rev FROM input_revision WHERE source='events'",
+  );
+  final sleep = await db.rawQuery(
+    "SELECT COALESCE(SUM(rev),0) AS rev FROM row_rev WHERE kind='day_result'",
+  );
+  final episodes = await db.rawQuery(
+    'SELECT DISTINCT source,start_ms,end_ms FROM pulse_episode '
+    'ORDER BY source,start_ms,end_ms',
+  );
+  final episodeStamp = sha256.convert(utf8.encode(jsonEncode(episodes)));
+  return '${events.first['rev']}:${sleep.first['rev']}:$episodeStamp';
+}
+
 @sendable
 class PulseInputStamp {
   final int startBucket, endBucket, revision;
-  const PulseInputStamp(this.startBucket, this.endBucket, this.revision);
+  final String? contextRevision;
+  const PulseInputStamp(
+    this.startBucket,
+    this.endBucket,
+    this.revision, {
+    this.contextRevision,
+  });
 }
 
 @heavy
