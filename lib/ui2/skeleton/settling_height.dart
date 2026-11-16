@@ -59,7 +59,13 @@ class RenderSettlingHeight extends RenderProxyBox {
   double? _target;
   double _begin = 0;
   double _laidOutHeight = 0;
-  double _laidOutWidth = 0;
+  double _lastFlow = 0;
+  // Cache topology, not sizes: constraints and sibling maxima can change on
+  // every layout even when registration is unchanged.
+  final _paths = <RenderSettlingHeight, List<RenderBox>>{};
+  final _routes = <RenderBox, Set<RenderBox>>{};
+  bool _routesDirty = false;
+  bool _registered = false;
   bool _layingOut = false;
 
   void _tick() {
@@ -81,16 +87,31 @@ class RenderSettlingHeight extends RenderProxyBox {
           Curves.easeOutCubic.transform(_controller.value);
 
   void _register() {
+    if (_registered) return;
+    final path = <RenderBox>[this];
     RenderObject? next = parent;
     while (next != null && next is! RenderSettlingHeight) {
+      if (next is RenderBox) path.add(next);
       next = next.parent;
     }
-    if (identical(next, _ancestor)) return;
-    _ancestor?._descendants.remove(this);
+    _registered = true;
     _ancestor = next as RenderSettlingHeight?;
-    // Remember the first laid-out height: later movement belongs to this
-    // descendant; inserting/removing the whole section belongs to its parent.
+    // Insertion/removal belongs to the parent; subsequent height movement
+    // belongs to this boundary. Reparenting detaches and registers a new path.
     _ancestor?._descendants[this] = _laidOutHeight;
+    _ancestor?._paths[this] = path;
+    _ancestor?._routesDirty = true;
+  }
+
+  void _updateRoutes() {
+    if (!_routesDirty) return;
+    _routes.clear();
+    for (final path in _paths.values) {
+      for (var i = 1; i < path.length; i++) {
+        (_routes[path[i]] ??= <RenderBox>{}).add(path[i - 1]);
+      }
+    }
+    _routesDirty = false;
   }
 
   @override
@@ -107,7 +128,23 @@ class RenderSettlingHeight extends RenderProxyBox {
     assert(() { _flowNodes = 0; _sizeReads = 0; return true; }());
     child?.layout(constraints, parentUsesSize: true);
     final natural = child?.size ?? constraints.smallest;
-    final flow = child == null || _descendants.isEmpty ? 0.0 : _flow(child!);
+    var flow = 0.0;
+    final topologyChanged = _routesDirty;
+    _updateRoutes();
+    if (child != null && _descendants.isNotEmpty) {
+      // All descendants have completed layout. A layout callback permits
+      // inspecting those actual sizes (including LayoutBuilder output) without
+      // speculative child layouts or another pass through the render tree.
+      invokeLayoutCallback<BoxConstraints>((_) { flow = _flow(child!); });
+    }
+    if (topologyChanged && _target != null) {
+      // Reparenting changes the baseline's coordinate system, not the visible
+      // height. Rebase both tween endpoints before considering content changes.
+      final shift = _lastFlow - flow;
+      _begin += shift;
+      _target = _target! + shift;
+    }
+    _lastFlow = flow;
     final target = natural.height - flow;
     if (_target == null) {
       _begin = target;
@@ -122,19 +159,8 @@ class RenderSettlingHeight extends RenderProxyBox {
       Size(natural.width, (_height + flow).clamp(0, double.infinity)),
     );
     _laidOutHeight = size.height;
-    _laidOutWidth = size.width;
     _register();
     assert(() { debugOnFlow?.call(_flowNodes, _sizeReads); return true; }());
-  }
-
-  @override
-  Size computeDryLayout(BoxConstraints constraints) {
-    // Ancestors measuring a Row need the displayed height. The proxy default
-    // reports the final child height and would count its unconsumed tween.
-    if (_target != null && constraints == this.constraints) {
-      return Size(_laidOutWidth, _laidOutHeight);
-    }
-    return child?.getDryLayout(constraints) ?? constraints.smallest;
   }
 
   double _flow(RenderBox box) {
@@ -149,6 +175,8 @@ class RenderSettlingHeight extends RenderProxyBox {
       final baseline = _descendants[box];
       return baseline == null ? 0 : box._laidOutHeight - baseline;
     }
+    final routed = _routes[box];
+    if (routed == null) return 0;
     double movement;
     if (box is RenderFlex) {
       if (box.direction == Axis.vertical) {
@@ -156,44 +184,42 @@ class RenderSettlingHeight extends RenderProxyBox {
             box.constraints.hasBoundedHeight) {
           return 0;
         }
-        movement = 0;
-        box.visitChildren((child) => movement += _flow(child as RenderBox));
+        movement = routed.fold(0.0, (sum, child) => sum + _flow(child));
       } else {
-        // Compare the row's current maximum with its maximum after removing
-        // descendant motion. Summing here counts two card changes twice and
-        // even lets a short card move a row pinned by a taller sibling.
-        var currentMax = 0.0;
-        var baselineMax = 0.0;
-        final movements = <RenderBox, double>{};
-        box.visitChildren((child) {
-          movements[child as RenderBox] = _flow(child);
-        });
-        if (movements.values.every((movement) => movement == 0)) return 0;
-        box.visitChildren((child) {
-          final card = child as RenderBox;
-          assert(() { _sizeReads++; return true; }());
-          final height = card.getDryLayout(card.constraints).height;
-          final baseline = height - movements[card]!;
-          if (height > currentMax) currentMax = height;
-          if (baseline > baselineMax) baselineMax = baseline;
-        });
-        movement = currentMax - baselineMax;
+        return _maxFlow(box, routed);
       }
-    } else if (box is RenderProxyBox) {
-      movement = box.child == null ? 0 : _flow(box.child!);
-    } else if (box is RenderShiftedBox) {
-      movement = box.child == null ? 0 : _flow(box.child!);
+    } else if (box is RenderStack) {
+      return _maxFlow(box, routed, stack: true);
+    } else if (box is RenderProxyBox || box is RenderShiftedBox) {
+      movement = _flow(routed.single);
     } else {
-      // LayoutBuilder also forwards a single child's height but is not a
-      // RenderProxyBox. Its callback cannot be measured with dry layout.
-      final children = <RenderBox>[];
-      box.visitChildren((child) {
-        if (child is RenderBox) children.add(child);
-      });
-      if (children.length != 1) return 0;
-      movement = _flow(children.single);
+      // LayoutBuilder forwards its one child's size. Other opaque multi-child
+      // layouts need their own contribution policy; do not treat them as sums.
+      var count = 0;
+      box.visitChildren((_) => count++);
+      if (count != 1) return 0;
+      movement = _flow(routed.single);
     }
-    return movement;
+    return box.size.height -
+        box.constraints.constrainHeight(box.size.height - movement);
+  }
+
+  double _maxFlow(RenderBox box, Set<RenderBox> routed, {bool stack = false}) {
+    var baselineMax = 0.0;
+    var hasBody = false;
+    box.visitChildren((child) {
+      final body = child as RenderBox;
+      // Positioned overlays never determine Stack height.
+      if (stack && (body.parentData! as StackParentData).isPositioned) return;
+      hasBody = true;
+      assert(() { _sizeReads++; return true; }());
+      final movement = routed.contains(body) ? _flow(body) : 0.0;
+      final baseline = body.size.height - movement;
+      if (baseline > baselineMax) baselineMax = baseline;
+    });
+    return hasBody
+        ? box.size.height - box.constraints.constrainHeight(baselineMax)
+        : 0;
   }
 
   @override
@@ -220,7 +246,10 @@ class RenderSettlingHeight extends RenderProxyBox {
   @override
   void detach() {
     _ancestor?._descendants.remove(this);
+    _ancestor?._paths.remove(this);
+    _ancestor?._routesDirty = true;
     _ancestor = null;
+    _registered = false;
     _controller.stop();
     super.detach();
   }

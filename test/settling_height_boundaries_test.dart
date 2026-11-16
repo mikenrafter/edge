@@ -80,6 +80,35 @@ void main() {
     await t.pumpWidget(const SizedBox());
   });
 
+  // why: caching a contribution path must not retain a former Column/Stack
+  // relationship after a GlobalKey reparent. CLAIM(settling-height-bounded-work).
+  // catches: keeping cached routes or baselines through detach/attach.
+  testWidgets('registered routes follow reparenting between layouts', (t) async {
+    final key = GlobalKey();
+    Widget page(bool stack, double height) {
+      final body = SettlingHeight(key: key, child: SizedBox(width: 300, height: height));
+      return _page(stack
+          ? Stack(children: [body, const Positioned(top: 0, child: SizedBox(height: 400))])
+          : Column(mainAxisSize: MainAxisSize.min, children: [body]));
+    }
+    double top() => t.getTopLeft(find.byKey(const ValueKey('after'))).dy;
+    await t.pumpWidget(page(false, 80));
+    await t.pumpWidget(page(true, 80));
+    await t.pumpWidget(page(true, 180));
+    expect(top(), 80);
+    await t.pump(const Duration(milliseconds: 80));
+    expect(top(), t.getSize(find.byKey(key)).height);
+    await t.pump(const Duration(milliseconds: 170));
+    expect(top(), 180);
+    await t.pumpWidget(page(false, 180));
+    await t.pumpWidget(page(false, 80));
+    await t.pump(const Duration(milliseconds: 80));
+    expect(top(), t.getSize(find.byKey(key)).height);
+    await t.pump(const Duration(milliseconds: 170));
+    expect(top(), 80);
+    await t.pumpWidget(const SizedBox());
+  });
+
   // why: record per-frame layout work on the production Home tree, rather
   // than infer cost from isolated geometry tests. No wall-time budget on CI.
   testWidgets('measure flow work on real Home data changes', (t) async {
