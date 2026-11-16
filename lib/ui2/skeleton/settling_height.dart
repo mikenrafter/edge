@@ -42,6 +42,9 @@ class _FlowSize extends SingleChildRenderObjectWidget {
 // sum and Row's maximum; tight children contribute no flowing height
 // [settling_height_row_test; pending_height_transition_test].
 class RenderSettlingHeight extends RenderProxyBox {
+  // Debug-only observer for layout-work measurements in widget tests.
+  static void Function(int flowNodes, int sizeReads)? debugOnFlow;
+  int _flowNodes = 0, _sizeReads = 0;
   RenderSettlingHeight({required TickerProvider vsync}) : _vsync = vsync {
     _controller = AnimationController(
       vsync: vsync,
@@ -101,6 +104,7 @@ class RenderSettlingHeight extends RenderProxyBox {
   }
 
   void _layout() {
+    assert(() { _flowNodes = 0; _sizeReads = 0; return true; }());
     child?.layout(constraints, parentUsesSize: true);
     final natural = child?.size ?? constraints.smallest;
     final flow = child == null || _descendants.isEmpty ? 0.0 : _flow(child!);
@@ -120,6 +124,7 @@ class RenderSettlingHeight extends RenderProxyBox {
     _laidOutHeight = size.height;
     _laidOutWidth = size.width;
     _register();
+    assert(() { debugOnFlow?.call(_flowNodes, _sizeReads); return true; }());
   }
 
   @override
@@ -133,6 +138,7 @@ class RenderSettlingHeight extends RenderProxyBox {
   }
 
   double _flow(RenderBox box) {
+    assert(() { _flowNodes++; return true; }());
     // A stretched intrinsic row lays out both cards at the same tight height.
     // That height belongs to the row's owner, not to either card's tween.
     if (box.constraints.hasTightHeight ||
@@ -165,6 +171,7 @@ class RenderSettlingHeight extends RenderProxyBox {
         if (movements.values.every((movement) => movement == 0)) return 0;
         box.visitChildren((child) {
           final card = child as RenderBox;
+          assert(() { _sizeReads++; return true; }());
           final height = card.getDryLayout(card.constraints).height;
           final baseline = height - movements[card]!;
           if (height > currentMax) currentMax = height;
