@@ -9869,5 +9869,8 @@
   "pulseAlertNotPermitted": "Оповещения нет: уведомления не были разрешены",
   "pulseAlertUnknown": "Оповещение, возможно, было отправлено {when}",
   "pulseAlertQuiet": "Оповещения нет: отложено из-за тихих часов",
-  "pulseAlertEarlier": "Оповещено более ранней версией приложения {when}"
+  "pulseAlertEarlier": "Оповещено более ранней версией приложения {when}",
+  "homeLastKnownUpdating": "Последние данные {time} · обновление",
+  "homeLastKnownFailed": "Последние данные {time} · ошибка обновления",
+  "homeLastKnownSource": "{status}. Прочитано {readTime}. Рассчитано {computedTime}."
 }

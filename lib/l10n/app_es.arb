@@ -3983,5 +3983,8 @@
   "pulseAlertNotPermitted": "Sin aviso: las notificaciones no estaban permitidas",
   "pulseAlertUnknown": "Es posible que el aviso se enviara {when}",
   "pulseAlertQuiet": "Sin aviso: retenido por las horas de silencio",
-  "pulseAlertEarlier": "Avisado por una versión anterior de la app {when}"
+  "pulseAlertEarlier": "Avisado por una versión anterior de la app {when}",
+  "homeLastKnownUpdating": "Último dato {time} · actualizando",
+  "homeLastKnownFailed": "Último dato {time} · error al actualizar",
+  "homeLastKnownSource": "{status}. Leído {readTime}. Calculado {computedTime}."
 }

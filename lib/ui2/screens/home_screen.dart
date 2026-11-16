@@ -1183,9 +1183,14 @@ class RingTrio extends StatelessWidget {
   static double sinceRowHeight(BuildContext c) =>
       math.max(18.0, MediaQuery.textScalerOf(c).scale(18));
 
+  String _retainedStamp(AppLocalizations? l, DateTime? instant) {
+    if (instant == null) return '—';
+    final local = instant.toLocal();
+    return localizedDateTime(local, l?.localeName ?? 'en', time: formatClockOf(local));
+  }
+
   String _retainedText(AppLocalizations? l, DateTime? readAt) {
-    final stamp = readAt == null ? '—'
-        : DateFormat('MMM d HH:mm').format(readAt.toLocal());
+    final stamp = _retainedStamp(l, readAt);
     return failed
         ? l?.homeLastKnownFailed(stamp) ?? 'Last known $stamp · update failed'
         : l?.homeLastKnownUpdating(stamp) ?? 'Last known $stamp · updating';
@@ -1201,11 +1206,11 @@ class RingTrio extends StatelessWidget {
     final text = retained == null ? l?.homeSinceTime(clock) ?? 'since $clock'
         : _retainedText(l, saved);
     final sourceTimes = retained == null ? null : [retained.$2, retained.$3]
-        .whereType<DateTime>().map((t) => DateFormat('yMMMd HH:mm').format(t.toLocal())).join(', ');
+        .whereType<DateTime>().map((t) => _retainedStamp(l, t)).join(', ');
     final semantics = retained == null ? null : l?.homeLastKnownSource(text,
-        saved == null ? '—' : DateFormat('yMMMd HH:mm').format(saved.toLocal()),
+        _retainedStamp(l, saved),
         sourceTimes!.isEmpty ? '—' : sourceTimes)
-        ?? '$text. Read ${saved?.toIso8601String() ?? '—'}. Calculated $sourceTimes';
+        ?? '$text. Read ${_retainedStamp(l, saved)}. Calculated ${sourceTimes!.isEmpty ? '—' : sourceTimes}.';
     return SizedBox(
         key: const ValueKey('home-since-line'),
         width: double.infinity,

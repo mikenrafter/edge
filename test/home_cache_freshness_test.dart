@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/prefs.dart';
+import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/ui2/screens/home_screen.dart';
 import 'support/as_of_recalc_fakes.dart';
 
@@ -22,6 +23,8 @@ void main() {
   testWidgets(
     'cold restored judgments stay dated after failure, then fresh absence clears them',
     (t) async {
+      ClockFormatController.seed(ClockFormat.h24);
+      addTearDown(ClockFormatController.debugReset);
       final day = todayLabel();
       // Literal persisted fixture, independent of the writer under test.
       final read = DateTime(2026, 11, 12, 8, 14);
@@ -47,7 +50,7 @@ void main() {
       await t.pumpWidget(perfApp(app, const HomeScreen()));
       await t.pump(const Duration(milliseconds: 400));
       expect(find.text('Recovery 22 of 100'), findsOneWidget);
-      expect(find.text('Last known Nov 12 08:14 · updating'), findsOneWidget);
+      expect(find.text('Last known Thu, Nov 12 08:14 · updating'), findsOneWidget);
       expect(
         find.bySemanticsLabel(RegExp('Read .*08:14.*Calculated .*06:30')),
         findsWidgets,
@@ -60,7 +63,7 @@ void main() {
       await t.pump();
       expect(find.text('Recovery 22 of 100'), findsOneWidget);
       expect(
-        find.text('Last known Nov 12 08:14 · update failed'),
+        find.text('Last known Thu, Nov 12 08:14 · update failed'),
         findsOneWidget,
       );
       // The ring template shrinks on failure, while the following cached rows
