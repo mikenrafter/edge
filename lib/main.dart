@@ -22,6 +22,7 @@ import 'widget/widget_service.dart';
 import 'telemetry/firebase_bridge.dart';
 import 'package:workmanager/workmanager.dart';
 import 'dart:async';
+import 'data/official_export/coordinator.dart';
 import 'dart:io';
 import 'compute/background_derivation.dart' show kHeavyDeriveTaskName, kSyncTaskName;
 
@@ -197,6 +198,9 @@ Future<void> main() async {
               debugPrint('[main] CoachConfig.load failed/timed out: $e'),
         ),
   );
+
+  unawaited(_safeInit('Official export cleanup',
+      OfficialExportCoordinator.cleanupPrivateSessions));
 
   runApp(
     MultiProvider(

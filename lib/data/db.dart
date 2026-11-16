@@ -5771,8 +5771,11 @@ class LocalDb {
   static Future<String> exportCopy({
     bool includeSubstrateArchive = true,
     BackupExtras extras = BackupExtras.all,
+    bool strictExtras = false,
+    String? destinationPath,
   }) => _ldbExportCopy(
-      includeSubstrateArchive: includeSubstrateArchive, extras: extras);
+      includeSubstrateArchive: includeSubstrateArchive, extras: extras,
+      strictExtras: strictExtras, destinationPath: destinationPath);
 
   /// Test seam: fail [exportCopy] after the copy exists, before it is cleaned.
   @visibleForTesting

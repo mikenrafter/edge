@@ -215,3 +215,14 @@ The **pulse upgrade watermark** is the immutable set of `(source, ts_ms)` RR rec
 - **Sleep window**: the stored start-to-end interval for a sleep entry. It does not claim the wearer was in bed or asleep throughout. The asleep percentage uses only the time the band recorded within that window.
 - **Time to wake**: elapsed time from the first successfully sent app wake alert to the acknowledgement in that alert’s own wake epoch. Either endpoint missing means unavailable; it does not measure leaving bed.
 
+- **Official export**: a release-specific encrypted import file for a fresh
+  official OpenStrap install. It carries supported evidence and user records,
+  clears fork computations, and reports every unsupported item. Owned by
+  `OfficialExportCoordinator` in `data/official_export`.
+- **Fork recovery file**: the optional encrypted full fork snapshot, including
+  portable preferences and approved saved files. The official importer cannot
+  restore its fork-only contents. Credentials remain on the source device.
+- **Export cancellation**: the coordinator-owned token checked between export
+  I/O operations. Snapshot providers, recovery choices and progress sinks are
+  explicit interfaces so the worker guard can resolve their calls.
+

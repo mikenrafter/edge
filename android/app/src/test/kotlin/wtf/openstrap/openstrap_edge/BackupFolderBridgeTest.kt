@@ -4,6 +4,8 @@ import android.provider.DocumentsContract
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
+import java.nio.file.Files
 
 class BackupFolderBridgeTest {
     @Test
@@ -27,4 +29,26 @@ class BackupFolderBridgeTest {
             assertTrue("must reject $name", rejected)
         }
     }
+    // WHY: encrypted read-back must not give a document provider an arbitrary
+    // private-file write path. Proves CLAIM(export-scoped-file-access).
+    @Test
+    fun readBackIsConfinedToPrivateCacheIncludingCanonicalPaths() {
+        val root = Files.createTempDirectory("official-export-scope").toFile()
+        try {
+            val cache = File(root, "cache").apply { mkdirs() }
+            val nested = File(cache, "official-export/session/readback.osbk")
+            assertTrue(requirePrivateBackupDestination(cache, nested) == nested.canonicalFile)
+            val outside = File(root, "outside").apply { mkdirs() }
+            val link = File(cache, "escape")
+            Files.createSymbolicLink(link.toPath(), outside.toPath())
+            for (path in listOf(File(root, "cache-sibling/secret"),
+                File(cache, "../outside/secret"), File(link, "secret"), cache)) {
+                var rejected = false
+                try { requirePrivateBackupDestination(cache, path) }
+                catch (_: IllegalArgumentException) { rejected = true }
+                assertTrue("must reject $path", rejected)
+            }
+        } finally { root.deleteRecursively() }
+    }
+
 }

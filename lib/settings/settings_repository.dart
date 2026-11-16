@@ -234,6 +234,10 @@ class SettingsRepository {
     return v is bool ? v : null;
   });
 
+  /// Waits for already queued owner writes before a portable snapshot starts.
+  /// The export separately checks that preferences stay stable while copied.
+  Future<void> waitUntilIdle() => _serialize(() async {});
+
   /// Every section, as one consistent snapshot.
   Future<SettingsSnapshot> read() => _serialize(() async {
     final sp = await _prefs();

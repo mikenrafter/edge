@@ -863,6 +863,7 @@ flutter:
   generate: true
   uses-material-design: true
   assets:
+    - assets/official_export/
     - assets/images/
     - assets/images/2.0x/
     - assets/images/3.0x/

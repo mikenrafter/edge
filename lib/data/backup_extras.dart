@@ -112,6 +112,7 @@ const Map<String, String> kFileRootsBackedUp = {
   'lib/coach/coach_engine.dart': 'coach chat sessions coach_s_*/coach_idx_* '
       '(backup_files)',
   'lib/data/backup_extras.dart': 'the carrier itself',
+  'lib/data/official_export/snapshot.dart': 'read-only inventory of the same approved saved files (backup_files)',
 };
 
 const Map<String, String> kFileRootsNotBackedUp = {
@@ -175,6 +176,7 @@ Future<void> writeBackupExtras(
   String copyPath, {
   SharedPreferences? prefs,
   BackupExtras extras = BackupExtras.all,
+  bool strict = false,
 }) async {
   if (extras == BackupExtras.none) return;
   final SharedPreferences sp;
@@ -182,6 +184,7 @@ Future<void> writeBackupExtras(
     sp = prefs ?? await SharedPreferences.getInstance();
     if (prefs == null) await sp.reload();
   } on Object {
+    if (strict) rethrow;
     // No preference store on this platform (a bare test host): nothing to
     // carry, and the export itself is still whole.
     return;

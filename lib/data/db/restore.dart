@@ -46,13 +46,19 @@ Future<void> _ldbPurgeDemoRows() async {
     });
   }
 
-Future<String> _ldbExportCopy({required bool includeSubstrateArchive, required BackupExtras extras}) async {
+Future<String> _ldbExportCopy({required bool includeSubstrateArchive, required BackupExtras extras, bool strictExtras = false, String? destinationPath}) async {
     final db = await LocalDb.instance;
     final tmp = await getTemporaryDirectory();
     final stamp = DateTime.now().millisecondsSinceEpoch;
-    final dest = p.join(tmp.path, 'openstrap_export_$stamp.db');
+    final dest = destinationPath ?? p.join(tmp.path, 'openstrap_export_$stamp.db');
     final f = File(dest);
-    if (await f.exists()) await f.delete(); // VACUUM INTO requires a fresh path
+    if (await f.exists()) {
+      // A caller-supplied path must never replace an existing DB or file.
+      if (destinationPath != null) {
+        throw const FileSystemException('Snapshot destination already exists');
+      }
+      await f.delete(); // VACUUM INTO requires a fresh path
+    }
     Database? copy;
     try {
       await db.execute('VACUUM INTO ?', [dest]);
@@ -67,7 +73,7 @@ Future<String> _ldbExportCopy({required bool includeSubstrateArchive, required B
       // After the strip (its VACUUM would drop nothing, but order keeps the
       // extras the last thing written) and on the COPY only: the live schema
       // never gains backup_* tables.
-      await writeBackupExtras(dest, extras: extras);
+      await writeBackupExtras(dest, extras: extras, strict: strictExtras);
     } catch (_) {
       // The caller never learns the path of a failed copy, so nobody else
       // could ever delete it: a full copy of the database left in temp.
