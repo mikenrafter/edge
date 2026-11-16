@@ -84,6 +84,56 @@ void main() {
     await store.reconcile(detection(offset: 600000), origin: 'sync', nowMs: 3);
     expect(await db.query('pulse_episode_outbox'), hasLength(2));
   });
+  // WHY/CLAIM(pulse-late-context): late semantic exclusions cancel only unclaimed debt.
+  // # catches: treating semantic reasons as quality refusal or reviving notifications-off debt.
+  for (final reason in ['motion', 'offWrist', 'charging', 'sleepBreathing']) {
+    for (final state in ['owed', 'notifications off', 'sent', 'summary', 'unknown', 'pending']) {
+      test('late $reason retracts while preserving $state ancestry', () async {
+        final prior = detection();
+        await store.reconcile(prior, origin: 'sync', nowMs: 1);
+        await db.update('pulse_episode_outbox', {
+          'state': state == 'notifications off' ? 'not_sent' : state,
+          'reason': state == 'notifications off' ? state : null,
+          'claim_token': state == 'pending' ? 'in-flight' : null,
+        });
+        final evidence = [for (final table in ['pulse_episode_revision', 'pulse_evidence_chunk', 'pulse_episode_alias'])
+          jsonEncode(await db.query(table))];
+        final outbox = jsonEncode(await db.query('pulse_episode_outbox'));
+        final excluded = ana.PulseDetection([for (final w in prior.windows)
+          ana.PulseWindow(source: w.source, startMs: w.startMs, endMs: w.endMs,
+            pairs: w.pairs, totalBeats: w.totalBeats, cleanedBeats: w.cleanedBeats,
+            coverageMs: w.coverageMs, longestGapMs: w.longestGapMs,
+            sd1: w.sd1, sd2: w.sd2, ratio: w.ratio, pnnPct: w.pnnPct,
+            pending: w.pending, qualified: false, reasons: [reason], beats: w.beats)], const []);
+        await store.reconcile(excluded, origin: 'bulk', nowMs: 2);
+        expect((await store.get(prior.episodes.single.id))!.row['status'], 'retracted');
+        expect([for (final table in ['pulse_episode_revision', 'pulse_evidence_chunk', 'pulse_episode_alias'])
+          jsonEncode(await db.query(table))], evidence);
+        expect(await store.owed(), isEmpty);
+        expect(await store.claim([prior.episodes.single.id], token: 'retry', nowMs: 3), isEmpty);
+        if (['sent', 'summary', 'unknown', 'pending'].contains(state)) {
+          expect(jsonEncode(await db.query('pulse_episode_outbox')), outbox);
+        } else {
+          expect((await db.query('pulse_episode_outbox')).single['reason'], 'decision changed');
+        }
+      });
+    }
+  }
+  // WHY: inadequate late recordings cannot retract an existing supported episode.
+  // # catches: ignoring quality refusals when a semantic exclusion is also present.
+  test('semantic context plus poor recording retains the earlier decision', () async {
+    final prior = detection();
+    await store.reconcile(prior, origin: 'sync', nowMs: 1);
+    final before = [for (final table in pulseEpisodeTables.take(5)) jsonEncode(await db.query(table))];
+    final refused = ana.PulseDetection([for (final w in prior.windows)
+      ana.PulseWindow(source: w.source, startMs: w.startMs, endMs: w.endMs,
+        pairs: w.pairs, totalBeats: w.totalBeats, cleanedBeats: w.cleanedBeats,
+        coverageMs: w.coverageMs, longestGapMs: w.longestGapMs,
+        sd1: w.sd1, sd2: w.sd2, ratio: w.ratio, pnnPct: w.pnnPct,
+        pending: false, qualified: false, reasons: const ['motion', 'coverage'], beats: w.beats)], const []);
+    await store.reconcile(refused, origin: 'bulk', nowMs: 2);
+    expect([for (final table in pulseEpisodeTables.take(5)) jsonEncode(await db.query(table))], before);
+  });
   // WHY/CLAIM(pulse-atomic): storage failure cannot authorize an alert.
   test(
     'evidence and outbox are one transaction; failure rolls back everything',
