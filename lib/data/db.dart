@@ -68,6 +68,7 @@ import 'day_label.dart';
 import 'activity_store.dart';
 import 'load_timings.dart';
 import 'sleep_edit_store.dart';
+import 'json_payload_lane.dart';
 import 'nap_resolution.dart';
 import '../models/activity_suggestion.dart';
 import '../compute/accepted_naps.dart';
@@ -737,7 +738,8 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 90;
+  static const int schemaVersion = 91;
+
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1958,6 +1960,10 @@ class LocalDb {
         created_at INTEGER NOT NULL
       )
     ''');
+    final columns = await db.rawQuery('PRAGMA table_info(sleep_override)');
+    if (!columns.any((c) => c['name'] == 'payload_json')) {
+      await db.execute('ALTER TABLE sleep_override ADD COLUMN payload_json TEXT');
+    }
   }
 
   /// Upsert the user's sleep window for [dayId] (local date label). [source] is

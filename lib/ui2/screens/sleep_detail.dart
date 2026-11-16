@@ -660,6 +660,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   bool _loading = true;
   bool _paused = false;
   String? _day;
+  bool _editorOpen = false; // One route, including its pending read.
   bool _saving = false; // a durable assertion write is in flight
   int _editSeq = 0;
   double? _scrub; // Epoch seconds shared by full-night and zoomed charts.
@@ -1843,23 +1844,24 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     final e = _pendingWindow?.$2 ?? (n['wake_ts'] as num?)?.round();
     final date = DateTime.tryParse(day);
     final usual = date == null ? null : app.sleepOperations.expectedWindowFor(date);
-    final SleepEditorData data;
-    try {
-      data = await SleepEditorData.load(repo, day,
-          window: s != null && e != null && n['sleep_source'] != 'rejected' ? (s, e) : null,
-          fallback: usual == null ? null
-              : (usual.$1.millisecondsSinceEpoch ~/ 1000, usual.$2.millisecondsSinceEpoch ~/ 1000),
-          usual: usual == null ? null
-              : (usual.$1.millisecondsSinceEpoch ~/ 1000, usual.$2.millisecondsSinceEpoch ~/ 1000));
-    } catch (err) {
-      if (mounted) setState(() => _overrideFailed = '$err');
-      return;
-    }
-    if (!mounted) return;
+    if (_editorOpen) return;
+    _editorOpen = true;
     final saver = _AppSleepSaver(app);
-    final result = await Navigator.of(context).push<SleepEditorResult>(MaterialPageRoute(
-        builder: (_) => SleepTimelineEditor(data: data, save: saver)));
-    if (result != null) _track(result.done, saver.window);
+    try {
+      // CLAIM(sleep-editor-immediate-route): push before awaiting any reads.
+      final result = await Navigator.of(context).push<SleepEditorResult>(MaterialPageRoute(
+        builder: (_) => SleepTimelineEditorRoute(save: saver,
+          load: () => SleepEditorData.load(repo, day,
+            window: s != null && e != null && n['sleep_source'] != 'rejected' ? (s, e) : null,
+            fallback: usual == null ? null
+                : (usual.$1.millisecondsSinceEpoch ~/ 1000, usual.$2.millisecondsSinceEpoch ~/ 1000),
+            usual: usual == null ? null
+                : (usual.$1.millisecondsSinceEpoch ~/ 1000, usual.$2.millisecondsSinceEpoch ~/ 1000))),
+      ));
+      if (mounted && result != null) _track(result.done, saver.window);
+    } finally {
+      _editorOpen = false;
+    }
   }
 
   @override

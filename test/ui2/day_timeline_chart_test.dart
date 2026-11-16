@@ -110,7 +110,7 @@ void main() {
     expect(during, closeTo(t0 + 3600.0 * 5 + 80 * 86400 / 352, 300));
   });
 
-  testWidgets('single tap selects a band without zooming; double tap selects and zooms',
+  testWidgets('single tap selects; double tap selects with the same zoom as the day view',
       (tester) async {
     final host = await pump(tester, blocks: [mainBlock, napBlock]);
     await tester.tapAt(at(tester, napBlock.start + 900.0));
@@ -127,7 +127,9 @@ void main() {
     expect(host.active, main);
     expect(c.lastGlide!.inMilliseconds, inInclusiveRange(1500, 2000));
     await tester.pump(c.lastGlide! + const Duration(milliseconds: 50));
-    final want = framing(mainBlock.start, mainBlock.end, c.domainStart, c.domainEnd);
+    // Round 2: block selection must not substitute block-framing zoom.
+    // 24 h × .7, centred on the tapped 00:00 instant, clamped at 20:00.
+    final want = TimelineView(t0.toDouble(), t0 + 86400 * .7);
     expect(c.view.start, closeTo(want.start, 1));
     expect(c.view.end, closeTo(want.end, 1));
   });
@@ -194,7 +196,7 @@ void main() {
     final g = await tester.startGesture(at(tester, mainBlock.end.toDouble()));
     await g.moveBy(const Offset(24, 0));
     await tester.pump();
-    expect(find.text('5-minute steps · hold for minutes'), findsOneWidget);
+    expect(find.text('5-minute steps. Hold for single minutes.'), findsOneWidget);
     expect(host.blocks.single.end % 300, 0);
     await tester.pump(const Duration(milliseconds: 650)); // held still
     expect(find.text('1-minute steps'), findsOneWidget);

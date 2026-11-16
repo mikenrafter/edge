@@ -10,7 +10,7 @@
 //  • Zoom: every change glides 1.5-2 s (ease in-out), never under 30 min;
 //    double-tap empty space zooms in 30% around the tap; reset glides home.
 //  • Blocks (sleep editor): one active block with two handles, the others
-//    labelled bands. Tap a band selects it; double tap selects and zooms.
+//    labelled bands. Tap selects; double tap selects and uses the day zoom.
 //    Dragging a handle shows the magnifier: 5-minute steps, then 1-minute
 //    steps after a 0.6 s hold, a haptic per minute (stronger on round ones).
 //  • ⌕ zoom selection (Activities): two handles, then glide to them.
@@ -20,10 +20,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show CustomSemanticsAction;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../../state/clock_format.dart' show formatClockOf;
 import '../chart_annotations.dart';
 import '../charts.dart' show Hypnogram, SleepStage;
@@ -38,11 +40,19 @@ class TimelineController extends ChangeNotifier {
     required this.domainEnd,
     required TimelineView home,
     double? scrub,
-  })  : home = home.clampTo(domainStart, domainEnd),
-        _view = home.clampTo(domainStart, domainEnd),
+    double minimumSpan = kMinViewSec,
+  })  : _minimumSpan = minimumSpan,
+        home = home.clampTo(domainStart, domainEnd, minimumSpan: math.min(minimumSpan, home.span)),
+        _view = home.clampTo(domainStart, domainEnd, minimumSpan: math.min(minimumSpan, home.span)),
         _scrub = scrub;
 
   final double domainStart, domainEnd;
+
+  final double _minimumSpan;
+
+  /// A recorded or edited short night stays exact when returning home.
+  /// CLAIM(sleep-editor-night-region) [sleep_editor_fixes_test].
+  double get minimumSpan => math.min(_minimumSpan, home.span);
 
   /// The default range "Reset zoom" glides back to.
   TimelineView home;
@@ -103,7 +113,7 @@ class TimelineController extends ChangeNotifier {
 
   /// Glide to [v] (made legal first) over [zoomDuration].
   void glideTo(TimelineView v) {
-    final to = v.clampTo(domainStart, domainEnd);
+    final to = v.clampTo(domainStart, domainEnd, minimumSpan: minimumSpan);
     _ticker?.stop();
     _from = _view;
     _duration = zoomDuration(_view, to);
@@ -125,7 +135,7 @@ class TimelineController extends ChangeNotifier {
   }
 
   /// The double tap on empty space.
-  void zoomAt(double t) => glideTo((_to ?? _view).zoomAt(t, domainStart, domainEnd));
+  void zoomAt(double t) => glideTo((_to ?? _view).zoomAt(t, domainStart, domainEnd, minimumSpan: minimumSpan));
 
   void setScrub(double? t) {
     _scrub = t?.clamp(domainStart, domainEnd);
@@ -251,10 +261,13 @@ class DayTimelineChart extends StatefulWidget {
     this.stagesArePreview = false,
     this.annotations = const [],
     this.emphasis,
-    this.annotationListener,
+    this.annotationListener, this.showAnnotationLabel=true,
     this.blocks = const [],
     this.activeBlock,
-    this.blockLabels = const {},
+    this.chooseBlock,
+    this.blockEditingEnabled = true,
+    this.pickTime, this.interceptTap, this.signalStart,
+    this.blockLabels = const {}, this.blockSemanticLabels=const {},
     this.listener,
     this.haptics = const PhoneTimelineHaptics(),
     this.plotHeight = 156,
@@ -273,11 +286,20 @@ class DayTimelineChart extends StatefulWidget {
   final List<ChartAnnotation> annotations;
   final Set<String>? emphasis;
   final AnnotationListener? annotationListener;
+  final bool showAnnotationLabel;
   final List<SleepBlock> blocks;
   final String? activeBlock;
 
+  /// Resolves overlapping entries without relying on paint order. Null keeps
+  /// the shared chart's original selection behavior for non-editor callers.
+  final Future<String?> Function(List<SleepBlock>)? chooseBlock;
+  final bool blockEditingEnabled;
+  final ValueChanged<double>? pickTime;
+  final bool Function(double)? interceptTap;
+  final double? signalStart;
+
   /// A band's label per block id ("Main sleep ✎").
-  final Map<String, String> blockLabels;
+  final Map<String, String> blockLabels, blockSemanticLabels;
   final TimelineListener? listener;
   final TimelineHaptics haptics;
   final double plotHeight;
@@ -302,6 +324,7 @@ class _DayTimelineChartState extends State<DayTimelineChart>
   Timer? _hold;
   int? _lastMinute;
   Offset? _doubleTapAt;
+  bool _choosingBlock = false;
 
   @override
   void initState() {
@@ -350,8 +373,35 @@ class _DayTimelineChartState extends State<DayTimelineChart>
 
   SleepBlock? _bandAt(double t) => widget.blocks.where((b) => b.contains(t)).firstOrNull;
 
-  void _tapUp(TapUpDetails d, double width) {
+  // CLAIM(sleep-editor-overlap-choice): ambiguous taps name every matching
+  // entry before selecting one [sleep_editor_review_r1_test].
+  Future<bool> _chooseOverlap(double t, {required bool zoom}) async {
+    final choose = widget.chooseBlock;
+    final matches = widget.blocks.where((b) => b.contains(t)).toList();
+    if (choose == null || matches.length < 2) return false;
+    if (_choosingBlock) return true;
+    _choosingBlock = true;
+    try {
+      final id = await choose(matches);
+      if (!mounted || id == null) return true;
+      final band = widget.blocks.where((b) => b.id == id).firstOrNull;
+      if (band == null) return true;
+      widget.listener?.blockSelected(id, zoom: zoom);
+      if (zoom) {
+        final c = widget.controller;
+        c.zoomAt(t);
+      }
+    } finally {
+      _choosingBlock = false;
+    }
+    return true;
+  }
+
+  Future<void> _tapUp(TapUpDetails d, double width) async {
     final t = _tAt(d.localPosition.dx, width);
+    if(widget.pickTime!=null){widget.pickTime!(t);return;}
+    if(widget.interceptTap?.call(t)==true)return;
+    if (await _chooseOverlap(t, zoom: false) || !mounted) return;
     final band = _bandAt(t);
     if (band != null && band.id != widget.activeBlock && widget.listener != null) {
       widget.listener!.blockSelected(band.id, zoom: false);
@@ -361,15 +411,17 @@ class _DayTimelineChartState extends State<DayTimelineChart>
     widget.listener?.scrubbed(t);
   }
 
-  void _doubleTap(double width) {
+  Future<void> _doubleTap(double width) async {
     final at = _doubleTapAt;
     if (at == null) return;
     final t = _tAt(at.dx, width);
+    if(widget.pickTime!=null){widget.pickTime!(t);return;}
+    if (await _chooseOverlap(t, zoom: true) || !mounted) return;
     final band = _bandAt(t);
     final c = widget.controller;
     if (band != null && widget.listener != null) {
       widget.listener!.blockSelected(band.id, zoom: true);
-      c.glideTo(framing(band.start, band.end, c.domainStart, c.domainEnd));
+      c.zoomAt(t);
       return;
     }
     c.zoomAt(t);
@@ -384,7 +436,7 @@ class _DayTimelineChartState extends State<DayTimelineChart>
       return;
     }
     final a = _active;
-    if (a != null) {
+    if (a != null && widget.blockEditingEnabled) {
       final ds = (x - _xOf(a.start.toDouble(), width)).abs();
       final de = (x - _xOf(a.end.toDouble(), width)).abs();
       if (math.min(ds, de) <= DayTimelineChart.handleReach) {
@@ -459,6 +511,7 @@ class _DayTimelineChartState extends State<DayTimelineChart>
   @override
   Widget build(BuildContext context) {
     final p = P.of(context);
+    final l = AppLocalizations.of(context)??lookupAppLocalizations(const Locale('en'));
     final c = widget.controller;
     final scaler = MediaQuery.textScalerOf(context);
     final header = ChartAnnotationLane.headerFor(scaler, Directionality.of(context));
@@ -476,8 +529,21 @@ class _DayTimelineChartState extends State<DayTimelineChart>
       final dragValue = _drag?.value;
       return Semantics(
         container: true,
-        label: 'Timeline ${widget.clock.of(v.start.round())} to ${widget.clock.of(v.end.round())}'
-            '${c.scrub == null ? '' : ', line at ${widget.clock.of(c.scrub!.round())}'}',
+        label: c.scrub==null
+          ?l.timelineSemanticsRange(widget.clock.of(v.start.round()),widget.clock.of(v.end.round()))
+          :l.timelineSemanticsScrub(widget.clock.of(v.start.round()),widget.clock.of(v.end.round()),widget.clock.of(c.scrub!.round())),
+        customSemanticsActions:{
+          if(widget.pickTime==null)for(final block in widget.blocks)
+            CustomSemanticsAction(label:widget.blockSemanticLabels[block.id]??
+              '${widget.blockLabels[block.id]??block.id} ${widget.clock.of(block.start)} – ${widget.clock.of(block.end)}'):
+                ()=>widget.listener?.blockSelected(block.id,zoom:false),
+          if(widget.annotationListener!=null)for(final annotation in widget.annotations)
+            CustomSemanticsAction(label:'${annotation.label} ${widget.clock.of(annotation.at.round())}'):
+              ()=>widget.annotationListener!.annotationTapped(annotation.id),
+        },
+        onIncrease:()=>c.setScrub(((c.scrub??v.center)+60).clamp(v.start,v.end)),
+        onDecrease:()=>c.setScrub(((c.scrub??v.center)-60).clamp(v.start,v.end)),
+        onTap:widget.pickTime==null?null:()=>widget.pickTime!(c.scrub??v.center),
         child: GestureDetector(
           key: DayTimelineChart.chartKey,
           behavior: HitTestBehavior.opaque,
@@ -498,7 +564,8 @@ class _DayTimelineChartState extends State<DayTimelineChart>
                   painter: TimelinePainter(
                     p: p,
                     view: v,
-                    domainStart: c.domainStart,
+                    domainStart: widget.signalStart??c.domainStart,
+                    stageLabel:l.timelineStages,moveLabel:l.timelineMovement,previewLabel:l.sleepEditorPreview,
                     header: header,
                     plotHeight: widget.plotHeight,
                     lanes: laneLayout(widget.plotHeight, lanes),
@@ -507,7 +574,7 @@ class _DayTimelineChartState extends State<DayTimelineChart>
                     stages: widget.stages,
                     stagesArePreview: widget.stagesArePreview,
                     blocks: widget.blocks,
-                    active: widget.activeBlock,
+                    active: widget.blockEditingEnabled ? widget.activeBlock : null,
                     blockLabels: widget.blockLabels,
                     scrub: c.scrub,
                     zoom: c.zoomSelection,
@@ -521,6 +588,7 @@ class _DayTimelineChartState extends State<DayTimelineChart>
                 width: plotW,
                 top: 0,
                 child: ChartAnnotationLane(
+                  showLabel:widget.showAnnotationLabel,
                   set: AnnotationSet(
                     items: widget.annotations,
                     domainStart: v.start,
@@ -580,7 +648,9 @@ class _Magnifier extends StatelessWidget {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Text(clock.of(value),
             style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w700, height: 1.2)),
-        Text(fine ? '1-minute steps' : '5-minute steps · hold for minutes',
+        Text(fine
+            ?(AppLocalizations.of(context)??lookupAppLocalizations(const Locale('en'))).timelineFineSteps
+            :(AppLocalizations.of(context)??lookupAppLocalizations(const Locale('en'))).timelineCoarseSteps,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: F.over.copyWith(color: fine ? p.on(C.green) : p.ink3, height: 1.2)),
@@ -649,6 +719,7 @@ class TimelinePainter extends CustomPainter {
     required this.zoom,
     required this.clock,
     required this.textScaler,
+    this.stageLabel='Stages',this.moveLabel='Move',this.previewLabel='PREVIEW',
   });
 
   final P p;
@@ -665,6 +736,7 @@ class TimelinePainter extends CustomPainter {
   final ZoomSelection? zoom;
   final ClockText clock;
   final TextScaler textScaler;
+  final String stageLabel,moveLabel,previewLabel;
 
   static const double _l = DayTimelineChart.gutter, _r = DayTimelineChart.rightPad;
 
@@ -762,10 +834,10 @@ class TimelinePainter extends CustomPainter {
         case TimelineLane.stages:
           final s = stages;
           if (s == null) break;
-          _text(canvas, 'Stages', Offset(0, y0 + 2),
+          _text(canvas, stageLabel, Offset(0, y0 + 2),
               label.copyWith(color: p.ink2, fontWeight: FontWeight.w700));
           if (stagesArePreview) {
-            _text(canvas, 'PREVIEW', Offset(0, y0 + 14),
+            _text(canvas, previewLabel, Offset(0, y0 + 14),
                 label.copyWith(color: p.on(C.orange), fontWeight: FontWeight.w700, fontSize: 9));
           }
           final cols = Hypnogram.cols(p);
@@ -794,7 +866,7 @@ class TimelinePainter extends CustomPainter {
             }
           }
         case TimelineLane.movement:
-          _text(canvas, 'Move', Offset(0, y0 + 2),
+          _text(canvas, moveLabel, Offset(0, y0 + 2),
               label.copyWith(color: p.on(C.purple), fontWeight: FontWeight.w700));
           final bar = Paint()..color = p.on(C.purple).withValues(alpha: .75);
           final pxPerMin = w * 60 / view.span;
@@ -838,7 +910,11 @@ class TimelinePainter extends CustomPainter {
         final style = F.over.copyWith(color: p.on(accent), fontWeight: FontWeight.w700, height: 1);
         // "✎" is the Lucide pencil: the text fonts have no such glyph.
         final pen = LucideIcons.pencil;
-        final tp = TextPainter(text: TextSpan(text: '$text ', style: style, children: [
+        final tp = TextPainter(text: TextSpan(style: style, children: [
+              if (b.kind == BlockKind.nap)
+                TextSpan(text: '${String.fromCharCode(annotationIcon(AnnotationKind.nap).codePoint)} ',
+                    style: style.copyWith(fontFamily: pen.fontFamily, package: pen.fontPackage)),
+              TextSpan(text: '$text '),
               TextSpan(text: String.fromCharCode(pen.codePoint),
                   style: style.copyWith(fontFamily: pen.fontFamily, package: pen.fontPackage)),
             ]),
@@ -979,6 +1055,37 @@ class TimelinePill extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Shared controls and their semantics for both day and sleep timelines.
+/// The screen supplies labels and keys; all range changes belong to the controller.
+class TimelineZoomControls extends StatelessWidget {
+  const TimelineZoomControls({super.key, required this.controller,
+    required this.zoomLabel, required this.resetLabel,
+    required this.zoomKey, required this.resetKey,this.singleButton=false});
+  final TimelineController controller;
+  final String zoomLabel, resetLabel;
+  final Key zoomKey, resetKey;
+  final bool singleButton;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: controller,
+    builder: (context, _) => Wrap(alignment: WrapAlignment.end,
+        crossAxisAlignment: WrapCrossAlignment.center, children: [
+      MergeSemantics(key: zoomKey, child: Semantics(
+        selected: controller.zoomSelection != null, child: TextButton.icon(
+        style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+        onPressed: singleButton&&controller.zoomed?controller.reset:controller.toggleZoomSelection,
+        icon: const Icon(LucideIcons.search, size: 16),
+        label: Text(singleButton&&controller.zoomed?resetLabel:zoomLabel),
+      ))),
+      if (!singleButton&&controller.zoomed)
+        TextButton(key: resetKey,
+          style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+          onPressed: controller.reset, child: Text(resetLabel)),
+    ]),
+  );
 }
 
 /// The chart card's title row: the title (and a small subtitle) on the left,

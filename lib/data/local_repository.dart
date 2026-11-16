@@ -271,6 +271,15 @@ abstract class LocalRepository {
   /// the same as a day with no naps, and reads differently).
   Future<Map<String, dynamic>> getDayNaps(String date) =>
       throw UnimplementedError('re-layer: getDayNaps');
+
+  /// Editor projection: includes persisted assertions, even rejected or queued
+  /// naps that are absent from the published metric result. Metric screens
+  /// continue to use [getDayNaps]. No derived values are calculated here.
+  Future<Map<String, dynamic>> getSleepEditorNaps(String date) => getDayNaps(date);
+
+  /// Current bounds plus preserved detection for the mutable editor only.
+  Future<Map<String, dynamic>> getSleepEditorMain(String date) => getDaySleepV2(date);
+
   Future<Map<String, dynamic>> getDayHrv(String date) =>
       throw UnimplementedError('re-layer: getDayHrv');
 

@@ -2162,6 +2162,63 @@ class LocalRepositoryImpl extends LocalRepository {
   });
 
   @override
+  Future<Map<String, dynamic>> getSleepEditorMain(String date) async {
+    final current = await getDaySleepV2(date);
+    final assertion = await LocalDb.getSleepOverride(date);
+    final payload = await sleepEditorPayload(assertion?['payload_json']);
+    final detected = sleepEditorDetected(payload);
+    final restore = payload['_restore'];
+    final auto = assertion == null && !const ['manual','confirmed','rejected'].contains(current['sleep_source']);
+    return {...current,
+      if (detected != null) ...{'detected_start':detected['start'],'detected_end':detected['end']}
+      else if (auto) ...{'detected_start':current['onset_ts'],'detected_end':current['wake_ts']},
+      if (restore is Map) ...{'restore_start':restore['start'],'restore_end':restore['end']},
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> getSleepEditorNaps(String date) =>
+      ReadPerf.reading('getSleepEditorNaps', () async {
+    _focusCheck('getSleepEditorNaps');
+    final published = await getDayNaps(date);
+    final assertions = await LocalDb.napEdits(date);
+    final byStart = {for (final row in assertions) row['start_ts'] as int: row};
+    final represented = <int>{};
+    Future<Map<String, dynamic>> entry(Map row) async {
+      final payload = await sleepEditorPayload(row['payload_json']);
+      final detected = sleepEditorDetected(payload);
+      final restore = payload['_restore'];
+      return {'start':row['start_ts'],'end':row['end_ts'],'source':row['source'],
+        if (detected != null) ...{'detected_start':detected['start'],'detected_end':detected['end']},
+        if (restore is Map) ...{'restore_start':restore['start'],'restore_end':restore['end']},
+      };
+    }
+    // CLAIM(sleep-editor-legacy): a published projection cannot hide a newer
+    // assertion or the rejection needed to restore retained history
+    // [sleep_editor_legacy_contract_test]. sleep_nap's identity is day/start.
+    final naps = <Map<String, dynamic>>[];
+    for (final value in (published['naps'] as List?) ?? const []) {
+      if (value is! Map || value['start'] is! num) continue;
+      final start = (value['start'] as num).toInt();
+      final assertion = byStart[start];
+      naps.add(assertion == null ? Map<String, dynamic>.from(value) : await entry(assertion));
+      represented.add(start);
+    }
+    for (final row in assertions) {
+      if (!represented.contains(row['start_ts'])) naps.add(await entry(row));
+    }
+    // A moved entry owns its original detected boundary. The rejected row at
+    // that boundary is a suppression record, not a second removed sleep block.
+    // Keep every ledger row; only the explicitly linked ghost changes display.
+    final ghostBounds=<(Object?,Object?)>{for(final n in naps)
+      if(n['detected_start'] is num&&n['detected_end'] is num&&
+        (n['detected_start']!=n['start']||n['detected_end']!=n['end']))
+        (n['detected_start'],n['detected_end'])};
+    return {'naps':[for(final n in naps)
+      if(n['source']!='rejected'||!ghostBounds.contains((n['start'],n['end'])))n]};
+  });
+
+  @override
   Future<Map<String, dynamic>> getDayNaps(String date) => ReadPerf.reading('getDayNaps', () async {
     _focusCheck('getDayNaps');
     // THE EXACT DAY, never the latest-complete fallback: this list is editable,
@@ -2184,6 +2241,8 @@ class LocalRepositoryImpl extends LocalRepository {
                 'start': (n['start'] as num).toInt(),
                 'end': (n['end'] as num).toInt(),
                 'duration_min': (n['duration_min'] as num?)?.round(),
+                for(final key in ['deep_min','rem_min','light_min','hypnogram'])
+                  if(n.containsKey(key)) key:n[key],
                 // 'manual' on a nap the user logged; absent on a detected one.
                 if (n['source'] != null) 'source': n['source'].toString(),
               },

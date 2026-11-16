@@ -122,13 +122,10 @@ void main() {
       final p = find.byKey(SleepTimelineEditor.readoutKey);
       expect(
         find.descendant(of: p, matching: find.text('—')),
-        findsNWidgets(5),
+        findsNWidgets(3),
       );
       expect(find.text('Both ends line up with your signals'), findsNothing);
-      expect(
-        find.text('No movement recorded to suggest times'),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('sleep-editor-suggestions')),findsNothing);
     },
   );
 
@@ -189,7 +186,7 @@ void main() {
     );
     final p = find.byKey(SleepTimelineEditor.readoutKey);
     expect(
-      find.descendant(of: p, matching: find.text('SELECTED · 01:00')),
+      find.descendant(of: p, matching: find.text('01:00')),
       findsOneWidget,
     );
     final chart = t.getRect(find.byKey(DayTimelineChart.chartKey));
@@ -209,7 +206,7 @@ void main() {
         find.descendant(
           of: p,
           matching: find.text(
-            minute == 300 ? 'SELECTED · 01:00' : 'SELECTED · 03:00',
+            minute == 300 ? '01:00' : '03:00',
           ),
         ),
         findsOneWidget,
@@ -227,11 +224,11 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.descendant(of: p, matching: find.text('REM')), findsOneWidget);
+    expect(find.descendant(of: p, matching: find.text('Heart rate')), findsOneWidget);
     s.controller.zoomAt(dtAt(420).toDouble());
     await t.pump();
     await t.pump(const Duration(seconds: 2));
-    expect(find.byKey(SleepTimelineEditor.resetKey), findsOneWidget);
+    expect(find.byKey(const ValueKey('sleep-editor-zoom')), findsOneWidget);
   });
   testWidgets(
     'R1 marked-moment draft must retain its edited label on return and Save',
@@ -443,7 +440,7 @@ void main() {
       s.controller.zoomAt(apk2At(18).toDouble());
       await t.pump();
       await t.pump(const Duration(seconds: 2));
-      expect(find.byKey(ActivitiesTimeline.resetKey), findsOneWidget);
+      expect(find.byKey(ActivitiesTimeline.zoomKey), findsOneWidget);
       final list = find.byKey(ActivitiesTimeline.listKey);
       await t.drag(list, const Offset(0, 300));
       await settle(t);

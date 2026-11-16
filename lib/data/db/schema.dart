@@ -1113,6 +1113,10 @@ Future<Database> _ldbPrivOpen() async {
         if (oldV < 90) {
           await SleepEditStore.create(db);
         }
+        // Existing schema-89/90 pilots also need retained editor history.
+        if (oldV < 91) {
+          await LocalDb._createSleepOverride(db);
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);

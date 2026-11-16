@@ -51,6 +51,15 @@ Future<void> shot(WidgetTester t, String name) async {
   });
 }
 
+Future<void> filterKinds(WidgetTester t,Set<String> kinds)async{
+ await apk2Tap(t,find.byKey(ActivitiesTimeline.filterButtonKey));await t.pumpAndSettle();
+ for(final kind in [...kinds,...{'pending','saved','discarded'}.difference(kinds)]){
+  final f=find.byKey(ValueKey('activity-kind:$kind'));
+  if(t.widget<CheckboxListTile>(f).value!=kinds.contains(kind)){await t.tap(f);await t.pumpAndSettle();}
+ }
+ Navigator.of(t.element(find.text('Show activities'))).pop();await t.pumpAndSettle();
+}
+
 class _NoCard implements NightCardListener {
   @override
   void recalculate() {}
@@ -312,17 +321,17 @@ void main() {
       // Save, then the discarded filter with Restore.
       await apk2Tap(t, find.byKey(ActivitiesSaveBar.saveKey));
       await settle(t);
-      await apk2Tap(t, find.byKey(ActivitiesTimeline.filterKey(DiscardFilter.only)));
+      await filterKinds(t,{'discarded'});
       await settle(t);
       await shot(t, 'activities-only-discarded');
       await apk2Tap(t, find.byKey(ActivitiesTimeline.restoreKey('discarded:activity:apk2-nap-b')));
       await shot(t, 'activities-restore-staged');
-      await apk2Tap(t, find.byKey(ActivitiesTimeline.filterKey(DiscardFilter.all)));
+      await filterKinds(t,{'pending','saved','discarded'});
       await shot(t, 'activities-filter-all');
       await apk2Tap(t, find.byKey(ActivitiesSaveBar.cancelKey));
       await t.pump(const Duration(milliseconds: 400));
       await apk2Tap(t, find.byKey(const ValueKey('activities-cancel-confirm')));
-      await apk2Tap(t, find.byKey(ActivitiesTimeline.filterKey(DiscardFilter.hide)));
+      await filterKinds(t,{'pending','saved'});
       // Everything answered: annotations back to normal.
       for (final id in apk2MixedIds) {
         if (find.byKey(ValueKey('apk2-review-keep:$id')).evaluate().isEmpty) continue;
