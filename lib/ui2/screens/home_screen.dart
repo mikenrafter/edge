@@ -85,6 +85,7 @@ import '../profile/settings.dart' show MoreSettings;
 import '../profile/wearable_numbers.dart'
     show WearableCells, kHomeWearableRows, wearableName;
 import '../ui2.dart';
+import '../guides/help_entry.dart';
 import '../why_row.dart';
 import 'ai_briefing.dart' show AiBriefingScreen;
 import 'coach.dart';
@@ -3107,6 +3108,7 @@ class _HomeScreenState extends State<HomeScreen>
                   : wearableName(d.wearable!.adapterId),
               initialCells: d.wearable?.cells ?? const {}),
         ),
+      const HelpEntry(topic: GuideTopic.today),
     ])),
       if (!isToday) Positioned(left: S.x4, right: S.x4, bottom: pillGap,
         child: Align(alignment: Alignment.bottomCenter, child: Pressable(

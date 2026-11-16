@@ -8,6 +8,7 @@
 
 import 'package:flutter/material.dart';
 import '../ui2.dart';
+import '../guides/help_entry.dart';
 import 'sleep_detail.dart';
 
 class SleepTab extends StatelessWidget {
@@ -16,6 +17,7 @@ class SleepTab extends StatelessWidget {
   Widget build(BuildContext c) {
     final request = ShellDate.maybeOf(c);
     return SleepDetail(key: ValueKey(request?.revision ?? 0),
-      day: request?.date, embedded: true);
+      day: request?.date, embedded: true,
+      footer: const [HelpEntry(topic: GuideTopic.sleep)]);
   }
 }

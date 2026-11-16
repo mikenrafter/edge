@@ -275,7 +275,7 @@ void main() {
       await _reveal(t);
       expect(find.byType(ZonesDetail), findsOneWidget);
       expect(_step(app), 2);
-      expect(_caption(t), _plain(l.guideHrZonesStep3(l.activityZonesTitle, l.activityZonesSetYourOwnLink)));
+      expect(_caption(t), _plain(l.guideHrZonesStep3(l.activityZonesTitle, l.activityZonesSetYourOwnLink, l.activityZonesEditYourOwnLink)));
 
       await t.tap(_label(l.activityZonesSetYourOwnLink));
       await _reveal(t);

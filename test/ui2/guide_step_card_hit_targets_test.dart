@@ -49,7 +49,8 @@ void main() {
         }
       }
       await show(GuideCardOnStep(number: 1, total: 2, caption: 'Find the control.', missingHelp: help));
-      var expanded = false;
+      // The fork defaults missing-target help to expanded and remembers it.
+      var expanded = find.byKey(GuideStepCard.missingHelpKey).evaluate().isNotEmpty;
       await tapEdges(GuideStepCard.dontSeeItKey, () {
         expanded = !expanded;
         expect(find.byKey(GuideStepCard.missingHelpKey), expanded ? findsOneWidget : findsNothing);
