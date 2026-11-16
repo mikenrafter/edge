@@ -9,12 +9,15 @@ void main() {
   // catches: summing all descendants, or tweening their motion again above Row.
   for (final shape in ['fixed taller sibling', 'two siblings', 'Home glance']) {
     for (final reduced in [false, true]) {
-      testWidgets('$shape settles without overshoot, reduced=$reduced', (t) async {
+      testWidgets('$shape settles without overshoot, reduced=$reduced', (
+        t,
+      ) async {
         Widget page(double height) {
           final home = shape == 'Home glance';
           final row = Row(
-            crossAxisAlignment:
-                home ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
+            crossAxisAlignment: home
+                ? CrossAxisAlignment.stretch
+                : CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: home
@@ -25,8 +28,8 @@ void main() {
                 child: home
                     ? Surface(child: SizedBox(height: height))
                     : shape == 'fixed taller sibling'
-                        ? const SizedBox(height: 300)
-                        : SettlingHeight(child: SizedBox(height: height)),
+                    ? const SizedBox(height: 300)
+                    : SettlingHeight(child: SizedBox(height: height)),
               ),
             ],
           );
@@ -57,7 +60,8 @@ void main() {
           );
         }
 
-        double top() => t.getTopLeft(find.byKey(const ValueKey('after-row'))).dy;
+        double top() =>
+            t.getTopLeft(find.byKey(const ValueKey('after-row'))).dy;
         await t.pumpWidget(page(80));
         final initial = top();
         // The fixed 300dp sibling masks both changes. Otherwise max(80,80)
@@ -73,13 +77,22 @@ void main() {
           for (final millis in [...List.filled(15, 16), 10, 250]) {
             await t.pump(Duration(milliseconds: millis));
             final current = top();
-            expect(current, inInclusiveRange(initial, grown),
-                reason: 'no overshoot on growth or shrink');
-            expect(growing ? current >= previous : current <= previous, isTrue,
-                reason: 'following row must not reverse direction');
+            expect(
+              current,
+              inInclusiveRange(initial, grown),
+              reason: 'no overshoot on growth or shrink',
+            );
+            expect(
+              growing ? current >= previous : current <= previous,
+              isTrue,
+              reason: 'following row must not reverse direction',
+            );
             if (reduced || millis == 10 || millis == 250) {
-              expect(current, closeTo(end, 0.001),
-                  reason: 'settled by 250ms and remains settled');
+              expect(
+                current,
+                closeTo(end, 0.001),
+                reason: 'settled by 250ms and remains settled',
+              );
             }
             previous = current;
           }
