@@ -38,15 +38,19 @@ class TimelineController extends ChangeNotifier {
     required this.domainEnd,
     required TimelineView home,
     double? scrub,
-    this.minimumSpan = kMinViewSec,
-  })  : home = home.clampTo(domainStart, domainEnd, minimumSpan: minimumSpan),
+    double minimumSpan = kMinViewSec,
+  })  : _minimumSpan = minimumSpan,
+        home = home.clampTo(domainStart, domainEnd, minimumSpan: minimumSpan),
         _view = home.clampTo(domainStart, domainEnd, minimumSpan: minimumSpan),
         _scrub = scrub;
 
   final double domainStart, domainEnd;
 
-  /// A short recorded night may use its exact span as the zoom floor.
-  final double minimumSpan;
+  final double _minimumSpan;
+
+  /// A recorded or edited short night stays exact when returning home.
+  /// CLAIM(sleep-editor-night-region) [sleep_editor_fixes_test].
+  double get minimumSpan => math.min(_minimumSpan, home.span);
 
   /// The default range "Reset zoom" glides back to.
   TimelineView home;

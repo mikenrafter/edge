@@ -105,6 +105,11 @@ void main() {
     await t.tap(find.byKey(SleepTimelineEditor.resetKey));
     await t.pumpAndSettle();
     expect(state.controller.view, home);
+    // The full-region invariant also applies after dragging a window shorter.
+    state.blocksChanged([d.main.copyWith(end: dtAt(170))]);
+    state.controller.reset();
+    await t.pumpAndSettle();
+    expect(state.controller.view, TimelineView(dtAt(160).toDouble(), dtAt(170).toDouble()));
   });
 
   testWidgets('zoom frames preserve readout Text widgets and list position', (t) async {
