@@ -715,6 +715,10 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
       await deleteByIn(txn, 'group_row', 'day_id', sorted);
       await deleteByIn(txn, 'day_manifest', 'day_id', sorted);
     });
+    // Fence pending Home reads and queued snapshot writes only after commit.
+    // The bounded presentation cache is rebuildable, so clear it as a unit.
+    // CLAIM(home-cache-reset) [home_cache_day_deletion_test].
+    await HomeSnapshotStore.invalidate();
     return deleted;
   }
 

@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/home_snapshot_store.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/models/metric.dart';
 import 'package:openstrap_edge/settings/settings_repository.dart';
@@ -155,6 +156,76 @@ void main() {
       }
     },
   );
+  // why: a deletion must fence edits already queued behind unrelated settings.
+  // CLAIM(home-cache-reset). This drives LocalDb.deleteDays, not invalidation alone.
+  test('day deletion fences a delayed snapshot save', () async {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+    final dir = await Directory.systemTemp.createTemp('home-cache-delete-');
+    final previousName = LocalDb.dbName;
+    await LocalDb.close();
+    LocalDb.dbName = '${dir.path}/cache.db';
+    final store = _SlowPrefs();
+    SharedPreferencesStorePlatform.instance = store;
+    final cache = HomeRingDetailCache.local;
+    await HomeSnapshotStore.invalidate();
+    final db = await LocalDb.instance;
+    await db.insert('day_result', {
+      'day_id': '2026-09-21',
+      'algo_version': 100,
+      'payload_json': '{}',
+      'computed_at': 1,
+      'finalized': 1,
+    });
+    cache.record(
+      '2026-09-21',
+      'en',
+      const HomeData(readiness: Metric(value: 33.33)),
+      null,
+    );
+    await flush();
+    final blocked = SettingsRepository.instance.update(
+      (d) => d.setString('lifecycle.probe', 'deleting'),
+      sections: const {},
+    );
+    await store.entered.future;
+    final queued = HomeRingDetailCache(userKey: () => 'queued-profile');
+    queued.record(
+      '2026-09-21',
+      'en',
+      const HomeData(readiness: Metric(value: 22.22)),
+      null,
+    );
+    await Future<void>.value();
+    final writesBefore = store.snapshotWrites.length;
+    final invalidated = Completer<void>();
+    void changed() {
+      if (!invalidated.isCompleted) invalidated.complete();
+    }
+
+    HomeSnapshotStore.changes.addListener(changed);
+    final deletion = LocalDb.deleteDays({'2026-09-21'});
+    try {
+      await invalidated.future.timeout(const Duration(seconds: 5));
+      expect(cache.read('2026-09-21', 'en'), isNull);
+      expect(queued.read('2026-09-21', 'en'), isNull);
+    } finally {
+      HomeSnapshotStore.changes.removeListener(changed);
+      store.release.complete();
+      await blocked;
+      await deletion;
+      await flush();
+      await LocalDb.close();
+      LocalDb.dbName = previousName;
+      await dir.delete(recursive: true);
+    }
+    expect(
+      store.snapshotWrites.skip(writesBefore),
+      everyElement(isNot(contains('22.22'))),
+    );
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString(HomeRingDetailCache.prefKey), isNull);
+  });
   testWidgets(
     'a pending read from the replaced repository cannot revive old snapshots',
     (t) async {
