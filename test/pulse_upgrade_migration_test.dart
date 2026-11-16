@@ -136,7 +136,7 @@ void main() {
       ).reconcile(detection(), origin: 'sync', nowMs: 1);
       await reopenAsUpgrade();
       final db = await LocalDb.instance;
-      expect(await db.getVersion(), 89);
+      expect(await db.getVersion(), LocalDb.schemaVersion);
       expect(await db.query('pulse_upgrade'), hasLength(1));
       final keys = await db.query('pulse_upgrade_record');
       expect(

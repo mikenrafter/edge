@@ -2007,8 +2007,7 @@ part 'engine/settled.dart';
 // 123: pulse detector v4 preserves independently irregular RR when breathing
 // coexists. A narrow sinusoid is fitted on the tachogram, then original-beat
 // residuals must fail fixed floors before exclusion. Analytics fork 8f3c08c
-// (local only; gitignored override required until the owner publishes it).
-
+// published at the pinned analytics fork commit.
 // 119 → 120 (sleep edit R2): no-input assertions reuse night measurements
 // only when the complete stored measured window matches exactly. Other nights
 // record unavailable measurements while preserving daytime facts.

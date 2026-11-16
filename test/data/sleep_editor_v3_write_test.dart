@@ -79,7 +79,7 @@ void main(){
     expect(await db.query('sleep_edit_job'),isEmpty);
   });
 
-  for(final version in [88,LocalDb.schemaVersion]) {
+  for(final version in [88,89,90,LocalDb.schemaVersion]) {
     test('schema $version adds or heals detected snapshot column without changing old bounds',()async{
       await db.insert('sleep_override',{'day_id':day,'onset_ts':a,'offset_ts':b,'source':'manual','created_at':42});
       await db.execute('ALTER TABLE sleep_override DROP COLUMN payload_json');
