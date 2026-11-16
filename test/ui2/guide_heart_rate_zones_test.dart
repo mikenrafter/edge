@@ -195,6 +195,9 @@ void main() {
           expect(find.byType(screenTypes[i]), findsOneWidget, reason: 'step ${i + 1} is the REAL ${screenTypes[i]}');
           final rect = _foundRect(steps[i].target.resolve(root, l), 'step ${i + 1} target in ${locale.languageCode}');
           expect(rect.isEmpty, isFalse);
+          if (i == 2) {
+            expect(steps[i].caption.of(l), contains(l.activityZonesSetYourOwnLink));
+          }
           for (var j = 0; j < 3; j++) {
             expect(steps[j].isActive(root, l), i == j, reason: 'step ${j + 1} active on screen ${i + 1}');
           }
@@ -218,6 +221,9 @@ void main() {
         final manualRoot = await _pumpScreen(t, steps[2],
             locale: locale, screen: ZonesDetail(data: GuideDemo.zonesManual));
         expect(find.text(l.activityZonesEditYourOwnLink), findsOneWidget, reason: 'fixture sanity: saved state');
+        // WHY: a saved manual set changes the real control to Edit.
+        // catches: a caption that only names Set in every state.
+        expect(steps[2].caption.of(l), contains(l.activityZonesEditYourOwnLink));
         _foundRect(steps[2].target.resolve(manualRoot, l), 'step 3 target with a saved own set');
         expect(t.takeException(), isNull);
       });
