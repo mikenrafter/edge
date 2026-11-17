@@ -49,16 +49,6 @@ NightRr nightRrBatch(List<double> rrMs, List<double> rrTsMs) {
 class DayCalculationState {
   final CalculationCache _cache = CalculationCache(maxEntries: 2048);
   IncrementalMinuteMetrics _minutes = IncrementalMinuteMetrics();
-  final PrefixFingerprint _minuteInputPrefix = PrefixFingerprint();
-  int _minuteInputCount = 0;
-
-  static void _hashMinute(PrefixFingerprint fp, int key, double hr, double? cadence) {
-    fp.addInt(key);
-    fp.addDouble(hr);
-    fp.addInt(cadence == null ? 0 : 1);
-    if (cadence != null) fp.addDouble(cadence);
-  }
-
   /// Minutes the state above already held when it was read back from storage:
   /// not work this process did, so [processedMinutes] leaves them out.
   int _minutesBase = 0;
@@ -99,10 +89,6 @@ class DayCalculationState {
     if (minutes != null) {
       _minutes = minutes;
       _minutesBase = minutes.processedMinutes;
-      for (final bill in resume.bills!.bills) {
-        _hashMinute(_minuteInputPrefix, bill.key, bill.hr, bill.cadence);
-        _minuteInputCount++;
-      }
     }
     seedNightJson(resume.nightJson);
     _seeded = true;
@@ -641,7 +627,8 @@ class DayCalculationState {
     return result;
   }
 
-  MinuteMetrics minutes(
+  @heavy
+  MinuteMetrics minutesHeavy(
     List<int> keys,
     List<double> hr, {
     List<double?>? cadence,
@@ -652,19 +639,9 @@ class DayCalculationState {
     int dayMinutes = 1440,
     required CalculationMode mode,
   }) {
-    // Editing/removing a priced minute must replay in input order. The package's
-    // subtract-and-replace totals have a different last bit from a fresh fold.
-    // An unchanged prefix may still append without repricing earlier minutes.
-    final fp = PrefixFingerprint();
-    for (var i = 0; i < _minuteInputCount && i < keys.length; i++) {
-      _hashMinute(fp, keys[i], hr[i], cadence?[i]);
-    }
-    final prefix = _minuteInputCount <= keys.length && fp.matches(_minuteInputPrefix);
-    if (!prefix) fp.clear();
-    for (var i = prefix ? _minuteInputCount : 0; i < keys.length; i++) {
-      _hashMinute(fp, keys[i], hr[i], cadence?[i]);
-    }
-    final result = _minutes.sync(
+    // CLAIM(minute-bill-order): native cached contributions use batch summation
+    // in caller order [day_minute_pricing_test; analytics 6b2f6869].
+    return _minutes.sync(
       keys,
       hr,
       cadenceSpm: cadence,
@@ -676,13 +653,10 @@ class DayCalculationState {
       quietHrr: quietWakingHrr,
       // A state read back from storage trusts the minutes it holds only as far as
       // the sync can prove them (it compares every minute's HR and cadence and
-      // the anchors), so it never reprices what has not changed.
-      force: _forceSummaries(mode) || !prefix,
+      // the anchors). Legacy checkpoints rebuild their native bill columns once.
+      force: _forceSummaries(mode),
       includeMinuteSeries: false,
     );
-    _minuteInputPrefix.copyFrom(fp);
-    _minuteInputCount = keys.length;
-    return result;
   }
 
   /// Times [calculate] under [name] in [debugStats], when collecting.

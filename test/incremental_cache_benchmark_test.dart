@@ -36,7 +36,7 @@ void _pass(
 ) {
   deriveDayBundle(copyDay(input), state: state, mode: mode);
   final start = s.tsSec.first;
-  DerivationEngine.applyDayActivity(
+  DerivationEngine.applyDayActivityHeavy(
     bundle: <String, dynamic>{},
     scalars: <String, dynamic>{},
     daySub: s,

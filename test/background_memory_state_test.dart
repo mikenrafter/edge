@@ -245,7 +245,7 @@ void main() {
         Substrate s, DayCalculationState? state, ana.CalculationMode mode) {
       final start = s.tsSec.first;
       final bundle = <String, dynamic>{};
-      final wake = DerivationEngine.applyDayActivity(
+      final wake = DerivationEngine.applyDayActivityHeavy(
         bundle: bundle,
         scalars: <String, dynamic>{},
         daySub: s,

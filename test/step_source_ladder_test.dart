@@ -75,7 +75,7 @@ Substrate _sub(List<int> counters, {int step = 600, String? family = 'gen5'}) {
 }) {
   final bundle = <String, dynamic>{};
   final scalars = <String, dynamic>{};
-  DerivationEngine.applyDayActivity(
+  DerivationEngine.applyDayActivityHeavy(
     bundle: bundle,
     scalars: scalars,
     daySub: sub,

@@ -55,7 +55,7 @@ _Output _run(
     'calories_total': 999.0,
     'steps': 123,
   };
-  final wake = DerivationEngine.applyDayActivity(
+  final wake = DerivationEngine.applyDayActivityHeavy(
     bundle: bundle,
     scalars: scalars,
     daySub: s,

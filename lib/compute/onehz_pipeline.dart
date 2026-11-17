@@ -1424,7 +1424,7 @@ Map<String, dynamic> deriveDayBundle(
       : null;
   // Forced and periodic passes price identical minutes through one fold.
   // A direct batch caller gets a fresh fold; it never inherits cached work.
-  final minuteMetrics = (state ?? DayCalculationState()).minutes(
+  final minuteMetrics = (state ?? DayCalculationState()).minutesHeavy(
     [for (final p in wakeHr) p.tsSec ~/ 60],
     perMin,
     cadence: d.stepSpans.isEmpty

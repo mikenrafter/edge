@@ -2023,7 +2023,8 @@ part 'engine/settled.dart';
 // circadian/load/zone fixes, dated readiness and nullable CVHR comparisons.
 // Keep fork HMM baseline/fallback/provenance and incremental/wake APIs.
 // Main NIGHT state lives in night_checkpoint; the fork DAY format is unchanged.
-// Stored TRIMP/calories retain the E18 single fold in canonical input order.
+// Analytics 6b2f6869 adds compensated incremental TRIMP and canonical energy
+// summation over native cached minute bills.
 // Version 125 is one unreleased merge step, including this analytics repin.
 // Clock-reset merge repair: background frequency feeds independently of RSA;
 // RSA/CVHR refuse unordered clocks and breathing bins use the correction owner.
@@ -6313,7 +6314,7 @@ class DerivationEngine {
 
   /// Whether `daySub` has AT LEAST ONE real HR sample (`hr > 0`) inside
   /// `[fromSec, toSec)` — the gate for the workout-gap credit in
-  /// [applyDayActivity]. Same "real sample" test as [_perMinuteMeanWake]'s own
+  /// [applyDayActivityHeavy]. Same "real sample" test as [_perMinuteMeanWake]'s own
   /// bucketing, so "covered" here means exactly what would have priced a
   /// minute there.
   static bool _hasHrCoverage(Substrate s, int fromSec, int toSec) {
@@ -6462,7 +6463,8 @@ class DerivationEngine {
   /// sequence overwrote `calories_total` — and a test that only exercised the
   /// helper could not see that.
   @visibleForTesting
-  static Map<String, dynamic> applyDayActivity({
+  @heavy
+  static Map<String, dynamic> applyDayActivityHeavy({
     required Map<String, dynamic> bundle,
     required Map<String, dynamic> scalars,
     required Substrate daySub,
@@ -6502,7 +6504,7 @@ class DerivationEngine {
     DayCalculationState? state,
     ana.CalculationMode mode = ana.CalculationMode.forced,
   }) {
-    final wake = _buildWakeDayFeatures(
+    final wake = _buildWakeDayFeaturesHeavy(
       daySub,
       profile,
       sleepOnsetSec: sleepOnsetSec,
@@ -7147,7 +7149,8 @@ class DerivationEngine {
     );
   }
 
-  static Map<String, dynamic> _buildWakeDayFeatures(
+  @heavy
+  static Map<String, dynamic> _buildWakeDayFeaturesHeavy(
     Substrate daySub,
     Profile profile, {
     required int sleepOnsetSec,
@@ -7251,7 +7254,7 @@ class DerivationEngine {
             maxHr: hrMax,
             minMinutes: ana.quietHrrTraitMinMinutes);
     // Both modes use the same minute fold; forced mode rebuilds it.
-    final minuteMetrics = (state ?? DayCalculationState()).minutes(
+    final minuteMetrics = (state ?? DayCalculationState()).minutesHeavy(
       wakeSeries.keys,
       perMin,
       cadence: wakeCadence,
@@ -9047,7 +9050,7 @@ class DerivationEngine {
     // daytime fallback — see `_DayBlocksInput.rhr`.
     final scMap = <String, dynamic>{};
 
-    final wake = applyDayActivity(
+    final wake = applyDayActivityHeavy(
       bundle: bundlePatch,
       scalars: scMap,
       daySub: daySub,
@@ -9055,7 +9058,7 @@ class DerivationEngine {
       sleepOnsetSec: onset,
       sleepOffsetSec: offset,
       dayStartSec: inp.dayStartSec,
-      // NOT `inp.dayEndSec` — that is the data edge. See `applyDayActivity`.
+      // NOT `inp.dayEndSec` — that is the data edge. See `applyDayActivityHeavy`.
       dayCalendarEndSec: localNextMidnightSecForDayLabel(inp.date),
       dataNowSec: inp.dataNowSec,
       restingHr: inp.rhr ?? inp.rhrFallback,
@@ -9123,7 +9126,7 @@ class DerivationEngine {
       onset,
       offset,
     );
-    // `activity_curve` is already in bundlePatch from `applyDayActivity` (the
+    // `activity_curve` is already in bundlePatch from `applyDayActivityHeavy` (the
     // incremental summary's curve, or `_activityCurve` when it has no state).
     // `detected_workouts` is NOT written. It was a permanently-empty stub kept
     // for a WorkoutDetector pass that was going to be re-homed here; analytics
@@ -9229,7 +9232,7 @@ class DerivationEngine {
       seriesPatch: seriesPatch,
       scalarPatch: scMap,
       wake: wake,
-      // Off the same inputs `applyDayActivity` priced the day from, here in the
+      // Off the same inputs `applyDayActivityHeavy` priced the day from, here in the
       // isolate with them: the minutes sum to the stored active figure.
       kcalMinutes: kcalMinutesForDayHeavy(
         daySub: daySub,

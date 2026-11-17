@@ -57,7 +57,7 @@ Map<String, dynamic> _wear(
   required int dataNowSec,
 }) {
   final bundle = <String, dynamic>{};
-  DerivationEngine.applyDayActivity(
+  DerivationEngine.applyDayActivityHeavy(
     bundle: bundle,
     scalars: <String, dynamic>{},
     daySub: sub,

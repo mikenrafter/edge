@@ -632,7 +632,7 @@ dependencies:
       # 3 -> 4. Cardio output is unchanged (kAlgoVersion 119).
       # Merge main a438df40 into fork d876c427; reviewed policy/codec fixes
       # and fork HMM/wake behavior together (kAlgoVersion 125).
-      ref: 52e4ddd4233c661b34975a8e188da1e7810ec4f5
+      ref: 6b2f68692aac27d3901be275bb8fab7e8fa4bd93
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8

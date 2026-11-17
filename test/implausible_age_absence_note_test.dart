@@ -49,7 +49,7 @@ Map<String, dynamic> _engineNotes(int age) {
   final sub = _sub();
   final scalars = <String, dynamic>{};
   final bundle = <String, dynamic>{};
-  DerivationEngine.applyDayActivity(
+  DerivationEngine.applyDayActivityHeavy(
     bundle: bundle,
     scalars: scalars,
     daySub: sub,

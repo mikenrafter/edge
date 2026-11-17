@@ -61,7 +61,7 @@ Map<String, dynamic> _runDayActivity({
 }) {
   final scalars = seedScalars ?? <String, dynamic>{};
   final sub = _daySub();
-  DerivationEngine.applyDayActivity(
+  DerivationEngine.applyDayActivityHeavy(
     bundle: <String, dynamic>{},
     scalars: scalars,
     daySub: sub,

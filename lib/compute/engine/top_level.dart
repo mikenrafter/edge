@@ -257,7 +257,7 @@ part of '../derivation_engine.dart';
 // unchanged. kAlgoVersion 119.
 // Merge main a438df40 into fork d876c427; reviewed policy/codec fixes
 // retain the fork HMM and wake APIs. Output changes use kAlgoVersion 125.
-const String kAnalyticsPin = '52e4ddd4233c661b34975a8e188da1e7810ec4f5';
+const String kAnalyticsPin = '6b2f68692aac27d3901be275bb8fab7e8fa4bd93';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both

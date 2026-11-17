@@ -285,7 +285,7 @@ void main() {
       final bundle = <String, dynamic>{};
       final scalars = <String, dynamic>{};
       final daySub = build();
-      DerivationEngine.applyDayActivity(
+      DerivationEngine.applyDayActivityHeavy(
         bundle: bundle,
         scalars: scalars,
         daySub: daySub,
@@ -365,7 +365,7 @@ void main() {
       final bundle = <String, dynamic>{};
       final scalars = <String, dynamic>{};
       final daySub = build();
-      DerivationEngine.applyDayActivity(
+      DerivationEngine.applyDayActivityHeavy(
         bundle: bundle,
         scalars: scalars,
         daySub: daySub,
@@ -416,7 +416,7 @@ void main() {
           () {
         final bundle = <String, dynamic>{};
         final scalars = <String, dynamic>{};
-        DerivationEngine.applyDayActivity(
+        DerivationEngine.applyDayActivityHeavy(
           bundle: bundle,
           scalars: scalars,
           daySub: build(),
@@ -445,7 +445,7 @@ void main() {
       test('a session the trace already covers is never double-billed', () {
         final bundle = <String, dynamic>{};
         final scalars = <String, dynamic>{};
-        DerivationEngine.applyDayActivity(
+        DerivationEngine.applyDayActivityHeavy(
           bundle: bundle,
           scalars: scalars,
           daySub: build(),
@@ -472,7 +472,7 @@ void main() {
       test('a private session is never credited', () {
         final bundle = <String, dynamic>{};
         final scalars = <String, dynamic>{};
-        DerivationEngine.applyDayActivity(
+        DerivationEngine.applyDayActivityHeavy(
           bundle: bundle,
           scalars: scalars,
           daySub: build(),
@@ -490,7 +490,7 @@ void main() {
       test('a live (not-yet-done) session is never credited', () {
         final bundle = <String, dynamic>{};
         final scalars = <String, dynamic>{};
-        DerivationEngine.applyDayActivity(
+        DerivationEngine.applyDayActivityHeavy(
           bundle: bundle,
           scalars: scalars,
           daySub: build(),

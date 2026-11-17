@@ -47,7 +47,7 @@ Substrate _daySub() {
 double _strain({int tonight = 0}) {
   final scalars = <String, dynamic>{};
   final sub = _daySub();
-  DerivationEngine.applyDayActivity(
+  DerivationEngine.applyDayActivityHeavy(
     bundle: <String, dynamic>{},
     scalars: scalars,
     daySub: sub,

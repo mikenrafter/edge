@@ -67,7 +67,7 @@ const _profile30 = Profile(ageYears: 30, sex: 'm', weightKg: 75, heightCm: 178);
 }) {
   final scalars = <String, dynamic>{};
   final bundle = <String, dynamic>{};
-  DerivationEngine.applyDayActivity(
+  DerivationEngine.applyDayActivityHeavy(
     bundle: bundle,
     scalars: scalars,
     daySub: sub,

@@ -30,6 +30,8 @@ void main() {
     for (final parent in const [
       'a438df40b38a4586a52a68ab7e1c100fca111ccd',
       'd876c427ce59eed95b5e54411e3b69253f294ae6',
+      // Native bill cache supplies the compensated/canonical sums cited by 125.
+      '6b2f68692aac27d3901be275bb8fab7e8fa4bd93',
     ]) {
       final result = await Process.run('git',
           ['merge-base', '--is-ancestor', parent, kAnalyticsPin],

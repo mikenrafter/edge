@@ -60,7 +60,7 @@ void main() {
 
     final activity = await part('applyDayActivity  ', (st, p) {
       final s = subs[p];
-      DerivationEngine.applyDayActivity(
+      DerivationEngine.applyDayActivityHeavy(
         bundle: <String, dynamic>{}, scalars: <String, dynamic>{}, daySub: s,
         profile: _profile, sleepOnsetSec: 0, sleepOffsetSec: 0,
         dayStartSec: s.tsSec.first, dayCalendarEndSec: s.tsSec.first + 86400,
