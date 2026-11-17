@@ -882,6 +882,7 @@ class SyncController {
     // From here on we WANT a link for the life of the process, so the level-
     // triggered supervisor runs from here on too (issue #208).
     _startReconnectSupervisor();
+    var retrySetup = false;
     try {
       // INSIDE the guard, and no `paired!`. This block used to sit BETWEEN
       // _setBusy(true) and the try, force-unwrapping `paired`. The resume path
@@ -982,7 +983,10 @@ class SyncController {
       _log('Session start failed: $e');
       // A throw after the link came up is a failed setup: drop the link so the
       // loop the disconnect edge starts redoes it, rather than a half-open one.
-      if (engine.isConnected) await _dropHalfOpenLink();
+      if (engine.isConnected) {
+        await _dropHalfOpenLink();
+        retrySetup = true;
+      }
     } finally {
       if (!engine.isConnected || !_keepAlive) {
         _stopBackfillTimer();
@@ -996,6 +1000,11 @@ class SyncController {
         await _armRecovery();
       }
       _setBusy(false);
+      // Its disconnect edge was refused by the busy guard. Retry this failed
+      // setup now that a pairing/connect operation can no longer be displaced.
+      if (retrySetup && _keepAlive && !engine.isConnected && !_disposed) {
+        unawaited(_reconnect());
+      }
     }
   }
 
@@ -1004,7 +1013,7 @@ class SyncController {
   static const int _directAttemptsBeforeOsFallback = 4;
 
   Future<void> _reconnect() async {
-    if (_reconnecting || paired == null || _disposed) return;
+    if (_reconnecting || busy || paired == null || _disposed) return;
     // Bond-refusal give-up: a band that keeps refusing the bond will never accept
     // commands, so the auto-reconnect loop is paused (surfaced as needsRepairGuide).
     // A manual user connect / re-pair clears the pause on the next successful bond.
