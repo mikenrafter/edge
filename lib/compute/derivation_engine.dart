@@ -2025,6 +2025,8 @@ part 'engine/settled.dart';
 // Main NIGHT state lives in night_checkpoint; the fork DAY format is unchanged.
 // Stored TRIMP/calories retain the E18 single fold in canonical input order.
 // Version 125 is one unreleased merge step, including this analytics repin.
+// Clock-reset merge repair: background frequency feeds independently of RSA;
+// RSA/CVHR refuse unordered clocks and breathing bins use the correction owner.
 const int kAlgoVersion = 125;
 
 enum SleepEditCalculation { complete, incomplete, superseded }

@@ -765,10 +765,12 @@ Map<String, dynamic> deriveDayBundle(
   // With a state the correction streams across passes (only new beats are
   // folded, bit-identical to correctRr); not through memo(), so a pass that
   // bypasses the cache still folds nothing for an unchanged slice.
+  final dayCorrectionState = nightState == null ? state : null;
   final corrected = nightState != null
       ? nightState.correctHeavy(d.sleepRrMs, d.sleepRrTsMs, day: d.date, onsetSec: d.sleepOnsetSec)
-      : state != null
-          ? state.timed('night_rr', () => state.nightRr(d.sleepRrMs, d.sleepRrTsMs))
+      : dayCorrectionState != null
+          ? dayCorrectionState.timed('night_rr',
+              () => dayCorrectionState.nightRr(d.sleepRrMs, d.sleepRrTsMs))
           : nightRrBatch(d.sleepRrMs, d.sleepRrTsMs);
   streamDiagnostics?.observeNightCorrectionHeavy(d.sleepRrMs.length, corrected.nn,
       corrected.nnTimesMs, corrected.cleanFraction);
@@ -779,7 +781,9 @@ Map<String, dynamic> deriveDayBundle(
   // CLAIM(merged-clock-refusal): capped resets preserve source time and can
   // regress. Batch RSA/CVHR abstain; their streams require ordered clocks.
   // Keep frequency's separate omission policy [ed2b_merged_analytics_test].
-  final orderedStreams = hasRegressingBeatTimes(nnTimes) ? null : streams;
+  final orderedClock = !hasRegressingBeatTimes(nnTimes);
+  final orderedStreams = orderedClock ? streams : null;
+  final orderedDayCorrectionState = orderedClock ? dayCorrectionState : null;
   final nnProof = nightState?.dependencyProof(nn, nnTimes);
   T nightMemo<T>(String key, Object? extra, T Function() compute) =>
       nnProof == null ? compute() :
@@ -868,7 +872,7 @@ Map<String, dynamic> deriveDayBundle(
   final hrvF = nn.length >= 20
       ? nightMemo('frequency', artifactFraction, () {
           if (streams != null) return streams.nightHrvFreqHeavy(artifactFraction);
-          if (nightState == null && state != null) return state.nightHrvFreq(artifactFraction);
+          if (dayCorrectionState != null) return dayCorrectionState.nightHrvFreq(artifactFraction);
           streamDiagnostics?.observeBatch('frequency', nn.length);
           return hrvFreq(nn, nnTimes, artifactFraction: artifactFraction);
         })
@@ -949,7 +953,7 @@ Map<String, dynamic> deriveDayBundle(
         );
   final prsa = nightMemo('prsa', null, () {
     if (streams != null) return streams.nightPrsaHeavy();
-    if (nightState == null && state != null) return (state.nightPrsaDc(), state.nightPrsaAc());
+    if (dayCorrectionState != null) return (dayCorrectionState.nightPrsaDc(), dayCorrectionState.nightPrsaAc());
     streamDiagnostics?.observeBatch('prsa', nn.length);
     return (decelerationCapacity(nn), accelerationCapacity(nn));
   });
@@ -969,7 +973,7 @@ Map<String, dynamic> deriveDayBundle(
   final resp = nn.length >= 30
       ? nightMemo('rsa', artifactFraction, () {
           if (orderedStreams != null) return orderedStreams.nightRespHeavy(artifactFraction);
-          if (nightState == null && state != null) return state.nightResp(artifactFraction);
+          if (orderedDayCorrectionState != null) return orderedDayCorrectionState.nightResp(artifactFraction);
           streamDiagnostics?.observeBatch('rsa', nn.length);
           return rsaRespRate(nn, nnTimes, artifactFraction: artifactFraction);
         })
@@ -981,7 +985,7 @@ Map<String, dynamic> deriveDayBundle(
   final cvhr = nn.length >= 60
       ? nightMemo('cvhr', artifactFraction, () {
           if (orderedStreams != null) return orderedStreams.nightCvhrHeavy(artifactFraction);
-          if (nightState == null && state != null) return state.nightCvhr(artifactFraction);
+          if (orderedDayCorrectionState != null) return orderedDayCorrectionState.nightCvhr(artifactFraction);
           streamDiagnostics?.observeBatch('cvhr', nn.length);
           return cvhrApneaScreen(nn, nnTimes, artifactFraction: artifactFraction);
         })
@@ -1046,7 +1050,8 @@ Map<String, dynamic> deriveDayBundle(
   // then BRV = dispersion + Theil-Sen trend of those per-window rates.
   final cachedRespWindows = nightMemo('rsa_bins', artifactFraction, () =>
       orderedStreams != null ? orderedStreams.nightRespWindowsHeavy(artifactFraction) :
-      state != null ? state.nightRespWindows(artifactFraction: artifactFraction) :
+      orderedDayCorrectionState != null
+          ? orderedDayCorrectionState.nightRespWindows(artifactFraction: artifactFraction) :
           respPerWindowHeavy(nn, nnTimes, artifactFraction: artifactFraction,
               diagnostics: streamDiagnostics));
   final respWindows = nightState == null

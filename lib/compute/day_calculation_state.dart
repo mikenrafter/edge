@@ -193,7 +193,8 @@ class DayCalculationState {
     if (corrector == null || tag == null) return null;
     final live = _hrvStream != null &&
         _respStream != null &&
-        _spectralGen == _nightRebuilds;
+        _spectralGen == _nightRebuilds &&
+        _respGen == _nightRebuilds && _respFed == _spectralFed;
     return NightResumePart.captureHeavy(
       tag: tag,
       corrector: corrector,
@@ -245,6 +246,7 @@ class DayCalculationState {
     _hrvStream = null;
     _respStream = null;
     _spectralFed = 0;
+    _respFed = 0;
     _cvhrStream = null;
     _cvhrFed = 0;
     _bins = null;
@@ -291,6 +293,8 @@ class DayCalculationState {
       _hrvStream = hrv;
       _respStream = resp;
       _spectralFed = part.spectralFed;
+      _respFed = part.spectralFed;
+      _respGen = _nightRebuilds;
       // The streams belong to this generation, so they continue.
       _spectralGen = _nightRebuilds;
       _cvhrStream = cvhr;
@@ -388,26 +392,26 @@ class DayCalculationState {
   NightRr? _batchNight;
 
   // ── Night spectral metrics, streamed ───────────────────────────────────────
-  // An HrvFreqStream and an RsaRespStream fed only the corrector's settled
-  // beats; each ask snapshots them with the provisional tail of the last
+  // Frequency and RSA have independent feeders over the corrector's settled
+  // beats; each ask snapshots its stream with the provisional tail of the last
   // nightRr call. Restarted (lazily) whenever nightRr rebuilds. RAM-only.
   List<double> _tailNn = const [], _tailNnTimes = const [];
   HrvFreqStream? _hrvStream;
   RsaRespStream? _respStream;
   int _spectralFed = 0, _spectralFolded = 0, _spectralRestarts = 0;
   int _spectralGen = -1;
+  int _respFed = 0, _respGen = -1;
 
-  /// Settled beats folded into the spectral streams (a restart counts again).
+  /// Settled beats folded into frequency (a restart counts again).
   int get nightSpectralFolded => _spectralFolded;
 
-  /// Times the spectral streams were started from scratch, the first included.
+  /// Times frequency was started from scratch, the first included.
   int get nightSpectralRestarts => _spectralRestarts;
 
   @heavy
   void _syncSpectralHeavy() {
-    if (_hrvStream == null || _respStream == null || _spectralGen != _nightRebuilds) {
+    if (_hrvStream == null || _spectralGen != _nightRebuilds) {
       _hrvStream = HrvFreqStream();
-      _respStream = RsaRespStream();
       _spectralFed = 0;
       _spectralGen = _nightRebuilds;
       _spectralRestarts++;
@@ -416,7 +420,6 @@ class DayCalculationState {
       final nn = _nightNn.sublist(_spectralFed);
       final ts = _nightNnTimes.sublist(_spectralFed);
       _hrvStream!.fold(nn, ts);
-      _respStream!.fold(nn, ts);
       _spectralFolded += nn.length;
       _spectralFed = _nightNn.length;
     }
@@ -445,7 +448,19 @@ class DayCalculationState {
     if (b != null) {
       return rsaRespRate(b.nn, b.nnTimesMs, artifactFraction: artifactFraction);
     }
-    _syncSpectralHeavy();
+    // CLAIM(merged-clock-refusal): frequency can omit regressing times, while
+    // RSA requires an ordered clock [clock_reset_night_day_worker_test]. Its
+    // feeder must run only when the pipeline selects ordered RSA input.
+    if (_respStream == null || _respGen != _nightRebuilds) {
+      _respStream = RsaRespStream();
+      _respFed = 0;
+      _respGen = _nightRebuilds;
+    }
+    if (_respFed < _nightNn.length) {
+      _respStream!.fold(_nightNn.sublist(_respFed),
+          _nightNnTimes.sublist(_respFed));
+      _respFed = _nightNn.length;
+    }
     return _respStream!.snapshot(
       tailNnMs: _tailNn,
       tailNnTimesMs: _tailNnTimes,
