@@ -1,6 +1,9 @@
 // WHY: imported-day classification must depend on the top-level boolean, and
 // the lookup must use a covering index without another day_result writer.
+import 'dart:async';
 import 'dart:convert';
+
+import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -12,6 +15,9 @@ import 'package:openstrap_edge/sync/import_gate.dart';
 
 const _algo = 7;
 final _maintenanceConnections = <Database>[];
+final _indexOwners = <int>[];
+final _deriveLatchAtIndex = <bool>[];
+int? _writerProbeId;
 const _expr = "CASE WHEN json_valid(payload_json) THEN "
     "COALESCE(json_type(payload_json, '\$.imported') = 'true', 0) ELSE 0 END";
 
@@ -29,10 +35,18 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() {
     sqfliteFfiInit();
-    // Observe real handles, including a failed SQL statement's cleanup.
+    // Observe the SQL owner, including a failed statement's cleanup.
     // ignore: experimental_member_use
     databaseFactory = SqfliteDatabaseFactoryLogger(databaseFactoryFfi,
       options: SqfliteLoggerOptions(log: (e) {
+        if (e is SqfliteLoggerSqlEvent && e.sql == 'SELECT 123 AS index_writer_identity') {
+          _writerProbeId = e.databaseId;
+        }
+        if (e is SqfliteLoggerSqlEvent &&
+            e.sql.startsWith('CREATE INDEX IF NOT EXISTS idx_day_result_finalized_payload')) {
+          _indexOwners.add(e.databaseId);
+          _deriveLatchAtIndex.add(DerivationEngine().running);
+        }
         if (e is SqfliteLoggerDatabaseOpenEvent &&
             e.options?.singleInstance == false && e.db != null) {
           _maintenanceConnections.add(e.db!);
@@ -41,25 +55,76 @@ void main() {
   });
   tearDown(() => LocalDb.close());
 
-  // WHY: native SQL errors must not leak a connection or keep sync/import shut.
+  // WHY: the index holds SQLite's writer lock; derive writers must finish
+  // first, and ordinary writes must queue behind the index on their owner.
+  // Proves CLAIM(index-derive-exclusion).
+  test('index owns the derive latch and uses the main writer queue', () async {
+    await _fresh('finalized_index_derive_latch.db');
+    final writer = await LocalDb.instance;
+    await writer.rawQuery('SELECT 123 AS index_writer_identity');
+    expect(_writerProbeId, isNotNull);
+    final before = _maintenanceConnections.length;
+    await const FinalizedDayIndexMaintenance().call();
+    expect(_deriveLatchAtIndex.last, isTrue);
+    expect(_indexOwners.last, _writerProbeId);
+    expect(_maintenanceConnections.length, before);
+    expect(writer.isOpen, isTrue);
+    expect(DerivationEngine().running, isFalse, reason: 'released after completion');
+  });
+
+  test('index waits for an active derive before claiming maintenance', () async {
+    await _fresh('finalized_index_wait_derive.db');
+    await LocalDb.instance;
+    final before = _maintenanceConnections.length;
+    late Future<void> maintenance;
+    final release = Completer<void>();
+    final deriving = DerivationEngine.whileIdle(() => release.future);
+    try {
+      maintenance = const FinalizedDayIndexMaintenance().call();
+      // A writer-connection barrier lets its preceding import-journal probe
+      // finish without depending on elapsed wall time.
+      await (await LocalDb.instance).rawQuery('SELECT 1');
+      expect(_maintenanceConnections.length, before);
+      expect(ImportGate.check('derive still running'), isA<SyncAllowed>(),
+          reason: 'waiting maintenance must not claim the sync/import gate');
+    } finally {
+      release.complete();
+      await deriving;
+      await maintenance;
+    }
+    expect(_maintenanceConnections.length, before);
+    expect(_deriveLatchAtIndex.last, isTrue);
+  });
+
+  test('main connection explicitly waits for transient WAL writer contention', () async {
+    await _fresh('finalized_index_writer_timeout.db');
+    final db = await LocalDb.instance;
+    expect((await db.rawQuery('PRAGMA busy_timeout')).single.values.single, 30000);
+  });
+
+  // WHY: native SQL errors must leave the borrowed writer open and release
+  // both the derive latch and sync/import gates.
   // CLAIM(index-sync-exclusion); catches: close/release only on success.
-  test('a refused index build closes its connection and releases the gate', () async {
+  test('a refused index build preserves its writer and releases the gates', () async {
     await _fresh('finalized_index_failure.db');
     final db = await LocalDb.instance;
     await db.execute('CREATE TABLE idx_day_result_finalized_payload (id INTEGER)');
     final before = _maintenanceConnections.length;
     await const FinalizedDayIndexMaintenance().call();
-    expect(_maintenanceConnections.length, before + 1);
-    expect(_maintenanceConnections.last.isOpen, isFalse);
+    expect(_maintenanceConnections.length, before);
+    expect(db.isOpen, isTrue);
+    expect(DerivationEngine().running, isFalse);
     expect(ImportGate.check('after failed build'), isA<SyncAllowed>());
     await db.execute('DROP TABLE idx_day_result_finalized_payload');
     await const FinalizedDayIndexMaintenance().call();
-    expect(_maintenanceConnections.last.isOpen, isFalse);
+    expect(db.isOpen, isTrue);
     expect(await db.rawQuery("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_day_result_finalized_payload'"), hasLength(1));
+    final statements = _indexOwners.length;
     await LocalDb.setForeground(false);
     final closedCount = _maintenanceConnections.length;
     await const FinalizedDayIndexMaintenance().call();
     expect(_maintenanceConnections.length, closedCount);
+    expect(_indexOwners.length, statements);
   });
 
   // WHY: CREATE INDEX owns the WAL writer lock. Maintenance must yield to a

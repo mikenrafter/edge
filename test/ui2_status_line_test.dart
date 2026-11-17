@@ -25,6 +25,8 @@ class _App extends AppState {
   SyncPresentationState pres;
   final DateTime? at;
   final derive = ValueNotifier<DeriveProgress?>(null);
+  final index = ValueNotifier<bool>(false);
+  ValueListenable<bool> get indexMaintenanceActive => index;
 
   @override
   SyncPresentationState get syncPresentation => pres;
@@ -81,6 +83,20 @@ void main() {
     app.derive.value = const DeriveProgress(dayIndex: 3, dayTotal: 12);
     await t.pumpWidget(_host(app));
     expect(_text(t), 'Calculating sleep, recovery and strain · day 3 of 12');
+  });
+
+  // WHY: a save queued behind the one-time index must say why it waits.
+  // CLAIM(index-writer-queue): maintenance replaces sync and clears afterward.
+  testWidgets('index build is visible until queued saves can resume', (t) async {
+    final app = _App(_syncing);
+    addTearDown(app.dispose);
+    await t.pumpWidget(_host(app));
+    app.index.value = true;
+    await t.pump();
+    expect(_text(t), 'Updating the database index (one time)');
+    app.index.value = false;
+    await t.pump();
+    expect(_text(t), 'Downloading…');
   });
 
   testWidgets('import beats derive; copying shows stage and step', (t) async {
