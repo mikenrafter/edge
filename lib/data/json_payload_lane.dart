@@ -437,6 +437,11 @@ class JsonPayloadLane {
     }
   }
 
+  /// Decode an already captured value without caching it. The caller owns
+  /// the snapshot's transaction or revision fence.
+  Future<Object?> decodeUncached(Object? text) async =>
+      (await _lane.run(JsonPayloadsInput(values: [text], encode: false))).values.single;
+
   Future<String?> encode(Object? value) async {
     final result = await _lane.run(
       JsonPayloadsInput(values: [value], encode: true),

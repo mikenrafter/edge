@@ -37,7 +37,7 @@ class _CountingBand implements AlarmBandWriter {
   }
 
   @override
-  Future<void> disableAlarm() async => disables++;
+  Future<bool> disableAlarm() async { disables++; return true; }
 }
 
 /// Everything a Save touches, with the real arm logic in the middle.

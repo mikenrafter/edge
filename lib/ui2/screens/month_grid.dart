@@ -1,4 +1,15 @@
 import '../../l10n/display_text.dart';
+import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../../data/local_repository.dart';
+import '../../data/read_paused.dart';
+import '../../l10n/app_localizations.dart';
+import '../ui2.dart';
+import 'home_screen.dart';
+import 'metric_detail.dart' show MetricSpec, specOf;
+import '../skeleton/guide_plot.dart';
+
+
 // THE MONTH AS THREE STRIPS — sleep, recovery, strain, one cell per day.
 //
 // A cell says where a day sat against THIS PERSON'S OWN usual range: inside
@@ -23,16 +34,7 @@ import '../../l10n/display_text.dart';
 // days", which cannot reset to zero and does not pay more for consecutive days
 // than for scattered ones.
 
-import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../data/local_repository.dart';
-import '../../data/read_paused.dart';
-import '../../l10n/app_localizations.dart';
-import '../ui2.dart';
-import 'home_screen.dart' show ChartPoint, denseChartPoints, denseDays, pointsOf;
-import 'metric_detail.dart' show MetricSpec, specOf;
-import '../skeleton/guide_plot.dart';
 
 /// Days on screen. One month, and the same window every trend card uses.
 const int kGridDays = 30;
@@ -57,6 +59,7 @@ class GridRow {
     required this.historyDays,
     required this.ranged,
     this.older = const [],
+    required this.anchor,
   });
 
   final MetricSpec spec;
@@ -86,6 +89,10 @@ class GridRow {
   /// Null for a metric with no better side.
   bool? get higherBetter =>
       betterDirection(key, higherBetter: spec.higherBetter);
+
+
+  /// The calendar day of the last cell: the day the row was built.
+  final DateTime anchor;
 }
 
 /// The day → side map. PURE. No range, no sides.
@@ -105,6 +112,7 @@ GridRow gridRow(String key, List<ChartPoint> points) {
     have: window.where((v) => v != null).length,
     historyDays: history.length,
     ranged: band != null,
+    anchor: DateTime.now(),
     older: [
       for (final p in denseChartPoints(points, kGridDays))
         p?.olderVersion == null
@@ -360,8 +368,11 @@ class MonthGrid extends StatelessWidget {
                             older: r.older),
                       ],
                       child: SizedBox(
-                        height: 22,
-                        child: Stack(clipBehavior: Clip.none, children: [
+                        height: S.tap,
+                        child: Center(child: SizedBox(
+                          height: 22,
+                          width: double.infinity,
+                          child: Stack(clipBehavior: Clip.none, children: [
                           ..._bands(r),
                           Positioned.fill(
                             child: CustomPaint(
@@ -374,7 +385,8 @@ class MonthGrid extends StatelessWidget {
                               ),
                             ),
                           ),
-                        ]),
+                          ]),
+                        )),
                       ),
                     ),
                   ),
@@ -447,3 +459,4 @@ class MonthGrid extends StatelessWidget {
     );
   }
 }
+

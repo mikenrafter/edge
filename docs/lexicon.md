@@ -155,6 +155,8 @@ in the same change that introduces it (AGENTS.md §6).
 - **Hover highlight** — a translucent tint and glow painted by a guide target's own component layer. Its opacity follows the moving fingertip's distance; scrolling and stretch carry it with the target.
 - **Moving hand** — the guide's pointing cursor, which taps a single target repeatedly or travels through a multi-target step's choices. Reduced motion uses the static label hand.
 
+- **Unscoped guide content**: a page-wide selector, such as every pressable row. It does not identify a particular control on a neighbouring step.
+
 ## Pulse flag delivery
 
 - **Processing origin**: immutable provenance on a derive job: recent band sync,

@@ -39,6 +39,8 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/l10n/app_localizations.dart';
+import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
@@ -197,7 +199,10 @@ class _Repo extends LocalRepository {
 /// pending state ever settled; the caller asserts on it, but only once it has put
 /// `FlutterError.onError` back.
 Future<bool> _settleLoad(WidgetTester t) async {
-  for (var i = 0; i < 40; i++) {
+  // A time budget, not a poll count: one poll costs 40-100 ms of real time
+  // and more under a full parallel run, while the first database open runs.
+  for (final sw = Stopwatch()..start();
+      sw.elapsed < const Duration(seconds: 10);) {
     await t.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)));
     await t.pump(const Duration(milliseconds: 16));
@@ -292,6 +297,65 @@ void main() {
       }, timeout: const Timeout(Duration(seconds: 60)));
     }
   }
+
+  // A WITHHELD rollup (`getInsights` -> `{'stale': reason}`) after an update
+  // that changed how days are computed. Home says the insights are being
+  // rebuilt; this tab used to say there were not enough nights yet and that
+  // nothing recorded why tonight has no need.
+  testWidgets('withheld rollup: says it is being rebuilt, not cold start',
+      (t) async {
+    await _openRecovery(
+      t,
+      dark: false,
+      scale: 1.0,
+      repo: _Repo(insights: const {
+        'stale': {'kind': 'algo_version', 'algo_version': 1},
+      }),
+    );
+
+    expect(find.text('No breakdown to show'), findsOneWidget);
+    expect(find.text('Updating your trends'),
+        findsOneWidget);
+    expect(find.text('No recovery breakdown yet'), findsNothing);
+    expect(find.text('No sleep need yet'), findsNothing);
+    expect(find.textContaining('enough nights'), findsNothing);
+    _expectCardPainted(t);
+  }, timeout: const Timeout(Duration(seconds: 60)));
+
+  // The plan is the Sleep tab's footer, so its debt link used to push a whole
+  // second SleepDetail over the one already on screen — same night, plus the
+  // Tonight section the tab leaves out on purpose. It scrolls back up instead.
+  testWidgets('the debt link stays on the Sleep tab instead of pushing it again',
+      (t) async {
+    await _openRecovery(t, dark: false, scale: 1.0, repo: _Repo());
+
+    final link = find.text('See what last night cost you');
+    expect(link, findsOneWidget);
+    await t.tap(link);
+    await _frames(t);
+
+    expect(find.byType(SleepDetail), findsNothing);
+    expect(find.text('See what last night cost you'), findsOneWidget);
+    expect(find.byType(BackButton), findsNothing);
+  }, timeout: const Timeout(Duration(seconds: 60)));
+
+  // The sleep plan's durations were built as '1h 24m' by hand, so a Russian
+  // reader got "Недосып … — 1h 24m" and an "8h 0m" need row, while Home
+  // printed the same kind of figure as "8 ч 00 мин".
+  testWidgets('the sleep plan prints its durations in the display language',
+      (t) async {
+    final lc = LocaleController.seed('ru')..useForPresentation();
+    addTearDown(lc.dispose);
+    await _openRecovery(t,
+        dark: false, scale: 1.0, repo: _Repo(), locale: const Locale('ru'));
+
+    // need 28800 s, debt 1.4 h.
+    expect(find.text('8 ч 00 мин'), findsOneWidget);
+    expect(find.text('1 ч 24 мин'), findsOneWidget);
+    expect(find.textContaining('1 ч 24 мин'), findsNWidgets(2),
+        reason: 'the recommendation sentence names the debt too');
+    expect(find.textContaining(RegExp(r'\d+h \d+m')), findsNothing);
+  }, timeout: const Timeout(Duration(seconds: 60)));
 }
 
 /// TWO framework-internal assertions this harness causes and the screen does
@@ -320,6 +384,7 @@ Future<void> _openRecovery(
   required bool dark,
   required double scale,
   required LocalRepository repo,
+  Locale? locale,
 }) async {
   t.view.physicalSize = const Size(390 * 3, 844 * 3);
   t.view.devicePixelRatio = 3;
@@ -338,6 +403,9 @@ Future<void> _openRecovery(
     data: MediaQueryData(textScaler: TextScaler.linear(scale)),
     child: MaterialApp(
       theme: buildTheme(dark ? Brightness.dark : Brightness.light),
+      locale: locale,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: ChangeNotifierProvider<AppState>.value(
         value: app,
         child: Builder(

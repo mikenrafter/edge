@@ -1,3 +1,4 @@
+import '../../util/callable.dart';
 import 'package:flutter/foundation.dart' show precisionErrorTolerance;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
@@ -43,7 +44,7 @@ class _FlowSize extends SingleChildRenderObjectWidget {
 // [settling_height_row_test; pending_height_transition_test].
 class RenderSettlingHeight extends RenderProxyBox {
   // Debug-only observer for layout-work measurements in widget tests.
-  static void Function(int flowNodes, int sizeReads)? debugOnFlow;
+  static Call2<int, int, void>? debugOnFlow;
   int _flowNodes = 0, _sizeReads = 0;
   RenderSettlingHeight({required TickerProvider vsync}) : _vsync = vsync {
     _controller = AnimationController(

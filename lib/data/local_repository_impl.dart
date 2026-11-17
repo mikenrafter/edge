@@ -1,32 +1,12 @@
-// LocalRepositoryImpl — serves the UI from the PRECOMPUTED derived store.
-//
-// ZERO heavy compute on read: every method reads day_result / metric_series
-// rows (written by the DerivationEngine) and shapes them into the exact Map/List
-// blobs the existing screens expect (the shapes the old cloud ApiClient returned,
-// parsed by lib/models/payloads.dart + metric.dart).
-//
-// Metric envelopes: the onehz `Metric.toJson()` already emits
-//   {value, confidence, tier, inputs_used, [note, drivers]}
-// which Metric.parse (Case A) reads directly. Where a screen wants a bare scalar
-// + a `flags` blob (Case B), we project the same fields into a flags entry.
-//
-// Honesty: a metric whose value is absent stays absent ("—"); we never fabricate.
-// Profile-gated metrics are null when the profile field is missing.
-
 import '../wake/wake_journal.dart';
 import '../wake/wake_timeline.dart';
 import '../compute/findings.dart' show servedReadiness;
 import '../compute/pulse_alert_record.dart';
-import '../compute/inputs/canonical.dart'
-    show
-        activeWearable,
-        dayCells,
-        deviceFlagOn,
-        withoutWearableEstimates;
+import '../compute/inputs/canonical.dart';
 import '../ble/adapters/_registry.dart' show kBandRegistry;
 import '../compute/quiet_level.dart';
 import '../compute/sleep_blank.dart' show withholdNightInBundle;
-import '../compute/vendor_sleep.dart' show vendorHypnogram;
+import '../compute/vendor_sleep.dart';
 import '../compute/staging_provenance.dart';
 import '../models/activity_suggestion.dart';
 import 'activity_store.dart';
@@ -42,7 +22,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
 import 'dart:math' as math;
-
 import '../compute/calc_status.dart';
 import '../compute/derivation_engine.dart';
 import '../compute/derive_perf.dart' show ReadPerf;
@@ -53,7 +32,6 @@ import '../compute/onehz_pipeline.dart' show kUnknownAbsenceNote, needInputNote;
 import '../compute/profile.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 import 'package:openstrap_analytics/onehz.dart' as ana;
-
 import 'circadian_artifact.dart';
 import 'bundle_store.dart';
 import 'json_payload_lane.dart';
@@ -71,6 +49,29 @@ import '../gps/route_models.dart';
 import '../gps/route_math.dart' as rmath;
 import '../util/heavy.dart';
 import '../util/worker_audit.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
+
+import '../health/health_nap_export.dart';
+import '../import/whoop_import.dart' show WhoopImporter;
+
+// LocalRepositoryImpl — serves the UI from the PRECOMPUTED derived store.
+//
+// ZERO heavy compute on read: every method reads day_result / metric_series
+// rows (written by the DerivationEngine) and shapes them into the exact Map/List
+// blobs the existing screens expect (the shapes the old cloud ApiClient returned,
+// parsed by lib/models/payloads.dart + metric.dart).
+//
+// Metric envelopes: the onehz `Metric.toJson()` already emits
+//   {value, confidence, tier, inputs_used, [note, drivers]}
+// which Metric.parse (Case A) reads directly. Where a screen wants a bare scalar
+// + a `flags` blob (Case B), we project the same fields into a flags entry.
+//
+// Honesty: a metric whose value is absent stays absent ("—"); we never fabricate.
+// Profile-gated metrics are null when the profile field is missing.
+
+
+
 
 class LocalRepositoryImpl extends LocalRepository {
   @override
@@ -154,13 +155,19 @@ class LocalRepositoryImpl extends LocalRepository {
           startTs: start, endTs: end,
           edited: start != suggestion.startTs || end != suggestion.endTs);
     } else {
-      final res = await ActivityStore(await LocalDb.instance).confirm(suggestion,
-        startTs: start, endTs: end,
-        edited: start != suggestion.startTs || end != suggestion.endTs,
-        expectedNap: expected);
-      // The night the union was written to is the last main sleep it reached.
-      final main = res?.extended.where((b) => b.kind == 'main_sleep').lastOrNull;
-      if (main != null) await mainSleepListener?.mainSleepExtended(main.day);
+      await HealthNapExporter.shared.synchronized(() async {
+        final res = await ActivityStore(await LocalDb.instance).confirm(suggestion,
+          startTs: start, endTs: end,
+          edited: start != suggestion.startTs || end != suggestion.endTs,
+          expectedNap: expected);
+        // The fork can extend a main sleep instead of creating a separate nap.
+        final main = res?.extended.where((b) => b.kind == 'main_sleep').lastOrNull;
+        if (main != null) await mainSleepListener?.mainSleepExtended(main.day);
+        // This re-reads the committed row and refuses main-sleep overlap.
+        await HealthNapExporter.exportConfirmedNap(
+          dayId: dayLabelOf(DateTime.fromMillisecondsSinceEpoch(start * 1000)),
+          startTs: start, endTs: end);
+      });
     }
     await activitiesListener?.activitiesChanged();
   }
@@ -331,19 +338,16 @@ class LocalRepositoryImpl extends LocalRepository {
           !await deviceFlagOn(n.deviceId)) {
         continue;
       }
-      final minutes = <String, int>{};
-      for (final e in n.epochs) {
-        minutes[e.stage] = (minutes[e.stage] ?? 0) + (e.endSec - e.startSec) ~/ 60;
-      }
+      // Sum seconds per stage, then convert once: a 30 s epoch (Oura) floored
+      // per epoch read as zero minutes for the whole night.
+      final minutes = vendorStageMinutes(n.epochs);
       out.add({
         'device_id': n.deviceId,
         'label': labels[n.deviceId] ?? n.source,
         'family': families[n.deviceId],
         'onset_ts': n.onsetSec,
         'wake_ts': n.offsetSec,
-        'duration_min': minutes.entries
-            .where((e) => e.key != 'wake')
-            .fold<int>(0, (s, e) => s + e.value),
+        'duration_min': vendorSleepMinutes(n.epochs),
         'stage_min': minutes,
         // Same point shape as our own night: each stage from its start,
         // closed by a final point at wake.
@@ -364,8 +368,11 @@ class LocalRepositoryImpl extends LocalRepository {
   // ── helpers ────────────────────────────────────────────────────────────────
 
   /// Decode a day_result row's payload bundle (latest algo_version), or null.
-  Future<Map<String, dynamic>?> _bundle(String date) async {
-    return _readBundle(date);
+  Future<Map<String, dynamic>?> _bundle(String date) {
+    final memo = Zone.current[_dayBundleMemo]
+        as Map<String, Future<Map<String, dynamic>?>>?;
+    if (memo == null) return _readBundle(date);
+    return memo[date] ??= _readBundle(date);
   }
 
   /// The most-recent COMPLETE derived day to show on Today. With the calendar-day
@@ -527,6 +534,7 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   Future<Map<String, dynamic>?> _readBundle(String date) async {
+    bundleDecodes++;
     final read = await BundleStore.shared.read(BundleSource.day(date));
     return read is BundleOk
         ? await _withSleepEdit(date, await _withOlderValues(date, _dayMap(read)))
@@ -1148,6 +1156,9 @@ class LocalRepositoryImpl extends LocalRepository {
     return {
       'sleep_edit': sleepBundle?['sleep_edit'],
       'daily': daily,
+      'sleep_provisional': ?(recoveryState == 'night_in_progress' ||
+              recoveryState == 'provisional'
+          ? _provisionalSleepSummary(todayBundle, _sleepNeedMin(cd)) : null),
       'sleep': sleepBundle == null
           ? const {}
           : _sleepSummary(sleepBundle, needMin: _sleepNeedMin(cd)),
@@ -1355,6 +1366,15 @@ class LocalRepositoryImpl extends LocalRepository {
         'need_min': _scalarMetric(needMin, 'ESTIMATE', unit: 'min'),
       'efficiency': _scalarMetric(eff, 'ESTIMATE', unit: '%'),
     };
+  }
+
+  // Main #638: a scored but settling night may supply sleep alone. Recovery
+  // remains behind the fork's existing overnight freshness and edit fences.
+  Map<String, dynamic>? _provisionalSleepSummary(
+      Map<String, dynamic>? todayBundle, int? needMin) {
+    if (todayBundle == null) return null;
+    final summary = _sleepSummary(todayBundle, needMin: needMin);
+    return summary.isEmpty ? null : {...summary, 'provisional': true};
   }
 
   Map<String, dynamic> _nocturnal(Map<String, dynamic> b, {num? baselineRhr}) {
@@ -1694,6 +1714,7 @@ class LocalRepositoryImpl extends LocalRepository {
       // one from a nap would be exactly the conflation this file avoids
       // elsewhere. The periods ride along so the screen can show what it does
       // know instead of claiming nothing happened.
+      final absence = _sub(b, 'sleep')?['absence_reason'] as String?;
       final napPeriods = _periodsWithMainStages(b, const {});
       // A typed window the band barely recorded still has its bounds (D27):
       // every stage as wide as the unrecorded time, and no point value.
@@ -1701,6 +1722,7 @@ class LocalRepositoryImpl extends LocalRepository {
       if (napPeriods.isEmpty) {
         return {
           'has_sleep': false,
+          'absence_reason': ?absence,
           'sleep_source': assertion?['source'] ?? sleepSource,
           ...savedWindow,
           'stage_ranges': ?ranges,
@@ -1708,6 +1730,7 @@ class LocalRepositoryImpl extends LocalRepository {
       }
       return {
         'has_sleep': false,
+        'absence_reason': ?absence,
         'sleep_source': assertion?['source'] ?? sleepSource,
         ...savedWindow,
         'periods': napPeriods,
@@ -1727,7 +1750,10 @@ class LocalRepositoryImpl extends LocalRepository {
       return v == null ? null : (v / 60).round();
     }
 
-    final needMin = _sleepNeedMin(await _crossDay());
+    // Past nights use the estimate stored then, never today's later estimate.
+    final needMin = _isTodayLabel(date)
+        ? _sleepNeedMin(await _crossDay())
+        : (await LocalDb.metricValueOn(date, 'sleep_need_min'))?.round();
     final sleepConf = _sub(b, 'sleep.accounting')?['confidence'] as num?;
     // Sleep periods (main + naps) for the periods screen. The main period is
     // enriched HERE with the hypnogram + stage minutes: derivation builds the
@@ -2096,6 +2122,14 @@ class LocalRepositoryImpl extends LocalRepository {
       'first_on': w?['first_on'],
       'last_on': w?['last_on'],
       'longest_off_min': w?['longest_off_min'],
+      // #450. The data edge this wear was computed at, when it is older than
+      // the row it sits in: the derive's second half failed and the engine
+      // carried the previous wear forward. Absent on a complete derive, so a
+      // screen never shows an age that is not there. Not gated on the block:
+      // the stamp exists only when wear was carried, whichever field above
+      // the figure ends up read from.
+      if (b['wear_edge_sec'] is num)
+        'as_of': (b['wear_edge_sec'] as num).toInt(),
       'hourly': const [],
     };
   });
@@ -2144,10 +2178,9 @@ class LocalRepositoryImpl extends LocalRepository {
     // A day answered by the strap's on-chip counter has no coverage spans;
     // its own hourly spans (stamped by the derive) stand in for them
     // (upstream 53be18a6, #475).
-    final counter = r.spans.isEmpty &&
-            st?['source'] == 'strap_counter' &&
-            st?['spans'] is List
-        ? st!['spans'] as List
+    final storedSpans = st?['spans'];
+    final counter = st?['source'] == 'strap_counter'
+        ? (storedSpans is List ? storedSpans : const [])
         : null;
     // Only for naming: a span that sits inside a session gets that session's
     // name. Cheap — one indexed read over one day.
@@ -2506,14 +2539,16 @@ class LocalRepositoryImpl extends LocalRepository {
     }
 
     // Workouts + device events for that calendar day.
-    final sess = await LocalDb.sessionsInRange(dayStart, dayEnd);
+    final sess = await LocalDb.withReadExecutor(
+        (db) => LocalDb.sessionsInRange(dayStart, dayEnd, executor: db));
     // Bounded BY THE DAY, in SQL. This used to pull `unuploadedEvents(limit:
     // 2000)` — `ORDER BY ts ASC LIMIT 2000`, i.e. the OLDEST 2000 rows — and
     // then filter that page down to this day. Once `events` held more than 2000
     // rows the page could no longer reach recent days at all, so their markers
     // silently vanished from the timeline (the same oldest-N-vs-trailing-N
     // shape as the metricSeries(limit:) outage).
-    final dayEvents = await LocalDb.eventsInRange(dayStart, dayEnd);
+    final dayEvents = await LocalDb.withReadExecutor(
+        (db) => LocalDb.eventsInRange(dayStart, dayEnd, executor: db));
     final events = <Map<String, dynamic>>[
       for (final e in dayEvents)
         {
@@ -2674,7 +2709,8 @@ class LocalRepositoryImpl extends LocalRepository {
         now.subtract(const Duration(days: 31)).millisecondsSinceEpoch ~/ 1000;
     final toSec = to ?? nowSec;
 
-    final manualRows = await LocalDb.sessionsInRange(fromSec, toSec);
+    final manualRows = await LocalDb.withReadExecutor(
+        (db) => LocalDb.sessionsInRange(fromSec, toSec, executor: db));
     final manual = [for (final r in manualRows) _workoutOf(r)];
 
     // Manual/live sessions are ALL there is now. There used to be a second
@@ -3734,7 +3770,15 @@ class LocalRepositoryImpl extends LocalRepository {
   int? _profileAge() => (getProfileMap()?['age'] as num?)?.round();
 
   @override
-  Future<void> deleteWorkout(String id) async => LocalDb.deleteSession(id);
+  Future<void> deleteWorkout(String id) async {
+    // Tombstone first: a failed delete then only leaves a row the importer
+    // already skips, while the other order's failure brings it back.
+    if (id.startsWith(WhoopImporter.workoutIdPrefix)) {
+      await WhoopImporter.rememberDeletedWorkout(id,
+          startTs: ((await LocalDb.session(id))?['start_ts'] as num?)?.toInt());
+    }
+    await LocalDb.deleteSession(id);
+  }
 
   @override
   Future<void> setWorkoutPrivate(String id, bool private) async {
@@ -3742,14 +3786,6 @@ class LocalRepositoryImpl extends LocalRepository {
     // The workout was already exported when it stopped, before this flag
     // landed. Re-export: a private row clears its window and writes nothing.
     unawaited(HealthExporter.exportWorkoutId(id));
-    // The day's active energy has exported workouts' calories taken off, so
-    // it changes too, and a day behind the export cursor is never rewritten.
-    final start = ((await LocalDb.session(id))?['start_ts'] as num?)?.toInt();
-    if (start != null) {
-      unawaited(HealthExporter.reexportFrom(
-        dayLabelOf(DateTime.fromMillisecondsSinceEpoch(start * 1000)),
-      ));
-    }
   }
 
   @override
@@ -3818,6 +3854,7 @@ class LocalRepositoryImpl extends LocalRepository {
     required int startTs,
     required int endTs,
     required String type,
+    String source = 'manual',
   }) async {
     // A manual row's id is derived from its start second, so re-logging the
     // IDENTICAL window is an update of that row, not a collision with it. A
@@ -3853,6 +3890,7 @@ class LocalRepositoryImpl extends LocalRepository {
       existing: same ? prior : null,
       sessionId:
           moved ? '$id:${DateTime.now().millisecondsSinceEpoch}' : null,
+      source: source,
       validateAgainstId: same
           ? prior['id'] as String
           : (prior == null && !moved ? id : null),
@@ -3876,6 +3914,16 @@ class LocalRepositoryImpl extends LocalRepository {
     // not the only caller; the status deserves the same treatment.
     if (existing['status'] == 'live') {
       throw StateError('setWorkoutWindow: session $id is still live');
+    }
+    // The rescore reads only the 1 Hz substrate, which is pruned after
+    // `rawRetentionDays` and never existed for an imported session. With none
+    // over the new window the replace-write would land every banked figure as
+    // null — strain, calories, HR, zones, the frozen trace — and nothing could
+    // rebuild them. Refuse before touching the Health store or the row.
+    if (_hasBankedScore(existing) &&
+        (await LocalDb.hrSamplesInRange(startTs, endTs)).isEmpty) {
+      throw const ManualWindowException(
+          ManualWindowError.scoreNotRecomputable);
     }
     // Clear the OLD Health window before the retimed row overwrites it — the
     // caller's subsequent exportWorkoutId only deletes inside the NEW window,
@@ -4288,7 +4336,7 @@ class LocalRepositoryImpl extends LocalRepository {
       // band, so no `rec_ts_hw` cursor) still gets the skip rather than
       // re-scanning every session's window on every pass.
       final frontier =
-          await LocalDb.getCursorInt('rec_ts_hw') ??
+          await LocalDb.getRecordFrontier() ??
           await LocalDb.lastDecodedRecTs() ??
           0;
       final seen = <String>{};
@@ -4599,29 +4647,7 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<void> postJournalMetrics(
     String date,
     Map<String, JournalMetricValue> fields,
-  ) async {
-    // Clamp on the way in rather than trusting the editor. A value past the
-    // field's ceiling is almost always a mis-tap, and a single 40-coffee day
-    // would dominate every correlation that field appears in for months.
-    final specs = await getJournalFields();
-    final clamped = <String, JournalMetricValue>{};
-    for (final e in fields.entries) {
-      final spec = journalFieldSpec(
-        e.key,
-        custom: specs.where((s) => s.custom).toList(),
-      );
-      final v = spec == null
-          ? e.value.value
-          : e.value.value.clamp(0.0, spec.max).toDouble();
-      // A zero is a real answer ("no caffeine today") and is stored as one.
-      // Absence is expressed by leaving the field out of the map entirely.
-      clamped[e.key] = JournalMetricValue(
-        v,
-        atMinuteOfDay: e.value.atMinuteOfDay,
-      );
-    }
-    await LocalDb.putJournalMetrics(date, clamped);
-  }
+  ) => _serialJournalMetrics(() => _putJournalMetricsClamped(date, fields));
 
   @override
   Future<List<JournalFieldSpec>> getJournalFields() async {
@@ -4713,12 +4739,21 @@ class LocalRepositoryImpl extends LocalRepository {
       maps[key] = m;
     }
 
-    // The union of journal dates (the days we can attribute behaviours on),
-    // sorted oldest-first — the shared index for journal + outcome arrays.
-    final dates = <String>{
+    // The days we can attribute behaviours on.
+    final journalDates = <String>{
       for (final j in journal)
         if (j['date'] is String) j['date'] as String,
-    }.toList()..sort();
+    };
+    // The outcome axis also needs each journal day's NEXT day: a lag-1 tag
+    // (alcohol, late meal) is paired with the night that follows it, and
+    // analytics looks that night up on this axis. Journal days alone would
+    // drop every tagged evening whose next day had no entry of its own — a
+    // user who journals only on the nights they drink would get no finding.
+    final dates = <String>{
+      ...journalDates,
+      for (final d in journalDates) ?dayLabelBefore(d, -1),
+    }.toList()
+      ..sort();
 
     final numericInsights = await _numericJournalInsights(
       metricsByDay: metricsByDay,
@@ -4729,7 +4764,7 @@ class LocalRepositoryImpl extends LocalRepository {
     // The tag pass needs four tagged days before it says anything. The numeric
     // pass has its own, stricter floor and is already computed, so an early
     // return here must not take it down with it.
-    if (dates.length < 4) {
+    if (journalDates.length < 4) {
       return {'insights': const [], 'numeric_insights': numericInsights};
     }
 
@@ -4739,8 +4774,11 @@ class LocalRepositoryImpl extends LocalRepository {
       if (d == null) continue;
       (tagsByDate[d] ??= <String>{}).addAll(_decodeStrList(j['tags_json']));
     }
+    // The real rows only. A next-day padding date has no row and must stay
+    // unknown, not become an untagged day.
     final jdays = <ana.JournalDay>[
-      for (final d in dates) ana.JournalDay(d, tagsByDate[d] ?? const {}),
+      for (final d in journalDates)
+        ana.JournalDay(d, tagsByDate[d] ?? const {}),
     ];
     final outcomes = <String, List<double?>>{
       for (final od in outcomeDefs)
@@ -4819,9 +4857,13 @@ class LocalRepositoryImpl extends LocalRepository {
   }) async {
     if (metricsByDay.isEmpty) return const [];
 
-    final dates = metricsByDay.keys.toList()..sort();
+    final logged = metricsByDay.keys.toList()..sort();
+    final dates = <String>{
+      ...logged,
+      for (final d in logged) ?dayLabelBefore(d, -1),
+    }.toList()..sort();
     final days = <ana.JournalNumericDay>[
-      for (final d in dates)
+      for (final d in logged)
         ana.JournalNumericDay(d, {
           for (final e in metricsByDay[d]!.entries) e.key: e.value.value,
           // MT-06 — the last cup, as a clock time, alongside the day's total.
@@ -4853,6 +4895,7 @@ class LocalRepositoryImpl extends LocalRepository {
           journal: days,
           dates: dates,
           outcomes: outcomes,
+          fieldLagDays: kJournalFieldLagDays,
         ),
       ),
     );
@@ -5555,7 +5598,9 @@ class LocalRepositoryImpl extends LocalRepository {
     final age = _profileAge();
     final zonesNote = set != null
         ? null
-        : age == null
+        // A pre-validation age (a birth year, 0) has no ceiling estimate
+        // either; the fix is the age, not the strap.
+        : age == null || !plausibleAgeYears(age)
         ? needInputNote('age')
         : ana.unknownFamilyNote(family);
     // TS-05 — the 28-day distribution is ABSENT, not captioned, until BOTH zone
@@ -5733,6 +5778,86 @@ class LocalRepositoryImpl extends LocalRepository {
         ? v[v.length ~/ 2]
         : (v[v.length ~/ 2 - 1] + v[v.length ~/ 2]) / 2.0;
   }
+
+
+  // ── helpers ────────────────────────────────────────────────────────────────
+
+  static const _dayBundleMemo = #localRepositoryDayBundleMemo;
+
+  /// Bundle decodes performed by [_bundle], for tests.
+  @visibleForTesting
+  static int bundleDecodes = 0;
+
+  @override
+  Future<T> sharingDayReads<T>(AsyncWork<T> work) =>
+      Zone.current[_dayBundleMemo] != null
+          ? work.run()
+          : runZoned(work.run, zoneValues: {
+              _dayBundleMemo: <String, Future<Map<String, dynamic>?>>{},
+            });
+
+  static bool _hasBankedScore(Map<String, dynamic> row) =>
+      row['strain'] != null ||
+      row['calories'] != null ||
+      row['max_hr'] != null ||
+      row['avg_hr'] != null ||
+      row['trace_json'] != null;
+
+  /// Tail of the journal_metric write queue. Static because the store is one
+  /// process-wide database and more than one repository instance can be alive
+  /// (the strap gesture, the screens and the coach each hold one).
+  static Future<void> _journalMetricWrites = Future<void>.value();
+
+  /// Run [body] after every earlier journal_metric write has finished.
+  /// `putJournalMetrics` deletes the day and re-inserts what it is handed, so
+  /// a read-modify-write that interleaves with another one on the same date
+  /// silently drops the other writer's field.
+  static Future<T> _serialJournalMetrics<T>(Future<T> Function() body) {
+    final run = _journalMetricWrites.then((_) => body());
+    _journalMetricWrites = run.then<void>((_) {}, onError: (Object _) {});
+    return run;
+  }
+
+  @override
+  Future<void> editJournalMetrics(
+    String date,
+    void Function(Map<String, JournalMetricValue> day) edit,
+  ) => _serialJournalMetrics(() async {
+    final day = {...await LocalDb.journalMetricsForDay(date)};
+    edit(day);
+    await _putJournalMetricsClamped(date, day);
+  });
+
+  Future<void> _putJournalMetricsClamped(
+    String date,
+    Map<String, JournalMetricValue> fields,
+  ) async {
+    // Clamp on the way in rather than trusting the editor. A value past the
+    // field's ceiling is almost always a mis-tap, and a single 40-coffee day
+    // would dominate every correlation that field appears in for months.
+    final specs = await getJournalFields();
+    final clamped = <String, JournalMetricValue>{};
+    for (final e in fields.entries) {
+      final spec = journalFieldSpec(
+        e.key,
+        custom: specs.where((s) => s.custom).toList(),
+      );
+      final v = spec == null
+          ? e.value.value
+          : e.value.value.clamp(0.0, spec.max).toDouble();
+      // A zero is a real answer ("no caffeine today") and is stored as one.
+      // Absence is expressed by leaving the field out of the map entirely.
+      clamped[e.key] = JournalMetricValue(
+        v,
+        atMinuteOfDay: e.value.atMinuteOfDay,
+      );
+    }
+    await LocalDb.putJournalMetrics(date, clamped);
+  }
+
+  @override
+  Future<List<String>> toggleCycleSymptom(String date, String symptom) async =>
+      LocalDb.toggleCycleSymptom(date, symptom);
 }
 
 /// The two anchors every zone set in the app is built from — read once, passed
@@ -5974,3 +6099,4 @@ num hrvConfidenceForToday(Map<String, dynamic> clinical) {
   }
   return wholeConf ?? 0.5;
 }
+

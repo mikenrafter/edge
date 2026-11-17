@@ -333,14 +333,14 @@ enum ResetKind { specific, unverified, noOfficialSite }
 
 /// What to tell a user whose device will not finish pairing. THREE states:
 /// - specific: l10n keys of device-specific steps (>= 1), optional official URL;
-/// - unverified: no sourced steps; generic template plus an official URL that
+/// - unverified: no sourced procedure; safe guidance plus an official URL that
 ///   is pinned to the vendor's host (follow-up list);
 /// - noOfficialSite: the vendor has no official site (generic family, no-name
 ///   brand); generic steps and a nonblank [reason] (follow-up list).
 class ResetSteps {
   final ResetKind kind;
 
-  /// Non-null only for [ResetKind.specific].
+  /// Device-specific steps, or a safe subset of guidance for an unverified device.
   final List<String>? keys;
 
   /// Official https help page. Optional for specific, required for unverified,
@@ -352,9 +352,8 @@ class ResetSteps {
   const ResetSteps.specific(List<String> this.keys, {this.officialUrl})
       : kind = ResetKind.specific,
         reason = null;
-  const ResetSteps.unverified({required String this.officialUrl})
+  const ResetSteps.unverified({required String this.officialUrl, this.keys})
       : kind = ResetKind.unverified,
-        keys = null,
         reason = null;
   const ResetSteps.noOfficialSite({required String this.reason})
       : kind = ResetKind.noOfficialSite,
@@ -506,9 +505,8 @@ class BandEntry {
   final DeviceCategory category;
 
   /// Whether the safeguard recognises this entry as a band (or a plain
-  /// sensor). Nullable only so a const constructor needs no default; every
-  /// registry entry sets it (pinned by pairing_device_role_test).
-  final DeviceRole? role;
+  /// sensor). Required so a new entry cannot silently bypass recognition.
+  final DeviceRole role;
 
   /// What to tell a user whose device will not finish pairing (every entry sets it).
   final ResetSteps? resetSteps;
@@ -518,10 +516,10 @@ class BandEntry {
 
   final bool _canBeMainDevice;
 
-  /// Whether the first-run list (W2) may offer this entry as the user's main
+  /// Whether the first-run list may offer this entry as the user's main
   /// device. Separate from [role], which only says "recognised as a band" for
-  /// the safeguard (DT10): only a framed WHOOP band has a supported
-  /// main-device path (DT12). Every other band is recognised but pairs as an
+  /// the safeguard: only a framed WHOOP band has a supported main-device
+  /// path. Every other band is recognised but pairs as an
   /// additional device under its own adapter, and a sensor never is one.
   bool get canBeMainDevice =>
       role == DeviceRole.band && isFramed && _canBeMainDevice;
@@ -544,7 +542,7 @@ class BandEntry {
     this.burstCountGateEnforced = false,
     this.logsConsoleOutput = false,
     this.nameMatcher,
-    this.role,
+    required this.role,
     this.resetSteps,
     this.kind = DeviceKind.other,
     bool canBeMainDevice = true,
@@ -580,7 +578,7 @@ class BandEntry {
     this.scanHints = const <String>[],
     this.scanCompanyIds = const <int>[],
     this.scanServiceData = const <String>[],
-    this.role,
+    required this.role,
     this.resetSteps,
     this.kind = DeviceKind.other,
     bool canBeMainDevice = true,
@@ -635,6 +633,12 @@ const BandEntry kWhoopGen4 = BandEntry.framed(
   role: DeviceRole.band,
   kind: DeviceKind.strap,
   resetSteps: ResetSteps.unverified(
+    // Opening the official app may update the band; use only app-free guidance.
+    keys: <String>[
+      'pairResetWhoop5Step3',
+      'pairResetGenericStep2',
+      'pairResetWhoop5Step4',
+    ],
     officialUrl:
         'https://support.whoop.com/s/article/WHOOP-4-0-iOS-Connectivity-and-Pairing?language=en_US',
   ),
@@ -689,7 +693,7 @@ const BandEntry kWhoopGen5 = BandEntry.framed(
     'pairResetWhoop5Step4',
   ],
     officialUrl:
-        'https://support.whoop.com/hc/en-us/articles/360038582374-Putting-the-WHOOP-Strap-into-Pairing-Mode',
+        'https://www.community.whoop.com/t/problem-with-pairing-mode/10783/2',
   ),
   commands: BandWireCommands(
     hello: Cmd.getHello,
@@ -721,7 +725,8 @@ const BandEntry kWhoopGen5 = BandEntry.framed(
 const BandEntry kBleHrs = BandEntry.notify(
   id: 'ble_hrs',
   role: DeviceRole.sensor,
-  kind: DeviceKind.chestStrap,
+  // HRS alone identifies no body position: watches and armbands use it too.
+  kind: DeviceKind.other,
   resetSteps: ResetSteps.noOfficialSite(
     reason: 'Generic Bluetooth heart-rate profile; maker unknown',
   ),
@@ -1147,8 +1152,8 @@ bool _looksLikeThermometer(String lowercaseName) =>
 /// OS-level service filter does not match, so it is also named there
 /// ([BandEntry.scanServiceData]).
 ///
-/// EXPERIMENTAL (ASSUMPTIONS R6). Weight becomes a `weight` observation and
-/// impedance a vendor observation. With its developer flag on (default off)
+/// Verified on a physical Mi Body Composition Scale 2 (XMTZC05HM). Weight
+/// becomes a `weight` observation and impedance a vendor observation. With its developer flag on (default off)
 /// the newest weight within 10% of the profile's becomes it
 /// (`newestWeighing`); impedance
 /// stays a measurement only.

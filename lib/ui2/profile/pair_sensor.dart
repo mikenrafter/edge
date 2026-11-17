@@ -68,6 +68,7 @@ import '../../data/db.dart' show LocalDb;
 import '../../l10n/app_localizations.dart';
 import '../onboarding/pairing.dart' show PairingScreen;
 import '../pairing/add_device_flow.dart';
+import '../pairing/pair_dispatch.dart';
 import '../pairing/pair_outcome_text.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
@@ -104,12 +105,21 @@ class PairSensorScreen extends StatefulWidget {
   @visibleForTesting
   final List<BandCandidate>? debugFound;
 
+  /// Substitute only the radio's pairing result in screen regression tests.
+  @visibleForTesting
+  final Future<PairOutcome> Function(BluetoothDevice)? debugPair;
+
+  /// A handoff needs a successful pair result, not just a closed route.
+  final bool returnOnPair;
+
   const PairSensorScreen({
     super.key,
     required this.entry,
     this.onPicked,
     this.onPickedWithKey,
     this.debugFound,
+    this.debugPair,
+    this.returnOnPair = false,
   });
 
   @override
@@ -322,6 +332,9 @@ class _PairSensorScreenState extends State<PairSensorScreen>
     // and a connect racing a live scan is the classic Android GATT-133. Read
     // `l` above the await, because `context` after one is the lint's point.
     await HrsLink.stopScanIfRunning(this);
+    // The screen may have been left while the scan shut down. _pairPlain reads
+    // localizations through `context`, which is disposed by now.
+    if (!mounted) return;
     String? failure;
     final typedKey = _key.text.trim();
     try {
@@ -345,6 +358,10 @@ class _PairSensorScreenState extends State<PairSensorScreen>
     // The key belonged to the device just paired; a second pair from this
     // screen must not silently reuse it.
     if (failure == null) _key.clear();
+    if (failure == null && widget.returnOnPair) {
+      Navigator.of(context).pop(BandFlowResult.pairedWearable);
+      return;
+    }
     if (failure == null) await _load();
   }
 
@@ -354,8 +371,10 @@ class _PairSensorScreenState extends State<PairSensorScreen>
   Future<String?> _pairPlain(
       BluetoothDevice device, String? label, BandIdentity? earlierBand) async {
     final l = AppLocalizations.of(context);
-    final outcome = await HrsLink.pairNotifySensor(widget.entry, device,
-        label: label, earlierBand: earlierBand);
+    final outcome = widget.debugPair != null
+        ? await widget.debugPair!(device)
+        : await HrsLink.pairNotifySensor(widget.entry, device,
+            label: label, earlierBand: earlierBand);
     if (outcome.isBand == null || !mounted) return pairOutcomeText(l, outcome);
     final cand = (
       device: device,
@@ -364,35 +383,40 @@ class _PairSensorScreenState extends State<PairSensorScreen>
       entryId: widget.entry.id,
       alsoBand: earlierBand,
     );
+    final previousMain = context.read<AppState>().paired?.remoteId;
     final r = await AddDeviceFlow(this)
         .afterConnect(context, cand, widget.entry, outcome);
     if (!mounted) return null;
     return afterBandFoundText(l, outcome, r,
-        bandPairedNow: context.read<AppState>().isPaired);
+        bandPairedNow: context.read<AppState>().paired?.remoteId != null &&
+            context.read<AppState>().paired?.remoteId != previousMain);
   }
 
   @override
   bool get hasMainBand => context.read<AppState>().isPaired;
 
   @override
+  String? get mainBandRemoteId => context.read<AppState>().paired?.remoteId;
+
+  @override
   String? get mainBandName => context.read<AppState>().strapName;
 
-  /// The same unpair Settings' "Unpair band" runs (`AppState.unpair`).
-  @override
-  Future<void> unpairMainBand() => context.read<AppState>().unpair();
 
   @override
   Future<PairOutcome> pair(BandCandidate cand, BandEntry entry,
       PairConfirmation? confirmation) async {
+    // Read before the await: if pairing throws after this screen is gone, the
+    // catch below must not touch a disposed context.
+    final l = AppLocalizations.of(context);
     try {
-      return await HrsLink.pairNotifySensor(entry, cand.device,
+      return await pairRegisteredEntry(entry, cand.device,
           label: cand.label,
           earlierBand: cand.alsoBand,
           confirmation: confirmation);
     } catch (e) {
-      return PairOutcome.failed(AppLocalizations.of(context)
-              ?.pairSensorCouldNotPair(e.toString()) ??
-          'Could not pair that device: $e');
+      return PairOutcome.failed(
+          l?.pairSensorCouldNotPair(e.toString()) ??
+              'Could not pair that device: $e');
     }
   }
 
@@ -403,28 +427,31 @@ class _PairSensorScreenState extends State<PairSensorScreen>
   Future<String?> mainBandBlockedReason() => HrsLink.scanHeldBackReason();
 
   @override
-  Future<void> openBandFlow(BandEntry band,
-      {required String remoteId, bool modelKnown = true}) async {
+  Future<BandFlowResult> openBandFlow(BandEntry band,
+      {required String? remoteId, bool modelKnown = true, bool replacing = false}) async {
+    if (!mounted) return BandFlowResult.closed;
     if (!band.isFramed) {
       // A ring pairs only on its own screen, with its key (the same screen
       // "Add a device" opens for it).
       final sensor =
           kPairableSensors.where((s) => s.entry.id == band.id).firstOrNull;
-      if (sensor == null) return;
-      await Navigator.of(context).push(MaterialPageRoute<void>(
+      if (sensor == null) return BandFlowResult.closed;
+      final result = await Navigator.of(context).push(MaterialPageRoute<BandFlowResult>(
         builder: (_) => PairSensorScreen(
           entry: band,
-          onPicked: sensor.pick,
+          returnOnPair: true,
+          onPicked: sensor.pick?.run,
           onPickedWithKey:
               band.id == kOura.id ? pairOuraRingWithTypedKey : null,
         ),
       ));
-      return;
+      return result ?? BandFlowResult.closed;
     }
     await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) =>
-          PairingScreen(entry: modelKnown ? band : null, remoteId: remoteId),
+          PairingScreen(entry: modelKnown ? band : null, remoteId: remoteId, replacing: replacing),
     ));
+    return BandFlowResult.closed;
   }
 
   Future<void> _forget(String id) async {
@@ -513,7 +540,7 @@ class PairSensorView extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
               children: [
-                if (paired != null) ..._pairedSection(c, paired!),
+                if (paired != null) ..._pairedSection(c, paired!, busy),
                 Section(
                   paired == null
                       ? (l?.pairSensorWhatThisAdds ?? 'What this adds')
@@ -536,9 +563,7 @@ class PairSensorView extends StatelessWidget {
                           l?.pairSensorExplainerMeasurement ??
                               'Its readings are saved under its name and not used for your scores yet.',
                         _ => l?.pairSensorExplainerWorkout ??
-                            'Records heart rate during workouts, but only once it’s been '
-                                'checked against the hardware. Until then it records '
-                                'nothing. Doesn’t replace your band.',
+                            'Records heart rate during workouts, but only once it’s been checked against the hardware. Until then it records nothing. Doesn’t replace your band.',
                       }),
                       style: F.cap.copyWith(color: p.ink3, height: 1.5),
                     ),
@@ -551,7 +576,7 @@ class PairSensorView extends StatelessWidget {
                   const SizedBox(height: S.x4),
                   StatusCard(
                     l?.pairSensorKeyReplacesTitle ??
-                        "Pairing replaces the Oura app's key",
+                        'Pairing replaces the Oura app\'s key',
                     l?.pairSensorKeyReplacesBody ??
                         'Pairing without the Oura app’s key replaces it. The Oura app will stop working with this ring until you reset it.',
                     icon: LucideIcons.triangleAlert,
@@ -617,8 +642,7 @@ class PairSensorView extends StatelessWidget {
                     child: StatusCard(
                       l?.pairSensorNothingFoundYet ?? 'Nothing found yet',
                       l?.pairSensorNothingFoundBody ??
-                          'Make sure the sensor is on, worn and not connected '
-                              'to another phone or app.',
+                          'Make sure the sensor is on, worn and not connected to another phone or app.',
                       icon: LucideIcons.searchX,
                     ),
                   ),
@@ -676,7 +700,7 @@ class PairSensorView extends StatelessWidget {
     );
   }
 
-  List<Widget> _pairedSection(BuildContext c, PairedSensor s) {
+  List<Widget> _pairedSection(BuildContext c, PairedSensor s, bool busy) {
     final l = AppLocalizations.of(c);
     return [
       Section(
@@ -713,12 +737,43 @@ class PairSensorView extends StatelessWidget {
                   'Removes the source. The readings it already took stay.',
               danger: true,
               chevron: false,
-              onTap: onForget == null ? null : () => onForget!(s.id),
+              // Locked while a pair is in flight, and asked first: for a ring
+              // or a Mi Band this deletes the pairing key the app minted and
+              // never showed anyone, and the device keeps it — one stray tap
+              // would leave a ring that refuses every new key until it is
+              // factory reset. The device page asks the same question.
+              onTap: onForget == null || busy
+                  ? null
+                  : () => _confirmForget(c, s),
             ),
           ]),
         ),
       ),
     ];
+  }
+
+  Future<void> _confirmForget(BuildContext c, PairedSensor s) async {
+    final l = AppLocalizations.of(c);
+    final name = s.label ?? entryLabel;
+    final ok = await showDialog<bool>(
+      context: c,
+      builder: (d) => AlertDialog(
+        title: Text(l?.devicesForgetSensor(name) ?? 'Forget $name?'),
+        content: Text(
+          withIosUninstallWarning(c, l?.devicesForgetSensorBody ??
+              'It stops being used in workouts and has to be paired again. Everything already saved on this phone stays.'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(d).pop(false),
+              child: Text(l?.devicesKeepItPaired ?? 'Keep it paired')),
+          TextButton(
+              onPressed: () => Navigator.of(d).pop(true),
+              child: Text(l?.devicesForgetIt ?? 'Forget it')),
+        ],
+      ),
+    );
+    if (ok == true) onForget?.call(s.id);
   }
 
   Widget _candidateRow(BuildContext c, BandCandidate cand, bool busy) {
@@ -754,8 +809,8 @@ class PairSensorView extends StatelessWidget {
 /// what to do ([AddDeviceFlow.afterConnect]); null says nothing went wrong.
 /// The main-band flow that opened may have paired the band: then
 /// "Nothing was saved" would be false. A ring's own screen reported its own
-/// outcome. [bandPairedNow] is whether a main band is paired once the flow
-/// closed.
+/// outcome. [bandPairedNow] says whether this flow changed the main band;
+/// the system picker can select a different peripheral from the scan.
 @visibleForTesting
 String? afterBandFoundText(
   AppLocalizations? l,
@@ -767,7 +822,7 @@ String? afterBandFoundText(
       AddDeviceOutcome.pairedSecondary || AddDeviceOutcome.pairedOther => null,
       AddDeviceOutcome.failed || AddDeviceOutcome.bandFlowHeldBack => r.message,
       AddDeviceOutcome.openedBandFlow
-          when bandPairedNow || outcome.isBand?.isFramed == false =>
+          when bandPairedNow =>
         null,
       // Backed out, or the band flow did not pair it: nothing was saved.
       AddDeviceOutcome.cancelled ||

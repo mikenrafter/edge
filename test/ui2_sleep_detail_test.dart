@@ -9,6 +9,8 @@ import 'support/sleep_disclosures.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/day_label.dart';
+import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/models/metric.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
@@ -490,11 +492,9 @@ void main() {
         find.textContaining('Longest unbroken stretch 2h 42m'), findsOneWidget);
   });
 
-  testWidgets('tonight is one takeaway, not six numbers', (t) async {
-    await _pump(
-      t,
-      SleepData(
-        day: '2026-05-20',
+  SleepData planned(String day, {String? latest}) => SleepData(
+        day: day,
+        latestDay: latest,
         night: _night(),
         need: const Metric(
             value: 462, unit: 'min', confidence: .7, tier: MetricTier.estimate),
@@ -502,11 +502,159 @@ void main() {
             value: 22, unit: 'min', confidence: .7, tier: MetricTier.estimate),
         bedtime:
             const Metric(value: 1360, confidence: .7, tier: MetricTier.estimate),
-      ),
-    );
+      );
+
+  // The fork keeps its day stepper even for one night. It must show the
+  // localized date, never the raw database key ('2026-05-20').
+  testWidgets('a lone night is dated by name, never by its raw key',
+      (t) async {
+    await _pump(t, SleepData(day: '2026-05-20', night: _night()));
+    expect(find.text('2026-05-20'), findsNothing);
+    expect(find.text(prettyDay('2026-05-20')), findsOneWidget);
+  });
+
+  testWidgets('tonight is one takeaway, not six numbers', (t) async {
+    await _pump(t, planned(todayLabel()));
     expect(find.text('lights out'), findsOneWidget);
     expect(find.textContaining('Your need is 7h 42m'), findsOneWidget);
     expect(find.textContaining('22m down'), findsOneWidget);
+  });
+
+  // Need, debt and bedtime are today's rollup whichever night is selected.
+  testWidgets('a past night carries no plan for tonight', (t) async {
+    await _pump(t, planned('2026-05-20'));
+    expect(find.text('lights out'), findsNothing);
+    expect(find.textContaining('Your need is'), findsNothing);
+  });
+
+  // The landing view sits on a held-over night whenever one is served, which
+  // is a day or more behind the calendar. Tonight's plan still belongs there.
+  testWidgets('a held-over night the screen opened on keeps tonight',
+      (t) async {
+    await _pump(t, planned('2026-05-20', latest: '2026-05-20'));
+    expect(find.text('lights out'), findsOneWidget);
+  });
+
+  testWidgets('a night older than the held-over one carries no plan',
+      (t) async {
+    await _pump(t, planned('2026-05-18', latest: '2026-05-20'));
+    expect(find.text('lights out'), findsNothing);
+  });
+
+  group('SleepData.load', () {
+    test('the newest night on offer is the held-over one, not the calendar',
+        () async {
+      final repo = _HeldOverRepo();
+      final opened = await SleepData.load(repo);
+      expect(opened.day, '2026-05-20');
+      expect(opened.latestDay, '2026-05-20');
+      expect(opened.isLatestNight, isTrue);
+
+      final stepped = await SleepData.load(repo, want: '2026-05-19');
+      expect(stepped.day, '2026-05-19');
+      expect(stepped.latestDay, '2026-05-20');
+      expect(stepped.isLatestNight, isFalse);
+    });
+
+    test('today\'s provisional night wins over the held-over one', () async {
+      // #739: Home's Sleep ring is drawn from `sleep_provisional` while the
+      // night drains, so the tap that opens this screen must land on TODAY.
+      // The held-over 2026-05-20 night is not the night the ring showed.
+      final opened = await SleepData.load(_ProvisionalRepo());
+      expect(opened.day, '2026-05-22');
+      expect(opened.latestDay, '2026-05-22');
+
+      // Stepping back to a named night still opens that night.
+      final stepped = await SleepData.load(_ProvisionalRepo(), want: '2026-05-19');
+      expect(stepped.day, '2026-05-19');
+      expect(stepped.latestDay, '2026-05-22');
+    });
+  });
+
+  group('sleepScrubTempDelta', () {
+    test('a relative sensor delta is signed and keeps its one decimal', () {
+      expect(sleepScrubTempDelta(-12.4), '−12.4');
+      expect(sleepScrubTempDelta(3.1), '+3.1');
+    });
+
+    test('zero carries no sign it does not have', () {
+      expect(sleepScrubTempDelta(0), '±0.0');
+      expect(sleepScrubTempDelta(-0.04), '±0.0');
+    });
+  });
+
+  group('sleepStepperDay', () {
+    test('stepping onto the newest night follows it rather than pinning it',
+        () {
+      expect(sleepStepperDay('2026-10-17', '2026-10-17'), isNull);
+    });
+
+    test('an older night stays pinned', () {
+      expect(sleepStepperDay('2026-10-16', '2026-10-17'), '2026-10-16');
+    });
+
+    test('without a known newest night the chosen date is kept', () {
+      expect(sleepStepperDay('2026-10-17', null), '2026-10-17');
+    });
+  });
+
+  group('sleepDayAfterOverride', () {
+    test('a correction to the newest night stops pinning it', () {
+      expect(sleepDayAfterOverride('2026-10-17', '2026-10-17', '2026-10-17'),
+          isNull);
+    });
+
+    test('an edited night that is no longer the newest stays pinned', () {
+      expect(sleepDayAfterOverride('2026-10-16', '2026-10-16', '2026-10-17'),
+          '2026-10-16');
+    });
+
+    test('a night the user stepped to meanwhile is left alone', () {
+      expect(sleepDayAfterOverride('2026-10-15', '2026-10-17', '2026-10-17'),
+          '2026-10-15');
+      expect(sleepDayAfterOverride(null, '2026-10-16', '2026-10-17'), isNull);
+    });
+  });
+
+  group('the Sleep tab', () {
+    Future<void> tab(WidgetTester t, String day, {String? latest}) async {
+      t.view.physicalSize = const Size(390 * 3, 5200 * 3);
+      t.view.devicePixelRatio = 3;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(MaterialApp(
+        theme: buildTheme(Brightness.light),
+        home: Scaffold(
+          body: SleepDetail(
+            embedded: true,
+            data: planned(day, latest: latest),
+            todayFooter: const [Text('the sleep plan')],
+            footer: const [Text('alarm and body clock')],
+          ),
+        ),
+      ));
+      await t.pumpAndSettle();
+    }
+
+    testWidgets('leaves tonight to the plan below instead of saying it twice',
+        (t) async {
+      await tab(t, todayLabel());
+      expect(find.text('lights out'), findsNothing);
+      expect(find.text('the sleep plan'), findsOneWidget);
+      expect(find.text('alarm and body clock'), findsOneWidget);
+    });
+
+    testWidgets('keeps the plan on a held-over night it opened on',
+        (t) async {
+      await tab(t, '2026-05-20', latest: '2026-05-20');
+      expect(find.text('the sleep plan'), findsOneWidget);
+    });
+
+    testWidgets('drops the plan under a past night, keeps the links',
+        (t) async {
+      await tab(t, '2026-05-20');
+      expect(find.text('the sleep plan'), findsNothing);
+      expect(find.text('alarm and body clock'), findsOneWidget);
+    });
   });
 
   group('correctedSleepWindow', () {
@@ -658,4 +806,62 @@ void main() {
     expect(find.text('Marked as not sleep'), findsOneWidget);
     expect(find.text('I was asleep'), findsNothing);
   });
+}
+
+/// `getToday` holding the 2026-05-20 night over while TODAY's own night is
+/// still draining (#638): both nights are in the payload at once.
+class _ProvisionalRepo extends _HeldOverRepo {
+  @override
+  Future<Map<String, dynamic>> getToday() async => {
+        'status': {
+          'today_day': '2026-05-22',
+          'showing_prior_overnight': true,
+          'overnight_day': '2026-05-20',
+          'recovery_state': 'night_in_progress',
+        },
+        'sleep_provisional': {
+          'duration_min': {
+            'value': 360,
+            'confidence': .8,
+            'tier': 'ESTIMATE',
+            'unit': 'min',
+          },
+          'provisional': true,
+        },
+      };
+}
+
+/// `getToday` holding the 2026-05-20 night over, with older nights on disk.
+class _HeldOverRepo extends LocalRepository {
+  @override
+  Future<Map<String, dynamic>> getToday() async => {
+        'status': {
+          'today_day': '2026-05-22',
+          'showing_prior_overnight': true,
+          'overnight_day': '2026-05-20',
+        },
+      };
+
+  @override
+  Future<List<String>> availableDays() async =>
+      ['2026-05-22', '2026-05-20', '2026-05-19'];
+
+  @override
+  Future<Map<String, dynamic>> getDaySleepV2(String date) async => {};
+
+  @override
+  Future<Map<String, dynamic>> getDayTimeline(String date) async => {};
+
+  @override
+  Future<Map<String, dynamic>> getInsights() async => {};
+
+  @override
+  Future<Map<String, dynamic>> getChart(String metric,
+          {int? from, int? to, Set<String> signals = const {}}) async =>
+      {};
+
+  @override
+  Future<List<Map<String, dynamic>>> sleepWindows(
+          {int days = 60, String? before}) async =>
+      [];
 }

@@ -132,21 +132,27 @@ Future<void> _ldbPrivExtendCoverageVia(DatabaseExecutor txn, {required String de
     }
   }
 
-Future<void> _ldbAddLiveCoverage(int startTs, int endTs, int steps, String day, {required String source, required String deviceId}) async {
+Future<void> _ldbAddLiveCoverage(int startTs, int endTs, int steps, String day, {required String source, required String deviceId, int? resetGeneration}) async {
+    final generation = resetGeneration ?? ResetGate.generation;
     final w = sanitizeCoverageWindow(startTs, endTs, steps);
     if (w == null) return;
-    final db = await LocalDb.instance;
-    await db.insert('live_coverage', {
-      'start_ts': w.startTs,
-      'end_ts': w.endTs,
-      'steps': steps,
-      'day': day,
-      'source': source,
-      'device_id': deviceId,
+    // The wipe uses this gate too: a check before queuing can still race it.
+    await LocalDb._withCommitGate(() async {
+      LocalDb._refuseAfterReset(generation);
+      final db = await LocalDb.instance;
+      await db.insert('live_coverage', {
+        'start_ts': w.startTs,
+        'end_ts': w.endTs,
+        'steps': steps,
+        'day': day,
+        'source': source,
+        'device_id': deviceId,
+      });
     });
   }
 
-Future<void> _ldbAddLiveCoverageRuns(List<({int startTs, int endTs, int steps, String day})> runs, {required String source, required String deviceId}) async {
+Future<void> _ldbAddLiveCoverageRuns(List<({int startTs, int endTs, int steps, String day})> runs, {required String source, required String deviceId, int? resetGeneration}) async {
+    final generation = resetGeneration ?? ResetGate.generation;
     final rows = <Map<String, Object?>>[];
     for (final r in runs) {
       final w = sanitizeCoverageWindow(r.startTs, r.endTs, r.steps);
@@ -161,32 +167,44 @@ Future<void> _ldbAddLiveCoverageRuns(List<({int startTs, int endTs, int steps, S
       });
     }
     if (rows.isEmpty) return;
-    final db = await LocalDb.instance;
-    await db.transaction((txn) async {
-      for (final row in rows) {
-        await txn.insert('live_coverage', row);
-      }
+    await LocalDb._withCommitGate(() async {
+      LocalDb._refuseAfterReset(generation);
+      final db = await LocalDb.instance;
+      LocalDb._refuseAfterReset(generation);
+      await db.transaction((txn) async {
+        for (final row in rows) {
+          await txn.insert('live_coverage', row);
+        }
+      });
     });
   }
 
-Future<void> _ldbReplacePhoneCoverageForDay(String day, List<({int startTs, int endTs, int steps})> windows) async {
-    final db = await LocalDb.instance;
-    await db.transaction((txn) async {
-      await txn.delete(
-        'live_coverage',
-        where: 'day = ? AND source = ?',
-        whereArgs: [day, LocalDb.kStepSourcePhone],
-      );
-      for (final w in windows) {
-        if (w.steps < 0 || w.endTs <= w.startTs) continue;
-        await txn.insert('live_coverage', {
-          'start_ts': w.startTs,
-          'end_ts': w.endTs,
-          'steps': w.steps,
-          'day': day,
-          'source': LocalDb.kStepSourcePhone,
-        });
-      }
+Future<bool> _ldbReplacePhoneCoverageForDay(String day, List<({int startTs, int endTs, int steps})> windows, {bool Function()? stillValid}) {
+    // Through the commit gate the wipe also uses, and re-checked INSIDE it:
+    // a reset queued while this write waited for the database finishes first,
+    // and the check then refuses the write instead of repopulating the store.
+    return LocalDb._withCommitGate(() async {
+      if (stillValid != null && !stillValid()) return false;
+      final db = await LocalDb.instance;
+      if (stillValid != null && !stillValid()) return false;
+      await db.transaction((txn) async {
+        await txn.delete(
+          'live_coverage',
+          where: 'day = ? AND source = ?',
+          whereArgs: [day, LocalDb.kStepSourcePhone],
+        );
+        for (final w in windows) {
+          if (w.steps < 0 || w.endTs <= w.startTs) continue;
+          await txn.insert('live_coverage', {
+            'start_ts': w.startTs,
+            'end_ts': w.endTs,
+            'steps': w.steps,
+            'day': day,
+            'source': LocalDb.kStepSourcePhone,
+          });
+        }
+      });
+      return true;
     });
   }
 
@@ -236,6 +254,7 @@ Future<List<List<int>>> _ldbCoverageWindowsOverlapping(int loSec, int hiSec, {re
       where: 'end_ts >= ? AND start_ts < ? AND source = ?',
       whereArgs: [loSec, hiSec, source],
     );
+    await LocalDb.debugAfterCoverageRead?.call();
     return [
       for (final r in rows)
         [(r['start_ts'] as num).toInt(), (r['end_ts'] as num).toInt()],
@@ -291,7 +310,7 @@ Future<List<List<int>>> _ldbPrivToggleSpans(int loSec, int hiSec, {required int 
     return spans;
   }
 
-Future<void> _ldbCommitSyncBatch(List<RawRecord> raws, List<Sample?> samples, {required String? trimToken, required Map<String, String>? extraCursors, required List<ArchiveRecord>? archives, required List<NeutralSample>? neutrals, required List<EcgRawPacket>? ecgRawPackets, required void Function(String)? onCheckpoint, required String? deviceFamily, required String deviceId, required Map<String, int>? coverageToleranceSec, required ProcessingOrigin processingOrigin}) =>
+Future<void> _ldbCommitSyncBatch(List<RawRecord> raws, List<Sample?> samples, {required String? trimToken, required Map<String, String>? extraCursors, required List<ArchiveRecord>? archives, required List<NeutralSample>? neutrals, required List<EcgRawPacket>? ecgRawPackets, required void Function(String)? onCheckpoint, required String? deviceFamily, required String deviceId, required Map<String, int>? coverageToleranceSec, required ProcessingOrigin processingOrigin, int? resetGeneration}) =>
       LocalDb._withCommitGate(() => LocalDb._commitSyncBatchLocked(
             raws,
             samples,
@@ -305,9 +324,20 @@ Future<void> _ldbCommitSyncBatch(List<RawRecord> raws, List<Sample?> samples, {r
             deviceId: deviceId,
             coverageToleranceSec: coverageToleranceSec,
             processingOrigin: processingOrigin,
+            resetGeneration: resetGeneration ?? ResetGate.generation,
           ));
 
-Future<void> _ldbPrivCommitSyncBatchLocked(List<RawRecord> raws, List<Sample?> samples, {required String? trimToken, required Map<String, String>? extraCursors, required List<ArchiveRecord>? archives, required List<NeutralSample>? neutrals, required List<EcgRawPacket>? ecgRawPackets, required void Function(String)? onCheckpoint, required String? deviceFamily, required String deviceId, required Map<String, int>? coverageToleranceSec, required ProcessingOrigin processingOrigin}) async {
+Future<void> _ldbPrivCommitSyncBatchLocked(List<RawRecord> raws, List<Sample?> samples, {required String? trimToken, required Map<String, String>? extraCursors, required List<ArchiveRecord>? archives, required List<NeutralSample>? neutrals, required List<EcgRawPacket>? ecgRawPackets, required void Function(String)? onCheckpoint, required String? deviceFamily, required String deviceId, required Map<String, int>? coverageToleranceSec, required ProcessingOrigin processingOrigin, int? resetGeneration}) async {
+    // A batch queued on the gate before "delete everything" started reaches
+    // here only after the wipe ([wipeAll] runs on the same gate). Every
+    // caller re-checks ResetGate before calling, but this one runs LATER than
+    // any of those checks, so it is the one that cannot be raced. Thrown, so
+    // the caller keeps its buffer and never ACKs.
+    if (resetGeneration == null
+        ? ResetGate.active
+        : ResetGate.changedSince(resetGeneration)) {
+      throw StateError('data reset in progress');
+    }
     // NEUTRAL ROWS BELONG TO A NON-PRIMARY DEVICE. "" is the primary band
     // permanently (see kPrimaryDeviceId); a neutral-sample writer is by
     // definition a band with no framed record, which the primary is not.
@@ -443,15 +473,19 @@ Future<void> _ldbPrivCommitSyncBatchLocked(List<RawRecord> raws, List<Sample?> s
         // aside BEFORE the caller writes the batch-ACK that lets the band trim.
         if (archives != null) {
           for (final a in archives) {
-            batch.insert('raw_archive', {
-              'device_id': deviceId,
-              'counter': a.counter,
-              'hex': a.hex,
-              'packet_type': a.packetType,
-              'rec_ts': a.recTs,
-              'captured_at': a.capturedAt,
-              'reason': a.reason,
-            }, conflictAlgorithm: ConflictAlgorithm.ignore);
+            batch.insert(
+              'raw_archive_frames',
+              LocalDb.rawArchiveRow(
+                deviceId: deviceId,
+                hex: a.hex,
+                counter: a.counter,
+                packetType: a.packetType,
+                recTs: a.recTs,
+                capturedAt: a.capturedAt,
+                reason: a.reason,
+              ),
+              conflictAlgorithm: ConflictAlgorithm.ignore,
+            );
             if (++ops >= chunkOps) await flushChunk();
           }
         }
@@ -547,8 +581,16 @@ Future<void> _ldbPrivCommitSyncBatchLocked(List<RawRecord> raws, List<Sample?> s
           toleranceSec: coverageToleranceSec,
           deviceFamily: deviceFamily,
         );
-        await LocalDb.setCursor(kCounter, '$maxCounter', txn: txn);
-        await LocalDb.setCursor(kRecTs, '$maxRecTs', txn: txn);
+        // Only a real record moves the frontier. A commit that banked none (a
+        // bare HISTORY_END token, gate-dropped archives) on an install with no
+        // cursor yet would otherwise persist '0', which every `?? fallback`
+        // reader takes as a real frontier at the 1970 epoch.
+        if (maxCounter > 0) {
+          await LocalDb.setCursor(kCounter, '$maxCounter', txn: txn);
+        }
+        if (maxRecTs > 0) {
+          await LocalDb.setCursor(kRecTs, '$maxRecTs', txn: txn);
+        }
         if (trimToken != null) {
           await LocalDb.setCursor(LocalDb.cursorKeyFor('strap_trim', deviceId), trimToken,
               txn: txn);
@@ -1201,15 +1243,19 @@ Future<Map<String, dynamic>> _ldbBatteryHealth({required int lookback}) async {
 
 Future<void> _ldbArchiveRawRecord(ArchiveRecord a, {required String deviceId}) async {
     final db = await LocalDb.instance;
-    await db.insert('raw_archive', {
-      'device_id': deviceId,
-      'counter': a.counter,
-      'hex': a.hex,
-      'packet_type': a.packetType,
-      'rec_ts': a.recTs,
-      'captured_at': a.capturedAt,
-      'reason': a.reason,
-    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    await db.insert(
+      'raw_archive_frames',
+      LocalDb.rawArchiveRow(
+        deviceId: deviceId,
+        hex: a.hex,
+        counter: a.counter,
+        packetType: a.packetType,
+        recTs: a.recTs,
+        capturedAt: a.capturedAt,
+        reason: a.reason,
+      ),
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
   }
 
 Future<int> _ldbRedriveArchiveOnce({required Duration budget}) async {
@@ -1220,6 +1266,12 @@ Future<int> _ldbRedriveArchiveOnce({required Duration budget}) async {
       if (v is Map) state = v.cast<String, dynamic>();
     }
     if (state['done'] == true) return 0;
+    // Wait for the legacy archive to finish moving: the replay reads the new
+    // store only, and marking it done over a half-moved archive would skip
+    // the rest for good.
+    if (await LocalDb._objectType(await LocalDb.instance, LocalDb._rawArchiveLegacy) == 'table') {
+      return 0;
+    }
     final row = await LocalDb.computeFreshness(LocalDb.kRedriveExcludedKey);
     final excluded =
         row == null ? const <(int, int)>[] : LocalDb._parseWindows(row['payload_json']);
@@ -1257,13 +1309,26 @@ Future<({int recovered, (String, String)? resume})> _ldbPrivRedrive(Database db,
     // Both are cheap and both are required: a DB whose ladder has not created
     // the archive yet (or is mid-ladder) must no-op rather than throw — a throw
     // in here rolls the WHOLE upgrade back and quarantines the database.
-    for (final t in const ['raw_archive', 'decoded_onehz']) {
+    // The archive is the `raw_archive` table on the ladder's older layouts,
+    // and [rawArchiveView] over [rawArchiveTable] once converted.
+    final framesLayout = await LocalDb._objectType(db, LocalDb.rawArchiveView) == 'view';
+    for (final t in [framesLayout ? LocalDb.rawArchiveView : 'raw_archive',
+        'decoded_onehz']) {
       final present = await db.rawQuery(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        "SELECT 1 FROM sqlite_master WHERE type IN ('table', 'view') "
+        'AND name=?',
         [t],
       );
       if (present.isEmpty) return (recovered: 0, resume: null);
     }
+    // The converted store pages on its own rowid (the hex is computed, so
+    // paging on it would sort the archive every page). Its cursor travels in
+    // the same (String, String) slot, marked by [_redriveRowidCursor]; a
+    // position from the old hex-ordered pass restarts at the top, which the
+    // replay's skip-what-is-decoded rule makes safe.
+    var afterRowid = framesLayout && startDevice == LocalDb._redriveRowidCursor
+        ? int.tryParse(startHex) ?? 0
+        : 0;
     // SELF-DETECTING, because this runs from BOTH sides of the v47 rung: from
     // the oldV<44 ladder step, where `decoded_onehz` is still keyed by rec_ts
     // alone and naming `device_id` would throw inside onUpgrade (quarantining
@@ -1275,7 +1340,7 @@ Future<({int recovered, (String, String)? resume})> _ldbPrivRedrive(Database db,
     // rekey (v51): this function runs from the oldV<44 rung too, i.e. BEFORE
     // the v51 rekey, so at that point `raw_archive` is still hex-keyed and the
     // row-value comparison below must fall back to comparing `hex` alone.
-    final preArchiveDeviceKey =
+    final preArchiveDeviceKey = !framesLayout &&
         !(await LocalDb._columnsOf(db, 'raw_archive')).contains('device_id');
 
     final marks = List.filled(reasons.length, '?').join(',');
@@ -1284,11 +1349,19 @@ Future<({int recovered, (String, String)? resume})> _ldbPrivRedrive(Database db,
     // Post-v51, `hex` alone is no longer unique
     // (two devices can share a byte-identical undecodable frame), so a plain
     // `hex > ?` cursor would silently skip the second device's row.
-    var afterHex = startHex;
-    var afterDevice = startDevice;
+    var afterHex = framesLayout ? '$afterRowid' : startHex;
+    var afterDevice = framesLayout ? LocalDb._redriveRowidCursor : startDevice;
     var recovered = 0;
     while (true) {
-      final rows = preArchiveDeviceKey
+      final rows = framesLayout
+          ? await db.rawQuery(
+              'SELECT rowid AS _r, device_id, ${LocalDb._rawArchiveHexSql} AS hex, '
+              'counter, packet_type, rec_ts, captured_at '
+              'FROM ${LocalDb.rawArchiveTable} WHERE reason IN ($marks) AND rowid > ? '
+              'ORDER BY rowid ASC LIMIT 500',
+              [...reasons, afterRowid],
+            )
+          : preArchiveDeviceKey
           ? await db.rawQuery(
               'SELECT hex, counter, packet_type, rec_ts, captured_at '
               'FROM raw_archive WHERE reason IN ($marks) AND hex > ? '
@@ -1305,8 +1378,14 @@ Future<({int recovered, (String, String)? resume})> _ldbPrivRedrive(Database db,
             );
       if (rows.isEmpty) return (recovered: recovered, resume: null);
       final pageHex = afterHex, pageDevice = afterDevice;
-      afterHex = rows.last['hex'] as String;
-      afterDevice = preArchiveDeviceKey ? '' : rows.last['device_id'] as String;
+      if (framesLayout) {
+        afterRowid = (rows.last['_r'] as num).toInt();
+        afterHex = '$afterRowid';
+      } else {
+        afterHex = rows.last['hex'] as String;
+        afterDevice =
+            preArchiveDeviceKey ? '' : rows.last['device_id'] as String;
+      }
 
       // Decode first, keyed by (device, second) each record claims. Two
       // archived frames for the SAME device and second collapse here rather
@@ -1444,11 +1523,11 @@ Future<Map<String, dynamic>> _ldbRawArchiveStats() async {
     final db = await LocalDb.instance;
     final count =
         Sqflite.firstIntValue(
-          await db.rawQuery('SELECT COUNT(*) FROM raw_archive'),
+          await db.rawQuery('SELECT COUNT(*) FROM ${LocalDb.rawArchiveView}'),
         ) ??
         0;
     final byReason = await db.rawQuery(
-      'SELECT reason, COUNT(*) AS n FROM raw_archive '
+      'SELECT reason, COUNT(*) AS n FROM ${LocalDb.rawArchiveView} '
       'GROUP BY reason ORDER BY n DESC, reason ASC',
     );
     return {
@@ -1577,11 +1656,26 @@ Future<Sample?> _ldbLatestSample() async {
       orderBy: 'rec_ts DESC, counter DESC',
       limit: 1,
     );
-    if (decodedRows.isNotEmpty) {
-      return Sample.fromDecodedRow(decodedRows.first);
-    }
-    final rows = await db.query('samples', orderBy: 'ts DESC', limit: 1);
-    return rows.isEmpty ? null : Sample.fromDbMap(rows.first);
+    final decoded =
+        decodedRows.isEmpty ? null : Sample.fromDecodedRow(decodedRows.first);
+    // Primary band only, same meaning as the decoded query above: without it
+    // the fallback could return a peripheral sensor's row, and callers that
+    // read this as "how fresh is the BAND" (e.g. the morning-briefing
+    // readiness gate) would be unlocked by a sensor with no band data. The
+    // samples table keys by device_id ('' = primary band), not `source`.
+    final rows = await db.query(
+      'samples',
+      where: 'device_id = ?',
+      whereArgs: [LocalDb.kPrimaryDeviceId],
+      orderBy: 'ts DESC',
+      limit: 1,
+    );
+    final plain = rows.isEmpty ? null : Sample.fromDbMap(rows.first);
+    // Newest across BOTH stores: decoded_onehz holding only yesterday while
+    // today's records already sit in `samples` must still read as today.
+    if (decoded == null) return plain;
+    if (plain == null) return decoded;
+    return plain.tsEpoch > decoded.tsEpoch ? plain : decoded;
   }
 
 Future<(int?, int?)> _ldbFirstAndLastRecordTs() async {
@@ -1745,9 +1839,9 @@ Future<List<CoverageInterval>> _ldbCoverageIntervals(InputSignal signal, int fro
     ];
   }
 
-Future<Map<String, List<String>>> _ldbCoverageDevicesByDay({required List<String> signals, required int fromSec, required int toSec}) async {
+Future<Map<String, List<String>>> _ldbCoverageDevicesByDay({required List<String> signals, required int fromSec, required int toSec, DatabaseExecutor? executor}) async {
     if (signals.isEmpty || toSec <= fromSec) return const {};
-    final db = await LocalDb.instance;
+    final db = executor ?? await LocalDb.instance;
     final marks = List.filled(signals.length, '?').join(',');
     final rows = await db.rawQuery(
       'SELECT DISTINCT device_id, start_ts, end_ts FROM device_coverage '
@@ -2001,15 +2095,31 @@ Future<int> _ldbPruneDecodedBeforeRecTs(int cutoffSec, {required String? cursorN
       // on the three real exports these four ids are 87, 22 and 12 rows across
       // 8 to 11 days — a few thousand a year. Event 33 alone is ~1900 A DAY,
       // which is why the exemption is four ids and not the whole table.
+      //
+      // The double-taps (event 14) that mark a triathlon's or a HYROX race's
+      // boundaries are also kept while a race is still armed or active: the
+      // reconcilers rebuild the boundaries from them, and a race left
+      // unreconciled past the cutoff would otherwise lose the only record of
+      // where its segments change.
       deleted += await txn.delete(
         'band_events',
-        where: 'ts < ? AND event_id NOT IN (?, ?, ?, ?)',
+        where: 'ts < ? AND event_id NOT IN (?, ?, ?, ?) '
+            'AND NOT (event_id = ? AND ts >= COALESCE('
+            '(SELECT MIN(c) FROM ('
+            'SELECT MIN(created_at) / 1000 - ? AS c FROM triathlon_session '
+            "WHERE status IN ('armed', 'active') "
+            'UNION ALL '
+            'SELECT MIN(created_at) / 1000 - ? FROM hyrox_session '
+            "WHERE status IN ('armed', 'active'))), 9223372036854775807))",
         whereArgs: [
           cutoffSec,
           proto.EventId.chargingOn,
           proto.EventId.chargingOff,
           proto.EventId.wristOn,
           proto.EventId.wristOff,
+          kTriathlonDoubleTapEventId,
+          kTriathlonClockDriftSec,
+          kTriathlonClockDriftSec,
         ],
       );
       // THE UNDECODABLE ARCHIVE IS THINNED, NOT KEPT WHOLE. See
@@ -2033,6 +2143,7 @@ Future<int> _ldbVacuumIfBloated({required int minFreeBytes}) async {
     final free = await LocalDb.freelistBytes();
     if (free < minFreeBytes) return 0;
     final db = await LocalDb.instance;
+    await LocalDb._resetRedriveResume();
     await db.execute('VACUUM');
     // VACUUM rewrites the file and renumbers every btree root page. CoachDb
     // caches the root pages of its allow-listed views to decide what a coach
@@ -2041,6 +2152,14 @@ Future<int> _ldbVacuumIfBloated({required int minFreeBytes}) async {
     // ("Query reaches storage outside the coach views") for the rest of the
     // process. The invariant belongs to whoever moves the pages.
     await CoachDb.close();
+    // The VACUUM wrote the whole database through the -wal. Copy it back and
+    // truncate it now, rather than at the next write; the size limit set on
+    // open covers it if a reader holds this checkpoint back.
+    try {
+      await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
+    } catch (_) {
+      /* non-fatal: the bytes are reclaimed, the -wal shrinks on a later write */
+    }
     return free;
   }
 

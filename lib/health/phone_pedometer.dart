@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/db.dart';
 import '../data/day_label.dart';
+import '../sync/reset_gate.dart';
 
 /// Reads steps in `[from, to)`. Null means the READ FAILED — see [syncDay].
 typedef StepIntervalReader = Future<int?> Function(DateTime from, DateTime to);
@@ -53,7 +54,14 @@ class PhonePedometer {
   /// [stepReader] exists so the hour walk is testable without a device sensor —
   /// the walk is where the DST and partial-read bugs live, so it needs coverage
   /// that does not touch a platform channel.
-  PhonePedometer({StepIntervalReader? stepReader}) : _stepReader = stepReader;
+  PhonePedometer({
+    StepIntervalReader? stepReader,
+    this.flushTimeout = const Duration(seconds: 6),
+  }) : _stepReader = stepReader;
+
+  /// How long to wait for a flush to complete. The native side gives up first,
+  /// at five seconds; this only guards against a call that never returns.
+  final Duration flushTimeout;
 
   final StepIntervalReader? _stepReader;
 
@@ -83,6 +91,62 @@ class PhonePedometer {
     }
   }
 
+  /// The motion coprocessor's own step count between two instants, or null when
+  /// the interval is not covered.
+  ///
+  /// The calibration routine needs a WINDOW, not a day: a household routine is
+  /// three minutes long and the reference has to be the steps inside exactly
+  /// those minutes. Null and [intervalNotCovered] both mean "no reference", and
+  /// the calibration refuses the run on either — a phone that was on a table
+  /// measured nothing, which must not be fitted as a measured zero.
+  Future<int?> stepsBetween(DateTime from, DateTime to) async {
+    if (!to.isAfter(from)) return null;
+    try {
+      final steps = await _readSteps(from, to);
+      if (steps == null || steps == intervalNotCovered || steps < 0) return null;
+      return steps;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Asks the step sensor to deliver what it has batched (Android holds counts
+  /// for up to a minute before delivering them) and waits for it to finish.
+  ///
+  /// True only when the platform reports the flush COMPLETED, i.e. every
+  /// batched count has been delivered and banked; false when it was refused,
+  /// did not complete within [flushTimeout], or failed; null on a platform with
+  /// nothing to flush.
+  Future<bool?> flushPending() async {
+    try {
+      final done = await phoneStepsChannel
+          .invokeMethod<bool>('flush')
+          .timeout(flushTimeout, onTimeout: () => false);
+      return done == true;
+    } on MissingPluginException {
+      return null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// The running total after a completed flush, or null.
+  Future<int?> flushedTotal() async {
+    if (await flushPending() != true) return null;
+    return rawCount();
+  }
+
+  /// The step sensor's own running total, where the platform exposes one
+  /// (Android); null elsewhere or when it is not counting. Only a difference
+  /// between two reads within one boot means anything.
+  Future<int?> rawCount() async {
+    try {
+      return await phoneStepsChannel.invokeMethod<int>('rawCount');
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Ask for access to the phone's step sensor. Safe to call repeatedly.
   ///
   /// THIS IS THE ONLY THING THAT MAKES THE PERMISSION EXIST. On iOS a
@@ -101,6 +165,14 @@ class PhonePedometer {
       return false;
     }
   }
+
+  /// Make sure the step sensor may be read before something depends on it.
+  ///
+  /// Always asks rather than checking first: [hasPermission] counts iOS's
+  /// `notDetermined` as yes, so a first-use iPhone would skip the request and
+  /// the prompt would only come up mid-routine. [requestPermission] is safe to
+  /// repeat and answers at once where access is already granted.
+  Future<bool> ensureAccess() => requestPermission();
 
   /// Whether the sensor is readable right now.
   ///
@@ -138,6 +210,15 @@ class PhonePedometer {
     } catch (e) {
       debugPrint('[phone_pedometer] stop: $e');
     }
+  }
+
+  /// Retire a read that has stopped answering, without touching the sensor.
+  ///
+  /// Bumps the same epoch [stop] does, so a `syncRecent` still parked on a
+  /// platform call ends at its next check and never banks a day it read before
+  /// a newer read replaced it. Unlike [stop] it leaves the counter running.
+  void abandonInFlight() {
+    _epoch++;
   }
 
   /// One-time drop of the rows the OLD health-store read banked.
@@ -190,13 +271,24 @@ class PhonePedometer {
   /// short read would LOWER a previously complete day. And because
   /// [LocalDb.liveStepsForDay] prefers phone rows outright, the truncated total
   /// would also keep suppressing the band fallback.
-  Future<int?> syncDay(DateTime dayStartLocal) async {
+  ///
+  /// [onWritten] runs right after the day's rows are committed, with the day
+  /// and whether its phone total moved. It runs even when the caller has since
+  /// stopped waiting for this read: the rows exist either way.
+  Future<int?> syncDay(
+    DateTime dayStartLocal, {
+    void Function(String dayId, bool changed)? onWritten,
+  }) async {
     final dayId = dayLabelOf(dayStartLocal);
     final epoch = _epoch;
+    // A reset wipes `live_coverage`; a read that started before it must not
+    // bank rows back into the fresh store.
+    final resetGen = ResetGate.generation;
     try {
       final windows = <({int startTs, int endTs, int steps})>[];
       var total = 0;
       var anyRead = false;
+      List<({int startTs, int endTs, int steps})>? banked;
 
       // CALENDAR-AWARE hour walk. `Duration` arithmetic on a local DateTime is
       // ABSOLUTE, so `dayStartLocal.add(Duration(hours: h))` over a fixed 24
@@ -243,9 +335,27 @@ class PhonePedometer {
         // persist a partial one over a good previous sync.
         if (n == null) return null;
         // UNCOVERED, not failed and not zero: the sensor holds no record of
-        // this hour. It banks nothing and it does not count as read, so a day
+        // this hour. It reads nothing new and it does not count as read, so a day
         // that is entirely uncovered still comes back "unknown" below.
-        if (n == intervalNotCovered) continue;
+        if (n == intervalNotCovered) {
+          // KEEP WHAT AN EARLIER SYNC ALREADY BANKED FOR THIS HOUR. An hour
+          // can turn uncovered after the fact: an Android reboot records a gap
+          // from the last sensor delivery, and the native query refuses any
+          // interval touching it even though the bins before the gap still
+          // hold real counts. The replace below is delete-then-insert, so
+          // skipping the hour here would silently erase steps that were
+          // already on the day. Not counted as read: a day whose only content
+          // is carried-over windows is left exactly as it was.
+          banked ??= await LocalDb.phoneCoverageForDay(dayId);
+          final fromSec = from.millisecondsSinceEpoch ~/ 1000;
+          final toSec = to.millisecondsSinceEpoch ~/ 1000;
+          for (final w in banked) {
+            if (w.startTs < fromSec || w.startTs >= toSec) continue;
+            windows.add(w);
+            if (w.steps > 0) total += w.steps;
+          }
+          continue;
+        }
         anyRead = true;
         if (n < 0) continue;
         // A CONFIRMED ZERO is banked too, not just a nonzero count: it is the
@@ -289,8 +399,13 @@ class PhonePedometer {
         return null;
       }
 
-      if (epoch != _epoch) return null; // stopped mid-walk, see [stop]
-      await LocalDb.replacePhoneCoverageForDay(dayId, windows);
+      bool valid() => epoch == _epoch && !ResetGate.changedSince(resetGen);
+      if (!valid()) return null; // stopped or reset mid-walk, see [stop]
+      final before = await LocalDb.phoneStepsForDay(dayId);
+      final wrote = await LocalDb.replacePhoneCoverageForDay(dayId, windows,
+          stillValid: valid);
+      if (!wrote) return null;
+      onWritten?.call(dayId, before != total);
       return total;
     } catch (e) {
       debugPrint('[phone_pedometer] syncDay $dayId: $e');
@@ -328,27 +443,74 @@ class PhonePedometer {
   /// success even when the user denied READ.
   Future<({int daysRead, int totalSteps})> syncRecent({
     int days = routineSyncDays,
+    void Function(String dayId, bool changed)? onDayBanked,
   }) async {
+    // Taken BEFORE the preparation below: a read retired (or a reset that ran)
+    // while it awaits would otherwise capture the NEW values on resuming and
+    // go on to bank days next to its replacement.
+    final epoch = _epoch;
+    final resetGen = ResetGate.generation;
+    bool current() => epoch == _epoch && !ResetGate.changedSince(resetGen);
     if (_stepReader == null) {
       await _purgeImportedHealthStoreRows();
+      if (!current()) return (daysRead: 0, totalSteps: 0);
       if (!await hasPermission()) return (daysRead: 0, totalSteps: 0);
+      if (!current()) return (daysRead: 0, totalSteps: 0);
     }
     final now = DateTime.now();
-    final epoch = _epoch;
     var ok = 0;
     var total = 0;
-    for (var d = 0; d < days && epoch == _epoch; d++) {
+    for (var d = 0; d < days && current(); d++) {
       // Calendar subtraction, NOT `Duration(days: d)` — the latter lands on
       // 23:00 or 01:00 across a DST transition rather than local midnight,
       // which would mislabel the day and start its hour walk at the wrong
       // offset. DateTime normalises an out-of-range day field for us.
       final day = DateTime(now.year, now.month, now.day - d);
-      final n = await syncDay(day);
+      final n = await syncDay(day, onWritten: onDayBanked);
       if (n != null) {
         ok++;
         total += n;
       }
     }
     return (daysRead: ok, totalSteps: total);
+  }
+}
+
+/// A timed calibration routine's phone reference through its end, or null when
+/// there is no honest one.
+///
+/// On a platform with a running total (Android) only the difference of two
+/// flushed totals is used: its range query prorates five-minute bins, so a
+/// three-minute routine read that way picks up steps from outside it. A
+/// missing total at either end means no reference, and the routine is refused.
+/// Elsewhere the platform's interval query is exact and is used directly.
+///
+/// [markEnd] is called at the instant the reference ends, so the caller can
+/// freeze the band's count there too: on Android once the final flush has
+/// completed, elsewhere at the end time handed to the interval query.
+Future<int?> routinePhoneReference({
+  required bool runningTotalPlatform,
+  required int? startTotal,
+  required Future<bool?> Function() flush,
+  required Future<int?> Function() total,
+  required Future<int?> Function(DateTime end) interval,
+  required DateTime Function() now,
+  required void Function(DateTime end) markEnd,
+}) async {
+  if (runningTotalPlatform) {
+    if (startTotal == null) return null;
+    if (await flush() != true) return null;
+    markEnd(now());
+    final end = await total();
+    if (end == null || end < startTotal) return null;
+    return end - startTotal;
+  }
+  final end = now();
+  markEnd(end);
+  try {
+    final n = await interval(end);
+    return n == null || n < 0 ? null : n;
+  } catch (_) {
+    return null;
   }
 }

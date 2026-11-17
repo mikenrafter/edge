@@ -21,9 +21,7 @@ import 'package:provider/provider.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/derive_progress.dart';
-import 'package:openstrap_edge/state/control_operations.dart';
 import 'package:openstrap_edge/sync/import_gate.dart';
-import 'package:openstrap_edge/ui2/status_line.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
 final _t0 = DateTime(2026, 10, 22, 1, 0);

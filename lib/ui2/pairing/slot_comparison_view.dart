@@ -1,4 +1,4 @@
-// C1: THE table of what a device gives "Every day" and "Workouts only": a row
+// THE table of what a device gives "Every day" and "Workouts only": a row
 // per capability, a check on a tint where it sends, a muted cross where it
 // does not (never a dash). The pairing sheets wash the column the device goes
 // into; the device page fades the column it is not in. One widget, one file,
@@ -172,27 +172,3 @@ class SlotMark extends StatelessWidget {
   }
 }
 
-/// A caption with its icon, under a table: grey by default, or in [color]'s
-/// ink (the orange "Experimental" note).
-class PairNote extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  final Color? color;
-  const PairNote(this.icon, this.text, {super.key, this.color});
-
-  @override
-  Widget build(BuildContext c) {
-    final p = P.of(c);
-    final ink = color == null ? p.ink2 : p.on(color!);
-    return Padding(
-      padding: const EdgeInsets.only(top: S.x3),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Icon(icon, size: 15, color: ink)),
-        const SizedBox(width: S.x2),
-        Expanded(child: Text(text, style: F.cap.copyWith(color: ink))),
-      ]),
-    );
-  }
-}

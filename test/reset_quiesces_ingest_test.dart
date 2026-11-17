@@ -34,10 +34,13 @@ void main() {
   final src = File('lib/state/app_state.dart').readAsStringSync();
   final bg = File('lib/sync/background_sync.dart').readAsStringSync();
 
-  test('both ingest callbacks refuse while a reset is in flight', () {
+  // WHY: adding replacement isolation must retain the reset gate as well.
+  // Both flags are required on every non-ACK ingest path below. The actual
+  // ACK callback's replacement refusal is exercised by app_state_sync_commit_test.
+  test('both ingest callbacks refuse during reset or band replacement', () {
     // The singles path.
     final onRecord = RegExp(
-      r'Future<void> _onRecord\([^)]*\) async \{\s*\n\s*if \(_resetting\) return;',
+      r'Future<void> _onRecord\([^)]*\) async \{\s*\n\s*if \(_resetting \|\| _replacingBand\) return;',
     );
     expect(onRecord.hasMatch(src), isTrue,
         reason: '_onRecord must refuse before it writes');
@@ -45,7 +48,7 @@ void main() {
     // The drain path, which is wired straight to LocalDb and so bypasses every
     // check AppState makes unless the closure carries one itself.
     final batch = RegExp(
-      r'onRecordsBatch: \([^)]*\) async \{\s*\n\s*if \(_resetting\) return;',
+      r'onRecordsBatch: \([^)]*\) async \{\s*\n\s*if \(_resetting \|\| _replacingBand\) return;',
     );
     expect(batch.hasMatch(src), isTrue,
         reason: 'onRecordsBatch must refuse before it writes');
@@ -58,7 +61,7 @@ void main() {
     // event notification landing after ResetGate.enter() but before the
     // band disconnects would resurrect deleted data.
     final onLiveEvent = RegExp(
-      r'void _onLiveEvent\([^)]*\) \{\s*\n\s*if \(_resetting\) return;',
+      r'void _onLiveEvent\([^)]*\) \{\s*\n\s*if \(_resetting \|\| _replacingBand\) return;',
     );
     expect(onLiveEvent.hasMatch(src), isTrue,
         reason: '_onLiveEvent must refuse before it writes');
@@ -71,7 +74,7 @@ void main() {
     // notification landing after ResetGate.enter() but before the band
     // disconnects would resurrect a deleted device/band_battery row.
     final onEngineState = RegExp(
-      r'void _onEngineState\([^)]*\) \{\s*\n\s*if \(_resetting\) return;',
+      r'void _onEngineState\([^)]*\) \{\s*\n\s*if \(_resetting \|\| _replacingBand\) return;',
     );
     expect(onEngineState.hasMatch(src), isTrue,
         reason: '_onEngineState must refuse before it writes');
@@ -90,7 +93,7 @@ void main() {
   test('resetAllData raises the flag and always lowers it', () {
     final body = src.substring(src.indexOf('Future<String?> resetAllData() async'));
     final raise = body.indexOf('ResetGate.enter();');
-    final wipe = body.indexOf('LocalDb.wipeAll()');
+    final wipe = body.indexOf('await LocalDb.wipeAll();');
     final lower = body.indexOf('ResetGate.leave();');
     final fin = body.indexOf('} finally {');
 
@@ -101,12 +104,104 @@ void main() {
     expect(fin, lessThan(lower), reason: 'lowered inside that finally');
   });
 
+  test('the reset replaces the primary band host, inside the finally', () {
+    // The host captures ResetGate.generation when built and refuses every
+    // commit once a reset has run since. Kept across a reset, it refused every
+    // batch for the rest of the process: no ACK, and a band paired again never
+    // synced until a restart.
+    expect(src.contains('late final BandHost _bandHost;'), isFalse);
+    final body = src.substring(src.indexOf('Future<String?> resetAllData() async'));
+    final fin = body.indexOf('} finally {');
+    final rebuild = body.indexOf('_bandHost = _newPrimaryBandHost();');
+    final lower = body.indexOf('ResetGate.leave();');
+    expect(rebuild, greaterThan(fin), reason: 'even when the reset throws');
+    expect(rebuild, lessThan(lower),
+        reason: 'built while the gate is still up, so it reads the new '
+            'generation and refuses until the gate lowers');
+  });
+
   test('the data edge is cleared by the reset, not left in memory', () {
     final body = src.substring(src.indexOf('Future<String?> resetAllData() async'));
     final end = body.indexOf('} finally {');
     final scope = body.substring(0, end);
     expect(scope.contains('_lastRecTs = null;'), isTrue);
     expect(scope.contains('lastSynced = null;'), isTrue);
+  });
+
+  // ── the secondary sensors ─────────────────────────────────────────────────
+  //
+  // signOut's unpair reaches only the primary band. An armed chest strap or an
+  // Oura offload kept committing across the wipe, and the ring's and Mi Band's
+  // pairing keys stayed in the keychain with no device row left to find them.
+
+  test('resetAllData stops the secondary sensors before the wipe', () {
+    final body = src.substring(src.indexOf('Future<String?> resetAllData() async'));
+    final stop = body.indexOf('await _stopSecondaryLinksForReset();');
+    final ids = body.indexOf('await _secondaryDeviceIdsForReset();');
+    final wipe = body.indexOf('await LocalDb.wipeAll();');
+    expect(stop, greaterThanOrEqualTo(0));
+    expect(stop, lessThan(wipe));
+    expect(ids, greaterThanOrEqualTo(0));
+    expect(ids, lessThan(wipe),
+        reason: 'the wipe deletes the device rows the key ids come from');
+
+    final helper = src.substring(
+        src.indexOf('Future<void> _stopSecondaryLinksForReset() async'));
+    final helperBody = helper.substring(0, helper.indexOf('\n  }\n'));
+    for (final call in [
+      '_workout.discardForReset',
+      'OuraLink.instance.stop',
+      'UltrahumanLink.instance.stop',
+      'ColmiLink.instance.stop',
+      'GarminLink.instance.stop',
+      'MiBand234Link.instance.stop',
+      'PebbleLink.instance.stop',
+      'CorosLink.instance.stop',
+      'SessionLink.all',
+    ]) {
+      expect(helperBody.contains(call), isTrue, reason: '$call not stopped');
+    }
+  });
+
+  test('resetAllData drops the sensor pairing keys', () {
+    final body = src.substring(src.indexOf('Future<String?> resetAllData() async'));
+    final scope = body.substring(0, body.indexOf('} finally {'));
+    expect(scope.contains('OuraLink.dropStoredKeys(secondaryIds)'), isTrue);
+    expect(scope.contains('MiBand234Link.dropStoredKeys(secondaryIds)'),
+        isTrue);
+    expect(scope.contains('resetLeftPairingKeys = '), isTrue);
+  });
+
+  test('BandHost refuses every database write during a reset', () {
+    final host = File('lib/ble/adapters/host.dart').readAsStringSync();
+    for (final write in [
+      'LocalDb.commitSyncBatch(',
+      'LocalDb.putObservations(',
+      'LocalDb.putVendorSleepEpochs(',
+    ]) {
+      var at = host.indexOf(write);
+      expect(at, greaterThanOrEqualTo(0), reason: '$write not found');
+      while (at >= 0) {
+        // The refusal sits inside the same try, just above the write.
+        final tryAt = host.lastIndexOf('try {', at);
+        final window = host.substring(tryAt, at);
+        expect(window.contains('_refuseDuringReset();'), isTrue,
+            reason: '$write at offset $at is not gated');
+        at = host.indexOf(write, at + write.length);
+      }
+    }
+  });
+
+  test('the headless piggyback does not sync secondaries during a reset', () {
+    final run = bg.substring(bg.indexOf('Future<bool> runHeadlessSync('));
+    final fin = run.substring(run.indexOf('} finally {'));
+    expect(
+        fin.contains(
+            'if (!ResetGate.changedSince(runGen)) await _syncPairedSensors();'),
+        isTrue,
+        reason: 'a reset that ran at any point during the drain ends it');
+    expect(fin.substring(0, fin.indexOf('\n}\n')).contains('.instance.sync()'),
+        isFalse, reason: 'every secondary sync goes through the gated helper');
   });
 
   // ── the OTHER engine ──────────────────────────────────────────────────────
@@ -137,8 +232,8 @@ void main() {
       // a neighbour can never be mistaken for this one's.
       final next = bg.indexOf('\n    on', at + cb.length);
       final window = bg.substring(at, next < 0 ? bg.length : next);
-      expect(window.contains('ResetGate.active'), isTrue,
-          reason: '$cb writes without consulting ResetGate');
+      expect(window.contains('if (stale())'), isTrue,
+          reason: '$cb writes without consulting its reset generation');
     }
   });
 
@@ -169,7 +264,7 @@ void main() {
       final at = f.indexOf(anchor);
       expect(at, greaterThanOrEqualTo(0), reason: '$anchor not found');
       final window = f.substring(at, at + 900);
-      expect(window.contains('ResetGate.active'), isTrue);
+      expect(window.contains('stale()') || window.contains('ResetGate.changedSince') || window.contains('ResetGate.active'), isTrue);
       expect(window.contains('throw StateError'), isTrue,
           reason: 'the commit gate must throw, not return');
     }
@@ -196,6 +291,40 @@ void main() {
         reason: 'the second reset is still wiping');
     ResetGate.leave();
     expect(ResetGate.active, isFalse);
+  });
+
+  test('every reset moves the generation, so a session that started before '
+      'one can tell after the gate lowers', () {
+    addTearDown(ResetGate.resetForTest);
+    final before = ResetGate.generation;
+    expect(ResetGate.changedSince(before), isFalse);
+    ResetGate.enter();
+    expect(ResetGate.changedSince(before), isTrue);
+    ResetGate.leave();
+    expect(ResetGate.active, isFalse);
+    expect(ResetGate.changedSince(before), isTrue,
+        reason: 'the reset ran after this session read the generation');
+    expect(ResetGate.changedSince(ResetGate.generation), isFalse);
+  });
+
+  test('a queued Oura sync re-checks the device and the reset once it gets '
+      'the slot', () {
+    final oura = File('lib/ble/oura_link.dart').readAsStringSync();
+    final slot = oura.indexOf('return await withSecondaryLinkSlot(() async {');
+    expect(slot, greaterThanOrEqualTo(0));
+    final head = oura.substring(slot, slot + 600);
+    expect(
+        head.contains(
+            'if (_deviceId != deviceId || ResetGate.changedSince(_resetGen))'),
+        isTrue,
+        reason: 'the first thing the slot callback does');
+  });
+
+  test('the wipe runs on the sync-commit gate', () {
+    final db = File('lib/data/db.dart').readAsStringSync();
+    expect(db.contains('static Future<int> wipeAll() =>\n'
+        '      _withReaderInvalidated(() => _withCommitGate(_ldbWipeAll));'),
+        isTrue);
   });
 
   test('an unbalanced leave cannot drive the gate below shut', () {

@@ -64,6 +64,7 @@ import '../ui2.dart';
 import 'rhr_annotations.dart';
 import 'home_screen.dart';
 import 'metric_detail.dart';
+import 'investigate.dart';
 
 // ═══════════════════ the data ═══════════════════
 
@@ -274,7 +275,10 @@ class Beats extends StatefulWidget {
 }
 
 class _BeatsState extends State<Beats>
-    with RevisionReload, PausedReadReload<Beats> {
+    with RevisionReload, PausedReadReload<Beats> implements NerdStatsListener {
+  @override
+  void openNerdStats() => go(context, Investigate('hrv', day: _day ?? _d?.day));
+
   BeatsData? _d;
   bool _loading = true;
   bool _paused = false;
@@ -584,6 +588,7 @@ class _BeatsState extends State<Beats>
             // to be mapped through the same square the painter uses.
             child: LayoutBuilder(
               builder: (_, box) => ChartScrub(
+              nerdStats: this,
                 label: l?.beatsScatterTitle ??
                     'Each interval, plotted against the previous one',
                 mode: ChartScrubMode.nearest,
@@ -682,6 +687,7 @@ class _BeatsState extends State<Beats>
             // The shared readout: the half-hour block under the finger, its
             // value, and "Not recorded" for a block that abstained.
             child: ChartScrub(
+              nerdStats: this,
               label: l?.beatsRmssdTitle ?? 'HRV in half-hour blocks',
               gaps: hasChartGaps([[for (final b in d.bins) b.v]]),
               time: (at) {
@@ -779,6 +785,7 @@ class _BeatsState extends State<Beats>
             series: series,
             empty: axis == null ? const NoData() : null,
             child: ChartScrub(
+              nerdStats: this,
               label: l?.beatsDcChartTitle ?? 'Your own nights, in order',
               gaps: hasChartGaps([series]),
               time: (at) => ChartScrub.dayBack(

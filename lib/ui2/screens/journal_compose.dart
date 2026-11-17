@@ -1,21 +1,9 @@
-// Journal — the one place a day's self-report is written.
-//
-// Mood, water, caffeine and alcohol are NOT new concepts here: they are
-// existing `journal_metric` fields (`lib/data/journal_fields.dart`), and this
-// screen is their editor. A parallel "wellness log" model would have split the
-// correlation engine's inputs in half for no gain.
-//
-// Ratings are 1–5 and doses are stepped, both straight off the field spec —
-// the ceiling exists so one mis-tap cannot enter forty coffees and dominate
-// every correlation that field appears in for months.
-
+import 'package:flutter/foundation.dart' show debugPrintSynchronously;
 import '../../l10n/display_text.dart';
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
-
 import '../../ai/journal_ai.dart';
 import '../../coach/coach_config.dart';
 import '../../data/day_label.dart';
@@ -35,6 +23,21 @@ import 'home_screen.dart' show unitsOf;
 import 'custom_journal_field_sheet.dart';
 import 'track_log.dart';
 import 'metric_detail.dart' show detailScaffold;
+import '../../compute/inputs/measurement_inputs.dart' show weighingChain, weighings;
+
+// Journal — the one place a day's self-report is written.
+//
+// Mood, water, caffeine and alcohol are NOT new concepts here: they are
+// existing `journal_metric` fields (`lib/data/journal_fields.dart`), and this
+// screen is their editor. A parallel "wellness log" model would have split the
+// correlation engine's inputs in half for no gain.
+//
+// Ratings are 1–5 and doses are stepped, both straight off the field spec —
+// the ceiling exists so one mis-tap cannot enter forty coffees and dominate
+// every correlation that field appears in for months.
+
+
+
 
 class JournalCompose extends StatefulWidget {
   const JournalCompose({super.key, this.date});
@@ -92,10 +95,13 @@ class _JournalComposeState extends State<JournalCompose>
   }
 
   Future<void> _load() async {
+    if (mounted) setState(() => (_loading = true, _loadFailed = false));
     try {
       await _loadDay();
     } on ReadPaused {
       if (mounted) setState(() => (_loading = false, _paused = true));
+    } catch (_) {
+      if (mounted) setState(() => (_loading = false, _loadFailed = true));
     }
   }
 
@@ -291,7 +297,13 @@ class _JournalComposeState extends State<JournalCompose>
     } on ReadPaused {
       // Raised while PREPARING (or by the first write, which reads first):
       // nothing has been written.
-      if (mounted) setState(() => (_saving = false, _saveBlocked = true));
+      if (mounted) setState(() => _saveBlocked = true);
+    } catch (_) {
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppLocalizations.of(context)?.journalComposeEntrySaveFailed ??
+            'Not saved — your entry is still here. Try again.'))); }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -304,16 +316,7 @@ class _JournalComposeState extends State<JournalCompose>
     // BOTH merges are prepared before either write, so a pause cannot leave
     // the numbers saved and the tags not (there is no transaction to wrap
     // them in).
-    final metrics = {...await repo.getJournalMetrics(_date)};
-    for (final k in {..._loadedValues.keys, ..._values.keys}) {
-      final v = _values[k];
-      if (v == _loadedValues[k]) continue;
-      if (v == null) {
-        metrics.remove(k);
-      } else {
-        metrics[k] = v;
-      }
-    }
+    await repo.getJournalFields();
     final tags = <String>{};
     for (final e in await repo.getJournal(range: '30d')) {
       if (e['date'] == _date) {
@@ -327,7 +330,17 @@ class _JournalComposeState extends State<JournalCompose>
     if (ImportFocus.active.value) throw const ReadPaused('import');
     // The metrics write reads the field specs first (the one write that can
     // be paused), so it goes first: if it throws, nothing was written.
-    await repo.postJournalMetrics(_date, metrics);
+    await repo.editJournalMetrics(_date, (metrics) {
+    for (final k in {..._loadedValues.keys, ..._values.keys}) {
+      final v = _values[k];
+      if (v == _loadedValues[k]) continue;
+      if (v == null) {
+        metrics.remove(k);
+      } else {
+        metrics[k] = v;
+      }
+    }
+    });
     await repo.postJournal(_date, tags.toList(), _note.text.trim());
     if (!mounted) return;
     // Today's "How was today?" is already armed; a rated day moves it to
@@ -357,6 +370,12 @@ class _JournalComposeState extends State<JournalCompose>
                             : const PausedOlderDays(),
                       ],
                     )
+                  : _loadFailed
+                  ? ListView(children: [
+                      StatusCard(l?.journalComposeLoadFailed ?? 'Could not read your journal',
+                        'Your entry has not been changed.',
+                        fix: l?.journalComposeTryAgain ?? 'Try again', onFix: _load),
+                    ])
                   : _loading
                   ? ListView(
                       padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x8),
@@ -500,9 +519,8 @@ class _JournalComposeState extends State<JournalCompose>
                                       size: 16, color: p.on(C.domMind)),
                                   const SizedBox(width: S.x1),
                                   Text(
-                                    // Not localized yet — a new entry point,
-                                    // not a copy pass over the whole screen.
-                                    'Talk it through with AI',
+                                    l?.journalComposeTalkItThroughWithAi ??
+                                        'Talk it through with AI',
                                     style: F.over
                                         .copyWith(color: p.on(C.domMind)),
                                   ),
@@ -534,6 +552,8 @@ class _JournalComposeState extends State<JournalCompose>
       ),
     );
   }
+
+  bool _loadFailed = false;
 }
 
 /// The 1–5 self-report. Five faces, not ten: a ten-point self-report is not
@@ -814,6 +834,9 @@ class OsTextField extends StatelessWidget {
               maxLines: lines,
               minLines: 1,
               keyboardType: keyboard,
+              // iOS number pads have no return key: tapping anywhere else is
+              // the only way to put the keyboard away.
+              onTapOutside: (_) => FocusScope.of(c).unfocus(),
               style: F.body.copyWith(color: p.ink),
               cursorColor: p.on(C.domMind),
               decoration: InputDecoration(
@@ -1036,22 +1059,27 @@ class _WeightTrendState extends State<_WeightTrend> {
       // Day arithmetic, not a subtracted duration: a DST day is 23 or 25 hours
       // long and `now - 180 days` lands on the wrong calendar date across one.
       final now = DateTime.now();
-      final since = dayLabelOf(
-        DateTime(now.year, now.month, now.day - (kWeightTrendDays - 1)),
+      final start = DateTime(
+        now.year,
+        now.month,
+        now.day - (kWeightTrendDays - 1),
       );
+      final since = dayLabelOf(start);
       final rows = await LocalDb.journalMetricsByDay(sinceDaysEpoch: since);
+      // Its own guard: a failing scale read must not blank the manual trend.
+      var scale = const <({double kg, int atMs})>[];
+      try {
+        // All history, not just the window: the chain's anchor must not
+        // depend on where the window starts (see weightByDay).
+        scale = await weighings();
+      } catch (e) {
+        debugPrintSynchronously('weight trend: scale read failed: $e');
+      }
       if (!mounted) return;
       setState(() {
-        _byDay = {
-          for (final e in rows.entries)
-            // The `when` does real work — a non-finite or non-positive weight
-            // is not a weight — and the null-aware element form has nowhere to
-            // put a guard.
-            // ignore: use_null_aware_elements
-            if (e.value['weight_kg']?.value case final v?
-                when v.isFinite && v > 0)
-              e.key: v,
-        };
+        // Local midnight, matching the local-day buckets; parsing the label
+        // would read it as UTC midnight.
+        _byDay = weightByDay(rows, scale, fromMs: start.millisecondsSinceEpoch);
         _loading = false;
       });
     } catch (_) {
@@ -1354,6 +1382,8 @@ class _JournalAiSheetState extends State<_JournalAiSheet> {
                     const SizedBox(width: S.x2),
                     Pressable(
                       onTap: _busy ? null : () => unawaited(_send()),
+                      semanticLabel:
+                          AppLocalizations.of(c)?.coachSendLabel ?? 'Send',
                       child: Container(
                         width: 44,
                         height: 44,
@@ -1374,7 +1404,8 @@ class _JournalAiSheetState extends State<_JournalAiSheet> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x4),
                 child: BigButton(
-                  'Add to journal',
+                  AppLocalizations.of(c)?.journalComposeAddToJournal ??
+                      'Add to journal',
                   icon: LucideIcons.check,
                   color: C.domMind,
                   onTap: last == null
@@ -1389,4 +1420,51 @@ class _JournalAiSheetState extends State<_JournalAiSheet> {
       ),
     );
   }
+}
+
+
+/// Per-day weight for the trend: the journal's [manual] value and the scale
+/// [scaled] weighings (see `weighings`: flag-on, in band), bucketed by LOCAL
+/// day, the day's latest weighing standing for it. When a day has both, the
+/// later one wins: the journal's time of day against the weighing's, and a
+/// journal value with no time loses to the scale. Days with neither are absent.
+/// Scale weighings dated after [nowMs] (a band clock set ahead) are dropped.
+/// The chain runs over every weighing in [scaled]; only those at or after
+/// [fromMs] are plotted, so the window's start does not decide which readings
+/// anchor the chain (and the same data charts the same on every day).
+@visibleForTesting
+Map<String, double> weightByDay(
+  Map<String, Map<String, JournalMetricValue>> manual,
+  List<({double kg, int atMs})> scaled, {
+  int? nowMs,
+  int fromMs = 0,
+}) {
+  final until = nowMs ?? DateTime.now().millisecondsSinceEpoch;
+  bool ok(double v) => v.isFinite && v > 0;
+  final out = <String, double>{};
+  for (final e in manual.entries) {
+    final v = e.value['weight_kg'];
+    if (v != null && ok(v.value)) out[e.key] = v.value;
+  }
+  // A scale weighs whoever steps on it, and banding against TODAY's profile
+  // weight would drop a long loss's old readings. So chain instead (see
+  // weighingChain): off-band weighings are someone else's unless they persist.
+  final chain = weighingChain(
+    scaled.where((w) => ok(w.kg) && w.atMs <= until),
+  );
+  final at = <String, int>{};
+  for (final w in chain) {
+    if (w.atMs < fromMs) continue;
+    final t = DateTime.fromMillisecondsSinceEpoch(w.atMs);
+    final day = dayLabelOf(t);
+    if (at[day] != null && at[day]! >= w.atMs) continue;
+    final m = t.hour * 60 + t.minute;
+    final jm = manual[day]?['weight_kg']?.atMinuteOfDay;
+    if (out.containsKey(day) && !at.containsKey(day) && jm != null && jm > m) {
+      continue;
+    }
+    at[day] = w.atMs;
+    out[day] = w.kg;
+  }
+  return out;
 }

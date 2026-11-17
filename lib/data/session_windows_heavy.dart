@@ -89,7 +89,11 @@ Future<SessionWindowsResult> groupSessionWindows(
   final auditPort = WorkerAudit.auditPort; // null in production
   return Isolate.run(() {
     WorkerAudit.adopt(auditPort, dispatchId);
-    return sessionWindowsHeavy(sessionWindowsWorkerInputs, input);
+    final result = sessionWindowsHeavy(sessionWindowsWorkerInputs, input);
+    return (result, Isolate.current.debugName ?? 'unnamed');
+  }).then((result) {
+    LocalDb.recordSessionWindowsConstruction(result.$2);
+    return result.$1;
   });
 }
 

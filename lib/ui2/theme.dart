@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+import 'package:flutter/material.dart';
+
 // The token boundary. Nothing below this file defines a colour, a size, a
 // radius or a duration — everything else in lib/ui2 spends what is declared
 // here, and `test/ui2_tokens_test.dart` fails the build if it doesn't.
@@ -25,8 +28,6 @@
 //      the same expression. There is no token that exists only inside a
 //      dark-mode branch.
 
-import 'dart:math' as math;
-import 'package:flutter/material.dart';
 
 /// ── COLOUR ────────────────────────────────────────────────────────────────
 ///
@@ -523,3 +524,4 @@ ThemeData buildTheme(Brightness b) {
     }),
   );
 }
+

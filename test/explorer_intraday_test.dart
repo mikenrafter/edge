@@ -19,7 +19,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/explorer_series.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/ui2/screens/explorer.dart';
-import 'package:openstrap_edge/ui2/ui2.dart';
 
 import 'support/explorer_harness.dart';
 

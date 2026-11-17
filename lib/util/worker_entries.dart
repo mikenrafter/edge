@@ -70,6 +70,14 @@ class UnresolvedOk {
 /// another package; those closures stay in the guard baseline until each
 /// reader becomes a persisted artifact.
 const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#segmentCalendarDaysHeavy, dispatcher: Dispatcher.run,
+    reason: 'import calendar-day staging runs off the UI isolate; initialized worker with populated substrate and sleep/day result round trips'),
+  WorkerEntry(#buildCrossDayArtifactHeavy, dispatcher: Dispatcher.cancellable,
+    reason: 'cross-day build, sanitization, encoding and sleep-need projection in one initialized worker; populated input/output round-trip tests'),
+  WorkerEntry(#restoreNightCheckpointHeavy, dispatcher: Dispatcher.cancellable,
+    reason: 'validates stored night checkpoint and raw prefix inside an initialized worker; real input and output isolate round trips'),
+  WorkerEntry(#deriveNightDayHeavy, dispatcher: Dispatcher.cancellable,
+    reason: 'combined fork day state and reviewed main night checkpoint worker; initialized value-only input and output with real isolate round trips'),
   WorkerEntry(#trackLearningHeavy, dispatcher: Dispatcher.run, reason: 'track learning from immutable row snapshot; initialized worker and typed row-map result round trip'),
   WorkerEntry(#typicalCaffeineHeavy, dispatcher: Dispatcher.run, reason: 'bounded dated caffeine observations; initialized worker with row-map round trip'),
   WorkerEntry(#legacyWakeHeavy, dispatcher:Dispatcher.run,reason:'legacy wake: shared timestamped evidence; initialised worker with row-map round trip'),
@@ -267,7 +275,7 @@ const List<UnresolvedOk> kUnresolvedOk = <UnresolvedOk>[
   UnresolvedOk(
     file: 'data/db/schema.dart',
     symbol: 'LocalDb._openReader',
-    source: 'LocalDb.readerOpenerForTest?.call(path)',
+    source: '(LocalDb.debugReaderOpener ?? LocalDb.readerOpenerForTest)?.call(writer.path)',
     ordinal: 0,
     reason: 'test seam replacing the read-connection open; production opens one sqflite connection, no stored-data loop',
   ),
@@ -284,20 +292,6 @@ const List<UnresolvedOk> kUnresolvedOk = <UnresolvedOk>[
     source: 'nowMs()',
     ordinal: 0,
     reason: 'injectable clock seam (one scalar), moved here from putBaseline',
-  ),
-  UnresolvedOk(
-    file: 'data/db.dart',
-    symbol: 'LocalDb.readerRun',
-    source: 'body(db)',
-    ordinal: 0,
-    reason: 'runs a caller\'s pure-SELECT body on the read connection; the bodies are LocalDb reader methods, each one bounded query',
-  ),
-  UnresolvedOk(
-    file: 'data/db.dart',
-    symbol: 'LocalDb.readerRun',
-    source: 'body(await instance)',
-    ordinal: 1,
-    reason: 'the same body retried once on the writer when the reader closed mid-read',
   ),
   UnresolvedOk(
     file: 'compute/derive_perf.dart',
@@ -438,28 +432,6 @@ const List<UnresolvedOk> kUnresolvedOk = <UnresolvedOk>[
     source: 'log?.call(m)',
     ordinal: 1,
     reason: 'the engine\'s injected log sink, one log line',
-  ),
-  UnresolvedOk(
-    file: 'compute/engine/day_compute.dart',
-    symbol: '_EngineDayCompute._derivePreparedDay',
-    source: 'DerivationEngine.debugSecondHalfHook?.call(day.date)',
-    ordinal: 0,
-    reason: 'upstream\'s test-only seam (static, null in production)',
-  ),
-  UnresolvedOk(
-    file: 'compute/engine/day_compute.dart',
-    symbol: '_EngineDayCompute._derivePreparedDay',
-    source: 'debugAccumulatorTamper?.call(day.date, bundle)',
-    ordinal: 2,
-    reason: 'test-only seam (@visibleForTesting), null in production',
-  ),
-  UnresolvedOk(
-    file: 'compute/engine/day_compute.dart',
-    symbol: '_EngineDayCompute._derivePreparedDay',
-    source: 'onStaleTonight(day.date)',
-    ordinal: 3,
-    reason: 'the pass\'s Set.add tear-off: records a day to derive once more '
-        'after the pool (D25)',
   ),
   UnresolvedOk(
     file: 'data/db.dart',

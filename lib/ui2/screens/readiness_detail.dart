@@ -1,15 +1,7 @@
 import '../../l10n/presentation_text.dart';
-// READINESS — the one composite, taken apart.
-//
-// Two producers meet on this screen and the copy says so rather than blending
-// them: the headline number is the weighted composite, and the breakdown is a
-// parallel percentile view of the same four inputs. Presenting the second as
-// if it decomposed the first would be a small lie that is very hard to catch.
-
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_analytics/onehz.dart' show readinessCompositeMinBaseline;
-
 import '../../compute/onehz_pipeline.dart'
     show readinessInputShortfallNote, readinessUnstableBaselineNote;
 import '../../data/day_label.dart';
@@ -20,9 +12,21 @@ import '../../models/metric.dart';
 import '../../models/payloads.dart' show todayHeadlineOf;
 import '../../state/recalc_state.dart';
 import '../ui2.dart';
-import 'investigate.dart' show Investigate;
+import 'investigate.dart';
 import 'home_screen.dart';
 import 'metric_detail.dart';
+import '../../data/db.dart';
+import 'driver_breakdown.dart' show driverAbsenceCard;
+
+
+// READINESS — the one composite, taken apart.
+//
+// Two producers meet on this screen and the copy says so rather than blending
+// them: the headline number is the weighted composite, and the breakdown is a
+// parallel percentile view of the same four inputs. Presenting the second as
+// if it decomposed the first would be a small lie that is very hard to catch.
+
+
 
 class ReadinessData {
   final Metric readiness;
@@ -81,7 +85,7 @@ class ReadinessData {
   /// The screen asks for the refresh after painting and reads again.
   final bool refreshPending;
 
-  const ReadinessData({
+  const ReadinessData({this.insightsStale, 
     this.rhrMarks = const [],
     this.head = const {},
     this.readiness = Metric.empty,
@@ -159,6 +163,7 @@ class ReadinessData {
           if (e is Map) e.cast<String, dynamic>(),
       ],
       inputsUsed: (v['inputs_used'] as num?)?.toInt() ?? 0,
+      insightsStale: staleReasonOf(cd),
       heldOverNight: heldOverNightOf(today),
       day: ownNight ? day : null,
       asOfDay: scored && status is Map ? status['overnight_day']?.toString() : null,
@@ -181,6 +186,33 @@ class ReadinessData {
               repo, (today['status'] as Map?)?['today_day']?.toString()),
     );
   }
+
+
+  /// Why `getInsights()` withheld the cross-day rollup, or null when it did
+  /// not (`staleReasonOf`). A withheld rollup is why the breakdown is empty,
+  /// and "takes about two weeks of nights" is the wrong reason to give then.
+  final Map<String, dynamic>? insightsStale;
+
+  /// A past day, as Home's day switcher shows it: the stored score for
+  /// [date] and that day's own absence diagnostic. No breakdown — the
+  /// percentile view only exists in today's insights, and borrowing today's
+  /// would put this morning's ranking under last Tuesday's number.
+  static Future<ReadinessData> loadForDay(
+      LocalRepository repo, String date) async {
+    final overview = await repo.getDayOverview(date);
+    final chart = await repo.getChart('recovery');
+    final readiness = metricOf(overview['readiness']);
+    final anchor = DateTime.now();
+    return ReadinessData(
+      day: date,
+      readiness: readiness,
+      series: denseDays(pointsOf(chart), 90),
+      anchor: anchor,
+      absentDiag: readiness.value != null
+          ? null
+          : await LocalDb.readinessAbsentDiag(date),
+    );
+  }
 }
 
 class ReadinessDetail extends StatefulWidget {
@@ -198,7 +230,7 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload i
 
   /// The panels' Nerd stats action.
   @override
-  void openNerdStats() => go(context, Investigate('readiness'));
+  void openNerdStats() => go(context, Investigate('readiness', day: _d?.day ?? widget.day));
 
   /// The scrubbed day's figures, not the newest day's.
   @override
@@ -404,13 +436,16 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload i
           // and the section is already in place when it does.
           Section(
             l?.readinessDetailWhatWentIntoIt ?? 'What went into it',
-            StatusCard(
-              l?.readinessDetailNoBreakdownTitle ?? 'No breakdown yet',
-              l?.readinessDetailNoBreakdownBody ??
-                  'Ranking each input against your own history takes about two '
-                      'weeks of nights.',
-              icon: LucideIcons.listTree,
-            ),
+            d.insightsStale != null
+                ? driverAbsenceCard(c,
+                    stale: d.insightsStale, onSync: syncOf(c))
+                : StatusCard(
+                    l?.readinessDetailNoBreakdownTitle ?? 'No breakdown yet',
+                    l?.readinessDetailNoBreakdownBody ??
+                        'Ranking each input against your own history takes '
+                            'about two weeks of nights.',
+                    icon: LucideIcons.listTree,
+                  ),
           ),
 
         // The header used to say "Last 90 days" over a chart of five points.
@@ -437,9 +472,8 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload i
           {Color? bigColor, String? note}) =>
       Surface(
         child: Column(children: [
-          SizedBox(
-            width: 150,
-            height: 150,
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 150, minHeight: 150),
             child: Stack(alignment: Alignment.center, children: [
               CustomPaint(size: const Size(150, 150), painter: ring),
               Column(mainAxisSize: MainAxisSize.min, children: [
@@ -718,3 +752,4 @@ String _ask(String key, AppLocalizations? l) => switch (key) {
           'Is your skin temperature in its usual range?',
       _ => driverLabel(key, l),
     };
+

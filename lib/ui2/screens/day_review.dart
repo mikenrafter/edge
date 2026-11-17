@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import '../../data/day_label.dart';
+import '../../compute/manual_session.dart';
 import '../../data/db.dart';
 import '../../data/assumed_water.dart';
 import '../activity/catalogue.dart' show activityByName;
@@ -186,6 +187,7 @@ class DayReviewController extends ChangeNotifier {
   final Map<String, ReviewDecision> _drafts = {};
   bool loading = true, loadFailed = false, saveFailed = false;
   bool followUpFailed = false, busy = false, _disposed = false;
+  ManualWindowError? saveRefusal;
   int _generation = 0;
   bool get hasChanges => _choices.isNotEmpty;
   /// Items with a staged answer (a pair's two moments count once).
@@ -492,6 +494,7 @@ class DayReviewController extends ChangeNotifier {
     if (!canEdit || !hasChanges) return;
     busy = true;
     saveFailed = false;
+    saveRefusal = null;
     _changed();
     final staged = Map.of(_choices);
     final savedAtMs = pc.clock.now().millisecondsSinceEpoch;
@@ -564,6 +567,7 @@ class DayReviewController extends ChangeNotifier {
       if (error is ActivityReviewException && !_disposed) await load();
       if (!_disposed) {
         saveFailed = true;
+        saveRefusal = error is ManualWindowException ? error.error : null;
       }
     } finally {
       busy = false;
@@ -752,7 +756,7 @@ class DayReviewSaveBar extends StatelessWidget {
               key: const ValueKey('apk2-review-staged'),
               style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
             if (r.saveFailed)
-              Text(l?.momentFollowUpSaveFailed ??
+              Text(r.saveRefusal?.message ?? l?.momentFollowUpSaveFailed ??
                   'Could not save that answer. Try again.',
                 key: const ValueKey('apk2-review-save-error'),
                 style: F.cap.copyWith(color: p.ink)),

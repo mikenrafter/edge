@@ -1,0 +1,5 @@
+// WHY: a known default does not bless an unknown explicit override.
+// CLAIM(resolved-effects).
+void logValue() {}
+void invoke([void Function() cb = logValue]) { cb(); }
+void run(void Function() unknown) { invoke(); invoke(unknown); }

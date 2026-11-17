@@ -1,0 +1,5 @@
+// WHY: dispatch through an interface supplies its concrete override's input.
+// CLAIM(resolved-effects).
+abstract class Work { void use(void Function() cb); }
+class RealWork extends Work { @override void use(void Function() cb) { cb(); } }
+void run() { final Work w = RealWork(); w.use(() {}); }

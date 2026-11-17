@@ -1,3 +1,8 @@
+import '../ble/ble_state.dart';
+import '../wake/wake_settings.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+
 // The weekly alarm schedule — pure occurrence math plus the thin engine
 // orchestration that arms it, shared between AppState (foreground connect/
 // sync) and background_sync.dart's headless drain, which has no AppState.
@@ -7,8 +12,6 @@
 // storage/UI indexing choice, not a replacement for `DateTime.weekday`
 // (1=Mon..7=Sun), which every conversion below still goes through explicitly.
 
-import '../ble/ble_state.dart' show AlarmBandWriter, AlarmConfirmation;
-import '../wake/wake_settings.dart';
 
 /// One weekday's slot in the schedule. Immutable — callers build a new one to
 /// change a field.
@@ -314,7 +317,10 @@ DateTime alarmRearmFrom(DateTime now, int? firedEpoch) {
 /// attempted and the band did not take it (the write never left the phone, or
 /// the strap answered no): the one case where "epoch is null" means failure
 /// rather than "nothing to do".
-typedef AlarmArmResult = ({int? epoch, bool disabled, bool refused});
+typedef AlarmArmResult = ({int? epoch, bool disabled, bool failed, bool echoed});
+extension AlarmArmLegacyReason on AlarmArmResult {
+  bool get refused => failed;
+}
 
 /// Where the search for the next occurrence starts. Normally [now]; but after
 /// the user explicitly acknowledged a wake and cancelled its native alarm
@@ -340,28 +346,38 @@ Future<AlarmArmResult> armNextScheduledOccurrence({
   DateTime? now,
   int? ackedThroughEpochSec,
 }) async {
-  final next = nextAlarmOccurrence(
-      schedule, armSearchFrom(now ?? DateTime.now(), ackedThroughEpochSec));
+  final next = nextAlarmOccurrence(schedule, armSearchFrom(now ?? DateTime.now(), ackedThroughEpochSec));
   if (next == null) {
     // Nothing enabled. Toggling every weekday off individually (rather than
     // an explicit cancel-all) must not leave the strap holding its last arm
     // forever — nothing else in this flow ever tells the band to give it up.
     if (currentArmedEpoch == null) {
-      return (epoch: null, disabled: false, refused: false);
+      return (epoch: null, disabled: false, failed: false, echoed: false);
     }
-    await engine.disableAlarm();
-    return (epoch: null, disabled: true, refused: false);
+    // Only report the disable once it reached the band: the caller clears
+    // the armed epoch on `disabled`, and with it gone this branch never
+    // runs again, so a failed write would leave the strap armed for good.
+    if (!await engine.disableAlarm()) {
+      return (epoch: null, disabled: false, failed: true, echoed: false);
+    }
+    return (epoch: null, disabled: true, failed: false, echoed: false);
   }
   final epoch = next.millisecondsSinceEpoch ~/ 1000;
   if (epoch == currentArmedEpoch) {
-    return (epoch: null, disabled: false, refused: false);
+    return (epoch: null, disabled: false, failed: false, echoed: false);
   }
-  final armed = await engine.setAlarm(next);
-  if (armed == null) return (epoch: null, disabled: false, refused: true);
+  final r = engine is AlarmEchoWriter
+      ? await (engine as AlarmEchoWriter).armAlarm(next)
+      : (armed: await engine.setAlarm(next), echoed: false);
+  final armed = r.armed;
+  if (armed == null) {
+    return (epoch: null, disabled: false, failed: true, echoed: false);
+  }
   return (
     epoch: armed.millisecondsSinceEpoch ~/ 1000,
     disabled: false,
-    refused: false
+    failed: false,
+    echoed: r.echoed,
   );
 }
 
@@ -464,4 +480,111 @@ Duration? alarmLatchAlertResumeDelay(List<String>? stored,
   final alertAtMs = int.tryParse(stored[1]);
   if (alertAtMs == null) return null;
   return Duration(milliseconds: alertAtMs > nowMs ? alertAtMs - nowMs : 0);
+}
+
+
+/// The physical band that received the persisted SET_ALARM.
+const kAlarmRemoteId = 'alarm_remote_id';
+
+/// CLAIM(alarm-band-ownership): a tagged arm is usable only by its band.
+/// Legacy arms are bound before replacement commits [replacement alarm tests].
+int? persistedAlarmEpoch(SharedPreferences prefs, String? remoteId) {
+  final owner = prefs.getString(kAlarmRemoteId);
+  return owner == null || owner == remoteId ? prefs.getInt('alarm_epoch') : null;
+}
+
+/// CLAIM(alarm-band-ownership): tag an untagged (legacy) or this band's own
+/// armed epoch with [remoteId] before that band's identity is replaced or
+/// forgotten, so a later, different band can never read it as its own arm.
+/// True when there is nothing to bind or the write landed.
+Future<bool> bindAlarmEpochToBand(SharedPreferences prefs, String remoteId) async {
+  if (prefs.getInt('alarm_epoch') == null) return true;
+  final owner = prefs.getString(kAlarmRemoteId);
+  if (owner != null && owner != remoteId) return true;
+  return prefs.setString(kAlarmRemoteId, remoteId);
+}
+
+/// Persist the armed [epoch] under its owner, in an order that never leaves a
+/// window where the epoch reads as another band's arm: a previous owner's
+/// epoch is removed first, then the owner is written, then the new epoch.
+/// Every write is checked; on a failure this throws and no new epoch is saved.
+/// Both the foreground and the headless writer use it.
+///
+/// [stillCurrent] answers "has a newer arm or a clear superseded this one?".
+/// It is asked before anything is written and again, synchronously, right
+/// before the epoch write: the removes/writes above await, and a clear or a
+/// newer arm that ran in those gaps must not have its result overwritten by
+/// this older epoch. Returns false when superseded (nothing more is written).
+Future<bool> saveArmedAlarmEpoch(
+    SharedPreferences prefs, int epoch, String? remoteId,
+    {bool Function()? stillCurrent}) async {
+  if (stillCurrent != null && !stillCurrent()) return false;
+  if (remoteId != null && prefs.getString(kAlarmRemoteId) != remoteId) {
+    if (prefs.getInt('alarm_epoch') != null &&
+        !await prefs.remove('alarm_epoch')) {
+      throw StateError('Could not clear the previous alarm.');
+    }
+    if (!await prefs.setString(kAlarmRemoteId, remoteId)) {
+      throw StateError('Could not record which band holds the alarm.');
+    }
+  }
+  if (stillCurrent != null && !stillCurrent()) return false;
+  if (!await prefs.setInt('alarm_epoch', epoch)) {
+    throw StateError('Could not save the armed alarm.');
+  }
+  return true;
+}
+
+/// The schedule column (0=Mon..6=Sun) a Siri "enable tomorrow's alarm"
+/// request made at [requestedAt] (local time) means.
+///
+/// Normally the next calendar day's. The exception is a request made before
+/// local noon while today's slot is still ahead: asked at 00:40 on a Tuesday
+/// with a 07:00 Tuesday slot, the user is going to bed and the morning they
+/// mean is Tuesday's. Once today's slot time has passed (09:00, already up),
+/// "tomorrow" is the next calendar day again. A fixed hour cut-off gets one of
+/// those two windows wrong; the slot time itself is the boundary. Noon still
+/// bounds it so an evening slot ahead (asked at 15:00 about a 22:00 one) never
+/// reads as "tomorrow". A weekday with no row uses the same default time
+/// [setScheduleDay] would give it.
+int siriTomorrowAlarmWeekday(
+    List<AlarmScheduleEntry> schedule, DateTime requestedAt) {
+  final todayCol = requestedAt.weekday - 1;
+  if (requestedAt.hour < 12) {
+    final today = schedule.firstWhere(
+      (e) => e.weekday == todayCol,
+      orElse: () => AlarmScheduleEntry(
+          weekday: todayCol,
+          hour: defaultAlarmHour,
+          minute: defaultAlarmMinute,
+          enabled: false),
+    );
+    final slot = DateTime(requestedAt.year, requestedAt.month,
+        requestedAt.day, today.hour, today.minute);
+    if (slot.isAfter(requestedAt)) return todayCol;
+  }
+  return DateTime(requestedAt.year, requestedAt.month, requestedAt.day + 1)
+          .weekday -
+      1;
+}
+
+/// Whether the user's own weekly schedule has a wake alarm due tonight — an
+/// enabled slot whose next occurrence lands in the same "tonight" window
+/// [alarmArmsTonight] uses. False for someone who never set an alarm (every
+/// slot defaults to off) and for a night deliberately left off, e.g. Friday
+/// for a weekdays-only schedule. The 7pm "no alarm set for tonight" check is
+/// only meaningful when this is true: without it, it went off every evening
+/// for everyone who does not use the band alarm at all.
+///
+/// Searched from noon when [now] is earlier, so a still-ahead alarm THIS
+/// morning cannot shadow tomorrow morning's slot.
+bool scheduleExpectsAlarmTonight(
+  List<AlarmScheduleEntry> schedule,
+  DateTime now,
+) {
+  final noon = DateTime(now.year, now.month, now.day, 12);
+  final from = now.isBefore(noon) ? noon : now;
+  final next = nextAlarmOccurrence(schedule, from);
+  if (next == null) return false;
+  return alarmArmsTonight(next.millisecondsSinceEpoch ~/ 1000, now);
 }

@@ -155,6 +155,8 @@ class SyncFakeEngine extends BleEngine {
 
   /// Holds the NEXT connect until completed (taken once, then cleared).
   Completer<void>? connectGate;
+  Future<void> Function()? connectHook;
+  Future<void> Function()? disconnectHook;
 
   /// runSync answers: a SyncReport or an Object to throw. Empty = a complete
   /// 3-record report.
@@ -162,6 +164,9 @@ class SyncFakeEngine extends BleEngine {
 
   /// Holds every runSync until completed.
   Completer<void>? syncGate;
+
+  /// Holds every armAlarm reply until completed.
+  Completer<void>? armGate;
 
   /// Runs inside runSync before it answers (to move the durable frontier).
   Future<void> Function()? onRunSync;
@@ -199,13 +204,15 @@ class SyncFakeEngine extends BleEngine {
   bool get liveEnabled => liveArmed;
   @override
   bool get historyStuckThisSession => stuck;
+  bool offloading = false;
+  int gateDrops = 0;
+  @override
+  int get historyGateDrops => gateDrops;
+  @override
+  bool get offloadActive => offloading;
   @override
   int? get strapHistoryNewestTs => newestTs;
 
-  /// A history task the band has not ended yet ([offloadActive]).
-  bool offloading = false;
-  @override
-  bool get offloadActive => offloading;
   @override
   DateTime? get lastRxAt => rxAt;
 
@@ -229,6 +236,7 @@ class SyncFakeEngine extends BleEngine {
   @override
   Future<bool> connectToRemoteId(String remoteId, {String? generationHint}) async {
     events.add('connect:$remoteId:${generationHint ?? '-'}');
+    await connectHook?.call();
     final gate = connectGate;
     connectGate = null;
     if (gate != null) await gate.future;
@@ -243,6 +251,7 @@ class SyncFakeEngine extends BleEngine {
   @override
   Future<void> disconnect() async {
     events.add('disconnect');
+    await disconnectHook?.call();
     link = false;
     _state('disconnected');
   }
@@ -257,6 +266,14 @@ class SyncFakeEngine extends BleEngine {
       throw once;
     }
     if (batteryThrows != null) throw batteryThrows!;
+  }
+
+  @override
+  Future<({DateTime? armed, bool echoed})> armAlarm(DateTime when,
+      {int index = 0, List<int>? haptics}) async {
+    events.add('armAlarm:${when.millisecondsSinceEpoch ~/ 1000}');
+    if (armGate != null) await armGate!.future;
+    return (armed: when, echoed: true);
   }
 
   @override

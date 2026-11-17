@@ -1,3 +1,24 @@
+import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:provider/provider.dart';
+import '../../compute/manual_session.dart';
+import '../../data/day_review.dart' show WorkoutWindow;
+import '../../data/day_label.dart' show calendarDaysBetween;
+import '../../models/activity_suggestion.dart';
+import 'detected_activities.dart';
+import '../../data/db.dart';
+import '../../data/journal_fields.dart' show formatMinuteOfDay;
+import '../../data/local_repository.dart';
+import '../../health/health_export.dart';
+import '../../health/health_workout_import.dart' show rememberDeletedUuid;
+import '../../l10n/app_localizations.dart';
+import '../../l10n/date_text.dart';
+import '../../state/app_state.dart';
+import '../activity/catalogue.dart';
+import '../profile/profile.dart' show SetRow, settingsGroup;
+import '../ui2.dart';
+import 'home_screen.dart' show monthShortName, repoOf, weekdayShortName;
+
 // LOG A WORKOUT — the two places the athlete owns the times, and the review
 // screen the auto-detector has been writing to for months with nobody reading.
 //
@@ -28,27 +49,7 @@
 // entry, and is exactly why "Adjust the times" sits beside "Log it" rather
 // than three screens away.
 
-import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:provider/provider.dart';
 
-import '../../compute/manual_session.dart';
-import '../../data/day_review.dart' show WorkoutWindow;
-import '../../data/day_label.dart' show calendarDaysBetween;
-import '../../models/activity_suggestion.dart';
-import 'detected_activities.dart';
-import '../../data/db.dart';
-import '../../data/journal_fields.dart' show formatMinuteOfDay;
-import '../../data/local_repository.dart';
-import '../../health/health_export.dart';
-import '../../health/health_workout_import.dart' show rememberDeletedUuid;
-import '../../l10n/app_localizations.dart';
-import '../../l10n/date_text.dart';
-import '../../state/app_state.dart';
-import '../activity/catalogue.dart';
-import '../profile/profile.dart' show SetRow, settingsGroup;
-import '../ui2.dart';
-import 'home_screen.dart' show monthShortName, repoOf, weekdayShortName;
 
 /// One detected bout, as this screen needs it. Built straight off a
 /// `workout_suggestions` row.
@@ -295,6 +296,7 @@ class _LogWorkoutState extends State<LogWorkout> {
     setState(() {
       _saving = true;
       _wrote = null;
+      _failed = null;
     });
     try {
       if (_suggestion case final suggestion?) {
@@ -316,7 +318,15 @@ class _LogWorkoutState extends State<LogWorkout> {
       }
       final r = widget.sessionId == null
           ? await repo.logManualWorkout(
-              startTs: _startSec, endTs: _endSec, type: _activity.typeKey)
+              startTs: _startSec,
+              endTs: _endSec,
+              type: _activity.typeKey,
+              // Marks it as never-exported: the day export writes every
+              // ordinary session, and the import's original is already in
+              // the health store.
+              source: widget.importedUuid != null
+                  ? kScoredImportSessionSource
+                  : 'manual')
           : await repo.setWorkoutWindow(widget.sessionId!,
               startTs: _startSec, endTs: _endSec);
       if (widget.importedUuid case final uuid?) {
@@ -324,7 +334,7 @@ class _LogWorkoutState extends State<LogWorkout> {
           if (!mounted) return;
           setState(() {
             _saving = false;
-            _wrote = l?.logWorkoutImportedHrGone ??
+            _failed = l?.logWorkoutImportedHrGone ??
                 'Heart rate for this workout is no longer stored.';
           });
           return;
@@ -367,18 +377,18 @@ class _LogWorkoutState extends State<LogWorkout> {
         // reload must not leave the save button permanently busy.
       } finally {
         if (mounted) {
-          setState(() { _saving = false; _wrote = e.message; });
+          setState(() { _saving = false; _failed = e.message; });
         }
       }
     } on ManualWindowException catch (e) {
       if (mounted) {
-        setState(() { _saving = false; _wrote = e.error.message; });
+        setState(() { _saving = false; _failed = e.error.message; });
       }
     } catch (_) {
       if (mounted) {
         setState(() {
           _saving = false;
-          _wrote = l?.logWorkoutCouldNotSave ?? 'Could not save. Try again.';
+          _failed = l?.logWorkoutCouldNotSave ?? 'Could not save that — try again.';
         });
       }
     }
@@ -438,6 +448,11 @@ class _LogWorkoutState extends State<LogWorkout> {
                       l?.logWorkoutWindowInvalidTitle ?? 'That window will not save',
                       bad.message,
                       icon: LucideIcons.triangleAlert)
+                else if (_failed != null)
+                  StatusCard(
+                      l?.logWorkoutWindowInvalidTitle ?? 'That window will not save',
+                      _failed!,
+                      icon: LucideIcons.triangleAlert)
                 else if (_wrote != null)
                   StatusCard(
                       retime
@@ -472,6 +487,11 @@ class _LogWorkoutState extends State<LogWorkout> {
       ),
     );
   }
+
+  // Kept apart from [_wrote]: a refused or failed save must never be drawn
+  // under the "Times updated" / "Workout logged" check, since nothing was
+  // banked.
+  String? _failed;
 }
 
 /// The activity list, searchable. The picker proper (`ActivityPicker`) starts a
@@ -642,3 +662,4 @@ Future<List<Suggestion>> activeSuggestions(LocalRepository repo) async {
     return const [];
   }
 }
+

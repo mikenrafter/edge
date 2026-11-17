@@ -1,3 +1,21 @@
+import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:provider/provider.dart';
+import '../../l10n/app_localizations.dart';
+import '../../state/app_state.dart';
+import '../../data/day_label.dart';
+import '../../data/local_repository.dart';
+import '../../models/metric.dart' show whyFromNote;
+import '../activity/catalogue.dart' show activityByName;
+import '../profile/devices.dart' show bandLabelFor;
+import '../ui2.dart';
+import 'rhr_annotations.dart';
+import 'investigate.dart' show Investigate;
+import 'home_screen.dart';
+import 'metric_detail.dart'
+    show dayNavLabel, dayNavRow, detailScaffold, pickDay;
+
+
 // DAY STEPS — when the day's steps were counted, and by what.
 //
 // The day total on Home is a sum of SPANS: each stretch of the day goes to the
@@ -26,23 +44,7 @@
 // with yesterday, no streak. It answers one question — where did today's steps
 // come from — and the trend lives one screen up.
 
-import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:provider/provider.dart';
 
-import '../../l10n/app_localizations.dart';
-import '../../state/app_state.dart';
-import '../../data/day_label.dart';
-import '../../data/local_repository.dart';
-import '../../models/metric.dart' show whyFromNote;
-import '../activity/catalogue.dart' show activityByName;
-import '../profile/devices.dart' show bandLabelFor;
-import '../ui2.dart';
-import 'rhr_annotations.dart';
-import 'investigate.dart' show Investigate;
-import 'home_screen.dart' show clockOfTs, go, prettyDay, repoOf, thousands;
-import 'metric_detail.dart'
-    show dayNavLabel, dayNavRow, detailScaffold, pickDay;
 
 /// One resolved stretch of the day.
 class DayStepSpan {
@@ -78,6 +80,7 @@ class DayStepsData {
     this.daySource,
     this.note,
     this.bandLabel = _defaultBand,
+    this.bandHasNoCounter = false,
   });
 
   /// The fallback name for the strap. Nothing is paired, or the link has not
@@ -115,6 +118,7 @@ class DayStepsData {
   static Future<DayStepsData> load(
     LocalRepository repo, {
     String bandLabel = _defaultBand,
+    bool bandHasNoCounter = false,
     String? want,
   }) async {
     final flagsRead = loadRhrAnnotations(repo);
@@ -146,8 +150,16 @@ class DayStepsData {
       daySource: d['day_source'] as String?,
       note: d['note'] as String?,
       bandLabel: bandLabel,
+      bandHasNoCounter: bandHasNoCounter,
     );
   }
+
+
+  /// The paired band has no step counter of its own (a WHOOP 4.0): it only
+  /// counts while the app is receiving its live movement stream, so a walk
+  /// with the phone left behind leaves no steps at all. Said on the screen so
+  /// "it isn't tracking my steps" has its answer where the steps are.
+  final bool bandHasNoCounter;
 }
 
 /// 24 hourly buckets, one list per sensor, apportioned across the hours each
@@ -284,7 +296,9 @@ class _DayStepsDetailState extends State<DayStepsDetail> implements NerdStatsLis
     }
     try {
       final d = await DayStepsData.load(repo,
-          bandLabel: bandLabel(context), want: _day);
+          bandLabel: bandLabel(context),
+          bandHasNoCounter: pairedBandHasNoCounter(context),
+          want: _day);
       if (mounted && token == _loadToken) {
         setState(() => (_d = d, _loading = false));
       }
@@ -344,9 +358,9 @@ class _DayStepsDetailState extends State<DayStepsDetail> implements NerdStatsLis
       chip
           ? (l?.dayStepsStrapCounterBody(thousands(d.dayTotal), when) ??
                 '${thousands(d.dayTotal)} steps $when have no time data.')
-          : whyFromNote(d.note, unit: 'days') ??
+          : _withNoCounterHint(c, d, whyFromNote(d.note, unit: 'days') ??
                 (l?.dayStepsNothingCounted(when) ??
-                    'Nothing that can count steps recorded $when.'),
+                    'Nothing that can count steps recorded $when.')),
       icon: chip ? LucideIcons.watch : LucideIcons.footprints,
     );
   }
@@ -472,7 +486,7 @@ class _DayStepsDetailState extends State<DayStepsDetail> implements NerdStatsLis
         : d.strap > 0
         ? (l?.dayStepsHonestyStrap ??
               'Counted by your band. It can undercount walking and count hand movement.')
-        : (l?.dayStepsHonestyPhone ??
+        : _withNoCounterHint(c, d, l?.dayStepsHonestyPhone ??
               'Counted by your phone, only while you carried it.');
   }
 
@@ -506,6 +520,25 @@ class _DayStepsDetailState extends State<DayStepsDetail> implements NerdStatsLis
       ),
     );
   }
+
+
+  /// [text], followed by why the band added nothing when it has no counter of
+  /// its own. Only ever on a day the band did not count: a day it did count
+  /// already shows that it can.
+  String _withNoCounterHint(BuildContext c, DayStepsData d, String text) {
+    // A day whose total came off a strap's own counter was counted by a
+    // band that HAS one (an earlier WHOOP 5.0 / MG): the hint would be false.
+    // The band can be unpaired or swapped after the day was loaded, so the
+    // live answer wins whenever the app state is reachable.
+    if (!bandStillHasNoCounter(d.bandHasNoCounter, liveBandHasNoCounter(c)) ||
+        d.daySource == 'strap_counter') {
+      return text;
+    }
+    final hint = AppLocalizations.of(c)?.dayStepsWhoop4NoCounter ??
+        'A WHOOP 4.0 has no step counter of its own, so it only counts steps '
+            'while this app is receiving its live data.';
+    return '$text $hint';
+  }
 }
 
 /// The paired band's name, in the Devices screen's own words — or null when
@@ -527,5 +560,36 @@ String bandLabel(BuildContext c) {
     return bandLabelFor(app.device.generation) ?? fallback;
   } catch (_) {
     return fallback;
+  }
+}
+
+
+/// Whether a band of [generation] has no on-chip step counter: a WHOOP 4.0
+/// (`gen4`, see `derivation_engine.dart`'s v101→102 note).
+bool generationHasNoCounter(String? generation) => generation == 'gen4';
+
+/// The answer to show: the live one when the app state could be read, else
+/// what was loaded with the day.
+bool bandStillHasNoCounter(bool loaded, bool? live) => live ?? loaded;
+
+/// Whether the band paired NOW has no on-chip step counter. False when
+/// nothing is paired or the generation is not known, so the hint never names
+/// a band we were not told about.
+bool pairedBandHasNoCounter(BuildContext c) =>
+    _bandHasNoCounter(c, listen: false) ?? false;
+
+/// [pairedBandHasNoCounter] for a build: listens, so the hint follows an
+/// unpair or a swap. Null when there is no app state to ask (a golden).
+bool? liveBandHasNoCounter(BuildContext c) =>
+    _bandHasNoCounter(c, listen: true);
+
+bool? _bandHasNoCounter(BuildContext c, {required bool listen}) {
+  try {
+    final app = listen ? c.watch<AppState>() : c.read<AppState>();
+    if (!app.isPaired) return false;
+    return generationHasNoCounter(
+        app.paired?.generation ?? app.device.generation);
+  } catch (_) {
+    return null;
   }
 }

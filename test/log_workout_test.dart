@@ -15,17 +15,35 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:openstrap_edge/compute/manual_session.dart';
+import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/models/activity_suggestion.dart';
+import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/activity/catalogue.dart';
 import 'package:openstrap_edge/ui2/screens/log_workout.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'package:openstrap_edge/ui2/screens/moment_follow_up.dart';
 import 'package:openstrap_edge/data/day_label.dart' show dayLabelOf;
-import 'package:openstrap_edge/data/local_repository.dart';
-import 'package:openstrap_edge/models/activity_suggestion.dart';
-import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:provider/provider.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+
+/// A save that the repository refuses: a retime over a pruned substrate, or
+/// any write that throws.
+class _RefusingRepo extends LocalRepository {
+  final Object error;
+  _RefusingRepo(this.error);
+  @override
+  Future<Map<String, dynamic>> setWorkoutWindow(String id,
+          {required int startTs, required int endTs}) async =>
+      throw error;
+}
+
+class _SuggestionRepo extends LocalRepository {
+  _SuggestionRepo(this.rows);
+  final List<ActivitySuggestion> rows;
+  @override
+  Future<List<ActivitySuggestion>> pendingActivities() async => rows;
+}
 
 /// A real phone, and tall enough that nothing under test is below the fold —
 /// the default 800x600 harness hides the very controls these tests are about.
@@ -81,12 +99,6 @@ Future<void> _review(WidgetTester t, List<Suggestion> suggestions,
       brightness: brightness);
 }
 
-class _SuggestionRepo extends LocalRepository {
-  _SuggestionRepo(this.rows);
-  final List<ActivitySuggestion> rows;
-  @override
-  Future<List<ActivitySuggestion>> pendingActivities() async => rows;
-}
 
 void main() {
   // why: CLAIM(workout-suggestion-read-seam). Activity bypassed the configured
@@ -120,7 +132,9 @@ void main() {
     testWidgets('draws the bout and its whole window with staged actions', (t) async {
       await _review(t, [_sug()]);
       final row = find.byKey(const ValueKey('apk2-day-row:activity:a'));
-      expect(find.text('Review activities · 1'), findsOneWidget);
+      // The canonical day-review page counts pending work in its saved bar,
+      // while the navigation title stays stable as items are resolved.
+      expect(find.text('Breakdown of your day'), findsOneWidget);
       expect(find.descendant(of: row, matching: find.text('Possible workout')), findsOneWidget);
       // The row carries the start clock once; the detail is the length.
       expect(find.descendant(of: row, matching: find.textContaining('6:30 PM')), findsOneWidget);
@@ -236,6 +250,46 @@ void main() {
       // the window, and the type belongs to the row already.
       expect(find.text('Activity'), findsNothing);
     });
+
+    for (final (name, error, body) in [
+      (
+        'a retime the score cannot follow',
+        const ManualWindowException(ManualWindowError.scoreNotRecomputable),
+        ManualWindowError.scoreNotRecomputable.message,
+      ),
+      ('a write that throws', StateError('db'), 'Could not save that — try again.'),
+    ]) {
+      testWidgets('$name is shown as a refusal, never under a check', (t) async {
+        final app = AppState.forTesting();
+        addTearDown(app.dispose);
+        app.repo = _RefusingRepo(error);
+        t.view.physicalSize = const Size(390 * 3, 2400 * 3);
+        t.view.devicePixelRatio = 3;
+        addTearDown(t.view.reset);
+        await t.pumpWidget(ChangeNotifierProvider<AppState>.value(
+          value: app,
+          child: MaterialApp(
+            theme: buildTheme(Brightness.light),
+            home: LogWorkout(
+              sessionId: 'manual:123',
+              now: _now,
+              start: _start,
+              end: _end,
+              spans: const [],
+              activity: activityByName('running'),
+              title: 'Fix the times',
+            ),
+          ),
+        ));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Save the new times'));
+        await t.pumpAndSettle();
+        expect(find.text(body), findsOneWidget);
+        expect(find.text('That window will not save'), findsOneWidget);
+        expect(find.text('Times updated'), findsNothing,
+            reason: 'nothing was saved');
+      });
+    }
 
     testWidgets('picking an end time before the start rolls to the next day', (
       t,

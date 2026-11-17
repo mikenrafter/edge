@@ -1,7 +1,7 @@
 // RED tests (D36, owner chose "fix + bump"): a folding staging folds ONLY the
 // target night's own observation into the personal profile, never the largest
 // night of the whole calendar walk. Because the fold no longer reads other
-// days, the previous-day skip (substrate.dart calendarDays) also applies when
+// days, the previous-day skip (substrate.dart calendarDaysHeavy) also applies when
 // mayFold is true. kAlgoVersion moves by one and the staged-sleep cache, keyed
 // by it, must not serve entries staged under the old fold.
 

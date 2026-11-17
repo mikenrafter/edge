@@ -34,7 +34,7 @@ Finder _row(BandEntry e) => find.byKey(ValueKey('band-row-${e.id}'));
 
 void main() {
   group('which devices the first run offers', () {
-    test('only the WHOOP bands (DT12)', () {
+    test('only the WHOOP bands', () {
       final ids = [for (final e in firstRunBandEntries()) e.id];
       expect(ids, ['gen4', 'gen5']);
       // Other bands pair as additional devices from "Add a device"; sensors,
@@ -82,12 +82,18 @@ void main() {
       }
     });
 
-    testWidgets('each row carries the Every day chip', (t) async {
-      await pumpPair(t, view(), size: const Size(412, 2400));
-      for (final e in firstRunBandEntries()) {
-        expect(find.descendant(of: _row(e), matching: find.text('Every day')), findsOneWidget,
-            reason: e.id);
-        expect(find.descendant(of: _row(e), matching: find.text('Workouts only')), findsNothing,
+
+
+    testWidgets('the WHOOP description is not shown under other devices', (t) async {
+      await pumpPair(t, view(entries: [kWhoopGen5, kOura, kColmi]),
+          size: const Size(412, 2400));
+      const line = 'Sleep, recovery, strain, heart rate and more';
+      expect(find.descendant(of: _row(kWhoopGen5), matching: find.text(line)),
+          findsOneWidget);
+      for (final e in [kOura, kColmi]) {
+        expect(_row(e), findsOneWidget, reason: e.id);
+        expect(find.descendant(of: _row(e), matching: find.text(line)),
+            findsNothing,
             reason: e.id);
       }
     });
@@ -96,6 +102,16 @@ void main() {
       await pumpPair(t, view(), size: const Size(412, 2400));
       expect(find.byKey(const ValueKey('main-band-whoop-only-note')), findsOneWidget);
       expect(find.text('Main band: WHOOP 4.0 or WHOOP 5.0/MG only. Other devices can be added as additional devices.'), findsOneWidget);
+    });
+
+    testWidgets('each row carries the Every day chip', (t) async {
+      await pumpPair(t, view(), size: const Size(412, 2400));
+      for (final e in firstRunBandEntries()) {
+        expect(find.descendant(of: _row(e), matching: find.text('Every day')), findsOneWidget,
+            reason: e.id);
+        expect(find.descendant(of: _row(e), matching: find.text('Workouts only')), findsNothing,
+            reason: e.id);
+      }
     });
 
     testWidgets('never says what a band would NOT send, nor primary/secondary/tier', (t) async {
@@ -148,7 +164,7 @@ void main() {
       await pumpPair(t, view(), size: const Size(412, 2400));
       await t.tap(find.text('I only have a heart-rate strap'));
       await t.pumpAndSettle();
-      expect(find.text('This is a heart-rate strap'), findsOneWidget);
+      expect(find.text('This is a heart-rate sensor'), findsOneWidget);
       expect(find.text('Pair Bluetooth heart rate sensor'), findsOneWidget);
       expect(find.text('Go back'), findsOneWidget);
       expect(find.text('Sleep'), findsWidgets);
@@ -161,7 +177,7 @@ void main() {
       await t.pumpAndSettle();
       await t.tap(find.text('Go back'));
       await t.pumpAndSettle();
-      expect(find.text('This is a heart-rate strap'), findsNothing);
+      expect(find.text('This is a heart-rate sensor'), findsNothing);
       expect(confirmed, 0);
     });
 
@@ -172,7 +188,7 @@ void main() {
       await t.pumpAndSettle();
       await t.tap(find.text('Pair Bluetooth heart rate sensor'));
       await t.pumpAndSettle();
-      expect(find.text('This is a heart-rate strap'), findsNothing);
+      expect(find.text('This is a heart-rate sensor'), findsNothing);
       expect(confirmed, 1);
     });
 
@@ -213,6 +229,9 @@ void main() {
       expect(find.text('Skip for now'), findsNothing);
       var skipped = 0;
       await pumpPair(t, view(onSkip: () => skipped++), size: const Size(412, 2400));
+      // The first-run help and comparison chips can put Skip below the fold.
+      await t.ensureVisible(find.text('Skip for now'));
+      await t.pumpAndSettle();
       await t.tap(find.text('Skip for now'));
       expect(skipped, 1);
     });
@@ -235,12 +254,13 @@ void main() {
       await pumpPair(t, view(onSkip: () {}),
           locale: const Locale('de'), textScale: 2, size: const Size(320, 700));
       expect(t.takeException(), isNull);
-      await t.scrollUntilVisible(find.text('Ich habe nur einen Herzfrequenzgurt'), 200);
+      // The retained firmware warning adds substantial height at 2x text.
+      await t.scrollUntilVisible(find.text('Ich habe nur einen Herzfrequenzgurt'), 200, maxScrolls: 100);
       await t.ensureVisible(find.text('Ich habe nur einen Herzfrequenzgurt'));
       await t.pumpAndSettle();
       await t.tap(find.text('Ich habe nur einen Herzfrequenzgurt'));
       await t.pumpAndSettle();
-      expect(find.text('Das ist ein Herzfrequenzgurt'), findsOneWidget);
+      expect(find.text('Das ist ein Herzfrequenzsensor'), findsOneWidget);
       expect(t.takeException(), isNull);
     });
   });

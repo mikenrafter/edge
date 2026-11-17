@@ -12,6 +12,9 @@ Future<DayCheckpoint?> _ldbDayCheckpoint(String dayId, int algoVersion) async {
     );
     if (rows.isEmpty) return null;
     final r = rows.first;
+    // Official schema 62 uses this name for NIGHT state. Reject its format
+    // before reading bytes so a foreign/opened file cannot decode it as a day.
+    if (r['fmt'] != kDayCheckpointFmt) return null;
     Future<Uint8List> readBlob(String column, int length) async {
       const chunk = 512 * 1024;
       final bytes = Uint8List(length);
@@ -548,11 +551,7 @@ Future<Map<String, dynamic>> _ldbRawStats() async {
     final tsRow = (await db.rawQuery(
       'SELECT MIN(rec_ts) AS lo, MAX(rec_ts) AS hi FROM decoded_onehz WHERE rec_ts > 0',
     )).first;
-    final decodedOneHz =
-        Sqflite.firstIntValue(
-          await db.rawQuery('SELECT COUNT(*) FROM decoded_onehz'),
-        ) ??
-        0;
+    final decodedOneHz = count;
     final decodedRr =
         Sqflite.firstIntValue(
           await db.rawQuery('SELECT COUNT(*) FROM decoded_rr'),
@@ -679,6 +678,10 @@ Future<Map<String, dynamic>> _ldbSchemaHealth() async {
       'signal_priority',
       'vendor_sleep_epoch',
       'substrate_archive',
+      'hyrox_session',
+      'hyrox_segment',
+      'triathlon_session',
+      'triathlon_segment',
     ];
 
     final missingTables = <String>[];
@@ -1348,7 +1351,7 @@ Future<({Map<String, dynamic> row, BundleRead read})?> _ldbPrivFreshnessRead(Str
   }
 
 Future<void> _ldbPrivComputeAndWriteFreshness() async {
-    final raw = await LocalDb.rawStats();
+    final raw = await LocalDb._freshnessRawStats();
     final recent = await LocalDb.recentDayResultMetas(30);
     final rolling = await LocalDb.baselineMeta('rolling');
     final cross = await LocalDb.baselineMeta('crossday');
@@ -1401,7 +1404,9 @@ Future<void> _ldbPrivComputeAndWriteFreshness() async {
           nowSec: nowSec,
         )?.wire;
       }
-      if (dayId == today &&
+      final flags = read is BundleOk ? read.view.owned('flags') : null;
+      final rejected = flags is List && flags.contains('SLEEP_REJECTED');
+      if (dayId == today && !rejected &&
           !overnightSettled(
             sleepOffsetSec: wakeSec,
             dataEdgeSec: edgeSec,
@@ -1419,9 +1424,8 @@ Future<void> _ldbPrivComputeAndWriteFreshness() async {
         final sleep = read is BundleOk
             ? read.view.owned('sleep.accounting.value')
             : null;
-        final flags = read is BundleOk ? read.view.owned('flags') : null;
         final hasSleep = sleep is Map && sleep['tst_sec'] != null;
-        final noSleep = flags is List && flags.contains('NO_SLEEP_DETECTED');
+        final noSleep = rejected || (flags is List && flags.contains('NO_SLEEP_DETECTED'));
         if (hasSleep || noSleep) {
           latestOvernightDay = dayId;
           latestOvernightComputedAt = (row['computed_at'] as num?)?.toInt();

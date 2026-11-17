@@ -1,23 +1,13 @@
-// The one vocabulary every device's numbers are mapped onto, and the four
-// classes a served number can carry (PLAN_multidevice_analytics §7).
-//
-// A device adapter (`<device>_inputs.dart`) maps its stored rows onto these
-// keys and nothing else: ours land on our own scalar names, the device's own
-// values land on the SAME slot name so the two can sit side by side. The
-// device's value is never an input to ours — it is read at serve time from
-// the display table (`LocalDb.observationsForDay`), never during a derive.
-
+import '../../util/callable.dart';
 import 'dart:convert';
 import 'dart:math' as math;
-
 import 'package:openstrap_analytics/onehz.dart' as ana;
-
 import '../../ble/adapters/_registry.dart'
     show DeviceCategory, categoryOf, kBleHrs, kCoros, kPolarPmd;
 import '../../data/day_label.dart';
 import '../../data/db.dart';
 import '../../data/db/input_read_tracker.dart';
-import '../derivation_engine.dart' show DerivationEngine, kAlgoVersion;
+import '../derivation_engine.dart';
 import '../substrate.dart';
 import '../vendor_sleep.dart';
 import 'colmi_inputs.dart';
@@ -28,6 +18,20 @@ import 'pebble_inputs.dart';
 import 'ultrahuman_inputs.dart';
 import 'wearable_substrate_heavy.dart';
 import 'validation_bands.dart';
+import 'dart:isolate';
+
+
+// The one vocabulary every device's numbers are mapped onto, and the four
+// classes a served number can carry (PLAN_multidevice_analytics §7).
+//
+// A device adapter (`<device>_inputs.dart`) maps its stored rows onto these
+// keys and nothing else: ours land on our own scalar names, the device's own
+// values land on the SAME slot name so the two can sit side by side. The
+// device's value is never an input to ours — it is read at serve time from
+// the display table (`LocalDb.observationsForDay`), never during a derive.
+
+
+
 
 /// The method tag of our readiness on a wearable's day: the composite over
 /// resting HR and skin temperature only (no beats, so no HRV), with the
@@ -540,10 +544,9 @@ Future<List<String>> flagOnOrPrimary(List<String> ids,
 /// or charging ([wearableSubstrate] lays the session over the empty day).
 Future<Map<String, int>> wearableRecTsMaxByDay(
     (String, String) wearable) {
-  final cache = _passDayIndex;
+  final cache = debugDisableWearableDayIndex ? null : _passDayIndex;
   if (cache == null) return _scanWearableRecTsMaxByDay(wearable);
-  return cache.putIfAbsent(
-      '${wearable.$1}|${wearable.$2}', () => _scanWearableRecTsMaxByDay(wearable));
+  return cache.putIfAbsent(wearable, () => _scanWearableRecTsMaxByDay(wearable));
 }
 
 /// Full scans of the active wearable's day index (a test reads this).
@@ -557,7 +560,7 @@ int debugSubstrateDaysCalls = 0;
 // edge, the aging edge and the rescan. Null outside a pass (every call scans).
 // Wearable rows are written by the link, never by a derive, so the index
 // holds for the pass; the next pass starts a fresh one.
-Map<String, Future<Map<String, int>>>? _passDayIndex;
+Map<(String, String), Future<Map<String, int>>>? _passDayIndex;
 
 /// A derive pass begins: [wearableRecTsMaxByDay] scans once until
 /// [endWearableDayIndexPass].
@@ -585,6 +588,7 @@ Future<Map<String, int>> _scanWearableRecTsMaxByDay(
       in (await _strapSessionRecTsMaxByDay()).entries) {
     out[day] = math.max(out[day] ?? t, t);
   }
+  debugOnWearableDayIndexScan?.call(wearable, out);
   return out;
 }
 
@@ -1368,7 +1372,9 @@ Map _decode(Object? raw) => raw is String ? jsonDecode(raw) as Map : const {};
 Future<Map> crossDayAsOf(String date) async {
   final stored = _decode((await LocalDb.baseline('crossday'))?['payload_json']);
   final recent = stored['recent'];
+  final zone = DerivationEngine.crossDayZoneStamp();
   if ((stored['algo_version'] as num?)?.toInt() == kAlgoVersion &&
+      stored['zone'] == zone &&
       recent is List && recent.isNotEmpty && recent.last is Map &&
       (recent.last as Map)['date'] == date) {
     return stored;
@@ -1379,7 +1385,7 @@ Future<Map> crossDayAsOf(String date) async {
   // The cross-day entry's own dispatcher (kWorkerEntries registers
   // buildCrossDayBundle as cancellable): a stuck rebuild is killed on the
   // engine's timeout instead of holding an isolate forever.
-  return DerivationEngine.rebuildCrossDayAsOf(raw, date, reviewRevision);
+  return DerivationEngine.rebuildCrossDayAsOf(raw, date, reviewRevision, zone: zone);
 }
 
 /// [deviceId]'s own values on [date] that have no slot of ours — a vendor's
@@ -1617,3 +1623,39 @@ Future<List<Map<String, Object?>>> _ouraNightRows(
           k == 'spo2_avg' ? '%' : 'ms', lo),
   ];
 }
+
+
+/// The paired row a link for [adapterId] connects to: the active wearable
+/// when it is one of this adapter's rows, otherwise the most recently seen
+/// one. Newest-seen alone could drift away from [adoptReplacementWearable]:
+/// the replaced device, still connected when its successor was paired,
+/// banks once more and becomes the newest row again, so the link went back
+/// to syncing it while derivation read the new one.
+Future<Map<String, Object?>?> pairedRowOf(String adapterId) async {
+  final active = await LocalDb.getCursor(kActiveWearableCursor);
+  Map<String, Object?>? newest;
+  for (final r in await LocalDb.deviceRows()) {
+    if (r['adapter_id'] != adapterId) continue;
+    if (active != null && r['id'] == active) return r;
+    newest ??= r;
+  }
+  return newest;
+}
+
+bool debugDisableWearableWorker = false;
+Call1<String, void>? debugOnWearableConstruction;
+// Called beside the actual row loops. A worker extraction must return its
+// execution marker to this observer, not label a dispatch on the caller.
+void debugRecordWearableConstruction([String? isolateName]) =>
+    debugOnWearableConstruction?.call(
+        isolateName ?? Isolate.current.debugName ?? 'unnamed');
+
+bool _disableWearableDayIndex = false;
+bool get debugDisableWearableDayIndex => _disableWearableDayIndex;
+set debugDisableWearableDayIndex(bool value) {
+  _disableWearableDayIndex = value;
+  if (value) _passDayIndex?.clear();
+}
+int get debugWearableDayIndexSize => _passDayIndex?.length ?? 0;
+void debugWearableDayIndexRekey(int version) => _passDayIndex?.clear();
+Call2<(String, String), Map<String, int>, void>? debugOnWearableDayIndexScan;

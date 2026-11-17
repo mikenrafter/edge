@@ -346,7 +346,7 @@ Map<String, dynamic> _dayStreamMapFromIsolate() =>
 /// `_deriveSingleDay` of test/two_device_fixture_test.dart, verbatim in shape:
 /// the day's first prepared day through `deriveDayBundle`.
 Map<String, dynamic> _derive(Substrate sub) {
-  final payload = prepareDerivationPayload(sub);
+  final payload = prepareDerivationPayloadHeavy(sub);
   expect(payload.days, isNotEmpty, reason: 'a calendar day always exists');
   final day = payload.days.first;
   final daySub = day.daySub;

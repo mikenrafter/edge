@@ -78,7 +78,7 @@ void main() {
     });
 
     test('setScheduleDay stays for programmatic callers (Siri)', () {
-      expect(_app, contains('Future<void> setScheduleDay('));
+      expect(_app, contains('Future<bool> setScheduleDay('));
       expect(
         _app_('_maybeEnableTomorrowAlarmFromSiri('),
         contains('setScheduleDay('),

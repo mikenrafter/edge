@@ -17,6 +17,22 @@ import '../../support/tabs_consistency_fakes.dart';
 
 const _maxW = 600.0;
 
+// A real session history keeps Activity scrollable after main's empty-state
+// redesign; an unreadable/empty history is not a scrolling positive control.
+class _ScrollableTabsRepo extends TabsRepo {
+  _ScrollableTabsRepo(super.today);
+  @override
+  Future<Map<String, dynamic>> getRecords() async => const {'workouts_tracked': 12};
+  @override
+  Future<Map<String, dynamic>> getWorkouts({String range = 'month'}) async => {
+    'workouts': [for (var i = 0; i < 12; i++) {
+      'id': 'tablet-session-$i', 'type': 'running',
+      'start_ts': todayAtMs(8, 0) ~/ 1000 - i * 86400,
+      'duration_min': 40, 'strain': 8.0,
+    }],
+  };
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
@@ -110,7 +126,7 @@ void main() {
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
     final app = AppState.forTesting()
-      ..repo = TabsRepo(homeBundle(
+      ..repo = _ScrollableTabsRepo(homeBundle(
           readiness: 70, overnightAt: todayAtMs(8, 42), activityAt: todayAtMs(8, 42)));
     addTearDown(app.dispose);
     await t.pumpWidget(shellApp(app));

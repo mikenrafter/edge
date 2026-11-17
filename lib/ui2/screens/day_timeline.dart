@@ -1,6 +1,61 @@
+import 'detected_activities.dart' show NapAutoLogRow;
 import 'review_read_label.dart';
 import '../../l10n/presentation_text.dart';
 import '../../l10n/display_text.dart';
+import 'dart:convert' show jsonDecode;
+import 'rhr_annotations.dart';
+import '../read_prefetch.dart';
+import '../../sync/import_focus.dart';
+import '../../data/day_label.dart';
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:provider/provider.dart';
+import '../../ble/adapters/signals.dart' show InputSignal;
+import '../../compute/inputs/canonical.dart' show timelineObservations;
+import '../../compute/inputs/measurement_inputs.dart'
+    show bmiScalesOf, nearWeight;
+import '../../compute/profile.dart' show bmiOf;
+import '../../data/coverage_resolver.dart' show OwnedSpan, coverageFromJson, spanAt;
+
+import '../../data/water_moment.dart';
+import '../../data/assumed_water.dart' show AssumedGlass, AssumedState;
+import '../../data/db.dart';
+import '../../data/load_timings.dart';
+import '../../compute/findings.dart';
+import '../../data/read_paused.dart';
+import '../../wake/wake_timeline.dart';
+import '../../data/journal_fields.dart';
+import '../../data/local_repository.dart';
+import '../../data/med_store.dart';
+import '../../data/moment_label.dart';
+import '../../models/activity_suggestion.dart';
+import '../../gestures/moment_follow_ups.dart';
+import '../../gestures/moment_review_service.dart';
+import 'day_review.dart';
+import 'typical_day.dart';
+import 'moment_follow_up.dart' show MomentAnswerEditScreen, MomentReviewEditor;
+import '../../gestures/symptom_description.dart' show StoredSymptom;
+import '../../data/nutrition_store.dart';
+import '../../l10n/app_localizations.dart';
+import '../../state/app_state.dart';
+import '../../state/locale_controller.dart';
+import '../activity/catalogue.dart';
+import '../profile/devices.dart'
+    show DeviceFilter, DeviceOption, signalCandidates;
+import '../profile/wearable_numbers.dart' show deviceScoreLabel, observationTitle;
+import '../ui2.dart';
+import 'investigate.dart' show Investigate;
+import 'log_workout.dart' show LogWorkout, bumpInsights;
+import 'naps.dart' show NapsScreen;
+import 'home_screen.dart';
+import 'metric_detail.dart';
+
+
+
+
+
 // DAY TIMELINE — what happened, in the order it happened.
 //
 // Every screen in this app answers "how much" for one number over many days.
@@ -24,57 +79,8 @@ import '../../l10n/display_text.dart';
 // one fact the entry is missing. They go in their own block underneath, which
 // says what it is.
 
-import 'dart:convert' show jsonDecode;
-import 'rhr_annotations.dart';
-import '../read_prefetch.dart';
-import '../../sync/import_focus.dart';
-import '../../data/day_label.dart' show dayLabelOf;
-import 'dart:async';
 
-import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:provider/provider.dart';
 
-import '../../ble/adapters/signals.dart' show InputSignal;
-import '../../compute/inputs/canonical.dart' show timelineObservations;
-import '../../compute/inputs/measurement_inputs.dart'
-    show bmiScalesOf, nearWeight;
-import '../../compute/profile.dart' show bmiOf;
-import '../../data/coverage_resolver.dart' show OwnedSpan, coverageFromJson, spanAt;
-import '../../data/day_label.dart' show localDayStartSec, localDayEndSec, todayLabel;
-import '../../data/water_moment.dart';
-import '../../data/assumed_water.dart' show AssumedGlass, AssumedState;
-import '../../data/db.dart';
-import '../../data/load_timings.dart';
-import '../../compute/findings.dart';
-import '../../data/read_paused.dart';
-import '../../wake/wake_timeline.dart';
-import '../../data/journal_fields.dart';
-import '../../data/local_repository.dart';
-import '../../data/med_store.dart';
-import '../../data/moment_label.dart';
-import '../../models/activity_suggestion.dart';
-import '../../gestures/moment_follow_ups.dart';
-import '../../gestures/moment_review_service.dart';
-import 'day_review.dart';
-import 'typical_day.dart';
-import 'moment_follow_up.dart' show MomentAnswerEditScreen, MomentReviewEditor;
-import '../../gestures/symptom_description.dart' show StoredSymptom;
-import '../../data/nutrition_store.dart';
-import '../../l10n/app_localizations.dart';
-import '../../state/app_state.dart';
-import '../../state/locale_controller.dart';
-import '../activity/catalogue.dart' show activityByName, workoutTypeLabel;
-import '../profile/devices.dart'
-    show DeviceFilter, DeviceOption, signalCandidates;
-import '../profile/wearable_numbers.dart' show deviceScoreLabel, observationTitle;
-import '../ui2.dart';
-import 'investigate.dart' show Investigate;
-import 'log_workout.dart' show LogWorkout, bumpInsights;
-import 'naps.dart' show NapsScreen;
-import 'home_screen.dart' show clockOfTs, go, repoOf;
-import 'metric_detail.dart' show DayNav, pickDay;
 
 /// One thing that happened, at a time it is known to have happened at.
 @immutable
@@ -951,6 +957,9 @@ class TimelineData {
         moments: dayMoments(timeline: rows.$1, wear: rows.$2, l: l));
       await onPrimary?.call(value);
       LoadTimings.shared.record('Review', 'first usable rows', elapsed.elapsedMicroseconds, route: route);
+    }, onError: (Object error, StackTrace stack) {
+      // The joined full read below reports this same source failure. This
+      // optional early publication must not create a second unhandled error.
     });
     final flagsRead = read('resting heart rate flags', () async {
       try { return rhrChangeAnnotations(findingsHistory(await repo.getInsights()), l: l)
@@ -1315,6 +1324,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   /// the day on screen.
   String? _device;
   bool _deviceBounded = false;
+  String? _deviceOldest;
 
   // `TimelineData` bakes `AppLocalizations` strings into `moments`/`notes` at
   // load time (see `TimelineData.load`), so a language switch while this
@@ -1434,6 +1444,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
           // them and rendered against no selected device at all.
           _deviceBounded = false,
           _loading = false,
+          _failed = false,
         ));
         if (d.day != null) {
           unawaited(
@@ -1464,7 +1475,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
       if (mounted && token == _loadToken) {
         // A saved row still waits for its stored twin: say so and offer a retry.
         if (_review?.hasSettled == true) _review!.markReloadFailed(true);
-        setState(() => _loading = false);
+        setState(() { _loading = false; _failed = true; });
       }
     } finally {
       releasePrefetch();
@@ -1515,6 +1526,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     setState(() {
       _device = id;
       _deviceBounded = bounded;
+      _deviceOldest = c['oldest'] as String?;
       _d = TimelineData(
         day: d!.day,
         days: d.days,
@@ -1545,6 +1557,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
       _deviceBounded = false;
       _highlight = null;
       _loading = true;
+      _failed = false;
     });
     _load();
   }
@@ -1589,6 +1602,27 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     final d = _d ?? const TimelineData();
     final l = AppLocalizations.of(c);
     final p = P.of(c);
+    if (_failed) {
+      return detailScaffold(c, l?.dayTimelineTitle ?? 'Breakdown of your day', [
+        ...dayNavRow(_day ?? d.day, d.days, _goDay),
+        const SizedBox(height: S.x2),
+        StatusCard(
+          (_day ?? d.day) == null
+              ? (l?.wellnessLoadFailedTitle ?? 'This could not be read')
+              : (l?.homeDayLoadFailedTitle(prettyDay(_day ?? d.day, l)) ??
+                  '${prettyDay(_day ?? d.day, l)} could not be read'),
+          l?.homeLoadFailedBody ??
+              'The stored day failed to load. Nothing was deleted — this is a '
+                  'read that went wrong, not missing data.',
+          fix: l?.homeTryAgain ?? 'Try again',
+          icon: LucideIcons.databaseZap,
+          onFix: () {
+            setState(() => (_loading = true, _failed = false));
+            _load();
+          },
+        ),
+      ]);
+    }
     final review = _review;
     final byId = <String, Moment>{
       if (review != null)
@@ -1688,7 +1722,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                     DeviceFilter(options: _candidates, selected: _device,
                         onSelect: _selectDevice),
                   if (_deviceBounded)
-                    Text(l?.dayTimelineDeviceBounded ??
+                    Text(l?.dayTimelineDeviceBounded(_deviceOldest ?? '') ??
                         'Per-device detail is kept for recent days only.',
                         style: F.cap.copyWith(color: p.ink2)),
                   if (d.graph.hasCurve)
@@ -1727,6 +1761,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                       'Patterns in your logs, not causes.',
                       style: F.over.copyWith(color: p.ink3)),
                   const SizedBox(height: S.x5),
+                if (widget.reviewEntry) const NapAutoLogRow(),
                 DayReviewNotices(controller: review, reloader: this),
                 DayReviewSaveBar(key: review != null && !review.loading &&
                   (review.hasChanges || review.busy)
@@ -1744,6 +1779,12 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
       ),
     );
   }
+
+
+  /// The last read threw. Without it a failed day step drew the previous
+  /// day's timeline under the new date, and a failed first read drew an empty
+  /// day.
+  bool _failed = false;
 }
 
 // Rows are built eagerly so a chart marker can reveal any of them. Flutter's
@@ -2460,3 +2501,4 @@ class _MomentGroupRowState extends State<MomentGroupRow> {
     );
   }
 }
+

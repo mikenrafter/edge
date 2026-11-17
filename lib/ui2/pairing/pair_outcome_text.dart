@@ -8,8 +8,9 @@ import '../../l10n/display_text.dart' show localizedText;
 String? pairOutcomeText(AppLocalizations? l, PairOutcome o) {
   final b = o.isBand;
   if (b != null) {
-    return l?.pairBandNotSensor(localizedText(l, b.label)) ??
-        'That device is a ${b.label}, a band, not a plain sensor. '
+    final label = o.modelCertain ? localizedText(l, b.label) : 'WHOOP';
+    return l?.pairBandNotSensor(label) ??
+        'That device is a $label, a band, not a plain sensor. '
             'Nothing was saved.';
   }
   return o.error;

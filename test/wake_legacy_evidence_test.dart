@@ -60,6 +60,42 @@ void main() {
       isFalse,
     );
   });
+  // WHY/CLAIM WAKE-MAIN-630: the reviewed late-meal counterexample must
+  // remain a veto in the fork's shared evidence owner. A 0.025 g rise is
+  // above the ordinary 0.02 g threshold but below the old 1.5x threshold.
+  // catches: restoring the late-meal multiplier permits an early buzz.
+  test('late meal cannot admit a rise between the two movement thresholds', () {
+    final rows = [for (var i = 0; i < 300; i++) <String, Object?>{
+      'rec_ts': now ~/ 1000 - 300 + i,
+      'hr': 55.0, 'ax': 0.0, 'ay': 0.0,
+      'az': i < 210 ? 1.0 : 1.025,
+    }];
+    final profile = wakeConfounders([
+      WakeJournalDay(DateTime(2026, 10, 25), {'late meal'}, const {}),
+    ]);
+    expect(evaluateLegacyWakeHeavy(now, now + 1200000, rows, const [],
+        const ConfounderProfile(), nightMin: 50), isFalse);
+    expect(evaluateLegacyWakeHeavy(now, now + 1200000, rows, const [],
+        profile, nightMin: 50), isFalse);
+  });
+
+  // WHY/CLAIM WAKE-MAIN-630-TREND: PR #630 discussion_r4564190134 gives
+  // this exact five-minute trace. Its half-means fall while its trailing
+  // three-minute halves rise 0.03 g. The longer window only adds a veto.
+  // catches: judging only the workout's five-minute window admits the buzz.
+  test('a longer workout trend window retains the three-minute veto', () {
+    final rows = [for (var i = 0; i < 300; i++) <String, Object?>{
+      'rec_ts': now ~/ 1000 - 300 + i,
+      'hr': 55.0, 'ax': 0.0, 'ay': 0.0,
+      'az': 1.0 + (i < 120 ? 0.04 : i < 210 ? 0.0 : 0.03),
+    }];
+    expect(evaluateLegacyWakeHeavy(now, now + 1200000, rows, const [],
+        const ConfounderProfile(), nightMin: 50), isFalse);
+    expect(evaluateLegacyWakeHeavy(now, now + 1200000, rows, const [],
+        const ConfounderProfile(workout: true, protectionMinutes: 10,
+            trendWindowMinutes: 5), nightMin: 50), isFalse);
+  });
+
   test('late protection boundary and near baseline', () {
     expect(
       lateWakeProtection(

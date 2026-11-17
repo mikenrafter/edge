@@ -1,26 +1,134 @@
-// night_resp_bins.dart — the night's 30-min RSA respiration bins behind BRV,
-// as one batch function and a stream that reproduces it bit for bit.
-//
-// Owner: the [NightRespBins] instance is owned by DayCalculationState, which
-// feeds it only the night corrector's settled beats.
-
+import '../util/heavy.dart';
 import 'package:openstrap_analytics/onehz.dart';
 
-import '../util/heavy.dart';
+/// Thirty-minute bins anchored at the first corrected beat, like the batch.
+/// Keep closed spectral states so every snapshot applies the current night's
+/// artifact gate through analytics, including to bins closed on a prior pass.
+class NightRespBins {
+  NightRespBins();
+  double? _origin;
+  int _openIndex = 0, _openCount = 0;
+  RsaRespStream _open = RsaRespStream();
+  final List<({int count, RsaRespStream stream})> _closed = [];
 
-const double _binMs = 1800000.0;
-const int _minBeats = 60;
+  @heavy
+  Map<String, dynamic> toJsonHeavy() => {
+    'v': 2, 'origin': _origin, 'index': _openIndex, 'count': _openCount,
+    'open': _open.toJson(),
+    'closed': [for (final bin in _closed)
+      {'count': bin.count, 'state': bin.stream.toJson()}],
+  };
 
-int _binOf(double t, double t0) => ((t - t0) / _binMs).floor();
+  @heavy
+  static NightRespBins fromJsonHeavy(Object? raw, [int? expectedFed]) {
+    if (raw is! Map) throw const FormatException('night RSA bins');
+    final json = raw.cast<String, dynamic>();
+    final savedClosed = json['closed'];
+    final savedCount = json['count'];
+    if (savedClosed is! List || savedCount is! int) {
+      throw const FormatException('night RSA count');
+    }
+    var fed = expectedFed ?? savedCount;
+    if (expectedFed == null) {
+      for (final row in savedClosed) { fed += ((row as Map)['count'] as int); }
+    }
+    final origin = json['origin'], index = json['index'], count = json['count'];
+    final closed = json['closed'] as List;
+    if (json['v'] != 2 || index is! int || index < 0 || count is! int ||
+        count < 0 || count > fed || closed.length > fed ~/ 60 ||
+        (fed == 0 ? origin != null : origin is! num || !origin.isFinite)) {
+      throw const FormatException('RSA bins');
+    }
+    final open = (json['open'] as Map).cast<String, dynamic>();
+    if (open['n'] != count) throw const FormatException('RSA bin count');
+    final result = NightRespBins()
+      .._origin = (origin as num?)?.toDouble()
+      .._openIndex = index
+      .._openCount = count
+      .._open = RsaRespStream.fromJson(open);
+    var total = count;
+    for (final bin in closed) {
+      final n = (bin as Map)['count'];
+      final state = (bin['state'] as Map).cast<String, dynamic>();
+      if (n is! int || n < 60 || n > fed || state['n'] != n) {
+        throw const FormatException('closed RSA bin count');
+      }
+      total += n;
+      if (total > fed) throw const FormatException('RSA bins feed count');
+      result._closed.add((count: n, stream: RsaRespStream.fromJson(state)));
+    }
+    return result;
+  }
 
-double? _rate(Metric<RespEstimate> r) => r.present ? r.value!.brpm : null;
+  int _bin(double time, double origin) => ((time - origin) / 1800000.0).floor();
 
-/// Per-window RSA respiratory rates (br/min) for the BRV estimator. Buckets the
-/// cleaned NN into ~30-min bins by beat time (anchored at the first beat) and
-/// runs [rsaRespRate] on each bin with at least 60 beats; keeps only resolved
-/// windows, in bin order.
+  void _appendRate(List<double> out, Metric<RespEstimate> metric) {
+    final rate = metric.present ? metric.value!.brpm : null;
+    if (rate != null) out.add(rate);
+  }
+
+  /// Returns the number of nonempty bin slices actually folded.
+  @heavy
+  int foldHeavy(List<double> nn, List<double> times) {
+    var from = 0, slices = 0;
+    void feed(int end) {
+      if (end == from) return;
+      _open.fold(nn.sublist(from, end), times.sublist(from, end));
+      _openCount += end - from;
+      slices++;
+    }
+    for (var i = 0; i < times.length; i++) {
+      final index = _bin(times[i], _origin ??= times[i]);
+      if (index == _openIndex) continue;
+      feed(i);
+      if (_openCount >= 60) _closed.add((count: _openCount, stream: _open));
+      _open = RsaRespStream();
+      _openCount = 0;
+      _openIndex = index;
+      from = i;
+    }
+    feed(nn.length);
+    return slices;
+  }
+
+  @heavy
+  List<double> snapshotHeavy(List<double> tailNn, List<double> tailTimes,
+      {required double artifactFraction}) {
+    if (_origin == null && tailNn.isEmpty) return [];
+    final origin = _origin ?? tailTimes.first;
+    final out = <double>[];
+    for (final bin in _closed) {
+      _appendRate(out, bin.stream.snapshot(artifactFraction: artifactFraction));
+    }
+    var i = 0;
+    while (i < tailNn.length && _bin(tailTimes[i], origin) == _openIndex) {
+      i++;
+    }
+    if (_openCount + i >= 60) {
+      _appendRate(out, _open.snapshot(tailNnMs: tailNn.sublist(0, i),
+          tailNnTimesMs: tailTimes.sublist(0, i), artifactFraction: artifactFraction));
+    }
+    while (i < tailNn.length) {
+      final index = _bin(tailTimes[i], origin);
+      var end = i + 1;
+      while (end < tailNn.length && _bin(tailTimes[end], origin) == index) {
+        end++;
+      }
+      if (end - i >= 60) {
+        _appendRate(out, rsaRespRate(tailNn.sublist(i, end),
+            tailTimes.sublist(i, end), artifactFraction: artifactFraction));
+      }
+      i = end;
+    }
+    return out;
+  }
+
+
+}
+
 @heavy
-List<double> respPerWindowHeavy(List<double> nn, List<double> nnTimes) {
+List<double> respPerWindowHeavy(List<double> nn, List<double> nnTimes,
+    {double artifactFraction = 0}) {
   if (nn.isEmpty || nn.length != nnTimes.length) return const [];
   final t0 = nnTimes.first;
   final binsNn = <int, List<double>>{};
@@ -35,136 +143,13 @@ List<double> respPerWindowHeavy(List<double> nn, List<double> nnTimes) {
   for (final idx in idxs) {
     final segNn = binsNn[idx]!;
     if (segNn.length < _minBeats) continue;
-    // NN is already artifact-corrected upstream → artifactFraction 0.
-    final b = _rate(rsaRespRate(segNn, binsTs[idx]!, artifactFraction: 0.0));
+    final b = _rate(rsaRespRate(segNn, binsTs[idx]!, artifactFraction: artifactFraction));
     if (b != null) out.add(b);
   }
   return out;
 }
 
-/// [respPerWindowHeavy] over a growing night, folding each settled beat once.
-///
-/// A bin is closed once a settled beat lies in a later bin; its rate is scored
-/// then and kept. The open bin is an [RsaRespStream], snapshotted with the part
-/// of the provisional tail inside it (its snapshot equals [rsaRespRate] over
-/// folded ++ tail). Tail beats in later bins are scored in batch: they are few.
-/// Bin indices are anchored at the first folded beat, which is the night's
-/// first corrected beat, so they are the batch's indices.
-class NightRespBins {
-  NightRespBins();
 
-  double? _t0;
-  int _openIdx = 0, _openCount = 0;
-  RsaRespStream _open = RsaRespStream();
-  final List<double> _closed = [];
-
-  @heavy
-  void _closeOpenHeavy() {
-    if (_openCount >= _minBeats) {
-      final b = _rate(_open.snapshot(artifactFraction: 0.0));
-      if (b != null) _closed.add(b);
-    }
-    _open = RsaRespStream();
-    _openCount = 0;
-  }
-
-  /// Folds settled beats, in order, after those already folded.
-  @heavy
-  void foldHeavy(List<double> nn, List<double> nnTimes) {
-    var from = 0;
-    for (var i = 0; i < nn.length; i++) {
-      final k = _binOf(nnTimes[i], _t0 ??= nnTimes[i]);
-      if (k == _openIdx) continue;
-      if (i > from) {
-        _open.fold(nn.sublist(from, i), nnTimes.sublist(from, i));
-        _openCount += i - from;
-      }
-      _closeOpenHeavy();
-      _openIdx = k;
-      from = i;
-    }
-    if (nn.length > from) {
-      _open.fold(nn.sublist(from), nnTimes.sublist(from));
-      _openCount += nn.length - from;
-    }
-  }
-
-  /// [respPerWindowHeavy] over the folded beats followed by the tail.
-  @heavy
-  List<double> snapshotHeavy(List<double> tailNn, List<double> tailNnTimes) {
-    final t0 = _t0;
-    if (t0 == null) return respPerWindowHeavy(tailNn, tailNnTimes);
-    final out = [..._closed];
-    final n = tailNn.length;
-    var i = 0;
-    while (i < n && _binOf(tailNnTimes[i], t0) == _openIdx) {
-      i++;
-    }
-    if (_openCount + i >= _minBeats) {
-      final b = _rate(_open.snapshot(
-        tailNnMs: tailNn.sublist(0, i),
-        tailNnTimesMs: tailNnTimes.sublist(0, i),
-        artifactFraction: 0.0,
-      ));
-      if (b != null) out.add(b);
-    }
-    while (i < n) {
-      final k = _binOf(tailNnTimes[i], t0);
-      var j = i;
-      while (j < n && _binOf(tailNnTimes[j], t0) == k) {
-        j++;
-      }
-      if (j - i >= _minBeats) {
-        final b = _rate(rsaRespRate(tailNn.sublist(i, j),
-            tailNnTimes.sublist(i, j),
-            artifactFraction: 0.0));
-        if (b != null) out.add(b);
-      }
-      i = j;
-    }
-    return out;
-  }
-
-  /// Plain data (maps, lists, numbers) for the checkpoint.
-  @heavy
-  Map<String, dynamic> toJsonHeavy() => {
-        'v': 1,
-        't0': _t0,
-        'openIdx': _openIdx,
-        'openCount': _openCount,
-        'open': _open.toJson(),
-        'closed': [..._closed],
-      };
-
-  /// Inverse of [toJsonHeavy]; throws [FormatException] on anything malformed.
-  @heavy
-  static NightRespBins fromJsonHeavy(Object? json) {
-    try {
-      if (json is! Map || json['v'] != 1) {
-        throw const FormatException('resp bins: bad version');
-      }
-      final t0 = json['t0'], idx = json['openIdx'], count = json['openCount'];
-      final open = json['open'], closed = json['closed'];
-      if ((t0 != null && t0 is! num) ||
-          idx is! int ||
-          idx < 0 ||
-          count is! int ||
-          count < 0 ||
-          (t0 == null) != (count == 0) ||
-          open is! Map ||
-          closed is! List) {
-        throw const FormatException('resp bins: bad fields');
-      }
-      return NightRespBins()
-        .._t0 = (t0 as num?)?.toDouble()
-        .._openIdx = idx
-        .._openCount = count
-        .._open = RsaRespStream.fromJson(open.cast<String, dynamic>())
-        .._closed.addAll([for (final x in closed) (x as num).toDouble()]);
-    } on FormatException {
-      rethrow;
-    } catch (e) {
-      throw FormatException('malformed resp bins: $e');
-    }
-  }
-}
+int _binOf(double t, double t0) => ((t - t0) / (30 * 60 * 1000)).floor();
+const _minBeats = 60;
+double? _rate(Metric<RespEstimate> metric) => metric.value?.brpm;

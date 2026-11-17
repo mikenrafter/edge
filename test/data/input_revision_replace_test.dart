@@ -196,7 +196,7 @@ void main() {
       expect(await _rev('sessions', _d3), greaterThan(neu));
     });
 
-    test('the bulk restore moving a session bumps the day it left', () async {
+    test('bulk restore keeps a local session on a foreign ID collision', () async {
       await LocalDb.putSession(_session('rp-rmove', _d1));
       final src = await _path('input_revision_rp.db');
       await databaseFactory.deleteDatabase(src);
@@ -211,9 +211,10 @@ void main() {
       final db = await LocalDb.instance;
       final row = await db.query('sessions',
           where: 'id = ?', whereArgs: ['rp-rmove']);
-      expect(row.single['start_ts'], _noon(_d4), reason: 'restore moved it');
-      expect(await _rev('sessions', _d1), greaterThan(old),
-          reason: 'the day the restored session left was not bumped');
+      expect(row.single['start_ts'], _noon(_d1),
+          reason: 'main preserves the local session when a foreign ID collides');
+      expect(await _rev('sessions', _d1), old,
+          reason: 'an ignored foreign row does not change the local input');
     });
   });
 

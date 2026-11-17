@@ -1,17 +1,18 @@
+import 'dart:math' as math;
+import 'package:openstrap_analytics/onehz.dart' as ana;
+import '../data/coverage_resolver.dart' show OwnedSpan, spanAt;
+
 // A band's OWN hypnogram as a main-sleep source (`vendor_staged`).
 //
-// Precedence in `calendarDays`: user override > vendor_staged > auto >
+// Precedence in `calendarDaysHeavy`: user override > vendor_staged > auto >
 // auto_fallback > none. Stages arrive already mapped to our `stages4` words
 // (each adapter owns its one mapping function), and are banked in
 // `vendor_sleep_epoch`, never in `observation`. A night is only used when
 // [vendorNightRejection] has nothing against it; otherwise it stays stored and
 // unused.
 
-import 'dart:math' as math;
 
-import 'package:openstrap_analytics/onehz.dart' as ana;
 
-import '../data/coverage_resolver.dart' show OwnedSpan, spanAt;
 
 /// One 30 s (or longer) epoch the band staged, in epoch seconds, half-open.
 class VendorEpoch {
@@ -329,4 +330,46 @@ ana.SleepSegmentation _staged(
     longestSleepRunSec: longest,
     confidence: confidence,
   );
+}
+
+
+/// Seconds per stage over a night's epochs — the unit every minute figure is
+/// built on.
+///
+/// Sum FIRST. Two neighbouring epochs can each be under a minute (30 s light +
+/// 30 s deep) and still make one, so a minute is only lost if the flooring
+/// happens before the addition. Non-positive spans are skipped rather than
+/// subtracting from a stage's total.
+Map<String, int> vendorStageSeconds(List<VendorEpoch> epochs) {
+  final secs = <String, int>{};
+  for (final e in epochs) {
+    final span = e.endSec - e.startSec;
+    if (span <= 0) continue;
+    secs[e.stage] = (secs[e.stage] ?? 0) + span;
+  }
+  return secs;
+}
+
+/// Whole minutes per stage, for the per-stage table.
+///
+/// Floored per stage ON PURPOSE: a stage whose own total is under a minute
+/// reads 0 m rather than claiming a minute it did not hold. The night's total
+/// is [vendorSleepMinutes], which sums the seconds first.
+Map<String, int> vendorStageMinutes(List<VendorEpoch> epochs) => {
+      for (final e in vendorStageSeconds(epochs).entries)
+        e.key: e.value ~/ 60,
+    };
+
+/// Whole minutes ASLEEP (every stage except wake) over a night.
+///
+/// The non-wake SECONDS are summed before the one `~/ 60`. Flooring each stage
+/// first drops a minute that 30 s light + 30 s deep really did contribute, so
+/// `duration_min` read short against the night's own window. Awake is excluded
+/// because this is time asleep, not time in bed.
+int vendorSleepMinutes(List<VendorEpoch> epochs) {
+  final secs = vendorStageSeconds(epochs);
+  return secs.entries
+          .where((e) => e.key != 'wake')
+          .fold<int>(0, (s, e) => s + e.value) ~/
+      60;
 }

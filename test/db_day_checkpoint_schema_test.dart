@@ -9,6 +9,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/compute/day_checkpoint_policy.dart' show kDayCheckpointFmt;
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -81,7 +82,7 @@ DayCheckpoint _cp(String day, int v,
     DayCheckpoint(
       dayId: day,
       algoVersion: v,
-      fmt: 1,
+      fmt: kDayCheckpointFmt,
       ctxSig: 'sig-$day',
       cpRecTs: at,
       revVec: Uint8List.fromList([0, 0, 0, 5]),
@@ -169,7 +170,7 @@ void main() {
       final back = (await LocalDb.dayCheckpoint('2026-10-06', 101))!;
       expect(back.dayId, '2026-10-06');
       expect(back.algoVersion, 101);
-      expect(back.fmt, 1);
+      expect(back.fmt, kDayCheckpointFmt);
       expect(back.ctxSig, 'sig-2026-10-06');
       expect(back.cpRecTs, 100);
       expect(back.revVec, cp.revVec);

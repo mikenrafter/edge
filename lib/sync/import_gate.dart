@@ -31,7 +31,7 @@ import 'package:flutter/foundation.dart';
 import '../data/db.dart';
 import '../data/import_journal.dart';
 
-enum ImportBlock { importRunning, importPending, drainInProgress }
+enum ImportBlock { importRunning, importPending, drainInProgress, maintenance }
 
 sealed class SyncPermit {
   const SyncPermit();
@@ -46,9 +46,11 @@ final class SyncRefused extends SyncPermit {
   final ImportBlock reason;
 
   /// The sentence a status line shows.
-  String get message => reason == ImportBlock.drainInProgress
-      ? 'Waiting for the sync to finish before importing'
-      : 'Waiting for the import to finish';
+  String get message => switch (reason) {
+        ImportBlock.drainInProgress => 'Waiting for the sync to finish before importing',
+        ImportBlock.maintenance => 'Waiting for database maintenance to finish',
+        _ => 'Waiting for the import to finish',
+      };
 }
 
 sealed class ImportAdmission {
@@ -62,7 +64,9 @@ final class ImportAdmitted extends ImportAdmission {
 final class ImportDeferred extends ImportAdmission {
   const ImportDeferred(this.reason);
   final ImportBlock reason;
-  String get message => 'A sync is still writing; try the import again in a moment';
+  String get message => reason == ImportBlock.maintenance
+      ? 'Database maintenance is still running; try the import again in a moment'
+      : 'A sync is still writing; try the import again in a moment';
 }
 
 class ImportGate {
@@ -85,6 +89,7 @@ class ImportGate {
   static bool _pending = false;
   static final Set<Object> _drains = {};
   static Completer<void>? _drained;
+  static Completer<void>? _maintenance;
   static final Map<String, int> refusals = {};
 
   /// What a status line reads; changes only when the answer does.
@@ -104,7 +109,29 @@ class ImportGate {
       ? const SyncRefused(ImportBlock.importRunning)
       : _pending
           ? const SyncRefused(ImportBlock.importPending)
-          : const SyncAllowed();
+          : _maintenance != null
+              ? const SyncRefused(ImportBlock.maintenance)
+              : const SyncAllowed();
+
+  /// Claim optional DB maintenance without waiting behind a drain or import.
+  /// The caller also checks HeadlessSyncGate.busy before this synchronous
+  /// claim. New drains/headless wakes refuse through [check]; an import waits
+  /// in [beginImport]. Release only AFTER the maintenance connection closes.
+  static bool tryBeginMaintenance() {
+    if (_imports > 0 || _pending || _drains.isNotEmpty || _maintenance != null) {
+      return false;
+    }
+    _maintenance = Completer<void>();
+    _publish();
+    return true;
+  }
+
+  static void endMaintenance() {
+    final done = _maintenance;
+    _maintenance = null;
+    done?.complete();
+    _publish();
+  }
 
   static void _publish() {
     final p = _now();
@@ -133,6 +160,15 @@ class ImportGate {
     Duration wait = const Duration(seconds: 30),
   }) async {
     enter();
+    final maintenance = _maintenance;
+    if (maintenance != null) {
+      try {
+        await maintenance.future.timeout(wait);
+      } on TimeoutException {
+        leave();
+        return const ImportDeferred(ImportBlock.maintenance);
+      }
+    }
     if (_drains.isEmpty) return const ImportAdmitted();
     final done = _drained ??= Completer<void>();
     try {
@@ -184,6 +220,7 @@ class ImportGate {
     _pending = false;
     _drains.clear();
     _drained = null;
+    _maintenance = null;
     refusals.clear();
     state.value = const SyncAllowed();
   }

@@ -269,8 +269,8 @@ void main() {
           reason: 'the plan the run applies is built by planNow');
       final apply = window;
       final drain = run.indexOf('await engine.runSync();');
-      final armBefore = run.indexOf("_headlessArm(engine, 'before the drain')");
-      final rearm = run.indexOf("_headlessArm(engine, 'after the drain')");
+      final armBefore = run.indexOf("rearmHeadlessAlarm(engine, paired, phase: 'before the drain')");
+      final rearm = run.indexOf("rearmHeadlessAlarm(engine, paired, phase: 'after the drain')");
       final derive = run.indexOf('await headlessDeriveAfterSync();');
       expect(window, greaterThan(0));
       expect(armBefore, greaterThan(apply),

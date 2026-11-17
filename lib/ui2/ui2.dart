@@ -1,10 +1,3 @@
-// The one barrel for the one design system.
-//
-// The system this replaces shipped two — `lib/ui/design/` and `lib/ui/kit/` —
-// re-exported from a single file, so a screen could pick either and no import
-// told you which. There is exactly one here, and nothing outside lib/ui2
-// should import its parts individually.
-
 export 'app_shell.dart';
 export 'as_of.dart';
 export 'chart_annotations.dart';
@@ -35,7 +28,16 @@ export 'theme.dart';
 export 'today_refresh.dart';
 export 'trend.dart';
 export 'water_display.dart';
-
 export 'skeleton/async_section.dart';
-
 export 'remembered_expansion.dart';
+
+// The one barrel for the one design system.
+//
+// The system this replaces shipped two — `lib/ui/design/` and `lib/ui/kit/` —
+// re-exported from a single file, so a screen could pick either and no import
+// told you which. There is exactly one here, and nothing outside lib/ui2
+// should import its parts individually.
+
+
+
+

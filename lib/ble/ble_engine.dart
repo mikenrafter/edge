@@ -1,3 +1,23 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'package:clock/clock.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:openstrap_protocol/openstrap_protocol.dart';
+import '../data/db.dart';
+import '../data/models.dart';
+import '../gestures/strap_event.dart';
+import '../platform/tasker_bridge.dart';
+import '../sync/import_gate.dart';
+import '../sync/paired_device.dart' show cleanDeviceLabel;
+import '../sync/sync_policy.dart';
+import 'adapters/_registry.dart';
+import 'android_native_name.dart';
+import 'ble_state.dart';
+part 'transport.dart';
+part 'session_stats.dart';
+
 // BLE engine — the WHOOP 4.0 (Harvard) BLE transport, on flutter_blue_plus.
 //
 // REWRITTEN TRANSPORT (feat/ble-rewrite). The protocol/byte layer is unchanged:
@@ -35,26 +55,8 @@
 // fires a debounced `onDataStored` callback after records are persisted (coalescing
 // bursts), so the compute trigger survives the move to continuous listening.
 
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-import 'package:clock/clock.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:openstrap_protocol/openstrap_protocol.dart';
 
-import '../data/db.dart';
-import '../data/models.dart';
-import '../gestures/strap_event.dart';
-import '../platform/tasker_bridge.dart';
-import '../sync/import_gate.dart';
-import '../sync/paired_device.dart' show cleanDeviceLabel;
-import '../sync/sync_policy.dart';
-import 'adapters/_registry.dart';
-import 'android_native_name.dart';
-import 'ble_state.dart';
 
-part 'transport.dart';
 
 // Little-endian u32 reader. The package keeps `u32` private, and the engine only
 // needs it to peek the record-counter / ts out of a raw historical frame header.
@@ -311,6 +313,10 @@ Sample? sampleFromGen5Historical(Gen5HistoricalRecord? g) {
     // enum: a stored name freezes a meaning, a stored 2-bit code does not.
     // Corroboration only, never a stage — see Sample.bandSleepState.
     bandSleepState: g.sleepStateRawNibble,
+    // Raw candidate byte, never a percentage — the encoding is not pinned and
+    // no ground truth exists, so this is carried for diagnostics only and is
+    // not persisted (see Sample.spo2CandidateRaw).
+    spo2CandidateRaw: g.spo2CandidateRaw,
   );
 }
 
@@ -499,7 +505,13 @@ class SyncReport {
   final int records;
   final int batches;
   final bool complete;
-  SyncReport(this.records, this.batches, this.complete);
+  SyncReport(this.records, this.batches, this.complete, {this.ended = false});
+
+
+  /// The awaited task itself hit its terminal (abort boundary) — it is over,
+  /// even if the engine has not released the offload claim yet (the release
+  /// runs after the abort write). A caller must not wait on it again.
+  final bool ended;
 }
 
 enum _HpsTerminalKind {
@@ -522,6 +534,12 @@ enum _HpsTerminalKind {
   /// task ends through the one abort boundary and the band keeps its
   /// checkpoint for the ordinary sync that follows the reading.
   preempted,
+
+  /// A burst banked nothing durable and its HISTORY_END was refused
+  /// ([TrimAckVerdict.blockedNoDurableProgress]). No result is sent for that
+  /// burst, so without ending the task the band re-offers the marker every
+  /// ~2.5 s indefinitely and the idle watchdog never gets to fire.
+  noDurableProgress,
 }
 
 class _HpsTerminal {
@@ -542,271 +560,11 @@ class _HpsTerminal {
   });
 }
 
-class _SessionPacketCounts {
-  final Map<int, int> dataPacketCountsByRevision;
-  final int revision16Count;
-  final int consoleLogPacketCount;
-  final int unknownRevisionCount;
-  final int revision19Count;
-  final int revision22Count;
-  final int revision25Count;
-  final int revision26Count;
-
-  const _SessionPacketCounts({
-    required this.dataPacketCountsByRevision,
-    required this.revision16Count,
-    required this.consoleLogPacketCount,
-    required this.unknownRevisionCount,
-    required this.revision19Count,
-    required this.revision22Count,
-    required this.revision25Count,
-    required this.revision26Count,
-  });
-
-  static const zero = _SessionPacketCounts(
-    dataPacketCountsByRevision: <int, int>{},
-    revision16Count: 0,
-    consoleLogPacketCount: 0,
-    unknownRevisionCount: 0,
-    revision19Count: 0,
-    revision22Count: 0,
-    revision25Count: 0,
-    revision26Count: 0,
-  );
-}
-
-class _SessionGapSummary {
-  final int intraBurst;
-  final int crossBurst;
-  final int missing;
-  final int backward;
-
-  const _SessionGapSummary({
-    required this.intraBurst,
-    required this.crossBurst,
-    required this.missing,
-    required this.backward,
-  });
-
-  static const zero = _SessionGapSummary(
-    intraBurst: 0,
-    crossBurst: 0,
-    missing: 0,
-    backward: 0,
-  );
-
-  bool get isEmpty =>
-      intraBurst == 0 && crossBurst == 0 && missing == 0 && backward == 0;
-
-  @override
-  String toString() {
-    if (isEmpty) return 'none';
-    final parts = <String>[];
-    if (intraBurst > 0) parts.add('intraBurst=$intraBurst');
-    if (crossBurst > 0) parts.add('crossBurst=$crossBurst');
-    if (missing > 0) parts.add('missing=$missing');
-    if (backward > 0) parts.add('backward=$backward');
-    return '{${parts.join(', ')}}';
-  }
-}
-
 /// All per-connection resources. A fresh one is built on every connect and torn
 /// down (every subscription + timer cancelled, characteristics nulled) on every
 /// disconnect — so nothing bleeds across reconnects.
 /// How one live-stream transition ended on the wire.
 enum _LiveWrite { ok, failed, stale }
-
-class _Session {
-  final BluetoothDevice device;
-  BluetoothCharacteristic? cmdTo;
-
-  /// Set synchronously at the top of `_teardownSession`, before any await.
-  /// The session is still `connected` until its own teardown runs, so
-  /// anything holding a reference to it — a live-stream pass that just
-  /// discarded a stale completion, a receive callback already in flight —
-  /// checks this to stay off the link being closed. Ingress is frozen on it.
-  bool closing = false;
-
-  /// Which registered band this link speaks. Defaults to gen4 (WHOOP 4) and is
-  /// pinned once during service discovery via [applyBand] — everything that
-  /// differs by band (frame header/CRC, GATT UUIDs, command envelope, history
-  /// ACK, record field offsets) reads from here.
-  BandEntry entry = kWhoopGen4;
-
-  /// This link's frame envelope profile. Owned by [entry]; kept as a getter
-  /// because the wire format is `protocol`'s to define, not edge's.
-  ///
-  /// Non-null by construction: this engine only ever drives framed bands
-  /// ([kFramedBands] is what the scan and the discovery match filter on), and
-  /// [applyBand] asserts it at the one place an entry gets pinned.
-  BandProfile get band => entry.wire!;
-
-  final Map<String, FrameReassembler> asm = {
-    'cmd_from': FrameReassembler(),
-    'events': FrameReassembler(),
-    'data': FrameReassembler(),
-  };
-
-  /// Pin this session's band and rebuild the reassemblers with the matching
-  /// header shape. Called once, at discovery, before any frame is fed.
-  void applyBand(BandEntry e) {
-    final w = e.wire;
-    // A notify-only sensor has no envelope to reassemble and no command
-    // characteristic to write. It reaches the phone through `hrs_link.dart`,
-    // never through this engine — see the registry header.
-    assert(w != null, 'the offload engine only drives framed bands, not ${e.id}');
-    entry = e;
-    asm['cmd_from'] = FrameReassembler(profile: w!);
-    asm['events'] = FrameReassembler(profile: w);
-    asm['data'] = FrameReassembler(profile: w);
-  }
-  final List<StreamSubscription> subs = [];
-  Timer? heartbeat;
-  // Session-owned timers; a disconnect cancels them.
-  Timer? keepAlive; // 30s: liveness watchdog + battery poll + realtime re-arm
-  Timer? periodicBackfill; // 900s: re-trigger the historical offload
-  Timer? idleWatchdog; // 60s: strap went silent mid-offload
-  Timer? historicalRetry; // explicit abort→retry settle
-  /// Armed once opcode 22 went out; ended by the band's first answer for that
-  /// task (see [FirstStartWatchdogPolicy]). The idle watchdog only arms on
-  /// received traffic, so without this an unanswered request stays "active"
-  /// — refusing every later trigger — for as long as the link lives.
-  Timer? firstStartWatchdog;
-  /// First-START retries this session ([kHistoryNoStartRetriesPerSession]).
-  /// Reset by an accepted HISTORY_START.
-  int noStartRetries = 0;
-  /// Banks the foreign buffer once another client's transfer goes quiet
-  /// ([BleEngine._flushForeignBuffer]); re-armed per drained batch with a
-  /// foreign record in it.
-  Timer? foreignFlushTimer;
-  /// Re-requests history once another client's transfer goes quiet, after a
-  /// claim of ours stood down for it ([BleEngine._armForeignRetrigger]).
-  Timer? foreignRetrigger;
-  /// History markers seen for transfers this engine did not request
-  /// (diagnostics; the first one logs).
-  int foreignMarkersSeen = 0;
-  /// The history task generation THIS link requested (opcode 22 / INIT), or
-  /// null while no task of ours is open. Compared to the engine's task
-  /// generation, so every terminal that bumps it ends ownership without a
-  /// reset call; bound to the session, so a reconnect starts with none.
-  int? ownedTaskGen;
-  /// The generation whose HISTORY_COMPLETE has ARRIVED on this link (set at
-  /// receipt, before its handler runs). Until the next claim or abort bumps
-  /// the generation, an END may be that task re-offered.
-  int? completeReceivedGen;
-  /// Our last task on this link is over (its COMPLETE arrived, or it ended
-  /// by abort) and no new request of ours has gone out since. Until one
-  /// does, the band may still re-offer that task's END or deliver its last
-  /// in-flight records — across a claim's pre-request waits too — so they
-  /// must not read as another client starting.
-  bool ownTaskTail = false;
-  /// Another client's transfer on THIS link, judged from the markers we did
-  /// not request. Dies with the link like the rest of the ownership state.
-  final ForeignHistoryWindow foreignHistory = ForeignHistoryWindow();
-  /// No further history task may start on this link
-  /// ([BleEngine.endHistoryForLink]): its owner is about to write
-  /// configuration and close it. Session-scoped, so the next link starts
-  /// unheld without a reset path to forget.
-  bool historyHeld = false;
-  /// Abort→retry attempts THIS session. The cycle re-arms the 60 s idle
-  /// watchdog, which can re-fire the abort, so without a cap a band that
-  /// connects but never drains cycles at a fixed period for the life of the
-  /// session — every other retry in this engine is bounded, this one was not.
-  int historicalRetries = 0;
-  // Starts false: we are NOT connected until connect() resolves / the OS
-  // connectionState stream reports `connected`. (It was previously initialised
-  // true, which combined with the stream replaying a spurious initial
-  // `disconnected` aborted setup before the bond-triggering write.)
-  bool connected = false;
-  // True once we've actually observed a `connected` state. Used to ignore the
-  // initial `disconnected` that flutter_blue_plus replays on listen.
-  bool sawConnected = false;
-  bool intentionalClose = false;
-  /// Whether the doc-01 charging follow-up (GET_BATTERY_PACK_INFO) has already
-  /// been launched for THIS session. Session-scoped so a second bootstrap on
-  /// the same link cannot start a second retry loop against the same band.
-  bool batteryPackFollowUpStarted = false;
-
-  /// Terminal `Stuck` latch: set when a burst has
-  /// failed validation [kBurstValidationAttemptLimit] times and the abort went
-  /// out. From then on this session's history is OVER — no further drain
-  /// trigger, and no re-validating a burst the band keeps re-offering.
-  /// "Failed validation 15 → terminal Stuck, no same-session retry;
-  /// continuation comes from a later connection or scheduler event." Being
-  /// session-scoped is the whole mechanism: a reconnect builds a new [_Session]
-  /// and the next connection drains normally from the band's checkpoint.
-  bool historyStuck = false;
-
-  /// When [historyStuck] latched. Drives [historyStuckActive].
-  DateTime? historyStuckAt;
-
-  /// Whether the latch is still refusing work.
-  ///
-  /// Read this, never [historyStuck] directly, on any path that decides whether
-  /// to refuse a drain, drop a marker or suppress a terminal. [historyStuck]
-  /// stays true as a session diagnostic ("this connection hit Stuck at least
-  /// once") after the window has passed.
-  bool get historyStuckActive {
-    final at = historyStuckAt;
-    if (!historyStuck || at == null) return false;
-    return DateTime.now().difference(at) < kHistoryStuckCooldown;
-  }
-
-  /// Markers dropped, and drain triggers refused, by [historyStuck]
-  /// (diagnostics). Each kind logs its FIRST occurrence and then stays silent:
-  /// the band re-offers roughly every 2.5 s, and the whole point of the latch
-  /// is to stop that from generating traffic and log noise.
-  int stuckMarkersDropped = 0;
-  int stuckRefreshesRefused = 0;
-
-  /// The CURRENT history task ended through the abort boundary
-  /// ([BleEngine._endHistoryTaskWithAbort]). While set, straggler markers and
-  /// frames from that task are inert: they must not re-arm the idle watchdog,
-  /// re-raise `_offloadActive` or trigger another abort — a duplicate
-  /// HISTORY_END used to keep a wedged task alive indefinitely. Cleared when
-  /// the next task is explicitly claimed ([BleEngine._startHistoricalRefresh]);
-  /// unlike [historyStuck] it does NOT refuse that claim, so a later
-  /// explicit/scheduled task starts cleanly.
-  bool historyTaskEnded = false;
-
-  /// Markers dropped by [historyTaskEnded] (diagnostics; first one logs).
-  int endedMarkersDropped = 0;
-
-  /// HISTORY_END markers dropped as doc-05 duplicates because they arrived
-  /// before the current task's first HISTORY_START (diagnostics; first logs).
-  int preStartHistoryEndsDropped = 0;
-
-  _Session(this.device);
-
-  void cancelFirstStartWatchdog() {
-    firstStartWatchdog?.cancel();
-    firstStartWatchdog = null;
-  }
-
-  Future<void> teardown() async {
-    heartbeat?.cancel();
-    heartbeat = null;
-    keepAlive?.cancel();
-    keepAlive = null;
-    periodicBackfill?.cancel();
-    periodicBackfill = null;
-    idleWatchdog?.cancel();
-    idleWatchdog = null;
-    historicalRetry?.cancel();
-    historicalRetry = null;
-    cancelFirstStartWatchdog();
-    foreignFlushTimer?.cancel();
-    foreignFlushTimer = null;
-    foreignRetrigger?.cancel();
-    foreignRetrigger = null;
-    for (final s in subs) {
-      await s.cancel();
-    }
-    subs.clear();
-    cmdTo = null;
-    connected = false;
-  }
-}
 
 /// How [BleEngine._connectGen5Official] ended.
 enum _Gen5ConnectOutcome {
@@ -974,7 +732,7 @@ class _FbpGattOps implements GattBootstrapOps {
   }
 }
 
-class BleEngine implements AlarmBandWriter {
+class BleEngine implements AlarmBandWriter, AlarmEchoWriter {
   final SampleSink onRecord;
   final StateSink onState;
   final LogSink? log;
@@ -1795,9 +1553,10 @@ class BleEngine implements AlarmBandWriter {
     bool listening = false,
     bool? liveReady,
     bool armDrains = true,
+    String remoteId = 'AA:BB:CC:DD:EE:FF',
   }) {
     final session = _Session(
-      BluetoothDevice(remoteId: const DeviceIdentifier('AA:BB:CC:DD:EE:FF')),
+      BluetoothDevice(remoteId: DeviceIdentifier(remoteId)),
     );
     session.connected = true;
     session.sawConnected = true;
@@ -1967,15 +1726,14 @@ class BleEngine implements AlarmBandWriter {
 
   /// Age the clock-suspicion start past [ClockPolicy.suspectGraceSeconds].
   ///
-  /// The grace window is 12 real hours off a monotonic stopwatch, so the only
-  /// alternative to a seam here is not covering post-grace behaviour at all —
-  /// and post-grace is precisely where history un-defers onto a strap RTC we
-  /// have just concluded is the fast one.
+  /// The grace window is 12 real hours, aged off the strap/wall/monotonic
+  /// clocks together, so the only alternative to a seam here is not covering
+  /// post-grace behaviour at all — and post-grace is precisely where history
+  /// un-defers onto a strap RTC we have just concluded is the fast one.
   @visibleForTesting
   void debugExpireClockSuspicion() {
-    if (_phoneClockSuspectSince == null) return;
-    _phoneClockSuspectSince =
-        _monotonicSecs() - ClockPolicy.suspectGraceSeconds - 1;
+    if (_phoneClockSuspectElapsed == null) return;
+    _phoneClockSuspectElapsed = ClockPolicy.suspectGraceSeconds + 1.0;
   }
 
   /// Told by AppState on every foreground/background transition. Drives the
@@ -2339,7 +2097,10 @@ class BleEngine implements AlarmBandWriter {
   bool _bootstrapClockWrite = false;
   // Proactive RTC recheck timestamp for long-lived connections — see
   // kRtcReverifyIntervalSeconds. Every other clock recheck is symptom-driven.
-  DateTime? _lastClockVerifyAt;
+  // _wallSecs(), not the stopwatch: the stopwatch stops while the phone is
+  // suspended, so a mostly-asleep phone would push the re-verify out by days.
+  // A backward wall step is handled by rtcReverifyDue.
+  double? _lastClockVerifyAt;
   int? _sessionOldestUnix; // strap's banked-data window (GET_DATA_RANGE)
   int? _sessionNewestUnix;
   Map<String, dynamic>? _lastPagesBehind;
@@ -2363,21 +2124,14 @@ class BleEngine implements AlarmBandWriter {
   // history offload is DEFERRED (not drained-and-trimmed) until the clocks agree.
   // See ClockPolicy.phoneClockSuspect and _startHistoricalRefresh.
   bool _phoneClockSuspect = false;
-  /// MONOTONIC seconds ([_monotonicSecs]) at which the suspicion started — not a
-  /// wall `DateTime`. The whole point of this state is that the wall clock is
-  /// not trusted: timing the grace window off `DateTime.now()` lets the very
-  /// jump we are waiting for (the phone stepping forward over NTP, possibly
-  /// still >1 day behind the strap) expire the window instantly and hand back
-  /// permission to drain-and-trim under a clock we still don't trust.
-  double? _phoneClockSuspectSince;
   bool get historyPausedForClock => _deferForClock;
+
   /// Defer history only while the disagreement is still young. A slow phone
   /// re-syncs over NTP in minutes; one that persists past the grace window is a
   /// strap RTC running fast, and deferring forever would stall sync for good.
   bool get _deferForClock =>
       _phoneClockSuspect &&
-      !ClockPolicy.suspectGraceExpired(
-          _phoneClockSuspectSince, _monotonicSecs());
+      !ClockPolicy.suspectGraceExpired(0.0, _suspectElapsedNow());
   int _clockPausedOffloads = 0; // diagnostics: offloads deferred for this reason
   /// Request/response correlation for every command this engine awaits
   ///. Replaces the two ad-hoc one-shot completers this file used to
@@ -2432,7 +2186,13 @@ class BleEngine implements AlarmBandWriter {
   // Run-state for a chain of auto-continued offload rounds: how many
   // consecutive rounds banked nothing, and when the chain started.
   final AutoContinueRun _autoContinue = AutoContinueRun();
-  double _lastBackfillAt = 0; // monotonic-ish secs of the last offload trigger
+  // _wallSecs() of the last offload trigger; null = none this connection.
+  // Wall time, not the stopwatch: the stopwatch stops while the phone sleeps,
+  // so after a night locked the morning catch-up and the sync button would
+  // see only the few awake seconds since the stamp and be floored. A backward
+  // wall step (NTP correcting a fast phone) is absorbed by BackfillPolicy
+  // treating a negative elapsed as the floor being spent.
+  double? _lastBackfillAt; // monotonic-ish secs of the last offload trigger
   double? _lastHistoricalSendAt; // last actual SEND_HISTORICAL_DATA wall time
   int _emptyStreak = 0; // consecutive empty offloads (BackfillPolicy backoff)
   // ONE shared per-record gate (plausibility + frontier + drop counter) used by
@@ -2796,6 +2556,7 @@ class BleEngine implements AlarmBandWriter {
         strapNeedsReboot: state.strapNeedsReboot,
         syncClockLost: state.syncClockLost,
         bondRefusals: state.bondRefusals,
+        bandFirmware: state.firmware,
       );
 
   /// Read the adapter state without hanging: `unknown` is the pre-init value and
@@ -2804,11 +2565,7 @@ class BleEngine implements AlarmBandWriter {
 
   Future<BleBlocker?> _detectBlocker() async {
     try {
-      final s = await FlutterBluePlus.adapterState
-          .firstWhere((s) => s != BluetoothAdapterState.unknown)
-          .timeout(_blockerProbe,
-              onTimeout: () => BluetoothAdapterState.unknown);
-      return classifyBleBlocker(adapterState: s.name);
+      return classifyBleBlocker(adapterState: await _readAdapterState());
     } catch (e) {
       return classifyBleBlocker(error: e);
     }
@@ -2922,6 +2679,23 @@ class BleEngine implements AlarmBandWriter {
     );
 
     try {
+      // ASK authorizes the accessory before FBP creates its own central. That
+      // central initially reports Unknown even with the radio on. Calling
+      // connect immediately makes Darwin reject it with generic "Bluetooth
+      // must be turned on" text, forcing an unnecessary user retry.
+      final adapter = await _readAdapterState();
+      if (adapter != 'on') {
+        final blocker = classifyBleBlocker(adapterState: adapter);
+        if (blocker != null) {
+          _noteBlocker(blocker);
+        } else {
+          _clearBlocker();
+        }
+        _log('[BLE] connect not started: adapter state is $adapter.');
+        await _failConnect();
+        return false;
+      }
+      _clearBlocker();
       await device.connect(
         timeout: const Duration(seconds: 20),
         autoConnect: false,
@@ -2974,12 +2748,10 @@ class BleEngine implements AlarmBandWriter {
         try {
           await device.createBond();
           _log('Bonded (or already bonded).');
-          // A clean bond clears the refusal streak + any give-up latch, so a
-          // later run of refusals can trip the pause again, and un-pauses the
-          // auto-reconnect loop.
-          _bondGiveUp.bondSucceeded();
-          state.bondRefusals = 0;
-          state.autoReconnectPaused = false;
+          // Leave the refusal streak and any auto-reconnect pause alone: an
+          // existing bond the band rejects at notification registration
+          // "succeeds" here on every reconnect. Only a command reply
+          // ([_clearRepairGuideOnCommandReply]) proves the key works.
         } catch (e) {
           // A failed bond is NOT benign: the strap gates every command behind
           // encryption, so downstream GATT ops will fail confusingly (writes
@@ -2989,18 +2761,7 @@ class BleEngine implements AlarmBandWriter {
           _log('BOND FAILED: $e — encrypted commands will be silently dropped '
               'by the band. Remove the bond in system Bluetooth settings and '
               're-pair.');
-          state.needsRepairGuide = true;
-          state.bondRefusals++;
-          // After a run of consecutive refusals, stop the auto-reconnect loop
-          // (it would otherwise pin the radio + drain the battery on a band that
-          // will never accept the bond) and surface the re-pair guide. A manual
-          // user connect still runs createBond, so a successful re-pair recovers.
-          if (_bondGiveUp.bondRefused()) {
-            state.autoReconnectPaused = true;
-            _log('[RECONNECT] bond-refusal give-up (${_bondGiveUp.consecutive}) '
-                '— pausing auto-reconnect; re-pair required.');
-          }
-          onState(state);
+          _recordBondRefusal();
         }
       }
 
@@ -3070,6 +2831,9 @@ class BleEngine implements AlarmBandWriter {
       return await _finishConnect(session);
     } catch (e) {
       _log('connect setup failed: $e');
+      if (e is FlutterBluePlusException && isLinkAuthRefusal(e.code)) {
+        _recordBondRefusal();
+      }
       await _failConnect();
       return false;
     }
@@ -3083,17 +2847,36 @@ class BleEngine implements AlarmBandWriter {
   Future<bool> _finishConnect(_Session session) async {
     try {
       // Fresh clock verification stamp — see kRtcReverifyIntervalSeconds.
-      _lastClockVerifyAt = DateTime.now();
+      _lastClockVerifyAt = _wallSecs();
       // Per-connection policy reset. Marginal-radio + post-bond-loop are NOT reset
       // here — they count consecutive bad cycles across reconnects and self-reset on
-      // a healthy disconnect. Empty-sync + stuck are per-connection.
+      // a healthy disconnect. Empty-sync is per-connection. Stuck is per band:
+      // the liveness fuse reconnects a silent link every ~2 min, so a
+      // per-connection reset never let its 10 min observation finish. A real
+      // frontier advance resets it on its own, and so does a long time offline
+      // (the band wasn't being asked then).
       _emptySync = EmptySyncTracker();
-      _stuckStrap = StuckStrapDetector();
+      final bandId = session.device.remoteId.str;
+      final down = _linkDownAt;
+      final bandChanged = bandId != _stuckStrapBand;
+      if (bandChanged ||
+          (down != null &&
+              _monotonicSecs() - down > kStuckOfflineResetSeconds)) {
+        _stuckStrap = StuckStrapDetector();
+        _stuckStrapBand = bandId;
+      }
+      // Band-specific fault flags belong to the band that raised them: left
+      // set, band A's would name band B's 50.43 firmware lock (bandStatusFor)
+      // until band B banked records. A same-band reconnect keeps them.
+      if (bandChanged) {
+        state.strapNeedsReboot = false;
+        state.syncClockLost = false;
+      }
       _frameCorruption = FrameCorruptionDetector();
       _crcFailuresThisSession = 0;
       _burstMismatchStreak = 0;
       _autoContinue.end();
-      _lastBackfillAt = 0;
+      _lastBackfillAt = null;
       _successfulBursts = 0;
       // _noDurableProgress is deliberately NOT reset here — like _marginalRadio
       // and _postBondLoop above, it counts consecutive bad cycles ACROSS
@@ -3126,6 +2909,7 @@ class BleEngine implements AlarmBandWriter {
       // banked. The startless HISTORY_END is expected, not hypothetical: the
       // historyEnd branch has its own `history_end_while_not_syncing` terminal.
       _burstDroppedAtStart = 0;
+      _burstDroppedBelowFloorAtStart = 0;
       // Re-seed the counter-regression watch from the durable counter_hw
       // cursor so a reboot is caught even across the reconnect it usually
       // causes, instead of only within a single unbroken connection.
@@ -3222,6 +3006,9 @@ class BleEngine implements AlarmBandWriter {
       return ok;
     } catch (e) {
       _log('connect setup failed: $e');
+      if (e is FlutterBluePlusException && isLinkAuthRefusal(e.code)) {
+        _recordBondRefusal();
+      }
       await _failConnect();
       return false;
     }
@@ -3488,29 +3275,15 @@ class BleEngine implements AlarmBandWriter {
             await gatt.createBond();
             _log('Bonded.');
           }
-          // A clean bond clears the refusal streak + any give-up latch, so a
-          // later run of refusals can trip the pause again, and un-pauses the
-          // auto-reconnect loop.
-          _bondGiveUp.bondSucceeded();
-          state.bondRefusals = 0;
-          state.autoReconnectPaused = false;
+          // Leave the refusal streak and any auto-reconnect pause alone: an
+          // existing bond the band rejects at notification registration
+          // "succeeds" here on every reconnect. Only a command reply
+          // ([_clearRepairGuideOnCommandReply]) proves the key works.
         } catch (e) {
           _log('BOND FAILED: $e — bootstrap stops here (no subscriptions, no '
               'HELLO, no READY). Remove the bond in system Bluetooth settings '
               'and re-pair.');
-          state.needsRepairGuide = true;
-          state.bondRefusals++;
-          // After a run of consecutive refusals, stop the auto-reconnect loop
-          // (it would otherwise pin the radio + drain the battery on a band
-          // that will never accept the bond) and surface the re-pair guide. A
-          // manual user connect still runs the bond, so a successful re-pair
-          // recovers.
-          if (_bondGiveUp.bondRefused()) {
-            state.autoReconnectPaused = true;
-            _log('[RECONNECT] bond-refusal give-up (${_bondGiveUp.consecutive}) '
-                '— pausing auto-reconnect; re-pair required.');
-          }
-          onState(state);
+          _recordBondRefusal();
           await _failConnect();
           return _Gen5ConnectOutcome.failed;
         }
@@ -3550,6 +3323,9 @@ class BleEngine implements AlarmBandWriter {
         } catch (e) {
           _log('[BOOT gen5] required notification registration failed '
               '($role): $e — connection failed.');
+          if (e is FlutterBluePlusException && isLinkAuthRefusal(e.code)) {
+            _recordBondRefusal();
+          }
           await _failConnect();
           return false;
         }
@@ -3579,6 +3355,9 @@ class BleEngine implements AlarmBandWriter {
           : _Gen5ConnectOutcome.failed;
     } catch (e) {
       _log('connect setup failed: $e');
+      if (e is FlutterBluePlusException && isLinkAuthRefusal(e.code)) {
+        _recordBondRefusal();
+      }
       await _failConnect();
       return _Gen5ConnectOutcome.failed;
     }
@@ -3889,7 +3668,7 @@ class BleEngine implements AlarmBandWriter {
       // on the next reading if the phone genuinely is wrong.
       if (_phoneClockSuspect) {
         _phoneClockSuspect = false;
-        _phoneClockSuspectSince = null;
+        _phoneClockSuspectElapsed = null;
         _log('[CLOCK] SET_CLOCK accepted — clearing the phone-clock-suspect '
             'verdict from the pre-correction reading; history may drain.');
       }
@@ -3920,6 +3699,7 @@ class BleEngine implements AlarmBandWriter {
   Future<_DiscoveredBand?> _discoverBand(BluetoothDevice device) async {
     final services =
         await device.discoverServices().timeout(_serviceDiscoveryTimeout);
+    _logGattTable(services);
     // Pin the band from whichever registered service the peripheral exposes.
     // This drives the frame header/CRC, command envelope, ACK, and record
     // decode for the session.
@@ -4147,10 +3927,8 @@ class BleEngine implements AlarmBandWriter {
     // gets an independent periodic GET_CLOCK; the existing clock_epoch
     // response handler does the actual drift comparison + bounded re-issue.
     final lastVerify = _lastClockVerifyAt;
-    if (lastVerify == null ||
-        DateTime.now().difference(lastVerify).inSeconds >=
-            kRtcReverifyIntervalSeconds) {
-      _lastClockVerifyAt = DateTime.now();
+    if (rtcReverifyDue(_wallSecs(), lastVerify)) {
+      _lastClockVerifyAt = _wallSecs();
       _log('[SYNC] Periodic RTC re-verify (long-lived connection).');
       unawaited(getClock());
     }
@@ -4570,6 +4348,8 @@ class BleEngine implements AlarmBandWriter {
     String role,
   ) async {
     await c.setNotifyValue(true).timeout(_notifySetupTimeout);
+    _log('[GATT] subscribed $role ${c.uuid.str128} '
+        'isNotifying=${c.isNotifying}');
     session.subs.add(
       c.onValueReceived.listen((chunk) => _onChunk(session, role, chunk)),
     );
@@ -4581,6 +4361,7 @@ class BleEngine implements AlarmBandWriter {
     // tearing down: ingress is frozen from the first line of the teardown.
     if (_session != session || !session.connected || session.closing) return;
     _lastRx = DateTime.now();
+    session.rx.chunk(role, chunk);
     // A malformed/corrupt chunk (framer bug on an unusual firmware
     // revision) must not become an uncaught async error that silently
     // stops this characteristic's whole notification stream — degrade
@@ -4588,6 +4369,12 @@ class BleEngine implements AlarmBandWriter {
     // failure path in this file.
     try {
     for (final frame in session.asm[role]!.feed(chunk)) {
+      session.rx.frame(
+        role,
+        frame.decodable
+            ? '0x${frame.packetType.toRadixString(16)}'
+            : (frame.valid ? 'rev?' : 'crc'),
+      );
       if (frame.decodable) {
         _onFrame(role, frame, session);
       } else if (frame.valid) {
@@ -4675,9 +4462,12 @@ class BleEngine implements AlarmBandWriter {
     BluetoothCharacteristic c,
   ) async {
     await c.setNotifyValue(true).timeout(_notifySetupTimeout);
+    _log('[GATT] subscribed memfault ${c.uuid.str128} '
+        'isNotifying=${c.isNotifying}');
     session.subs.add(
       c.onValueReceived.listen((chunk) {
         if (_session != session || !session.connected) return;
+        session.rx.chunk('memfault', chunk);
         _onMemfaultChunk(chunk);
       }),
     );
@@ -4715,6 +4505,7 @@ class BleEngine implements AlarmBandWriter {
     }
     final wasIntentional = session.intentionalClose;
     session.connected = false;
+    _linkDownAt = _monotonicSecs();
     // A drain in flight must complete (with linkDown) immediately, not run out
     // its full budget.
     if (_offloadActive) {
@@ -4826,6 +4617,11 @@ class BleEngine implements AlarmBandWriter {
     if (!state.needsRepairGuide) return;
     state.needsRepairGuide = false;
     _postBondLoop.reset();
+    // The one place a refusal streak ends: a bond can "succeed" (or already
+    // exist) and still be refused at registration, a reply can't.
+    _bondGiveUp.bondSucceeded();
+    state.autoReconnectPaused = false;
+    state.bondRefusals = 0;
     onState(state);
     _log('[RECONNECT] band answered a command — clearing the re-pair guide.');
   }
@@ -4884,7 +4680,11 @@ class BleEngine implements AlarmBandWriter {
     bool allowDangerous = false,
     bool Function()? beforeTransport,
     DateTime? notAfter,
+    Object? flashToken,
   }) {
+    final flash = flashToken != null;
+    if (_flashLock && !flash) return Future.value(false);
+    if (flash) allowDangerous = true;
     // FOOTGUN(DATA_LOSS): destructive commands are refused before the write queue.
     // FOOTGUN(LINK_LOSS): reboot and power-cycle commands are refused here.
     // FOOTGUN(FIRMWARE): update-load commands are refused here.
@@ -4922,6 +4722,9 @@ class BleEngine implements AlarmBandWriter {
           _log('write skipped: it belongs to a session that is no longer live.');
           return false;
         }
+        // The claim can change while this write waits behind earlier writes.
+        if (_flashLock && !flash) return false;
+        if (flash && !identical(flashToken, _flashToken)) return false;
         if (beforeTransport != null && !beforeTransport()) return false;
         final hook = debugWriteHook;
         if (hook != null) return await hook(raw);
@@ -5391,9 +5194,12 @@ class BleEngine implements AlarmBandWriter {
     }
     final entry = _session?.entry ?? kWhoopGen4;
     final band = entry.wire!;
-    final decoded = _maybeAugmentClockEpoch(
+    final decoded = _maybeAugmentAlarmEcho(
       frame,
-      decodeFrame(frame, profile: band),
+      _maybeAugmentClockEpoch(
+        frame,
+        decodeFrame(frame, profile: band),
+      ),
     );
     // Debug-visibility ONLY (never persisted, never gated on): log the strap's
     // own console text (decoded by protocol's `parseConsoleLog`, wired into
@@ -5950,6 +5756,7 @@ class BleEngine implements AlarmBandWriter {
       final wallNow = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       if (BatteryPolicy.acceptsEventReading(batteryTs, wallNow)) {
         state.batteryPct = (f['battery_pct'] as num).toDouble();
+        _batterySession = _session;
         onState(state);
       }
     }
@@ -6081,6 +5888,7 @@ class BleEngine implements AlarmBandWriter {
       // the UI (the "?*" symptom).
       state.serial = cleanDeviceLabel(h.serial) ?? state.serial;
       state.batteryPct = h.batteryPct ?? state.batteryPct;
+      if (h.batteryPct != null) _batterySession = _session;
       state.wristOn = h.wristOn ?? state.wristOn;
       onState(state);
     }
@@ -6109,9 +5917,13 @@ class BleEngine implements AlarmBandWriter {
       // this publication either way.
       if (h.helloRevision == 1) {
         state.serial = cleanDeviceLabel(h.serial) ?? state.serial;
-        if (h.batteryPct != null) state.batteryPct = h.batteryPct!.toDouble();
+        if (h.batteryPct != null) {
+          state.batteryPct = h.batteryPct!.toDouble();
+          _batterySession = _session;
+        }
         state.charging = h.charging;
         state.wristOn = h.wristOn;
+        state.firmware = h.firmwareVersion;
         onState(state);
         unawaited(LocalDb.noteBandFirmware(h.firmwareVersion));
         _log('[HELLO gen5] serial=${h.serial} fw=${h.firmwareVersion} '
@@ -6124,10 +5936,18 @@ class BleEngine implements AlarmBandWriter {
         // battery figure as if they were read, which is the same imputation
         // the quarantine above exists to stop. The revision and the body
         // length are the two things true at any layout.
+        //
+        // Firmware is CLEARED, not kept: a version from an earlier HELLO must
+        // not survive to drive the 50.43 lock status for this one. The rev-3
+        // reader below stays diagnostics-only.
+        state.firmware = null;
         _log('[HELLO gen5] revision ${h.helloRevision} is not the revision-1 '
             'layout these offsets read (body ${h.rawHex.length ~/ 2}B) — '
             'serial, battery, charge and wrist state are NOT published or '
             'logged; the connection continues.');
+        _log('[HELLO gen5] rev${h.helloRevision} '
+            'fw=${(h.helloRevision == 3 ? gen5HelloRev3Firmware(h.rawHex) : null) ?? '?'} '
+            'body=${h.rawHex}');
       }
     }
     if (d.kind == 'realtime_hr') {
@@ -6426,6 +6246,7 @@ class BleEngine implements AlarmBandWriter {
     if (_sessionIsStale(session) || _historyTaskGen != taskGen) return;
     // The band can answer before the write future resolves.
     if (_historyTaskAnsweredGen == taskGen) return;
+    session.rx.openWindow();
     session.firstStartWatchdog = Timer(
       const Duration(seconds: kHistoryFirstStartTimeoutSeconds),
       () {
@@ -6458,6 +6279,7 @@ class BleEngine implements AlarmBandWriter {
     }
     _historyTaskAnsweredGen = _historyTaskGen;
     session.cancelFirstStartWatchdog();
+    session.rx.closeWindow();
   }
 
   /// The band never answered this task's SEND_HISTORICAL_DATA. End the task
@@ -6477,6 +6299,9 @@ class BleEngine implements AlarmBandWriter {
     _log('[SYNC] no answer to SEND_HISTORICAL_DATA within '
         '${kHistoryFirstStartTimeoutSeconds}s — ending the request with one '
         'abort${retry ? '; one retry after settle' : '; no further retry this session'}.');
+    _log('[DIAG] inbound since SEND_HISTORICAL_DATA: '
+        '${session.rx.closeWindow()} | session rx ${session.rx.totals()} '
+        'crc=$_crcFailuresThisSession revRejects=$_frameRevRejectsTotal');
     session.historicalRetry?.cancel();
     // The terminal owns everything else: historyTaskEnded latch, generation
     // bump, waiter release, abort write, offload release in its finally.
@@ -6485,7 +6310,9 @@ class BleEngine implements AlarmBandWriter {
       kind: _HpsTerminalKind.timeout,
       reason: 'no_history_start',
     );
-    if (!retry || _sessionIsStale(session)) return;
+    if (_sessionIsStale(session)) return;
+    await _observeStuckStrap();
+    if (!retry) return;
     _armHistoricalRetry(session, reason: 'no_history_start');
   }
 
@@ -7059,7 +6886,7 @@ class BleEngine implements AlarmBandWriter {
         // we never stored — the HR-gap / frozen-cursor failure mode after a
         // reconnect with a bad plausibility window. Keep the chunk on the
         // band; after a short streak, re-correlate the clock and bounce.
-        final runRemedy = _noDurableProgress.trimRefused();
+        final runRemedy = _noDurableProgress.trimRefused(burst: _burstSerial);
         _log(
           '[SYNC] HISTORY_END token=$tokenHex has no durable rows but the '
           'plausibility gate dropped samples this burst — NOT ACKing '
@@ -7115,7 +6942,20 @@ class BleEngine implements AlarmBandWriter {
               }),
             );
           }
+          return;
         }
+        // End the task. Nothing answers this HISTORY_END, so the band would
+        // otherwise re-offer it every ~2.5 s for as long as the link holds:
+        // each re-offer re-armed the idle watchdog (so it never fired), wrote
+        // another ledger row, and kept `_offloadActive` up, pausing battery
+        // polls and the keep-alive hook. The abort trims nothing — the band
+        // keeps the chunk and re-delivers it on the next task, which is the
+        // next burst the escalation counts.
+        await _endHistoryTaskWithAbort(
+          session: session,
+          kind: _HpsTerminalKind.noDurableProgress,
+          reason: 'no_durable_progress',
+        );
         return;
     }
   }
@@ -7212,6 +7052,8 @@ class BleEngine implements AlarmBandWriter {
       // live traffic from here.
       _historyAwaitingFirstStart = false;
       _burstDroppedAtStart = _recordGate.dropped;
+      _burstDroppedBelowFloorAtStart = _recordGate.droppedBelowFloor;
+      _burstSerial++;
       d?.rearm();
       // The one place a new burst is really declared — the only safe point to
       // clear the discarded-burst poison (see DrainController.beginBurst).
@@ -7276,6 +7118,8 @@ class BleEngine implements AlarmBandWriter {
       // kGateDroppedReason archives, but that path deliberately skips the
       // burst count for them, so they never entered currentBurstPacketCount.
       final droppedThisBurst = _recordGate.dropped - _burstDroppedAtStart;
+      final droppedBelowFloorThisBurst =
+          _recordGate.droppedBelowFloor - _burstDroppedBelowFloorAtStart;
       // Read before validateBurst, which zeroes the counter on a pass — this is
       // the attempt number, and the slack, the gate actually judged this burst
       // under.
@@ -7429,10 +7273,14 @@ class BleEngine implements AlarmBandWriter {
       //
       // This only decides whether the band may TRIM. Archives are committed in
       // the same transaction regardless — except on the no-progress path, which
-      // returns before commit precisely because there is nothing to bank.
-      final hadDurableRows = d.bufferedRecords > 0 ||
-          d.bufferedProgressArchives > 0 ||
-          d.bufferedEcgRaw > 0;
+      // returns before commit. A burst whose drops are ALL below the absolute
+      // floor is not that path: those records can never become plausible, so
+      // their archives are committed and the chunk trimmed (#601).
+      //
+      // Include rows a timeout/idle flush already committed in this burst.
+      final hadDurableRows = d.burstHasDurableProgress;
+      // The post-commit gate must judge the same snapshot after buffers clear.
+      final gateDropArchives = d.burstGateDropArchives;
       _log(
         '[SYNC] HistoryEnd batch=${m.batchId} records=${d.records} '
         'expected=${m.expectedPacketCount} '
@@ -7462,6 +7310,8 @@ class BleEngine implements AlarmBandWriter {
         commitDurable: true,
         hadDurableRows: hadDurableRows,
         droppedThisBurst: droppedThisBurst,
+        droppedBelowFloorThisBurst: droppedBelowFloorThisBurst,
+        gateDropArchives: gateDropArchives,
       );
       if (progressVerdict != TrimAckVerdict.send) {
         await _refuseHistoryEndTrim(
@@ -7497,6 +7347,8 @@ class BleEngine implements AlarmBandWriter {
         commitDurable: durable,
         hadDurableRows: hadDurableRows,
         droppedThisBurst: droppedThisBurst,
+        droppedBelowFloorThisBurst: droppedBelowFloorThisBurst,
+        gateDropArchives: gateDropArchives,
         // The count gate already refused a short burst (failure result
         // + band re-offer) before this point, so the one-shot shortfall
         // refusal is never spent here.
@@ -7737,7 +7589,6 @@ class BleEngine implements AlarmBandWriter {
     }
   }
 
-  // ── post-offload policy: empty-sync, stuck-strap, auto-continue ──────────────
   /// Reached from the HISTORY_COMPLETE branch only — a drain that ends any
   /// other way (link down, idle watchdog) records its own terminal and never
   /// gets here. This used to take a `complete` flag that its single call site
@@ -7778,14 +7629,7 @@ class BleEngine implements AlarmBandWriter {
       _log('[SYNC] empty-sync tripped — strap RTC likely lost.');
     }
 
-    // Stuck-strap: frontier frozen ≥10 min while the strap is >5 min ahead.
-    if (_stuckStrap.observe(
-        _sessionNewestUnix, _recordGate.frontierTs, _wallSecs())) {
-      state.strapNeedsReboot = true;
-      onState(state);
-      _log('[SYNC] stuck-strap tripped — defensive SET_CLOCK.');
-      await setClock();
-    }
+    await _observeStuckStrap();
 
     // Auto-continue: re-kick immediately (bypassing the 15-min floor) if the strap
     // still has real backlog and the cursor advanced — but cap per connection.
@@ -8173,10 +8017,23 @@ class BleEngine implements AlarmBandWriter {
       // moment a read agrees (the phone almost always self-corrects via NTP).
       final wasSuspect = _phoneClockSuspect;
       _phoneClockSuspect = ClockPolicy.phoneClockSuspect(dev, wall);
+      final mono = _monotonicSecs();
       if (_phoneClockSuspect && !wasSuspect) {
-        _phoneClockSuspectSince = _monotonicSecs();
-      } else if (!_phoneClockSuspect) {
-        _phoneClockSuspectSince = null;
+        _phoneClockSuspectElapsed = 0.0;
+      } else if (_phoneClockSuspect) {
+        _phoneClockSuspectElapsed = (_phoneClockSuspectElapsed ?? 0.0) +
+            ClockPolicy.suspectElapsedStep(
+              strapDelta: (dev - _suspectAnchorStrap).toDouble(),
+              wallDelta: (wall - _suspectAnchorWall).toDouble(),
+              monoDelta: mono - _suspectAnchorMono,
+            );
+      } else {
+        _phoneClockSuspectElapsed = null;
+      }
+      if (_phoneClockSuspect) {
+        _suspectAnchorStrap = dev;
+        _suspectAnchorWall = wall;
+        _suspectAnchorMono = mono;
       }
       // The read gate is released above, on the reply itself, not here.
       //
@@ -8534,77 +8391,8 @@ class BleEngine implements AlarmBandWriter {
     DateTime when, {
     int index = 0,
     List<int>? haptics,
-  }) async {
-    final isGen5 = _session?.band.isGen5 ?? false;
-    if (isGen5) {
-      // SET_CLOCK before SET_ALARM. Await the reply so the
-      // correlation below is the drift-0 one this write produces: a
-      // fire-and-forget write left the pre-SET drift in place whenever the
-      // read-back hadn't landed yet, and the alarm was armed shifted by it.
-      if (!await _bootstrapSetClockGen5()) {
-        _log('[ALARM] pre-arm SET_CLOCK unanswered — arming against the last '
-            'correlation (drift=${_clockRef?.driftSec ?? 0}s).');
-      }
-    }
-    // Arm in the STRAP's RTC frame. The strap fires the wake alarm autonomously
-    // on its OWN clock, so if that clock is offset from wall time (SET_CLOCK not
-    // latched / drift) the raw wall epoch fires at the wrong strap-time — or
-    // never (a raw wall epoch is decades ahead of a strap clock still near its
-    // factory epoch). (Historical note: drift was once blamed for the gen4
-    // silent alarm, and later the payload form — which held on fw 41.17.4 but
-    // is firmware-dependent, see the doc above. The shift stays either way:
-    // it is correct for a genuinely offset RTC.) Fall back to
-    // the raw epoch when we have no correlation yet (e.g. just after a
-    // reconnect, before this session's GET_CLOCK reply). Frame conversion +
-    // generation dispatch live in the pure [AlarmPayloads]; the gen4 rev-1
-    // byte layout itself is sourced from `openstrap_protocol`.
-    final ref = _clockRef;
-    final driftSec = ref?.driftSec ?? 0;
-    final armWhen = AlarmPayloads.toStrapFrame(when, driftSec);
-    final payload = AlarmPayloads.setPayloadForBand(
-      armWhen,
-      isGen5: isGen5,
-      index: index,
-      haptics: haptics,
-    );
-    final out = await _sendAwaited(Cmd.setAlarmTime, payload);
-    // rev-1 has no slot byte — payload[1] there is an epoch byte, so only the
-    // gen5 rich body logs an idx.
-    _log(
-      'SET_ALARM_TIME (${isGen5 ? "gen5 rich index1" : "rev1"} ${payload.length}B) '
-      '→ wallSec=${when.millisecondsSinceEpoch ~/ 1000} '
-      'strapSec=${armWhen.millisecondsSinceEpoch ~/ 1000} drift=${driftSec}s '
-      'correlated=${ref != null} subsec=${AlarmPayloads.subsecOf(armWhen)} '
-      '${isGen5 && payload.length >= 2 ? 'idx=${payload[1]} ' : ''}'
-      'write=${out.written ? 'ok' : 'FAILED'}',
-    );
-    if (!out.written) return null;
-    // Worst case here is the awaiter's single 5 s timeout, applied once, with
-    // no resend — arming is a user-facing action, not a background poll, and a
-    // duplicate SET after a slow-but-successful one would rewrite the strap's
-    // stored deadline.
-    final resp = await out.response;
-    if (resp == null) {
-      _log('[ALARM] arm UNCONFIRMED — no correlated SET_ALARM_TIME reply. '
-          'Treating the write as the arm (the strap may not echo the '
-          'originating sequence); verify with getAlarm().');
-      return when;
-    }
-    final code = (resp.fields['alarm_status'] as num?)?.toInt();
-    final name = resp.fields['alarm_status_name'] as String?;
-    final rejected = resp.failed ||
-        resp.unsupported ||
-        (code != null && AlarmStatus.isInputRejection(code));
-    if (rejected) {
-      _log('[ALARM] arm REJECTED by the strap — result=${resp.status} '
-          'alarm_status=$code ($name). NOT recording an alarm: there is '
-          'nothing armed on the band.');
-      return null;
-    }
-    _log('[ALARM] arm accepted — result=${resp.status} '
-        'alarm_status=${code ?? 'absent'} (${name ?? 'no status byte'}).');
-    return when;
-  }
+  }) async =>
+      (await armAlarm(when, index: index, haptics: haptics)).armed;
 
   /// Time-only alarm (SET_ALARM_TIME = 0x42), SHORT 7-byte form:
   /// `[0x01][u32 epoch-sec LE][u16 subsec LE]`. Kept for diagnostics/parity —
@@ -8758,15 +8546,16 @@ class BleEngine implements AlarmBandWriter {
   /// WHOOP 5: RUN_ALARM does not buzz on hardware we tested; use the same
   /// Maverick `0x13` short pulse as Find-band. Do NOT STOP_HAPTICS first —
   /// on gen5 that can race and swallow the buzz.
-  Future<void> runAlarm() async {
+  ///
+  /// Returns whether the write reached the band.
+  Future<bool> runAlarm() async {
     if (_session?.band.isGen5 ?? false) {
-      await _send(
+      return _send(
         Cmd.runHapticPatternMaverick,
         AlarmPayloads.gen5MaverickBuzz(),
       );
-      return;
     }
-    await _send(Cmd.runAlarm, AlarmPayloads.runNow);
+    return _send(Cmd.runAlarm, AlarmPayloads.runNow);
   }
 
   /// Cancel the on-device alarm (DISABLE_ALARM = 0x45). gen4 body `[0x01]`
@@ -8774,7 +8563,7 @@ class BleEngine implements AlarmBandWriter {
   /// needs revision 2 plus the alarm id, defaulting to "all slots" — see
   /// [AlarmPayloads.disableForBand].
   @override
-  Future<void> disableAlarm({int? id}) {
+  Future<bool> disableAlarm({int? id}) {
     final isGen5 = _session?.band.isGen5 ?? false;
     return _send(
       Cmd.disableAlarm,
@@ -9091,10 +8880,13 @@ class BleEngine implements AlarmBandWriter {
             imuFresh: _imuFresh && !gen5,
             imuDirty: _imuDirty,
             hrDirty: _hrDirty,
+            holdImuOn: _offloadActive && !gen5,
           );
           final generation = _linkGeneration;
           if (step == null) {
-            if (_liveReassert) {
+            // The reassert re-sends the gen4 IMU bundle too; hold it (flag
+            // stays set) while a drain runs, the offload end re-runs this.
+            if (_liveReassert && !(_offloadActive && !gen5)) {
               _liveReassert = false;
               await _reassertLive(session, generation);
             }
@@ -9248,8 +9040,13 @@ class BleEngine implements AlarmBandWriter {
     // old methods judged it; a toggle's own correlated reply is not awaited.
     // Correlating 0x03/0x6A replies (`_sendAwaited`) is the upgrade once the
     // strap's reply behaviour for these toggles is confirmed on hardware.
+    // A gen4 history claim can land during the arm's gaps: the rest of the
+    // bundle must not go out mid-offload ([nextLiveStreamStep] holdImuOn).
+    // Failed marks it dirty, so the replay runs when the offload ends.
+    final holdable = step == LiveStreamStep.imuOn && !session.band.isGen5;
     var ok = true;
     for (final op in ops) {
+      if (holdable && _offloadActive) return _LiveWrite.failed;
       if (!await op()) ok = false;
       if (_liveStale(session, generation)) return _LiveWrite.stale;
     }
@@ -9321,6 +9118,7 @@ class BleEngine implements AlarmBandWriter {
     final session = _session;
     if (session == null) return;
     session.intentionalClose = intentional;
+    _linkDownAt = _monotonicSecs();
     // SYNCHRONOUSLY, before any await: see `_Session.closing`. Ingress freezes
     // here — the receive guards drop anything for a closing session, and the
     // notification subscriptions are cancelled before anything is awaited —
@@ -9405,6 +9203,18 @@ class BleEngine implements AlarmBandWriter {
     // awaits below are pending, and nothing that resumes after them may touch
     // it. Only this dying session object and its radio are awaited on.
     _session = null;
+    // The firmware version is what THIS link's HELLO said, so it dies with the
+    // link. A connect to a different band (a gen4 after a gen5) must not read
+    // the previous band's 50.43 and name a firmware lock for it. The same band
+    // reconnecting gets it back from its next revision-1 HELLO.
+    state.firmware = null;
+    if (_flashLock) {
+      // A held lock would refuse every ACK on the next link.
+      _flashLock = false;
+      _flashSession = null;
+      _flashToken = null;
+      _log('FIRMWARE FLASH: link lost, lock released.');
+    }
     // The strap-RTC↔wall correlation belongs to the session that measured it —
     // drop it so it can't leak into the next connection's alarm arming before a
     // fresh GET_CLOCK. (Connection setup also re-nulls it; this covers the gap
@@ -9454,6 +9264,8 @@ class BleEngine implements AlarmBandWriter {
     // An offload is the one thing that genuinely needs the fast interval; as
     // soon as it ends the link steps back down (issue #200).
     unawaited(_applyLinkPriority());
+    // A gen4 IMU arm held for the drain ([nextLiveStreamStep]) goes out now.
+    if (!active) unawaited(_reconcileLive());
     // This is a CALLER-SUPPLIED hook (UI state plumbing), called synchronously
     // from _enqueueOffloadFrame BEFORE it kicks off _drainOffloadFrames — a
     // throw here must never abort the frame from reaching the drain queue.
@@ -9590,6 +9402,354 @@ class BleEngine implements AlarmBandWriter {
       ...decoded.fields,
       'clock_epoch': v,
     });
+  }
+
+
+  @visibleForTesting
+  void debugSetOffloadActive(bool active) => _setOffloadActive(active);
+  String? _stuckStrapBand;
+  // When the link last went down (monotonic). A band out of range for longer
+  // than a retry reconnect wasn't being asked, so that time isn't "stuck".
+  double? _linkDownAt;
+  /// Real seconds the suspicion had lasted as of the last strap clock read
+  /// (null = not suspect). Aged per read by [ClockPolicy.suspectElapsedStep]
+  /// from the strap/wall/monotonic deltas since [_suspectAnchorStrap] etc.
+  ///
+  /// Not the stopwatch alone: it stops while the phone is suspended, so a
+  /// phone locked on a nightstand stretched the 12 h grace to days with
+  /// history deferred throughout. Not the wall clock alone: it is the clock
+  /// under suspicion, and the very jump we are waiting for (the phone stepping
+  /// forward over NTP, possibly still >1 day behind the strap) would expire the
+  /// window instantly and hand back permission to drain-and-trim.
+  double? _phoneClockSuspectElapsed;
+  int _suspectAnchorStrap = 0;
+  int _suspectAnchorWall = 0;
+  double _suspectAnchorMono = 0;
+
+  /// [_phoneClockSuspectElapsed] plus the monotonic time since that read. The
+  /// stopwatch undercounts across suspend, but only until the next strap read
+  /// re-anchors with the suspend-inclusive step.
+  double _suspectElapsedNow() {
+    final base = _phoneClockSuspectElapsed;
+    if (base == null) return 0.0;
+    final sinceRead = _monotonicSecs() - _suspectAnchorMono;
+    return base + (sinceRead > 0 ? sinceRead : 0.0);
+  }
+
+  /// True while a user-initiated image update owns the link. Every other write
+  /// is refused at [_write] for the duration, so the heartbeat, keepalive and
+  /// batch ACKs cannot interleave with the transfer. Set only by
+  /// [beginFirmwareFlash], cleared by [endFirmwareFlash].
+  bool _flashLock = false;
+  // The session that claimed the link; a commit on any other session is refused.
+  Object? _flashSession;
+  // Who holds the claim. Release and every command must present it, so a
+  // screen that was closed mid-command cannot free a newer screen's claim.
+  Object? _flashToken;
+  // The session a battery reading was last taken on. A reading from an earlier
+  // link says nothing about the strap on this one.
+  Object? _batterySession;
+  bool get firmwareFlashActive => _flashLock;
+  // Same snapshot for `_recordGate.droppedBelowFloor`: the trim gate needs to
+  // know whether THIS burst's drops were all below the absolute floor, and the
+  // gate's own counters span the whole connection.
+  int _burstDroppedBelowFloorAtStart = 0;
+  // Bumped on every HISTORY_START that declares one of our bursts, so the
+  // escalation above counts a refused burst once rather than once per
+  // re-offer of its HISTORY_END. Engine-wide, never reset: the count it keys
+  // spans reconnects.
+  int _burstSerial = 0;
+
+  /// Historical records RecordGate has rejected so far (monotonic). A burst
+  /// whose batches carried no counted records but raised this was walking a
+  /// stale-timestamp block, not an empty flash.
+  int get historyGateDrops => _recordGate.dropped;
+
+  Future<String> _readAdapterState() => waitForBleAdapterState(
+    FlutterBluePlus.adapterState.map((s) => s.name),
+    timeout: _blockerProbe,
+  );
+
+  /// Last GATT table logged; an identical table on reconnect is not re-logged.
+  String? _lastGattTable;
+
+  /// Every discovered service and characteristic with its properties
+  /// (r=read w=write W=write-no-response n=notify i=indicate), so a report
+  /// shows what the band exposes next to what we subscribed to.
+  void _logGattTable(List<BluetoothService> services) {
+    String props(CharacteristicProperties p) => [
+          if (p.read) 'r',
+          if (p.write) 'w',
+          if (p.writeWithoutResponse) 'W',
+          if (p.notify) 'n',
+          if (p.indicate) 'i',
+        ].join();
+    final table = [
+      for (final s in services)
+        '${s.uuid.str128}{${[
+          for (final c in s.characteristics)
+            '${c.uuid.str128}:${props(c.properties)}',
+        ].join(' ')}}',
+    ].join(' ');
+    if (table == _lastGattTable) {
+      _log('[GATT] ${services.length} services (same table as last connect).');
+      return;
+    }
+    _lastGattTable = table;
+    _log('[GATT] ${services.length} services: $table');
+  }
+
+  /// One refusal of the phone's encryption key: surface the re-pair guide,
+  /// count it, and after a run of consecutive refusals pause auto-reconnect
+  /// (it would otherwise pin the radio and drain both batteries on a band that
+  /// will never accept the key). A manual connect still runs, so a successful
+  /// re-pair recovers.
+  void _recordBondRefusal() {
+    state.needsRepairGuide = true;
+    state.bondRefusals++;
+    if (_bondGiveUp.bondRefused()) {
+      state.autoReconnectPaused = true;
+      _log('[RECONNECT] bond-refusal give-up (${_bondGiveUp.consecutive}) '
+          '— pausing auto-reconnect; re-pair required.');
+    }
+    onState(state);
+  }
+
+  /// Image update is offered for gen5 only, on a READY link (bootstrap and
+  /// INIT finished) with no history offload, connect setup or ECG reading in
+  /// flight, each of which the claim would starve.
+  bool get canFlashFirmware =>
+      (_session?.connected ?? false) &&
+      (_session?.band.isGen5 ?? false) &&
+      _phase == BleConnState.listening &&
+      _liveReady &&
+      !_connectSetup &&
+      !_offloadActive &&
+      _ecgLease == null;
+
+  /// Battery on THIS link, or null until it has been read since connecting.
+  double? get flashBatteryPct =>
+      identical(_batterySession, _session) ? state.batteryPct : null;
+
+  // A commit that was sent and never answered. Held here, not on the screen,
+  // so leaving and reopening it cannot offer a second install. Keyed by the
+  // strap's serial so another band is unaffected; cleared only by the user.
+  bool _flashCommitUnresolved = false;
+  String? _flashCommitSerial;
+
+  bool get flashCommitUnresolved {
+    if (!_flashCommitUnresolved) return false;
+    final mine = _flashCommitSerial;
+    final now = state.serial;
+    return mine == null || now == null || mine == now;
+  }
+
+  void markFlashCommitUnresolved() {
+    _flashCommitUnresolved = true;
+    _flashCommitSerial = state.serial;
+  }
+
+  /// The user checked the strap's firmware version and wants to go on.
+  void acknowledgeFlashCommit() {
+    _flashCommitUnresolved = false;
+    _flashCommitSerial = null;
+  }
+
+  /// Claims the link. Returns the ownership token, or null when refused.
+  Object? beginFirmwareFlash() {
+    if (_flashLock || !canFlashFirmware) return null;
+    _flashLock = true;
+    _flashSession = _session;
+    final token = _flashToken = Object();
+    _log('FIRMWARE FLASH: link claimed; all other writes suspended.');
+    return token;
+  }
+
+  /// Releases the claim, only for the holder of [token].
+  bool endFirmwareFlash(Object token) {
+    if (!_flashLock || !identical(token, _flashToken)) return false;
+    _flashLock = false;
+    _flashSession = null;
+    _flashToken = null;
+    _log('FIRMWARE FLASH: link released.');
+    return true;
+  }
+
+  /// One image-update command and its correlated reply (null on a failed
+  /// write, timeout, or dropped link). Only valid between [beginFirmwareFlash]
+  /// and [endFirmwareFlash]; never resent here (a repeated 0x90 is not safe).
+  Future<CorrelatedResponse?> firmwareCommand(
+      Object token, int opcode, List<int> payload,
+      {Duration timeout = const Duration(seconds: 5)}) async {
+    if (!_flashLock || !identical(token, _flashToken)) return null;
+    if (!canFlashFirmwareLink) return null;
+    if (!identical(_session, _flashSession)) return null;
+    if (!const {
+      FwUpdate.startLoad,
+      FwUpdate.loadData,
+      FwUpdate.verifyImage,
+      FwUpdate.processImage,
+    }.contains(opcode)) {
+      return null;
+    }
+    final session = _session!;
+    final seq = _seq.nextLive();
+    final pending = _awaiter.register(seq, opcode, timeout: timeout);
+    final frame = buildCommand(seq, opcode, payload, session.band);
+    if (!await _write(frame, flashToken: token)) {
+      pending.cancel();
+      return null;
+    }
+    return pending.response;
+  }
+
+  // Link-only half of [canFlashFirmware] (offload is allowed to be set by
+  // our own claim once a transfer has started).
+  bool get canFlashFirmwareLink =>
+      (_session?.connected ?? false) &&
+      (_session?.band.isGen5 ?? false);
+
+  // ── post-offload policy: empty-sync, stuck-strap, auto-continue ──────────────
+  /// Stuck-strap: frontier frozen ≥10 min while the strap is >5 min ahead.
+  /// Elapsed time on the monotonic clock: a forward wall step (a phone fixing
+  /// its clock after a dead-battery reboot) would otherwise read as ten
+  /// frozen minutes at once. Checked after a completed offload AND after a
+  /// request the band never answered: a band that accepts SEND_HISTORICAL_DATA
+  /// and then sends nothing never reaches HISTORY_COMPLETE, so checking only
+  /// there left it looping silently with the UI saying "connected".
+  Future<void> _observeStuckStrap() async {
+    if (_stuckStrap.observe(
+        _sessionNewestUnix, _recordGate.frontierTs, _monotonicSecs())) {
+      state.strapNeedsReboot = true;
+      onState(state);
+      _log('[SYNC] stuck-strap tripped — defensive SET_CLOCK.');
+      await setClock();
+    }
+  }
+
+  /// [setAlarm], plus whether the reply echoed exactly the wake time we sent
+  /// (strap frame): the strap itself reported what it stored, so the arm is
+  /// confirmed without waiting for event 56. Returned per call, not kept on
+  /// the engine, so an arm that gets no reply can never inherit another
+  /// arm's echo.
+  @override
+  Future<({DateTime? armed, bool echoed})> armAlarm(
+    DateTime when, {
+    int index = 0,
+    List<int>? haptics,
+  }) async {
+    final isGen5 = _session?.band.isGen5 ?? false;
+    if (isGen5) {
+      // SET_CLOCK before SET_ALARM. Await the reply so the
+      // correlation below is the drift-0 one this write produces: a
+      // fire-and-forget write left the pre-SET drift in place whenever the
+      // read-back hadn't landed yet, and the alarm was armed shifted by it.
+      if (!await _bootstrapSetClockGen5()) {
+        _log('[ALARM] pre-arm SET_CLOCK unanswered — arming against the last '
+            'correlation (drift=${_clockRef?.driftSec ?? 0}s).');
+      }
+    }
+    // Arm in the STRAP's RTC frame. The strap fires the wake alarm autonomously
+    // on its OWN clock, so if that clock is offset from wall time (SET_CLOCK not
+    // latched / drift) the raw wall epoch fires at the wrong strap-time — or
+    // never (a raw wall epoch is decades ahead of a strap clock still near its
+    // factory epoch). (Historical note: drift was once blamed for the gen4
+    // silent alarm, and later the payload form — which held on fw 41.17.4 but
+    // is firmware-dependent, see the doc above. The shift stays either way:
+    // it is correct for a genuinely offset RTC.) Fall back to
+    // the raw epoch when we have no correlation yet (e.g. just after a
+    // reconnect, before this session's GET_CLOCK reply). Frame conversion +
+    // generation dispatch live in the pure [AlarmPayloads]; the gen4 rev-1
+    // byte layout itself is sourced from `openstrap_protocol`.
+    final ref = _clockRef;
+    final driftSec = ref?.driftSec ?? 0;
+    final armWhen = AlarmPayloads.toStrapFrame(when, driftSec);
+    final payload = AlarmPayloads.setPayloadForBand(
+      armWhen,
+      isGen5: isGen5,
+      index: index,
+      haptics: haptics,
+    );
+    final out = await _sendAwaited(Cmd.setAlarmTime, payload);
+    // rev-1 has no slot byte — payload[1] there is an epoch byte, so only the
+    // gen5 rich body logs an idx.
+    _log(
+      'SET_ALARM_TIME (${isGen5 ? "gen5 rich index1" : "rev1"} ${payload.length}B) '
+      '→ wallSec=${when.millisecondsSinceEpoch ~/ 1000} '
+      'strapSec=${armWhen.millisecondsSinceEpoch ~/ 1000} drift=${driftSec}s '
+      'correlated=${ref != null} subsec=${AlarmPayloads.subsecOf(armWhen)} '
+      '${isGen5 && payload.length >= 2 ? 'idx=${payload[1]} ' : ''}'
+      'write=${out.written ? 'ok' : 'FAILED'}',
+    );
+    if (!out.written) return (armed: null, echoed: false);
+    // Worst case here is the awaiter's single 5 s timeout, applied once, with
+    // no resend — arming is a user-facing action, not a background poll, and a
+    // duplicate SET after a slow-but-successful one would rewrite the strap's
+    // stored deadline.
+    final resp = await out.response;
+    if (resp == null) {
+      _log('[ALARM] arm UNCONFIRMED — no correlated SET_ALARM_TIME reply. '
+          'Treating the write as the arm (the strap may not echo the '
+          'originating sequence); verify with getAlarm().');
+      return (armed: when, echoed: false);
+    }
+    final code = (resp.fields['alarm_status'] as num?)?.toInt();
+    final name = resp.fields['alarm_status_name'] as String?;
+    final echo = (resp.fields['alarm_echo_epoch'] as num?)?.toInt();
+    // With an echoed epoch the "status" byte is that epoch's low byte, not a
+    // status: a wake time ending in 0x02..0x04/0x0a/0x0b would read as a
+    // refusal.
+    final rejected = resp.failed ||
+        resp.unsupported ||
+        (echo == null && code != null && AlarmStatus.isInputRejection(code));
+    if (rejected) {
+      _log('[ALARM] arm REJECTED by the strap — result=${resp.status} '
+          'alarm_status=$code ($name). NOT recording an alarm: there is '
+          'nothing armed on the band.');
+      return (armed: null, echoed: false);
+    }
+    _log('[ALARM] arm accepted — result=${resp.status} '
+        'alarm_status=${code ?? 'absent'} (${name ?? 'no status byte'}).');
+    final armSec = armWhen.millisecondsSinceEpoch ~/ 1000;
+    final echoed = echo == armSec;
+    if (echo != null && !echoed) {
+      _log('[ALARM] strap echoed wake time $echo, sent $armSec — not '
+          'treating the reply as a confirmation.');
+    }
+    return (armed: when, echoed: echoed);
+  }
+
+  /// [buzz] that reports whether the command reached the strap. `_send` does
+  /// not throw on a failed or timed-out GATT write — it logs and returns
+  /// false — so a caller that tells someone "the band buzzed" (the iOS
+  /// Shortcut) needs this instead of treating "no exception" as delivered.
+  Future<bool> buzzDelivered() => _sendBuzz(hapticShortPulse);
+
+  Future<bool> _sendBuzz(int pattern) {
+    if (_session?.band.isGen5 ?? false) {
+      return _send(
+        Cmd.runHapticPatternMaverick,
+        AlarmPayloads.gen5MaverickBuzz(),
+      );
+    }
+    return _send(Cmd.runHapticsPattern, [pattern, 0, 0, 0, 0]);
+  }
+
+  /// WHOOP 4's SET_ALARM_TIME reply echoes the wake time it stored:
+  /// `[type][seq][0x42][req seq][result][rev=1][u32 epoch LE][u16]` (seen on
+  /// a real strap, 2026-10-22). Publish it as `alarm_echo_epoch`. The shared
+  /// decoder reads inner[6] — this epoch's low byte — as an "alarm status".
+  /// gen5's reply layout is unverified, so it is left alone.
+  Decoded _maybeAugmentAlarmEcho(Frame frame, Decoded decoded) {
+    if (decoded.kind != 'cmd_response' ||
+        decoded.fields['opcode'] != Cmd.setAlarmTime ||
+        decoded.fields['cmd_status'] != 1 ||
+        (_session?.band.isGen5 ?? false)) {
+      return decoded;
+    }
+    final echo = AlarmConfirmation.replyEchoEpoch(frame.inner);
+    if (echo != null) decoded.fields['alarm_echo_epoch'] = echo;
+    return decoded;
   }
 }
 
@@ -9941,6 +10101,8 @@ class DrainController {
     _lastProgressAt = DateTime.now();
     burstStats.reset();
     _burstTallyClosed = false;
+    _burstFlushedDurable = 0;
+    _burstFlushedGateDrops = 0;
   }
 
   /// The band declared a new burst (HISTORY_START) — clear the poison latch.
@@ -9964,6 +10126,8 @@ class DrainController {
   void beginBurst() {
     _trimGuard.beginBurst();
     _burstTallyClosed = false;
+    _burstFlushedDurable = 0;
+    _burstFlushedGateDrops = 0;
   }
 
   /// A genuinely NEW history task has been claimed — called by the engine
@@ -10119,7 +10283,10 @@ class DrainController {
     // false right before _onOffloadFinished read it, so auto-continue never
     // fired. It is cleared per offload in [resetOffloadCounters].
     if (tokenHex != null) {
-      lastTrimAdvanced = tokenHex != _lastAckedToken && hadDurable;
+      lastTrimAdvanced = tokenHex != _lastAckedToken &&
+          (hadDurable ||
+              _burstFlushedDurable > 0 ||
+              _burstFlushedGateDrops > 0);
       _lastAckedToken = tokenHex;
     }
     _raws.clear();
@@ -10168,6 +10335,14 @@ class DrainController {
           beats: beats,
           commitMs: commitMs,
         );
+        _burstFlushedDurable = 0;
+        _burstFlushedGateDrops = 0;
+      } else {
+        final gateDrops =
+            archives.where((a) => a.reason == kGateDroppedReason).length;
+        _burstFlushedDurable += raws.length + ecgRaw.length +
+            archives.length - gateDrops;
+        _burstFlushedGateDrops += gateDrops;
       }
       return raws.length + archives.length + ecgRaw.length;
     } catch (e) {
@@ -10249,7 +10424,9 @@ class DrainController {
             ' — this offload ended ${complete ? 'complete (a new task claimed '
             'immediately after HISTORY_COMPLETE)' : 'without completing (abort '
             'boundary)'}.');
-        done.complete(report);
+        done.complete(complete
+            ? report
+            : SyncReport(report.records, report.batches, false, ended: true));
         return;
       }
       if (!isLinkUp()) _linkDown = true;
@@ -10276,192 +10453,33 @@ class DrainController {
     });
     return done.future;
   }
+
+
+  /// The plausibility drops buffered for the next commit.
+  int get bufferedGateDropArchives =>
+      _archives.where((a) => a.reason == kGateDroppedReason).length;
+
+  // What tokenless commits (awaitComplete's timeout/idle flush, the short-count
+  // refusal) already made durable for the burst still open. Those flushes empty
+  // the buffer mid-burst, so a HISTORY_END judged on the buffer alone saw a
+  // burst that banked nothing: it refused the trim as no-progress (and with
+  // enough refusals bounced the link and raised the clock-lost card) and
+  // reported no trim advance to auto-continue, though the rows were stored.
+  // Counted only once the commit succeeds; cleared by [beginBurst] and by the
+  // token commit that consumes them, so they never carry into another burst.
+  int _burstFlushedDurable = 0;
+  int _burstFlushedGateDrops = 0;
+
+  /// Durable progress this burst: still buffered plus already flushed.
+  bool get burstHasDurableProgress =>
+      _raws.isNotEmpty ||
+      _ecgRaw.isNotEmpty ||
+      bufferedProgressArchives > 0 ||
+      _burstFlushedDurable > 0;
+
+  /// This burst's plausibility-drop archives: still buffered plus already
+  /// flushed (they are durable either way).
+  int get burstGateDropArchives =>
+      bufferedGateDropArchives + _burstFlushedGateDrops;
 }
 
-@visibleForTesting
-class BurstStats {
-  static const Set<int> _ordinaryHistoricalRevisions = <int>{
-    7,
-    9,
-    10,
-    11,
-    12,
-    18,
-    20,
-    21,
-    24,
-  };
-
-  final Map<int, int> _dataPacketCountsByRevision = <int, int>{};
-  final Map<int, SequenceState> _sequenceByRevision = <int, SequenceState>{};
-  int _eventCount = 0;
-  int _consoleCount = 0;
-  int _unknownCount = 0;
-  int _revision16Count = 0;
-  int _revision19Count = 0;
-  int _revision22Count = 0;
-  int _revision25Count = 0;
-  int _revision26Count = 0;
-
-  Map<int, int> get dataPacketCountsByRevision =>
-      Map<int, int>.unmodifiable(_dataPacketCountsByRevision);
-  Map<int, SequenceState> get sequenceByRevision =>
-      Map<int, SequenceState>.unmodifiable(_sequenceByRevision);
-  int get eventCount => _eventCount;
-  int get consoleCount => _consoleCount;
-  int get unknownCount => _unknownCount;
-  int get revision16Count => _revision16Count;
-  int get revision19Count => _revision19Count;
-  int get revision22Count => _revision22Count;
-  int get revision25Count => _revision25Count;
-  int get revision26Count => _revision26Count;
-  int get intraBurstGapCount =>
-      _sequenceByRevision.values.fold<int>(0, (sum, s) => sum + s.gapCount);
-  int get intraBurstMissing =>
-      _sequenceByRevision.values.fold<int>(0, (sum, s) => sum + s.missingCount);
-  int get intraBurstBackward => _sequenceByRevision.values.fold<int>(
-    0,
-    (sum, s) => sum + s.backwardCount,
-  );
-
-  int get historicalPacketCount => countHistoricalBurstPackets(
-    dataPacketCountsByRevision: _dataPacketCountsByRevision,
-    revision16Count: _revision16Count,
-    revision19Count: _revision19Count,
-    revision22Count: _revision22Count,
-    revision25Count: _revision25Count,
-    revision26Count: _revision26Count,
-  );
-
-  int get totalTrafficPacketCount => countBurstTrafficPackets(
-    dataPacketCountsByRevision: _dataPacketCountsByRevision,
-    revision16Count: _revision16Count,
-    revision19Count: _revision19Count,
-    revision22Count: _revision22Count,
-    revision25Count: _revision25Count,
-    revision26Count: _revision26Count,
-    eventCount: _eventCount,
-    consoleCount: _consoleCount,
-    unknownCount: _unknownCount,
-  );
-
-  String get breakdownString {
-    final parts = <String>[];
-    final revs = _dataPacketCountsByRevision.keys.toList()..sort();
-    for (final rev in revs) {
-      parts.add('V$rev=${_dataPacketCountsByRevision[rev]}');
-    }
-    if (_revision16Count > 0) parts.add('V16=$_revision16Count');
-    if (_revision19Count > 0) parts.add('V19=$_revision19Count');
-    if (_revision22Count > 0) parts.add('V22=$_revision22Count');
-    if (_revision25Count > 0) parts.add('V25=$_revision25Count');
-    if (_revision26Count > 0) parts.add('V26=$_revision26Count');
-    if (_eventCount > 0) parts.add('events=$_eventCount');
-    if (_consoleCount > 0) parts.add('console=$_consoleCount');
-    if (_unknownCount > 0) parts.add('unknown=$_unknownCount');
-    final seq = sequenceSummary;
-    if (seq.isNotEmpty) parts.add(seq);
-    return '{${parts.join(', ')}}';
-  }
-
-  String get sequenceSummary {
-    final revs = _sequenceByRevision.keys.toList()..sort();
-    final parts = <String>[];
-    for (final rev in revs) {
-      final s = _sequenceByRevision[rev]!;
-      if (s.gapCount > 0 || s.backwardCount > 0 || s.missingCount > 0) {
-        parts.add(
-          'seqV$rev(gaps=${s.gapCount}, missing=${s.missingCount}, backward=${s.backwardCount})',
-        );
-      }
-    }
-    return parts.join(', ');
-  }
-
-  /// [revision] is the record version byte (inner[1]), which the caller has
-  /// already read off the frame. This used to take the record's hex and parse
-  /// the whole thing back into bytes to reach that one byte — a throwaway
-  /// buffer per record, on every record of every offload.
-  void onHistoricalData(int packetType, int counter, int revision) {
-    if (packetType != PacketType.historicalData) return;
-    if (revision < 0) {
-      _unknownCount++;
-      return;
-    }
-    if (_ordinaryHistoricalRevisions.contains(revision)) {
-      _dataPacketCountsByRevision[revision] =
-          (_dataPacketCountsByRevision[revision] ?? 0) + 1;
-      final seq = _sequenceByRevision.putIfAbsent(
-        revision,
-        () => SequenceState(firstSequence: counter),
-      );
-      seq.observe(counter);
-      return;
-    }
-    switch (revision) {
-      case 16:
-        _revision16Count++;
-        return;
-      case 19:
-        _revision19Count++;
-        return;
-      case 22:
-        _revision22Count++;
-        return;
-      case 25:
-        _revision25Count++;
-        return;
-      case 26:
-        _revision26Count++;
-        return;
-      default:
-        _unknownCount++;
-        return;
-    }
-  }
-
-  void onEvent() => _eventCount++;
-
-  void onConsole() => _consoleCount++;
-
-  void onUnknown() => _unknownCount++;
-
-  void reset() {
-    _dataPacketCountsByRevision.clear();
-    _sequenceByRevision.clear();
-    _eventCount = 0;
-    _consoleCount = 0;
-    _unknownCount = 0;
-    _revision16Count = 0;
-    _revision19Count = 0;
-    _revision22Count = 0;
-    _revision25Count = 0;
-    _revision26Count = 0;
-  }
-}
-
-@visibleForTesting
-class SequenceState {
-  SequenceState({required this.firstSequence});
-
-  final int firstSequence;
-  int? lastSequence;
-  int gapCount = 0;
-  int missingCount = 0;
-  int backwardCount = 0;
-
-  void observe(int seq) {
-    final last = lastSequence;
-    if (last != null) {
-      if (seq > last + 1) {
-        gapCount++;
-        missingCount += (seq - last) - 1;
-      } else if (seq <= last) {
-        backwardCount++;
-      }
-    }
-    if (last == null || seq > last) {
-      lastSequence = seq;
-    }
-  }
-}

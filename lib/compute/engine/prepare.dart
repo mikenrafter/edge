@@ -13,6 +13,7 @@ extension _EnginePrepare on DerivationEngine {
     // diagnostics (never a correctness issue for the derived VALUES — this
     // is telemetry-only). Each day now gets its own local accumulator,
     // merged into the shared running max exactly once, below.
+    final ceilingInput = await _ceilingInputRevision(dayId);
     final sleepEditGeneration = await SleepEditStore.generation(upTo: dayId);
     final stats = _PrepareStats();
     // The day's raw as it stands BEFORE anything below reads it: the input
@@ -40,9 +41,7 @@ extension _EnginePrepare on DerivationEngine {
     // they stay window by window.
     final unionHolder = !debugDisableSubstrateUnionLoad &&
             !_lowMemory &&
-            rrResume == null &&
-            !_retained.containsKey(DerivationEngine._retainedKey(dayId, 'load_day')) &&
-            !_retained.containsKey(DerivationEngine._retainedKey(dayId, 'load_search'))
+            rrResume == null
         ? _UnionHolder()
         : null;
     final candidate = await _sleepCandidateForDay(dayId,
@@ -159,12 +158,14 @@ extension _EnginePrepare on DerivationEngine {
       dayEndSec: dayEnd,
       sleepOffsetSec: candidate.present ? candidate.sleepOffsetSec : 0,
     );
-    return candidate.toPreparedDay(
+    final prepared = candidate.toPreparedDay(
       daySub: daySub,
       napSub: napSub,
       sleepSub: sleepSub,
       tonightSleepOnsetSec: tonight?.startSec ?? 0,
       tonightSleepOffsetSec: tonight?.endSec ?? 0,
+      tonightPending: (nextSpan == null && _passPendingDays.contains(
+          localDateLabel(dayEnd))) || DerivationEngine.debugHoldTonight.contains(dayId),
       ownership: ownership,
       priority: priority,
       inputFp: inputFp,
@@ -178,6 +179,8 @@ extension _EnginePrepare on DerivationEngine {
       rrResume: wearable != null ? null : rrResume,
       isWearable: wearable != null,
     );
+    if (wearable == null && ceilingInput != null) _ceilingInput[prepared] = ceilingInput;
+    return prepared;
   }
 
   Future<SleepSessionCandidate> _sleepCandidateForDay(
@@ -192,9 +195,9 @@ extension _EnginePrepare on DerivationEngine {
     // A user sleep override is the source of truth — never serve the cached auto
     // candidate, and don't cache the override result (so a later edit / clear is
     // not shadowed by a stale artifact). The auto path keeps its finalized cache.
-    // Headless derivation has no UI startup to warm the preference cache.
-    await Prefs.ensureLoaded();
-    final method = Prefs.sleepStagingMethod;
+    // A headless isolate can survive a foreground setting change. Reload
+    // the existing fork preference before choosing its registered stager.
+    final method = await Prefs.refreshSleepStagingMethod();
     final overrideRow = await LocalDb.getSleepOverride(dayId);
     final override = overrideRow == null
         ? null
@@ -251,10 +254,58 @@ extension _EnginePrepare on DerivationEngine {
     // exists — and it has to be: staging the night off both devices' rows
     // while `napSub`/`sleepSub` score it off one device's is a window found in
     // a night that was never scored.
-    final (searchOwnership, _) = await _resolveOwnership(range.$1, range.$2);
+    final (searchOwnership, searchPriority) = await _resolveOwnership(range.$1, range.$2);
+    final rowsEpoch = _retentionEpoch;
+    _checkpointPlans.remove(dayId);
+    NightCheckpointPlan? checkpointPlan;
+    if (!debugCheckpoints.disabled && _canRetainSubstrate) {
+      try {
+        final db = await LocalDb.instance;
+        final generation = LocalDb.cacheGeneration;
+        if (_checkpointGeneration != null && _checkpointGeneration != generation) {
+          // Invalidate cached state while preserving the owners' work counters.
+          for (final state in _nightStates.values) { state.clear(); }
+          _cardioRowChunks.clear();
+          _checkpointPlans.clear();
+          debugCheckpoints.lastEncodedPayload = null;
+          debugCheckpoints.lastDecodedPayload = null;
+        }
+        _checkpointGeneration = generation;
+        final rows = await db.rawQuery(
+          'SELECT bucket, rev FROM input_rev WHERE bucket >= ? AND bucket <= ? '
+          'ORDER BY bucket', [range.$1 ~/ 900, range.$2 ~/ 900]);
+        checkpointPlan = NightCheckpointPlan(range.$1, range.$2,
+          {for (final r in rows) r['bucket'] as int: r['rev'] as int},
+          generation, rowsEpoch, await LocalDb.storeIdentity(executor: db));
+      } catch (_) {
+        // Missing provenance costs a cold pass, never a partial adoption.
+      }
+    }
+
     // What the staged-sleep key stands on instead of the samples (see
     // [StagingProvenance]): read BEFORE the rows, so a row landing during the
     // load leaves the key stale, never falsely current.
+    // Main's feature-row cache has its own provenance: disabling the staged
+    // candidate cache must not allow rows from replaced input to survive.
+    Future<Map<String, (int, int, int)>?> readRowRevisions() async {
+      try {
+        final out = <String, (int, int, int)>{};
+        final first = DateTime.fromMillisecondsSinceEpoch(range.$1 * 1000);
+        for (var d = DateTime(first.year, first.month, first.day);
+            d.millisecondsSinceEpoch ~/ 1000 <= range.$2;
+            d = DateTime(d.year, d.month, d.day + 1)) {
+          final label = dayLabelOf(d);
+          final fp = await LocalDb.inputDayFingerprint(label);
+          out[label] = (fp.revisionSum, fp.revisionMax, fp.generation);
+        }
+        return out;
+      } catch (_) {
+        return null;
+      }
+    }
+    final rowGeneration = LocalDb.cacheGeneration;
+    var rowRevisions = !debugDisableCardioRows && _canRetainSubstrate
+        ? await readRowRevisions() : null;
     final useCache = !debugDisableStagedSleepCache;
     StagingProvenance? provenance;
     var keyMs = 0;
@@ -268,6 +319,7 @@ extension _EnginePrepare on DerivationEngine {
           revs: await LocalDb.inputRevisions(
               range.$1 ~/ kRevBucketSec, range.$2 ~/ kRevBucketSec + 1),
           ownership: searchOwnership,
+          priority: searchPriority,
           wipeEpoch: gen.wipeEpoch,
           openCount: gen.openCount,
         );
@@ -341,7 +393,7 @@ extension _EnginePrepare on DerivationEngine {
     // Read on main (the DB lives here) and capture into the worker.
     final priorSleep = await _storedSleepHistory(excludeDay: dayId);
     // The band's own hypnogram, from its own table — never `observation`.
-    // Gated inside calendarDays; an override outranks it, so skip the read.
+    // Gated inside calendarDaysHeavy; an override outranks it, so skip the read.
     // Only a device that owns hr1Hz over the night may stage it — or any
     // device, when our own rows never saw that night (an unclaimed night).
     // Never a device whose flag is off (rule R6), nor one that is not the
@@ -365,6 +417,16 @@ extension _EnginePrepare on DerivationEngine {
         ? await wearableNight(range.$1, range.$2)
         : null;
     if (ownNight != null) vendorNights = [...vendorNights, ownNight];
+    if (checkpointPlan != null) {
+      final contextJson = await JsonPayloadLane.shared.encode([
+        checkpointPlan.storeId, method.name, overrideRow, profileJson,
+        priorSleep, [for (final n in vendorNights) [n.deviceId, n.source, n.decodedAtSec, [for (final e in n.epochs) [e.startSec, e.endSec, e.stage]]]],
+        searchPriority.map((k, v) => MapEntry(k.name, v)),
+      ]);
+      checkpointPlan.context = contextJson == null ? null :
+          sha1.convert(utf8.encode(contextJson)).toString();
+      checkpointPlan.boundary = ((searchSub.lastTs ?? 0) + 1) ~/ 900 * 900;
+    }
     // Cancellable + TIMED OUT. This site previously used a bare `Isolate.run`
     // with no timeout at all, so a hung staging pass never completed its future
     // — `_running` stayed true and `DeriveScheduler._drain` never returned, i.e.
@@ -379,12 +441,87 @@ extension _EnginePrepare on DerivationEngine {
     // hands back one chunk to replace them.
     final rowsLo = range.$1 - kCardioRowsSlackSec;
     final rowsHi = range.$2 + kCardioRowsSlackSec;
+    if (rowRevisions != null) {
+      final current = await readRowRevisions();
+      if (current == null || current.length != rowRevisions.length ||
+          current.entries.any((e) => rowRevisions![e.key] != e.value)) {
+        rowRevisions = null;
+      }
+    }
+    final cacheRows = !debugDisableCardioRows && _canRetainSubstrate &&
+        rowsEpoch == _retentionEpoch && rowRevisions != null;
+    _cardioRowChunks.removeWhere((c) =>
+        c.generation != rowGeneration || c.algorithm != kAlgoVersion ||
+        (c.overlaps(rowsLo, rowsHi) &&
+          !c.matches(rowRevisions ?? const {}, rowGeneration, kAlgoVersion)));
     final sentChunks = [
       for (final c in _cardioRowChunks)
-        if (c.overlaps(rowsLo, rowsHi)) c,
+        if (cacheRows && c.overlaps(rowsLo, rowsHi)) c,
     ];
+    final rowBytes = [for (final c in sentChunks) c.json];
+    if (checkpointPlan != null && checkpointPlan.boundary > range.$1 &&
+        checkpointPlan.context != null) {
+      // A RAM state clears itself when the input revision moved (see
+      // NightRrState.context), so one that no longer matches is not a live
+      // start: clear it here and let the compatible disk checkpoint restore
+      // the night, instead of skipping it and reprocessing the whole night.
+      final ram = _nightStates[dayId];
+      var ramLive = ram?.canStream == true;
+      if (ram != null && ramLive) {
+        try {
+          final w = ram.window;
+          if (w == null) {
+            ramLive = false;
+          } else {
+            final (rev, gen) = await _nightInputRevision(w.$1, w.$2);
+            ramLive = ram.hasContext(rev, gen, kAlgoVersion);
+          }
+        } catch (_) {
+          ramLive = false;
+        }
+        if (!ramLive) ram.clear();
+      }
+      if (!ramLive &&
+          _nightStates[dayId]?.acceptsCheckpointAlgorithm(kAlgoVersion) != false) {
+        try {
+          debugCheckpoints.reads++;
+          final row = await LocalDb.nightCheckpointRow(dayId, kAlgoVersion,
+              maxBytes: maxNightCheckpointBytes);
+          if (row == null) {
+            debugCheckpoints.misses++;
+          } else {
+            final context = checkpointPlan.context!;
+            final from = checkpointPlan.from, through = checkpointPlan.through;
+            final inputRevisions = checkpointPlan.revisions;
+            final searchRr = searchSub.rrMs, searchTimes = searchSub.rrTsMs;
+            final job = NightCheckpointInput(row, dayId, kAlgoVersion, context,
+                from, through, inputRevisions, searchRr, searchTimes);
+            final restored = (await DerivationEngine._restoreNightCancellable(
+                DerivationEngine._workerInputs(), job, _perDayTimeout,
+                'checkpoint-read $dayId')).value;
+            if (restored.rejection != null) {
+              debugCheckpoints.rejections.add(restored.rejection!);
+              debugCheckpoints.misses++;
+            } else if (LocalDb.cacheGeneration == checkpointPlan.generation &&
+                rowsEpoch == _retentionEpoch) {
+              checkpointPlan.restored = restored.night;
+              debugCheckpoints.lastDecodedPayload = restored.payload;
+              if (restored.cardio != null) rowBytes.add(restored.cardio!);
+            }
+          }
+        } catch (_) {
+          debugCheckpoints.misses++;
+        }
+      }
+      checkpointPlan.cardio = rowBytes;
+      _checkpointPlans[dayId] = checkpointPlan;
+      while (_checkpointPlans.length > 3) {
+        _checkpointPlans.remove(_checkpointPlans.keys.first);
+      }
+    }
     final input = SleepStagingInput(
       method: method,
+      skipUnusedDays: !debugDisableTargetDaySkip,
       dayId: dayId,
       searchSub: searchSub,
       override: override,
@@ -393,10 +530,10 @@ extension _EnginePrepare on DerivationEngine {
       vendorNights: vendorNights,
       profileJson: profileJson,
       mayFold: mayFold,
-      rowChunks: [for (final c in sentChunks) c.json],
+      rowChunks: rowBytes,
       rowsLoSec: rowsLo,
       rowsHiSec: rowsHi,
-      nowSec: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      nowSec: searchSub.lastTs ?? range.$2,
     );
     final inputs = DerivationEngine._workerInputs();
     // Reuse the staged night when this exact input was staged at this algo
@@ -405,6 +542,18 @@ extension _EnginePrepare on DerivationEngine {
     (int, int)? digest;
     StagedSleepEntry? hit;
     final keyStartedAt = DateTime.now().microsecondsSinceEpoch;
+    final loadedProvenance = provenance;
+    if (loadedProvenance != null) {
+      try {
+        final current = await LocalDb.inputRevisions(
+            range.$1 ~/ kRevBucketSec, range.$2 ~/ kRevBucketSec + 1);
+        final generation = LocalDb.storeGeneration;
+        if (current.length != loadedProvenance.revs.length ||
+            current.entries.any((e) => loadedProvenance.revs[e.key] != e.value) ||
+            generation.wipeEpoch != loadedProvenance.wipeEpoch ||
+            generation.openCount != loadedProvenance.openCount) { provenance = null; }
+      } catch (_) { provenance = null; }
+    }
     if (useCache && provenance != null) {
       // A key that cannot be computed only costs the reuse: stage as before,
       // and the Sleep stages status still ends on the staging path (4.3).
@@ -435,6 +584,7 @@ extension _EnginePrepare on DerivationEngine {
       perf.addStage('stage_candidate',
           DateTime.now().millisecondsSinceEpoch - stagingStartedAt);
     } else {
+      debugStagingComputations++;
       final SleepStagingResult staged;
       try {
         staged = await DerivationEngine._runIsolateCancellable(
@@ -449,6 +599,7 @@ extension _EnginePrepare on DerivationEngine {
       }
       candidateJson = staged.candidateJson;
       observationJson = staged.observationJson;
+      debugOnStagingWalk?.call(mayFold, staged.segmentedDays, observationJson);
       // Only a staging that returned is kept; a throw (timeout, cancel, a bad
       // night) left here before this line.
       if (digest != null) {
@@ -466,14 +617,26 @@ extension _EnginePrepare on DerivationEngine {
       }
       // The returned chunk holds everything the sent ones did (less what aged
       // out), so it replaces them; only plain ints are compared here.
-      _cardioRowChunks.removeWhere(sentChunks.contains);
       final rowsOut = staged.rowsJson;
-      if (rowsOut != null) {
-        _cardioRowChunks
-            .add(CardioRowsChunk(rowsOut, staged.rowsLoSec, staged.rowsHiSec));
+      if (checkpointPlan != null && rowsOut != null) checkpointPlan.cardio = [rowsOut];
+      debugCardioRowHits += staged.rowHits;
+      debugCardioRowMisses += staged.rowMisses;
+      _cardioRowOperations.addAll(['decode:worker', 'merge:worker', 'prune:worker']);
+      if (cacheRows && rowsEpoch == _retentionEpoch &&
+          LocalDb.cacheGeneration == rowGeneration && _canRetainSubstrate) {
+        _cardioRowChunks.removeWhere(sentChunks.contains);
+        const maxBytes = 8 * 1024 * 1024;
+        if (rowsOut != null && rowsOut.length <= maxBytes) {
+          _cardioRowChunks.add(CardioRowsChunk(rowsOut, staged.rowsLoSec,
+              staged.rowsHiSec, rowRevisions, rowGeneration, kAlgoVersion));
+        }
+        final keepFrom = input.nowSec - kCardioRowsKeepSec;
+        _cardioRowChunks.removeWhere((c) => c.hiSec < keepFrom);
+        while (_cardioRowChunks.length > 4 ||
+            _cardioRowChunks.fold<int>(0, (n, c) => n + c.bytes.length) > maxBytes) {
+          _cardioRowChunks.removeAt(0);
+        }
       }
-      final keepFrom = input.nowSec - kCardioRowsKeepSec;
-      _cardioRowChunks.removeWhere((c) => c.hiSec < keepFrom);
       perf.addCount('cardio_rows_hit', staged.rowHits);
       perf.addCount('cardio_rows_miss', staged.rowMisses);
     }
@@ -600,6 +763,7 @@ extension _EnginePrepare on DerivationEngine {
     // profile, fold, and clobber the other, losing both the fold and its
     // day_id from folded_days. SQLite's write lock is cross-connection and
     // therefore cross-isolate.
+    debugOnProfileFold?.call(dayId);
     await LocalDb.updateBaseline('sleep_user_profile', (current) {
       // Re-derive freshness INSIDE the transaction: the value this day read
       // before staging is stale by definition, another lane may have folded
@@ -639,6 +803,7 @@ extension _EnginePrepare on DerivationEngine {
   Future<RetainedLoad?> _loadUnion(String dayId, int from, int to,
       {_PrepareStats? stats}) async {
     if (to < from) return null;
+    final epoch = _retentionEpoch;
     final previous = _unionTurn;
     final turnDone = Completer<void>();
     _unionTurn = turnDone.future;
@@ -657,7 +822,12 @@ extension _EnginePrepare on DerivationEngine {
       final revs = await LocalDb.inputRevisions(
           from ~/ kRevBucketSec, to ~/ kRevBucketSec + 1);
       final cutStartedAt = DateTime.now().millisecondsSinceEpoch;
-      final stretches = usableStretches(_unions,
+      final stretches = usableStretches([
+        ..._unions,
+        if (_canRetainSubstrate)
+          for (final entry in _retained.entries)
+            if (entry.key.endsWith('|union')) entry.value,
+      ],
           from: from,
           to: to,
           revs: revs,
@@ -688,7 +858,10 @@ extension _EnginePrepare on DerivationEngine {
         )))
             .loads;
         for (final w in cut) {
-          if (w != null) borrowed.add(w);
+          if (w != null) {
+            borrowed.add(w);
+            _unionWorkerCuts++;
+          }
         }
       }
       var cutMs = DateTime.now().millisecondsSinceEpoch - cutStartedAt;
@@ -742,9 +915,16 @@ extension _EnginePrepare on DerivationEngine {
       }
       perf.addStage('union_cut', cutMs);
       perf.addCount('union_borrowed_rows', borrowedRows);
-      _unions.add(union);
-      while (_unions.length > 2) {
-        _unions.removeAt(0);
+      if (_canRetainSubstrate && epoch == _retentionEpoch &&
+          LocalDb.storeGeneration == generation &&
+          union.samples <= DerivationEngine._maxDayRawRows &&
+          union.sub.rrMs.length <= 4 * DerivationEngine._maxDayRawRows) {
+        _unions.add(union);
+        while (_unions.length > 2) {
+          _unions.removeAt(0);
+        }
+        _retained[DerivationEngine._retainedKey(dayId, 'union')] = union;
+        _boundRetained();
       }
       _noteHeldRows(union.samples);
       perf.addStage(
@@ -771,6 +951,7 @@ extension _EnginePrepare on DerivationEngine {
     _PrepareStats? stats,
   }) async {
     if (union == null || b < a) return null;
+    final epoch = _retentionEpoch;
     final startedAt = DateTime.now().millisecondsSinceEpoch;
     final window = (await runUnionCut(UnionCutInput(
       kind: UnionCutKind.window,
@@ -787,8 +968,11 @@ extension _EnginePrepare on DerivationEngine {
       perf.addCount('union_refused_$label', 1);
       return null;
     }
+    _unionWorkerCuts++;
     perf.addCount('union_cut_rows_$label', window.samples);
-    if (retain && !_lowMemory && window.samples > 0) {
+    if (retain && !_lowMemory && _canRetainSubstrate &&
+        epoch == _retentionEpoch &&
+        window.generation == LocalDb.storeGeneration && window.samples > 0) {
       final zone = DerivationEngine._zoneKey();
       if (_retainedZone != zone) {
         if (_retained.isNotEmpty && stats != null) stats.fullReload = true;
@@ -828,11 +1012,13 @@ extension _EnginePrepare on DerivationEngine {
     List<RetainedLoad>? runOut,
   }) async {
     if (toRecTs < fromRecTs) return Substrate.empty;
+    debugOnSubstrateLoad?.call(fromRecTs, toRecTs, label);
+    final epoch = _retentionEpoch;
     final loadStartedAt = DateTime.now().millisecondsSinceEpoch;
     // The retained load is judged BEFORE any row is read (and its revisions
     // with it), so a row landing mid-load leaves the next pass's check stale
     // rather than falsely current.
-    final retainKey = retain && !_lowMemory ? DerivationEngine._retainedKey(dayId, label) : null;
+    final retainKey = retain && !_lowMemory && _canRetainSubstrate ? DerivationEngine._retainedKey(dayId, label) : null;
     RetainedLoad? prior;
     int? cut;
     var keepBeats = true;
@@ -1196,7 +1382,9 @@ extension _EnginePrepare on DerivationEngine {
               BucketMeta.fromWire((w as List).cast<Object?>()),
           ],
         );
-        if (retainKey != null && newCut != null && !_lowMemory) {
+        if (retainKey != null && newCut != null && !_lowMemory &&
+            _canRetainSubstrate && epoch == _retentionEpoch &&
+            LocalDb.storeGeneration == generation) {
           _retained[retainKey] = run;
           _boundRetained();
         }
@@ -1278,7 +1466,26 @@ extension _EnginePrepare on DerivationEngine {
     // silently landing on an already-finalized day_id and looking lost. Once
     // that's detected, hold off auto-deriving anything adjacent to finalized
     // data until "Re-analyze data" (full restage) resolves it properly.
-    if (await _timezoneTravelSuspected()) {
+    final tz = await _tzTravelGuard();
+    if (tz.held) {
+      // Holding forever is worse than the relabel risk: every day that lands
+      // next to a newly finalized one is held too, for the whole trip, and
+      // nothing on screen tells the user that only "Re-analyze data" lets
+      // them go. Once the new zone has stood for a day, a heavy pass does what
+      // that restage would — derive every pending raw day under the current
+      // zone — and the end of run() clears the hold if none of them failed.
+      if (heavy && tz.settled) {
+        _log(
+          'derive: new timezone stable — deriving the held days and '
+          'releasing the timezone hold',
+        );
+        return _scopeForDays(
+          rawDays,
+          reason: 'tz-travel-settled',
+          fullHistory: true,
+          rawDays: rawDays,
+        );
+      }
       final adjacent = <String>{
         for (final day in finalized) ...DerivationEngine._adjacentDayIds(day),
       };

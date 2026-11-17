@@ -1,6 +1,7 @@
 import 'package:flutter/painting.dart';
 import 'package:flutter/rendering.dart' show CustomPainter;
 
+
 // CLAIM(guide-painters-classified): every CustomPainter under lib/ui2 declares what a
 // guide placeholder does with it, by implementing exactly one of the four interfaces
 // below [test/ui2/guide_r3_painters_test.dart]. A painter that declares none is drawn as
@@ -47,3 +48,4 @@ bool guideKeepsPainter(CustomPainter? painter) => painter == null || painter is 
 /// [painter] as a [GuidePlot], or null. (A `CustomPainter` does not promote to an
 /// unrelated interface, so the planner asks here.)
 GuidePlot? guidePlotOf(Object? painter) => painter is GuidePlot ? painter : null;
+

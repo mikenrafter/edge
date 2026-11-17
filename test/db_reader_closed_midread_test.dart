@@ -1,7 +1,7 @@
 // A screen read grabs the query-only reader, then the app is backgrounded
 // (setForeground(false) closes it) or the store is replaced before the query
-// runs. The read must come back from the writer, not throw on a closed
-// handle. Ordering is proven with Completers, never a delay.
+// runs. Main's leased reader must finish that read before closing the handle.
+// Ordering is proven with Completers, never a delay.
 import 'dart:async';
 import 'dart:io';
 
@@ -35,8 +35,7 @@ void main() {
     await db.insert('metric_series', {'date': '2026-08-01', 'key': 'k', 'value': 1});
   });
 
-  test('a reader closed between fetching the handle and the query retries '
-      'once on the writer', () async {
+  test('background retirement waits for a leased reader query to finish', () async {
     final w = await LocalDb.instance;
     final fetched = Completer<void>();
     final closed = Completer<void>();
@@ -51,12 +50,16 @@ void main() {
     });
     await fetched.future;
     expect(identical(seen.first, w), isFalse, reason: 'started on the reader');
-    await LocalDb.setForeground(false);
+    final retiring = LocalDb.setForeground(false);
+    // Main's leased reader owns the handle across callback awaits. Releasing
+    // the query must precede awaiting retirement, as for any in-flight read.
     closed.complete();
     final rows = await read;
+    await retiring;
     expect(rows.length, 1);
-    expect(seen.length, 2);
-    expect(identical(seen.last, w), isTrue, reason: 'retried on the writer');
+    expect(seen.length, 1, reason: 'the leased handle stays usable through the query');
+    expect((seen.single as Database).isOpen, isFalse);
+    expect(w.isOpen, isTrue, reason: 'backgrounding closes only the reader');
   });
 
   test('a failure that is not a closed reader is rethrown, not retried',

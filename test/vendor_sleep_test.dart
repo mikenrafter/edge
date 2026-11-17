@@ -239,14 +239,14 @@ void main() {
     final vendor = _night(_at(26, 23, 10), _at(27, 6, 50));
 
     test('without a vendor night the night is ours', () {
-      final day = prepareDerivationPayload(_sub(), targetDay: '2026-06-27')
+      final day = prepareDerivationPayloadHeavy(_sub(), targetDay: '2026-06-27')
           .days
           .single;
       expect(day.sleepSource, anyOf('auto', 'auto_fallback'));
     });
 
     test('a vendor night beats auto, and its stages are the ring\'s', () {
-      final day = prepareDerivationPayload(_sub(),
+      final day = prepareDerivationPayloadHeavy(_sub(),
               targetDay: '2026-06-27', vendorNights: [vendor])
           .days
           .single;
@@ -258,7 +258,7 @@ void main() {
     });
 
     test('a vendor night that fails the gate is ignored, with why', () {
-      final day = prepareDerivationPayload(_sub(),
+      final day = prepareDerivationPayloadHeavy(_sub(),
           targetDay: '2026-06-27',
           vendorNights: [
             _night(_at(26, 23, 10), _at(27, 6, 50), cycle: const ['deep']),
@@ -268,7 +268,7 @@ void main() {
     });
 
     test('the user override beats a vendor night', () {
-      final day = prepareDerivationPayload(_sub(),
+      final day = prepareDerivationPayloadHeavy(_sub(),
           targetDay: '2026-06-27',
           vendorNights: [vendor],
           override: SleepWindowOverride(

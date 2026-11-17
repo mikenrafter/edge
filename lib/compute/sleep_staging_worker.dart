@@ -47,10 +47,12 @@ class SleepStagingInput {
     required this.rowsHiSec,
     required this.nowSec,
     this.vendorNights = const [],
+    this.skipUnusedDays = true,
   this.method = ana.StagingMethod.cardio,
   });
 
   final String dayId;
+  final bool skipUnusedDays;
   final ana.StagingMethod method;
   final Substrate searchSub;
   final SleepWindowOverride? override;
@@ -73,7 +75,7 @@ class SleepStagingInput {
   final int nowSec;
 
   /// A device's own staged nights (`vendor_staged`) that may stage the main
-  /// sleep, as `prepareSleepSessionCandidate` takes them (upstream #vendor).
+  /// sleep, as `prepareSleepSessionCandidateHeavy` takes them (upstream #vendor).
   final List<VendorNight> vendorNights;
 }
 
@@ -90,6 +92,7 @@ class SleepStagingResult {
     required this.rowsHiSec,
     required this.rowHits,
     required this.rowMisses,
+    this.segmentedDays = 0,
   });
 
   final String candidateJson;
@@ -97,6 +100,7 @@ class SleepStagingResult {
   final Uint8List? rowsJson;
   final int rowsLoSec, rowsHiSec;
   final int rowHits, rowMisses;
+  final int segmentedDays;
 }
 
 /// WORKER ENTRY: stages [input]'s night on a worker isolate, never the UI
@@ -143,7 +147,8 @@ SleepStagingResult stageSleepCandidateHeavy(
   final all = mergeCardioRowChunksHeavy(input.rowChunks);
   final rowCache = restrictCardioRows(all,
       loSec: input.rowsLoSec, hiSec: input.rowsHiSec + 1);
-  final candidate = prepareSleepSessionCandidate(
+  resetStagingWalkDiagnostics();
+  final candidate = prepareSleepSessionCandidateHeavy(
     input.searchSub,
     method: input.method,
     targetDay: input.dayId,
@@ -154,7 +159,7 @@ SleepStagingResult stageSleepCandidateHeavy(
     vendorNights: input.vendorNights,
     // The fold below reads only the target night's own observation (D36), so
     // earlier days that cannot change the target are skipped either way.
-    skipUnusedDays: true,
+    skipUnusedDays: input.skipUnusedDays,
     // Only the target night records an observation (D36).
     recordTargetOnly: true,
   );
@@ -194,7 +199,7 @@ SleepStagingResult stageSleepCandidateHeavy(
   // one and collapses the EWMA onto whichever day was re-derived last. Measured
   // effect of that corrupt profile on the same nights: wake 4.3% -> 36.4%, deep
   // 1.9% -> 0.0%. One fold per day_id, ever.
-  if (input.mayFold) {
+  if (input.mayFold && candidate.present) {
     // ONLY the target day's own observation (D36): the shared buffer holds
     // every walked night, and the longest of those used to be folded under
     // the target's id. No staged night on the target ⇒ nothing to fold.
@@ -243,6 +248,7 @@ SleepStagingResult stageSleepCandidateHeavy(
     rowsHiSec: all.length == 0 ? 0 : hi,
     rowHits: rowCache.hits,
     rowMisses: rowCache.misses,
+    segmentedDays: stagingWalkSegmentedDays,
   );
 }
 

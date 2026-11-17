@@ -1,6 +1,6 @@
 // RED tests: staging one target day must not segment days it will discard.
 //
-// `calendarDays` walks every calendar day the search substrate touches; for a
+// `calendarDaysHeavy` walks every calendar day the search substrate touches; for a
 // target-day staging the previous day is fully segmented (~1 s, ~3 s with the
 // HR-led fallback) and thrown away. Its only channel into the target is
 // `sleepHistory` -> `habitualMidsleepSecFromHistory`, which abstains below 14
@@ -97,7 +97,7 @@ String _json(SleepSessionCandidate c) => jsonEncode(c.toJson());
   List<({int startSec, int endSec, String dayKey})> prior = const [],
   List<VendorNight> vendor = const [],
 }) {
-  SleepSessionCandidate run() => prepareSleepSessionCandidate(sub,
+  SleepSessionCandidate run() => prepareSleepSessionCandidateHeavy(sub,
       targetDay: _day, override: override, priorSleep: prior, vendorNights: vendor);
   debugStageEveryWalkedDay = true;
   final old = run();
@@ -178,7 +178,7 @@ void main() {
 
     int segmented({required int stored}) {
       debugSegmentedDayCount = 0;
-      prepareSleepSessionCandidate(sub(),
+      prepareSleepSessionCandidateHeavy(sub(),
           targetDay: _day, priorSleep: _prior(stored));
       return debugSegmentedDayCount;
     }
@@ -199,16 +199,16 @@ void main() {
 
     test('the old walk segments every walked day (seam sanity)', () {
       debugStageEveryWalkedDay = true;
-      prepareSleepSessionCandidate(sub(), targetDay: _day);
+      prepareSleepSessionCandidateHeavy(sub(), targetDay: _day);
       expect(debugSegmentedDayCount, 2);
     });
 
     test('a day AFTER the target is never segmented', () {
       final after = _sub(-12, 40, asleep: [(-1, 6), (23, 30)]);
-      prepareSleepSessionCandidate(after, targetDay: _day);
+      prepareSleepSessionCandidateHeavy(after, targetDay: _day);
       expect(debugSegmentedDayCount, 1);
       debugSegmentedDayCount = 0;
-      prepareSleepSessionCandidate(after,
+      prepareSleepSessionCandidateHeavy(after,
           targetDay: _day, priorSleep: _prior(20));
       // 20 stored >= 14: the earlier day is walked, the later one still not.
       expect(debugSegmentedDayCount, 2);

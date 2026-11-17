@@ -15,7 +15,7 @@ import 'package:openstrap_edge/ui2/profile/devices.dart';
 import 'support/pair_ui_support.dart';
 
 const _ouraKey = 'Already use the Oura app? Keep the ring in that app and pair with its existing key. Skip the reset steps below. Only reset it if you want a new key.';
-const _pebbleLead = 'Pebble 2 can fill your days with sleep, recovery and heart rate. Pebble 2 SE shows the watch’s own sleep and steps. It has no heart-rate sensor, so this app cannot calculate daily strain or estimate recovery from it.';
+const _pebbleLead = 'Pebble 2 can fill your days with sleep and heart rate. Pebble 2 SE shows the watch’s own sleep and steps. It has no heart-rate sensor, so this app cannot calculate daily strain or estimate recovery from it.';
 const _strapLead = 'It adds heart rate while you work out. It does not record sleep, recovery or daily strain.';
 
 Future<void> _openBand(WidgetTester t, BandEntry entry) async {
@@ -35,6 +35,40 @@ void _expectKeyBeforeReset(WidgetTester t) {
 }
 
 void main() {
+  // WHY: synthetic-night calibration stays provisional after the minimum nights.
+  // catches: replacing the provisional warning with only a waiting period.
+  for (final ring in [kOura, kColmi, kUltrahuman]) {
+    testWidgets('${ring.id} skin temperature retains its provisional warning', (t) async {
+      await _openBand(t, ring);
+      final row = find.byKey(const ValueKey('slot-row-skinTemperature'));
+      expect(find.descendant(of: row, matching: find.text(
+          'Every day: Provisional estimate; needs a few nights')), findsOneWidget);
+      expect(t.getSemantics(find.byKey(const ValueKey('slot-everyDay-skinTemperature'))).label,
+          contains('Provisional estimate; needs a few nights'));
+    });
+  }
+
+  // WHY: a name-only WHOOP could have either generation's step acquisition.
+  // catches: using the representative's live-only or stored-counter claim.
+  for (final representative in [kWhoopGen4, kWhoopGen5]) {
+    testWidgets('unknown WHOOP steps stay unconfirmed (${representative.id})', (t) async {
+      await pumpPair(t, Builder(builder: (c) => Scaffold(body: TextButton(
+          onPressed: () => showBandFoundSheet(c, band: representative,
+              hasMainBand: false, modelKnown: false),
+          child: const Text('open')))), size: const Size(412, 2400));
+      await t.tap(find.text('open'));
+      await t.pumpAndSettle();
+      final l = lookupAppLocalizations(const Locale('en'));
+      final row = find.byKey(const ValueKey('slot-row-steps'));
+      expect(find.descendant(of: row, matching: find.text(
+          l.slotColumnReason(l.slotEveryDay, l.capReasonUnconfirmed))), findsOneWidget);
+      expect(t.getSemantics(find.byKey(const ValueKey('slot-everyDay-steps'))).label,
+          contains(l.capReasonUnconfirmed));
+      expect(find.text('WHOOP 4'), findsNothing);
+      expect(find.text('WHOOP 5'), findsNothing);
+    });
+  }
+
   testWidgets('Oura sheet preserves the existing key before reset steps', (t) async {
     await _openBand(t, kOura);
     _expectKeyBeforeReset(t);
@@ -94,14 +128,26 @@ void main() {
     expect(find.text(_strapLead), findsOneWidget);
   });
 
-  test('Russian replacement and unpair actions remove the pairing', () {
+  test('Russian replacement says connect first and retain the old pairing on cancellation', () {
+    // WHY: the old copy described forgetting first, which could strand the user.
     final l = lookupAppLocalizations(const Locale('ru'));
-    final actions = [l.pairReplaceConfirmTitle('WHOOP'), l.pairReplaceBand('WHOOP'),
-      l.pairReplaceConfirmYes, l.pairReplaceUnpairFailed, l.pairUnpairBand];
-    for (final text in actions) {
-      expect(text.toLowerCase(), contains('сопряжени'), reason: text);
-      expect(text.toLowerCase(), isNot(contains('отключ')), reason: text);
-    }
+    expect(l.pairReplaceConfirmTitle('WHOOP').toLowerCase(), contains('после подключения'));
+    expect(l.pairReplaceBand('WHOOP').toLowerCase(), contains('затем отключить'));
+    expect(l.pairReplaceConfirmBody.toLowerCase(), contains('останется сопряжённым'));
+    expect(l.pairReplaceConfirmBody.toLowerCase(), contains('отмените'));
+  });
+
+  test('Russian unpair explicitly removes the pairing', () {
+    // WHY: disconnecting a radio link does not remove its saved pairing.
+    final l = lookupAppLocalizations(const Locale('ru'));
+    expect(l.pairUnpairBand.toLowerCase(), contains('сопряжени'));
+    expect(l.pairUnpairBand.toLowerCase(), isNot(contains('отключ')));
+  });
+
+  test('Thai strap filter names chest straps and armbands', () {
+    final l = lookupAppLocalizations(const Locale('th'));
+    expect(l.pairKindStrap, contains('คาดอก'));
+    expect(l.pairKindStrap, contains('ต้นแขน'));
   });
 
   testWidgets('WHOOP unconfirmed beat timing caption names only Workouts only', (t) async {
@@ -179,6 +225,8 @@ void main() {
         'Pebble 2 SE घड़ी की अपनी नींद और कदमों की रीडिंग दिखाता है। उसमें हृदय गति सेंसर नहीं है, इसलिए यह ऐप उसके डेटा से रोज़ का शारीरिक भार नहीं निकाल सकता और न ही रिकवरी का अनुमान लगा सकता है।'),
       'ru': ('Только Pebble 2. У 2 SE нет датчика пульса.',
         'Pebble 2 SE показывает сон и шаги по данным самих часов. У него нет датчика пульса, поэтому приложение не может рассчитать дневную нагрузку или оценить восстановление по его данным.'),
+      'th': ('เฉพาะ Pebble 2 รุ่น 2 SE ไม่มีเซ็นเซอร์วัดอัตราการเต้นของหัวใจ',
+        'Pebble 2 SE แสดงข้อมูลการนอนและจำนวนก้าวที่นาฬิกาบันทึกเอง รุ่นนี้ไม่มีเซ็นเซอร์วัดอัตราการเต้นของหัวใจ แอปจึงคำนวณภาระร่างกายรายวันหรือประเมินการฟื้นตัวจากข้อมูลของรุ่นนี้ไม่ได้'),
       'zh': ('仅限 Pebble 2。2 SE 没有心率传感器。',
         'Pebble 2 SE 显示手表自身记录的睡眠和步数。它没有心率传感器，因此本应用无法根据它的数据计算每日身体负荷或估算恢复。'),
     };

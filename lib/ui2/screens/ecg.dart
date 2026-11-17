@@ -79,12 +79,12 @@ String ecgReasonText(AppLocalizations? l, EcgReason r) {
     EcgReasonId.notEnoughData =>
       l?.ecgReasonNotEnoughData ?? 'Not enough data',
     EcgReasonId.unknownBandReasonBit =>
-      l?.ecgReasonUnknownBit(n) ?? 'The band reported an unrecognised result.',
+      l?.ecgReasonUnknownBit ?? 'The band reported an unrecognised result.',
     EcgReasonId.unknownResultCode =>
-      l?.ecgReasonUnknownCode(n) ??
+      l?.ecgReasonUnknownCode ??
           'The band reported an unrecognised result.',
     EcgReasonId.bandUnreadableResult =>
-      l?.ecgReasonBandUnreadable(n) ??
+      l?.ecgReasonBandUnreadable ??
           'The band could not read the recording.',
     EcgReasonId.noHeartRate =>
       l?.ecgReasonNoHeartRate ?? 'No heart rate was reported',

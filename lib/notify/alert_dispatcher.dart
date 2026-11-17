@@ -186,10 +186,6 @@ class AlertDispatcher {
     final delivered = <String>[];
     // Separate claims keep a denied phone permission from consuming band output.
     for (final target in selected) {
-      if (targetAllowed != null && !targetAllowed(target)) {
-        reason ??= 'channelSuppressed';
-        continue;
-      }
       final key = jsonEncode([typed.id, eventId, target]);
       var claimed = false;
       var success = false;
@@ -200,6 +196,13 @@ class AlertDispatcher {
         }
         claimed = await ledger.claim(key);
         if (!claimed) continue;
+        // The durable claim awaits storage; policy may change while it waits.
+        // Refuse immediately before transport, and release this unused claim.
+        if (targetAllowed != null && !targetAllowed(target)) {
+          reason ??= 'channelSuppressed';
+          continue;
+        }
+
         final saved = typed.buzzSequence;
         final sequencePlayer = bandSequence;
         final sequenceDelivery = bandSequenceDelivery;

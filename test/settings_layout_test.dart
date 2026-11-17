@@ -181,6 +181,7 @@ void main() {
         'Zoom wake-up events',
         'Time format',
         'Pull down to sync',
+        'Step calibration',
         'Expected sleep schedule',
         'Cycle tracking',
       ], reason: 'the icon picker is not a SetRow; Steps is gone');

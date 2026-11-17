@@ -1,9 +1,9 @@
+import 'package:flutter/foundation.dart';
 // Owner: HomeSnapshotStore owns the bounded durable Home presentation map.
 // These health snapshots must disappear with their source store. They never
 // supply analytics or fresh ring values. home_ring_cache.dart owns the codec.
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 
 import '../settings/settings_repository.dart';
 import '../state/prefs.dart';
@@ -33,7 +33,7 @@ class HomeSnapshotStore {
         .update((d) => d.remove(prefKey), sections: const {})
         .then<void>((_) {})
         .catchError((Object error) {
-          debugPrint('Home snapshot deletion failed: $error');
+          debugPrintSynchronously('Home snapshot deletion failed: $error');
         })
         .whenComplete(() => _invalidating--);
   }

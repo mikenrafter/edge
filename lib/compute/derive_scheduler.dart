@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:io';
-
 import '../data/db.dart';
 import '../sync/import_focus.dart';
 import 'derive_outcome.dart';
 import 'processing_context.dart';
+
+
 
 enum DeriveJobKind { light, heavy }
 
@@ -160,7 +161,14 @@ class DeriveScheduler {
 
   /// Earliest `next_run_at` (epoch ms) among queued jobs that are not due yet.
   int? _nextRetryAt;
-  bool _refreshing = false;
+
+  // The in-flight snapshot refresh, and whether another was asked for while
+  // it ran. A request that lands mid-refresh can't just return: the caller
+  // (an enqueue, say) arms its settle timer off the snapshot it awaited, and
+  // the in-flight query may predate its insert — or the in-flight refresh is
+  // one that never arms. Either way the job sat queued with no timer until
+  // some unrelated event re-armed the scheduler.
+  Future<void>? _refreshing;
 
   Future<void> init() async {
     await LocalDb.recoverComputeJobs();
@@ -525,10 +533,21 @@ class DeriveScheduler {
     }
   }
 
-  Future<void> _refreshSnapshot() async {
-    if (_refreshing) return;
-    _refreshing = true;
+  Future<void> _refreshSnapshot() {
+    final inFlight = _refreshing;
+    if (inFlight != null) {
+      _refreshAgain = true;
+      return inFlight;
+    }
+    return _refreshing = _refreshLoop();
+  }
+
+  bool _refreshAgain = false;
+  Future<void> _refreshLoop() async {
     try {
+      do {
+        _refreshAgain = false;
+        try {
       final jobs = await LocalDb.computeJobs(state: 'queued', limit: 50);
       // A job still waiting out a retry backoff is not drain-now work: counting
       // it would arm the settle timer, take nothing, and spin.
@@ -547,12 +566,10 @@ class DeriveScheduler {
       _pendingHeavy = due.any((job) => job['type']?.toString() == 'derive_heavy');
       _nextRetryAt = nextRetry;
       _armRetryTimer(now);
-    } catch (e) {
-      // Keep the last known pending flags; a failed read is not "nothing queued".
-      log('[derive-scheduler] could not read the job queue: $e');
-    } finally {
-      _refreshing = false;
-      onChanged();
-    }
+
+        } catch (e) { log('[derive-scheduler] could not read the job queue: $e'); }
+      } while (_refreshAgain && !_disposed);
+    } finally { _refreshing = null; onChanged(); }
   }
 }
+

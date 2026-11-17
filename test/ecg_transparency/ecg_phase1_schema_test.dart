@@ -17,7 +17,6 @@
 //   * legacy rows and their packets are untouched; their new columns are NULL
 //     ("not recorded"), never inferred.
 
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';

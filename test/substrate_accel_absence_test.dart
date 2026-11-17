@@ -108,9 +108,13 @@ void main() {
     );
 
     test(
-      'a NaN sentinel would NOT have fixed it — comparisons against NaN are '
-      'false, so the "angle changed" test never trips',
+      'a NaN axis reads as an unmeasured second, not as stillness',
       () {
+        // This used to document that a NaN sentinel failed OPEN: comparisons
+        // against NaN are false, so the "angle changed" test never tripped and
+        // a night of NaN scored >95% immobile. The detector now treats an
+        // angle change it cannot compute as a gap, so NaN samples abstain like
+        // absent ones.
         const n = 8 * 3600;
         final base = 1750000000000.0;
         final nan = <ana.AccelSample>[
@@ -118,13 +122,9 @@ void main() {
             ana.AccelSample(
                 base + i * 1000, double.nan, double.nan, double.nan),
         ];
-        final immobile =
-            ana.vanHeesSleepWindow(nan).value!.immobile.where((b) => b).length;
-        expect(
-          immobile,
-          greaterThan((n * 0.95).round()),
-          reason: 'NaN fails OPEN here; documented so nobody "fixes" it that way',
-        );
+        final m = ana.vanHeesSleepWindow(nan);
+        expect(m.present, isFalse,
+            reason: 'a night of NaN gravity is not a still night');
       },
     );
   });
@@ -176,7 +176,7 @@ void main() {
   // CodeRabbit, correctly: everything above tests the PREDICATE
   // (`accelPresentFraction`) and never executes the gate it feeds. That made
   // this a vacuous guard for a P0 -- the coverage floor could have been deleted
-  // and every assertion here would still pass. These drive `calendarDays`, the
+  // and every assertion here would still pass. These drive `calendarDaysHeavy`, the
   // real entry point, and assert on the SLEEP RESULT.
   group('the coverage floor actually gates accel-led detection', () {
     /// A full night of the given accel presence, with a plausible nocturnal HR
@@ -244,7 +244,7 @@ void main() {
         // Coverage lands below the floor, and the zeros would otherwise form a
         // clean multi-hour "immobile" block for van Hees to anchor on. With
         // the gate removed this test FAILS — verified by mutation.
-        final days = calendarDays(night(accelPresent: true, presentFraction: 0.15));
+        final days = calendarDaysHeavy(night(accelPresent: true, presentFraction: 0.15));
         for (final d in days) {
           expect(
             d.sleepSource,
@@ -263,7 +263,7 @@ void main() {
         // independently discriminating, because a record that is immobile end
         // to end is also rejected downstream. The test above is the one that
         // pins the gate.
-        final days = calendarDays(night(accelPresent: false));
+        final days = calendarDaysHeavy(night(accelPresent: false));
         for (final d in days) {
           expect(d.sleepSource, isNot('auto'));
         }
@@ -271,7 +271,7 @@ void main() {
     );
 
     test('a fully-measured night still detects accel-led sleep normally', () {
-      final days = calendarDays(night(accelPresent: true));
+      final days = calendarDaysHeavy(night(accelPresent: true));
       expect(
         days.any((d) => d.sleepSource == 'auto'),
         isTrue,
@@ -280,13 +280,59 @@ void main() {
     });
 
     test('the boundary: just below the floor gates, at/above it does not', () {
-      final below = calendarDays(
+      final below = calendarDaysHeavy(
           night(accelPresent: true, presentFraction: kMinAccelCoverageForVanHees - 0.1));
       expect(below.any((d) => d.sleepSource == 'auto'), isFalse);
 
-      final atOrAbove = calendarDays(
+      final atOrAbove = calendarDaysHeavy(
           night(accelPresent: true, presentFraction: kMinAccelCoverageForVanHees + 0.1));
       expect(atOrAbove.any((d) => d.sleepSource == 'auto'), isTrue);
+    });
+  });
+
+  // A night routed to the HR-led fallback because it has no gravity cannot be
+  // staged by it either: the forced-window stager only counts a second as
+  // observed when its gravity vector is valid. The fallback then returns an
+  // unobserved absence with a reason, which used to be dropped, so the day read
+  // as an ordinary "no sleep detected" while the band was worn all night.
+  group('a gravity-less night keeps the fallback\'s reason', () {
+    test('the day carries absence_reason, still with no window and no source',
+        () {
+      // 08:00 the day before -> 08:00, 1 Hz. Awake 70 bpm, asleep 50 bpm from
+      // 23:00 to 07:00. The morning before the search window gives the HR-led
+      // detector a daytime baseline, so it proposes the 23:00-07:00 dip.
+      final midnight = _localMidnightOf(1750000000);
+      final start = midnight - 16 * 3600;
+      const n = 24 * 3600;
+      final ts = <int>[], hr = <int>[];
+      for (var i = 0; i < n; i++) {
+        final t = start + i;
+        ts.add(t);
+        hr.add(t >= midnight - 3600 && t < midnight + 7 * 3600 ? 50 : 70);
+      }
+      final sub = Substrate(
+        tsSec: ts,
+        hr: hr,
+        rrTsMs: const [],
+        rrMs: const [],
+        ax: List<double>.filled(n, 0),
+        ay: List<double>.filled(n, 0),
+        az: List<double>.filled(n, 0),
+        spo2Red: List<int>.filled(n, 0),
+        spo2Ir: List<int>.filled(n, 0),
+        skinTemp: List<int>.filled(n, 0),
+        skinContact: List<int>.filled(n, 0),
+      );
+      final wake = midnight + 7 * 3600;
+      final day = calendarDaysHeavy(sub)
+          .singleWhere((d) => d.startSec <= wake && wake < d.endSec);
+      expect(day.sleep.present, isFalse);
+      expect(day.sleepSource, 'none');
+      expect(day.flags, contains('NO_SLEEP_DETECTED'));
+      expect(day.sleep.absenceReason, isNotNull,
+          reason: 'the band missed the night; that is not "no sleep found"');
+      expect(day.sleep.toJson()['absence_reason'], isNotNull,
+          reason: 'the reason has to survive into the stored day');
     });
   });
 

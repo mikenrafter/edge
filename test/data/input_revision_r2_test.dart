@@ -38,6 +38,13 @@ String _label(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-'
     '${d.day.toString().padLeft(2, '0')}';
 
+// Trigger behavior uses valid physical rows from the archive's one encoder.
+Map<String, Object?> _archiveRow(Map<String, Object?> row) => LocalDb.rawArchiveRow(
+    deviceId: row['device_id'] as String, hex: row['hex'] as String,
+    counter: row['counter'] as int?, packetType: row['packet_type'] as int,
+    recTs: row['rec_ts'] as int?, capturedAt: row['captured_at'] as int,
+    reason: row['reason'] as String);
+
 void main() {
   const name = 'input_revision_r2_test.db';
 
@@ -60,7 +67,7 @@ void main() {
       final t = kInputCatalogue
           .firstWhere((s) => s.id == 'wearable_records')
           .tables
-          .single;
+          .firstWhere((t) => t.name == 'raw_archive_frames');
       expect(t.lookbackDays, kColmiHistoryDays);
       expect(t.lookbackWhen, contains(
           '0x${kColmiBigTemperature.toRadixString(16)}'));
@@ -80,11 +87,11 @@ void main() {
         final day = _label(DateTime(sync.year, sync.month, sync.day - slot.daysAgo));
         expect(slot.daysAgo, ago);
         final before = await _rev('wearable_records', day);
-        await db.insert('raw_archive', {
+        await db.insert('raw_archive_frames', _archiveRow({
           'device_id': 'fx$ago', 'hex': hex, 'packet_type': reply[0],
           'rec_ts': _noon(sync), 'captured_at': _noon(sync) * 1000,
           'reason': 'colmi_big_0x25',
-        });
+        }));
         expect(await _rev('wearable_records', day), greaterThan(before));
       });
     }
@@ -96,10 +103,10 @@ void main() {
       final earlier = _label(DateTime(2026, 5, 18));
       final before = await _rev('wearable_records', earlier);
       for (final reason in ['colmi_big_0x27', 'ultrahuman_record']) {
-        await db.insert('raw_archive', {
+        await db.insert('raw_archive_frames', _archiveRow({
           'device_id': 'fxo', 'hex': 'h-$reason', 'packet_type': 1,
           'rec_ts': _noon(sync), 'captured_at': 1, 'reason': reason,
-        });
+        }));
       }
       expect(await _rev('wearable_records', earlier), before);
       expect(await _rev('wearable_records', _label(sync)), greaterThan(0));

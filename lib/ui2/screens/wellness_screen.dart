@@ -1,5 +1,32 @@
 import '../profile/profile.dart' show SettingsAccordion;
 import '../../l10n/display_text.dart';
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:provider/provider.dart';
+import '../../data/db.dart';
+import '../../compute/findings.dart';
+import '../../data/local_repository.dart';
+import '../../data/read_paused.dart';
+import '../../data/day_label.dart';
+import '../../data/journal_fields.dart';
+import '../../data/med_store.dart';
+import '../../l10n/app_localizations.dart';
+import '../../models/metric.dart' show whyFromNote;
+import '../../state/app_state.dart';
+import '../../state/recalc_state.dart';
+import '../../stress/breath_phases.dart';
+import '../ui2.dart';
+import 'calm_breathing.dart';
+import 'driver_breakdown.dart';
+import 'cycle_screen.dart';
+import 'home_screen.dart';
+import 'journal_compose.dart';
+import 'start_card.dart';
+import 'metric_detail.dart' show detailScaffold;
+import 'sleep_detail.dart';
+
+
 // Wellness — softer than Health, same system.
 //
 // Health tells you what your body did. Wellness is where you tell it back.
@@ -17,34 +44,8 @@ import '../../l10n/display_text.dart';
 //     saying so either — a disclaimer for a feature that was never offered is
 //     still an advert for it.
 
-import 'dart:async';
 
-import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:openstrap_analytics/onehz.dart' show journalFieldLagDays;
-import 'package:provider/provider.dart';
 
-import '../../data/db.dart';
-import '../../compute/findings.dart';
-import '../../data/local_repository.dart';
-import '../../data/read_paused.dart';
-import '../../data/day_label.dart';
-import '../../data/journal_fields.dart';
-import '../../data/med_store.dart';
-import '../../l10n/app_localizations.dart';
-import '../../models/metric.dart' show whyFromNote;
-import '../../state/app_state.dart';
-import '../../state/recalc_state.dart';
-import '../../stress/breath_phases.dart';
-import '../ui2.dart';
-import 'calm_breathing.dart';
-import 'driver_breakdown.dart';
-import 'cycle_screen.dart';
-import 'home_screen.dart' show go, envValue, metricOf, weekdayShortName;
-import 'journal_compose.dart';
-import 'start_card.dart';
-import 'metric_detail.dart' show detailScaffold;
-import 'sleep_detail.dart';
 
 class WellnessScreen extends StatefulWidget {
   /// Only the sleep plan (need, debt, bedtime, what charged and drained you),
@@ -103,7 +104,7 @@ class _WellnessScreenState extends State<WellnessScreen>
   /// midnight and habit ticks would land on yesterday's date.
   String get _date => todayLabel();
   bool _loading = true;
-  bool _planFailed = false;
+  bool _failed = false;
   bool _paused = false;
 
   /// One journal write at a time. `putJournalMetrics` deletes the day and
@@ -183,8 +184,8 @@ class _WellnessScreenState extends State<WellnessScreen>
   }
 
   Future<void> _load() async {
-    if (widget.sleepPlanOnly && _planFailed && mounted) {
-      setState(() { _planFailed = false; _loading = true; });
+    if (_failed && mounted) {
+      setState(() { _failed = false; _loading = true; });
     }
     try {
       await _loadToday();
@@ -192,8 +193,7 @@ class _WellnessScreenState extends State<WellnessScreen>
       // An import has the database: today is not readable yet, and not wrong.
       if (mounted) setState(() => (_loading = false, _paused = true));
     } catch (_) {
-      if (!widget.sleepPlanOnly) rethrow;
-      if (mounted) setState(() { _loading = false; _planFailed = true; });
+      if (mounted) setState(() { _loading = false; _failed = true; });
     }
   }
 
@@ -241,7 +241,7 @@ class _WellnessScreenState extends State<WellnessScreen>
       if (!stillNewest(#wellness, t)) return;
       setState(() {
         _stress = stress; _insights = insights; _drivers = drivers;
-        _loading = false; _paused = false; _planFailed = false;
+        _loading = false; _paused = false; _failed = false;
       });
       return;
     }
@@ -302,9 +302,8 @@ class _WellnessScreenState extends State<WellnessScreen>
     if (widget.sleepPlanOnly) {
       // Known metric rows form the pending layout. Variable advice and
       // driver histories follow at the end of the section.
-      return _paused ? const PausedToday() : _planFailed
-        ? StatusCard(l?.healthReadFailedBody ?? 'Could not load your data. Nothing was deleted.', '',
-            fix: l?.homeTryAgain ?? 'Try again', onFix: _load)
+      return _paused ? const PausedToday() : _failed
+        ? _loadFailed(l)
         : PendingContent(
               memoryKey: 'sleep-plan:body',
               pending: _loading, child: _recovery(c));
@@ -346,6 +345,8 @@ class _WellnessScreenState extends State<WellnessScreen>
           const SizedBox(height: S.x5),
           if (_paused)
             const PausedToday()
+          else if (_failed)
+            _loadFailed(l)
           else if (_loading)
             InlineLoading(
                 status: l?.loadingWellness ??
@@ -421,7 +422,7 @@ class _WellnessScreenState extends State<WellnessScreen>
     final stress = _stress['stress'];
     final score = _reading(stress is Map ? stress['score'] : null);
     final level = stress is Map && stress['level'] is String
-        ? _stressLevelLabel(l, stress['level'] as String)
+        ? stressLevelLabel(l, stress['level'] as String)
         : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -525,13 +526,13 @@ class _WellnessScreenState extends State<WellnessScreen>
       // field written since. Open Wellness, go and write your journal from the
       // compose screen, come back without the tab reloading, tick one habit,
       // and the journal entry was gone.
-      final next = {...await repo.getJournalMetrics(_date)};
-      if (v == null) {
-        next.remove(key);
-      } else {
-        next[key] = JournalMetricValue(v);
-      }
-      await repo.postJournalMetrics(_date, next);
+      await repo.editJournalMetrics(_date, (next) {
+        if (v == null) {
+          next.remove(key);
+        } else {
+          next[key] = JournalMetricValue(v);
+        }
+      });
       await _wrote();
     } finally {
       if (mounted) setState(() => _writingField = false);
@@ -550,6 +551,12 @@ class _WellnessScreenState extends State<WellnessScreen>
     final napMin = _reading(coachMap?['nap_credit_min']);
     final strainMin = _reading(coachMap?['strain_bonus_min']);
     final debtH = _nested(_insights, 'sleep_debt', 'debt_hours');
+    // A WITHHELD rollup (algo-version change, unstamped, or over a week old)
+    // arrives as `{'stale': reason}` with every key above missing. The
+    // cold-start copy below would then tell a user with months of nights that
+    // there are not enough of them yet, one tab over from Home saying the
+    // insights are being rebuilt.
+    final stale = staleReasonOf(_insights);
 
     final parts = <Widget>[
         // The one recommendation on this screen, and only when all three of
@@ -567,7 +574,18 @@ class _WellnessScreenState extends State<WellnessScreen>
                       'tonight\'s is ${_hm(needSec / 60)}.',
               l?.wellnessSeeWhatLastNightCost ?? 'See what last night cost you',
               color: C.indigo,
-              onTap: () => go(c, const SleepDetail()),
+              onTap: () {
+                if (!widget.sleepPlanOnly) { go(c, const SleepDetail()); return; }
+                final pos = Scrollable.maybeOf(c)?.position;
+                if (pos == null) return;
+                final duration = motion(c, Motion.slow);
+                if (duration == Duration.zero) {
+                  pos.jumpTo(pos.minScrollExtent);
+                } else {
+                  unawaited(pos.animateTo(pos.minScrollExtent,
+                      duration: duration, curve: Curves.easeOut));
+                }
+              },
             ),
           ),
         Section(
@@ -576,7 +594,9 @@ class _WellnessScreenState extends State<WellnessScreen>
           // usual, no direction, no size, and no way to tell a move that
           // mattered from one inside the noise — all of which were already
           // being written on every derive and read by nothing.
-          _drivers.isEmpty
+          _drivers.isEmpty && stale != null
+              ? driverAbsenceCard(c, stale: stale, onSync: syncOf(c))
+              : _drivers.isEmpty
               ? StatusCard(
                   l?.wellnessNoDriversTitle ?? 'No recovery breakdown yet',
                   whyFromNote(metricOf(_stress['readiness']).note) ??
@@ -597,11 +617,15 @@ class _WellnessScreenState extends State<WellnessScreen>
             MetricRow(LucideIcons.moon, C.indigo, l?.wellnessTargetBedtime ?? 'Target bedtime', bedMin == null ? '—' : formatMinuteOfDay(bedMin.round())),
             MetricRow(LucideIcons.sunrise, C.orange, l?.wellnessTargetWake ?? 'Target wake', wakeMin == null ? '—' : formatMinuteOfDay(wakeMin.round())),
           ])),
-            if (needSec == null && !_loading) StatusCard(
+            if (needSec == null && !_loading && stale != null)
+              staleInsightsCard(stale, syncOf(c), l)!,
+            if (needSec == null && !_loading && stale == null) StatusCard(
               l?.wellnessNoSleepNeedTitle ?? 'No sleep need yet',
               whyFromNote(_noteOf(coachMap?['need'])) ?? (l?.wellnessNoSleepNeedBody ?? 'No reading.'),
               icon: LucideIcons.bedDouble),
-          ]) : needSec == null
+          ]) : needSec == null && stale != null
+              ? staleInsightsCard(stale, syncOf(c), l)!
+              : needSec == null
               // The coach's own reason for the absent need — it names the
               // input that is actually missing. "Not enough of them yet" named
               // nothing, and was printed for every cause the estimator has.
@@ -1095,8 +1119,9 @@ class _WellnessScreenState extends State<WellnessScreen>
       for (final sch in s.def.schedule)
         if (sch.minuteOfDay != s.slotMin) sch,
     ];
+    final db = await LocalDb.instance;
     await MedDb.putDef(
-      await LocalDb.instance,
+      db,
       MedDef(
         key: s.def.key,
         label: s.def.label,
@@ -1109,6 +1134,16 @@ class _WellnessScreenState extends State<WellnessScreen>
         schedule: [...rest, MedSchedule(picked.minuteOfDay, picked.days)],
       ),
     );
+    // Another slot already at the picked minute owns the doses there; merging
+    // this slot's history into it would count them twice.
+    if (!rest.any((sch) => sch.minuteOfDay == picked.minuteOfDay)) {
+      await MedDb.retimeSlot(
+        db,
+        medKey: s.def.key,
+        fromMin: s.slotMin,
+        toMin: picked.minuteOfDay,
+      );
+    }
     await _wrote();
   }
 
@@ -1148,15 +1183,13 @@ class _WellnessScreenState extends State<WellnessScreen>
     // on screen, produced by the app rather than by the person.
     final picked = await pickMedSchedule(c);
     if (picked == null || !mounted) return;
-    await MedDb.putDef(
+    // A new medication's dose is left null — "as directed" is a real answer,
+    // and demanding a number to get a reminder is how a checklist stops being
+    // used. An existing one keeps its dose and gains this time.
+    await MedDb.addScheduledTime(
       await LocalDb.instance,
-      MedDef(
-        key: MedDb.keyFor(name),
-        label: name,
-        // Dose is left null — "as directed" is a real answer, and demanding a
-        // number to get a reminder is how a checklist stops being used.
-        schedule: [MedSchedule(picked.minuteOfDay, picked.days)],
-      ),
+      name,
+      MedSchedule(picked.minuteOfDay, picked.days),
     );
     await _wrote();
   }
@@ -1195,6 +1228,23 @@ class _WellnessScreenState extends State<WellnessScreen>
       },
     ).whenComplete(ctrl.dispose);
   }
+
+
+  /// The last read threw. Shown as a retryable card rather than a spinner.
+
+
+  Widget _loadFailed(AppLocalizations? l) => StatusCard(
+        l?.wellnessLoadFailedTitle ?? 'This could not be read',
+        l?.wellnessLoadFailedBody ??
+            'Reading your stored data failed. Nothing was deleted — this is '
+                'a read that went wrong, not missing data.',
+        fix: l?.homeTryAgain ?? 'Try again',
+        icon: LucideIcons.databaseZap,
+        onFix: () {
+          setState(() => (_loading = true, _failed = false));
+          _load();
+        },
+      );
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -1244,11 +1294,8 @@ String? _noteOf(Object? envelope) {
   return note is String ? note : null;
 }
 
-String _hm(double minutes) {
-  final sign = minutes < 0 ? '−' : '';
-  final t = minutes.abs().round();
-  return t < 60 ? '$sign${t}m' : '$sign${t ~/ 60}h ${t % 60}m';
-}
+/// [hm] in the display language, keeping a sign for a negative figure.
+String _hm(double minutes) => '${minutes.round() < 0 ? '−' : ''}${hm(minutes.abs())}';
 
 /// A label and a sentence. Used by journal findings and habit effects, both of
 /// which genuinely have only those two things.
@@ -1290,23 +1337,6 @@ class DriverRow extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-/// The pinned analytics package returns 'low'/'normal'/'elevated'/'high' —
-/// English regardless of locale. Map to the localized word before display.
-String? _stressLevelLabel(AppLocalizations? l, String raw) {
-  switch (raw) {
-    case 'low':
-      return l?.wellnessStressLevelLow ?? raw;
-    case 'normal':
-      return l?.wellnessStressLevelNormal ?? raw;
-    case 'elevated':
-      return l?.wellnessStressLevelElevated ?? raw;
-    case 'high':
-      return l?.wellnessStressLevelHigh ?? raw;
-    default:
-      return raw;
   }
 }
 
@@ -1869,11 +1899,7 @@ class _JournalFindingsState extends State<JournalFindings> {
   String _alignment(AppLocalizations? l, Map<String, dynamic> r) {
     // Read from the same constant analytics paired on, so the sentence cannot
     // drift away from the arithmetic.
-    final field = (r['field'] ?? '').toString();
-    // The two derived caffeine-timing keys carry caffeine's own lag.
-    final lag =
-        journalFieldLagDays[field] ??
-        (field.startsWith('caffeine') ? journalFieldLagDays['caffeine'] : null);
+    final lag = journalFieldLag((r['field'] ?? '').toString());
     if (lag == null) {
       return l?.wellnessMatchedSameDay ?? 'Matched against the same day\'s numbers.';
     }
@@ -1996,3 +2022,22 @@ const _kWeekdayNames = [
 ];
 
 String _weekdayName(int weekday) => _kWeekdayNames[(weekday - 1).clamp(0, 6)];
+
+
+/// The pinned analytics package returns 'low'/'normal'/'elevated'/'high' —
+/// English regardless of locale. Map to the localized word before display.
+/// Shared with the Health tab's stress row, which printed the raw token.
+String? stressLevelLabel(AppLocalizations? l, String raw) {
+  switch (raw) {
+    case 'low':
+      return l?.wellnessStressLevelLow ?? raw;
+    case 'normal':
+      return l?.wellnessStressLevelNormal ?? raw;
+    case 'elevated':
+      return l?.wellnessStressLevelElevated ?? raw;
+    case 'high':
+      return l?.wellnessStressLevelHigh ?? raw;
+    default:
+      return raw;
+  }
+}

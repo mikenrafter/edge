@@ -1,10 +1,8 @@
+import 'json_payload_lane.dart';
 import 'dart:convert';
 import 'dart:math' as math;
-
 import '../gestures/moment_follow_ups.dart';
-
 import 'package:sqflite/sqflite.dart';
-
 import '../compute/manual_session.dart';
 import '../compute/derivation_engine.dart' show kAlgoVersion;
 import '../compute/nap_edits.dart';
@@ -15,6 +13,10 @@ import 'nap_resolution.dart';
 import 'sleep_edit_store.dart';
 import 'track_activity.dart';
 import 'db/input_read_tracker.dart';
+
+
+
+
 
 /// The single persistence seam for proposals and review decisions. Computing a
 /// proposal never writes a session or credits sleep. All actions are atomic.
@@ -455,6 +457,7 @@ class ActivityStore {
     required int endTs,
     Map<String, dynamic>? session,
     bool edited = false,
+    bool auto = false,
     NapResolution? expectedNap,
     Transaction? transaction,
   }) async {
@@ -518,7 +521,7 @@ class ActivityStore {
     } else {
       if (!manualNapWindowIsValid(startTs, endTs)) {
         throw const ActivityReviewException(
-          'A nap must last between 5 minutes and 6 hours.',
+          'A nap must last between 5 minutes and 3 hours.',
         );
       }
       final ext = await applyNapExtension(tx, startTs, endTs,
@@ -541,6 +544,7 @@ class ActivityStore {
                   'start': startTs,
                   'end': endTs,
                   'source': 'confirmed',
+                  if (auto) 'auto_logged': true,
                 }),
         });
       }
@@ -716,4 +720,149 @@ class ActivityStore {
       ),
     ];
   }
+
+
+  /// Whether [s, e) overlaps a main sleep the derived history already holds —
+  /// the night that ends on [s]'s date, or the one that begins that evening
+  /// and belongs to tomorrow. A nap logged inside one is time the night's TST
+  /// already counts, and every reader sums naps on top of it.
+  static Future<bool> overlapsMainSleep(
+    DatabaseExecutor tx,
+    int s,
+    int e,
+  ) async {
+    for (final b in await _nightsAround(tx, s, e)) {
+      if (_mainSleepOverlaps(b, s, e)) return true;
+    }
+    return false;
+  }
+
+  /// The main-sleep windows (epoch ms) of the nights around [s, e) — the
+  /// night ending on [s]'s date and the one beginning that evening. Used to
+  /// PROTECT night samples when a nap window is deleted from the health
+  /// store after the night shifted onto it.
+  static Future<List<({int onsetMs, int offsetMs})>> mainSleepWindowsAround(
+    DatabaseExecutor tx,
+    int s,
+    int e,
+  ) async {
+    final out = <({int onsetMs, int offsetMs})>[];
+    for (final b in await _nightsAround(tx, s, e)) {
+      final w = ((b['sleep'] as Map?)?['window'] as Map?)?['value'];
+      if (w is Map) {
+        final on = w['onset_ms'], off = w['offset_ms'];
+        if (on is num && off is num && off > on) {
+          out.add((onsetMs: on.toInt(), offsetMs: off.toInt()));
+        }
+      }
+    }
+    return out;
+  }
+
+  static Future<List<Map>> _nightsAround(
+    DatabaseExecutor tx,
+    int s,
+    int e,
+  ) async {
+    final day = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(s * 1000));
+    final end = DateTime.fromMillisecondsSinceEpoch(e * 1000);
+    // An evening interval can overlap the main sleep owned by tomorrow's
+    // wake date. Walk calendar dates rather than adding a fixed 24 hours.
+    final next = dayLabelOf(DateTime(end.year, end.month, end.day + 1));
+    final nights = await tx.rawQuery(
+      '''SELECT d.* FROM day_result d
+      WHERE d.day_id BETWEEN ? AND ? AND d.algo_version =
+        (SELECT MAX(r.algo_version) FROM day_result r WHERE r.day_id = d.day_id AND r.algo_version <= ?)''',
+      [day, next, kAlgoVersion],
+    );
+    return [
+      for (final r in nights) (await JsonPayloadLane.shared.decodeUncached(r['payload_json'])) as Map,
+    ];
+  }
+
+  static bool _mainSleepOverlaps(Map bundle, int s, int e) {
+    final value = ((bundle['sleep'] as Map?)?['window'] as Map?)?['value'];
+    // Absent metric envelopes store '—', not a window object.
+    final w = value is Map ? value : null;
+    final ns = w?['onset_ms'] as num?, ne = w?['offset_ms'] as num?;
+    return ns != null && ne != null && s * 1000 < ne && e * 1000 > ns;
+  }
+
+  /// The bar for logging a nap without asking (#625). The detector's
+  /// confidence is a composite of HR coverage, HR dip, stillness and wear,
+  /// in [0.2, 0.85]; it is not a probability and 0.8 is not a validated cut.
+  /// ponytail: one fixed bar, the value the issue asked for. Make it a user
+  /// choice if people want it looser or stricter.
+  static const double napAutoLogMinConfidence = 0.8;
+
+  /// Whether the opt-in setting would log [s] without asking. [sinceSec] is
+  /// when the setting was turned on (null = off): a nap that ended before
+  /// that is never logged behind the user's back.
+  static bool napAutoLoggable(ActivitySuggestion s, int? sinceSec) {
+    final c = s.details['confidence'];
+    return sinceSec != null &&
+        s.kind == ActivityKind.nap &&
+        s.status == ActivityReviewStatus.pending &&
+        c is num &&
+        c >= napAutoLogMinConfidence &&
+        // Strictly after: the switch is stored in whole seconds, and a nap
+        // that ended in that same second ended before it was turned on.
+        s.endTs > sinceSec;
+  }
+
+  /// Confirms every [napAutoLoggable] pending nap exactly as detected, once
+  /// the data edge is [settleSec] past its end, so sleep that resumes after a
+  /// short arousal can still be bridged into it first. A nap that cannot be
+  /// confirmed (it overlaps saved sleep, or changed underneath) stays pending.
+  /// Returns how many were logged.
+  ///
+  /// [current] is the nap candidates this pass detected. Only a pending row
+  /// that overlaps one of them is a candidate: [reconcile] only retires rows
+  /// that overlap a re-detection, so a nap a later pass no longer finds stays
+  /// pending, and must not be confirmed behind the user's back.
+  Future<int> autoLogNaps({
+    required int? sinceSec,
+    required int dataEdgeSec,
+    required int settleSec,
+    required List<Map<String, dynamic>> current,
+  }) async {
+    if (sinceSec == null) return 0;
+    final spans = <(int, int)>[
+      for (final c in current)
+        (
+          ((c['start_ts'] ?? c['start']) as num).toInt(),
+          ((c['end_ts'] ?? c['end']) as num).toInt(),
+        ),
+    ];
+    if (spans.isEmpty) return 0;
+    await migrateLegacy();
+    // Imported history is never logged for the user: the same line
+    // [mayNotifyNew] draws for prompts.
+    final importedThrough =
+        (await db.query('activity_review_meta')).single['alert_after_ts']
+            as int;
+    // Not [pending]: its seven-day floor is for what the review list shows. A
+    // band that syncs after a longer gap still has naps to log.
+    final rows = await db.query(
+      'activity_suggestions',
+      where: "status = 'pending' AND kind = 'nap' AND end_ts > ?",
+      whereArgs: [math.max(sinceSec, importedThrough)],
+      orderBy: 'start_ts ASC, id ASC',
+    );
+    var logged = 0;
+    for (final s in rows.map(ActivitySuggestion.fromRow)) {
+      if (!napAutoLoggable(s, sinceSec) || s.endTs + settleSec > dataEdgeSec) {
+        continue;
+      }
+      if (!spans.any((c) => s.startTs < c.$2 && s.endTs > c.$1)) continue;
+      try {
+        await confirm(s, startTs: s.startTs, endTs: s.endTs, auto: true);
+        logged++;
+      } on ActivityReviewException {
+        // Left for the user to review.
+      }
+    }
+    return logged;
+  }
 }
+

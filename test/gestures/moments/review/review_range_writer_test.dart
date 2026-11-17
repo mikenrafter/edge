@@ -36,7 +36,8 @@ class _Repo extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> logManualWorkout(
-      {required int startTs, required int endTs, required String type}) async {
+      {required int startTs, required int endTs, required String type,
+      String source = 'manual'}) async {
     workouts.add((startTs: startTs, endTs: endTs, type: type));
     return {'workout_id': 'manual:$startTs'};
   }

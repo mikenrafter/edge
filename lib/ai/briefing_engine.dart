@@ -1,3 +1,13 @@
+import '../coach/coach_config.dart';
+import '../coach/coach_engine.dart';
+import '../data/day_label.dart';
+import '../data/local_repository.dart';
+import '../models/metric.dart' show whyFromNote;
+import '../models/payloads.dart' show todayHeadlineOf;
+import '../ui2/screens/home_screen.dart' as ring show readinessBand;
+import 'briefing.dart';
+import 'nightly_sweep.dart';
+
 // briefing_engine.dart — turns the local derived store into a morning/evening
 // AI briefing via the user's OWN key (BYOK — CoachConfig + CoachEngine.postChat;
 // no second LLM client, no second key store, no OpenStrap backend).
@@ -17,15 +27,6 @@
 // to narrate the thing it measures out of whatever else it was handed, and this
 // file already documents that happening (see [readinessBand]).
 
-import '../coach/coach_config.dart';
-import '../coach/coach_engine.dart';
-import '../data/day_label.dart';
-import '../data/local_repository.dart';
-import '../models/metric.dart' show whyFromNote;
-import '../models/payloads.dart' show todayHeadlineOf;
-import '../ui2/screens/home_screen.dart' as ring show readinessBand;
-import 'briefing.dart';
-import 'nightly_sweep.dart';
 
 /// Injectable one-shot completion (tests pass a fake; production defaults to
 /// [CoachEngine.completeText] — the shared BYOK plumbing).
@@ -93,6 +94,7 @@ Future<Map<String, dynamic>> collectBriefingInputs(
   LocalRepository repo,
   BriefingPeriod period, {
   DateTime? now,
+  DateTime? wallNow,
   Set<int>? olderOut,
 }) async {
   final t = await repo.getToday();
@@ -181,7 +183,7 @@ Future<Map<String, dynamic>> collectBriefingInputs(
     // nightly_sweep.dart for the bar one has to clear, and note that an empty
     // map here is the normal, correct answer on most days.
     final findings =
-        sweepFindings(await collectSweepSeries(repo, now ?? DateTime.now()));
+        sweepFindings(await collectSweepSeries(repo, now ?? DateTime.now(), wallNow: wallNow));
     // Only the findings that are actually sent can have shaped the prose.
     final sent = sweepInputs(findings, recommendedBedtime: await _recommendedBedtime(repo));
     if (sent.isNotEmpty) {
@@ -198,19 +200,24 @@ Future<Map<String, dynamic>> collectBriefingInputs(
 /// speaks (it maps those onto series keys itself). Deliberately short: every
 /// one of these is a number the user already has a screen for, so a finding
 /// about it can be checked.
-const Map<String, ({String key, String label, String unit, int dp})>
+///
+/// `cumulative` marks a value that grows through the day, so the current day's
+/// stored point is only the total so far.
+const Map<String,
+        ({String key, String label, String unit, int dp, bool cumulative})>
     kSweepMetrics = {
-  'recovery': (key: 'readiness', label: 'recovery', unit: '', dp: 0),
-  'resting_hr': (key: 'rhr', label: 'resting heart rate', unit: 'bpm', dp: 0),
-  'hrv': (key: 'rmssd', label: 'HRV', unit: 'ms', dp: 0),
-  'strain': (key: 'strain', label: 'strain', unit: '', dp: 1),
-  'steps': (key: 'steps', label: 'steps', unit: '', dp: 0),
-  'sleep': (key: 'tst_min', label: 'time asleep', unit: 'min', dp: 0),
+  'recovery': (key: 'readiness', label: 'recovery', unit: '', dp: 0, cumulative: false),
+  'resting_hr': (key: 'rhr', label: 'resting heart rate', unit: 'bpm', dp: 0, cumulative: false),
+  'hrv': (key: 'rmssd', label: 'HRV', unit: 'ms', dp: 0, cumulative: false),
+  'strain': (key: 'strain', label: 'strain', unit: '', dp: 1, cumulative: true),
+  'steps': (key: 'steps', label: 'steps', unit: '', dp: 0, cumulative: true),
+  'sleep': (key: 'tst_min', label: 'time asleep', unit: 'min', dp: 0, cumulative: false),
   'efficiency': (
     key: 'efficiency',
     label: 'sleep efficiency',
     unit: '%',
-    dp: 0
+    dp: 0,
+    cumulative: false
   ),
 };
 
@@ -223,9 +230,10 @@ const Map<String, ({String key, String label, String unit, int dp})>
 /// days" would be a finding about us, not about the user.
 Future<List<SweepSeries>> collectSweepSeries(
   LocalRepository repo,
-  DateTime now,
+  DateTime now, {DateTime? wallNow}
 ) async {
   final today = todayLabel(now);
+  final inProgress = today.compareTo(todayLabel(wallNow ?? DateTime.now())) >= 0;
   final out = <SweepSeries>[];
   for (final e in kSweepMetrics.entries) {
     try {
@@ -273,6 +281,7 @@ Future<List<SweepSeries>> collectSweepSeries(
         unit: m.unit,
         decimals: m.dp,
         today: todayValue,
+        partial: m.cumulative && inProgress,
         todayOlderVersion: todayOlderVersion,
         history: history,
         historyOlderVersions: historyOlder,
@@ -508,7 +517,8 @@ class BriefingEngine {
 
   /// Generate (or re-generate) the briefing for [period] today, cache it, and
   /// return it. Throws [CoachException] on provider errors / missing key.
-  Future<Briefing> generate(BriefingPeriod period, {DateTime? now}) async {
+  Future<Briefing> generate(BriefingPeriod period,
+      {DateTime? now, DateTime? wallNow}) async {
     if (!configured) {
       throw CoachException('Add your AI key to enable briefings.');
     }
@@ -519,7 +529,7 @@ class BriefingEngine {
     final tod = partOfDay(effectiveNow);
     final older = <int>{};
     final inputs = await collectBriefingInputs(repo, period,
-        now: effectiveNow, olderOut: older);
+        now: effectiveNow, wallNow: wallNow, olderOut: older);
     // NOTHING TO SAY IS AN ANSWER. The evening sweep hands back an empty map on
     // any day where nothing was unusual for this user, which is most days. No
     // model is called — there is no question to ask — so nothing leaves the
@@ -561,3 +571,4 @@ class BriefingEngine {
     return b;
   }
 }
+

@@ -1,3 +1,11 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'alert_dispatcher.dart';
+import 'reminder_sleep_gate.dart';
+import 'alert_rule.dart';
+import 'notification_prefs.dart';
+
+
 // water_buzzer.dart — fires a strap haptic alongside the hydration reminder.
 //
 // The reminder is TWO things and this is the weaker half. The OS-scheduled
@@ -12,23 +20,19 @@
 // list the notification is armed from, so the two land at the same wall-clock
 // minute.
 
-import 'dart:async';
-import 'package:flutter/foundation.dart' show visibleForTesting;
 
-import 'alert_dispatcher.dart';
-import 'reminder_sleep_gate.dart';
-import 'alert_rule.dart';
-import 'notification_prefs.dart';
 
 class WaterBuzzer {
   WaterBuzzer({
     required this.buzz,
     required this.isConnected,
     AlertDispatcher? dispatcher,
+    DateTime Function()? now,
     this.onSlot,
     this.sleep,
     this.onSuppressed,
-  }) : _legacyTransport = dispatcher == null,
+  }) : _now = now ?? _systemNow,
+       _legacyTransport = dispatcher == null,
        dispatcher =
            dispatcher ??
            AlertDispatcher(
@@ -38,6 +42,7 @@ class WaterBuzzer {
                return true;
              },
              isConnected: isConnected,
+             now: now,
              ledger: MemoryAlertDeliveryLedger(),
            );
 
@@ -77,7 +82,7 @@ class WaterBuzzer {
     if (_disposed) return;
     if (!_enabled || _slots.isEmpty) return;
 
-    final now = DateTime.now();
+    final now = _now();
     final nowMin = now.hour * 60 + now.minute;
 
     // Resolve local calendar time so DST days do not acquire a fixed 24-hour
@@ -96,7 +101,12 @@ class WaterBuzzer {
   }
 
   Future<void> _fire() async {
-    final sourceTime = _sourceTime ?? DateTime.now();
+    final sourceTime = _sourceTime;
+    if (_disposed || !_enabled || sourceTime == null) return;
+    if (_now().difference(sourceTime) > lateTolerance) {
+      _reschedule();
+      return;
+    }
     try {
       if (_disposed || !_enabled) return;
       final prefs = await NotificationPrefs.load();
@@ -157,5 +167,22 @@ class WaterBuzzer {
     _disposed = true;
     _timer?.cancel();
     _timer = null;
+    _sourceTime = null;
   }
+
+
+  final DateTime Function() _now;
+
+  /// How late (wall-clock) a fire may land and still buzz. Dart timers run on
+  /// the monotonic clock, which stops while the device is suspended, so a timer
+  /// armed hours ahead can expire hours after its slot (e.g. a 21:00 slot
+  /// going off at 01:30). Past this, the slot is skipped and the next re-armed.
+  static const lateTolerance = Duration(minutes: 10);
+
+  /// Wall-clock instant the pending timer is meant to fire, if armed.
+  @visibleForTesting
+  DateTime? get debugDue => _sourceTime;
 }
+
+
+DateTime _systemNow() => DateTime.now();

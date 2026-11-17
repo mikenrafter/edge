@@ -70,4 +70,39 @@ void main() {
     expect(find.text('Resting heart rate'), findsOneWidget);
     expect(find.text('No resting heart rate'), findsNothing);
   });
+
+  // Same rule on the Trends tab's empty card. It used to drop the label in
+  // as written, so English read "No Resting heart rate trend yet".
+  Future<void> openTrends(WidgetTester t) async {
+    await t.tap(find.text('Trends'));
+    for (var i = 0; i < 20; i++) {
+      await t.pump();
+    }
+  }
+
+  testWidgets('english lowercases the trend card label', (t) async {
+    t.view.physicalSize = const Size(800 * 3, 4000 * 3);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    await _pump(t, const Locale('en'));
+    await openTrends(t);
+    expect(find.descendant(of: find.byKey(const ValueKey('card:trend-resting_hr')),
+        matching: find.text('Resting heart rate')), findsWidgets);
+    expect(find.text('0 days stored.'), findsWidgets);
+    expect(find.text('No Resting heart rate trend yet'), findsNothing);
+    // An acronym keeps its case.
+    expect(find.descendant(of: find.byKey(const ValueKey('card:trend-hrv')),
+        matching: find.text('HRV')), findsWidgets);
+  });
+
+  testWidgets('german keeps the noun case in the trend card', (t) async {
+    t.view.physicalSize = const Size(800 * 3, 4000 * 3);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    await _pump(t, const Locale('de'));
+    await openTrends(t);
+    expect(find.descendant(of: find.byKey(const ValueKey('card:trend-resting_hr')),
+        matching: find.text('Ruhepuls')), findsWidgets);
+    expect(find.text('Noch kein Trend für ruhepuls'), findsNothing);
+  });
 }

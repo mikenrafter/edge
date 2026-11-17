@@ -35,6 +35,7 @@ class FakeHost {
   int exports = 0;
   int reclaims = 0;
   Object? exportThrows;
+  Completer<void>? reclaim;
 
   late final DeriveCoordinator coordinator = DeriveCoordinator(
     engine: () => engine ??= DerivationEngine(log: logs.add),
@@ -54,7 +55,7 @@ class FakeHost {
     healthSyncEnabled: () => healthSync,
     telemetryConsent: () => telemetry,
     healthShareConsent: () => healthShare,
-    maybeReclaimDiskSpace: () async => reclaims++,
+    maybeReclaimDiskSpace: () async { reclaims++; await reclaim?.future; },
     calculationPolicy: policy,
   );
 
@@ -130,6 +131,22 @@ void main() {
       c.debugDeriveRun = deriveHook(days: ['d4', 'd3', 'd2', 'd1']);
       await c.afterDrain();
       expect(host.notifies, 4);
+    });
+
+    // WHY: the next heavy job must not race disk reclaim from the previous
+    // pass (main 4f157ea7e697); catches: fire-and-forget reclaim.
+    test('a heavy pass ends only after the disk reclaim does', () async {
+      final reclaim = host.reclaim = Completer<void>();
+      final c = make();
+      c.debugDeriveRun = deriveHook(days: ['d1']);
+      var finished = false;
+      final heavy = c.afterDrain(heavy: true).then((_) => finished = true);
+      await settleMs();
+      expect(host.reclaims, 1);
+      expect(finished, isFalse);
+      reclaim.complete();
+      await heavy;
+      expect(finished, isTrue);
     });
 
     // Recovery-ready is considered after light passes too (D16: upstream's

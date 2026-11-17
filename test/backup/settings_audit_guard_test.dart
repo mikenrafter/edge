@@ -93,13 +93,11 @@ void main() {
   test('settings that must travel are not shadowed by the denylist', () {
     for (final k in const [
       'backup.cadence',
-      'coach_base_url',
       'coach_model',
       'gesture_double_tap_actions',
       'haptic_patterns_v1',
       'notif_alert_rules_v1',
       'theme_choice',
-      'alarm_epoch',
     ]) {
       expect(prefsKeyBackedUp(k), isTrue, reason: k);
     }

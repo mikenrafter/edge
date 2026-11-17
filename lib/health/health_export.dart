@@ -1,3 +1,20 @@
+import 'package:flutter/foundation.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io' show Platform;
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:health/health.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../data/day_label.dart';
+import '../data/db.dart';
+import '../sync/import_focus.dart';
+import '../data/bundle_store.dart';
+import '../state/prefs.dart';
+import 'health_heart_rate_batch.dart';
+import 'health_sleep_session.dart';
+import 'health_nap_export.dart';
+import 'health_weight_export.dart';
+
 // health_export.dart — write each day's derived metrics to the platform health
 // store: Apple Health (HealthKit) on iOS, Google Health Connect on Android.
 //
@@ -17,22 +34,8 @@
 // Nothing here throws — a missing/locked health store yields a HealthLinkState or
 // a 0 count, never an exception.
 
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io' show Platform;
 
-import 'package:android_intent_plus/android_intent.dart';
-import 'package:flutter/foundation.dart';
-import 'package:health/health.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../data/day_label.dart';
-import '../data/db.dart';
-import '../sync/import_focus.dart';
-import '../data/bundle_store.dart';
-import '../state/prefs.dart';
-import 'health_heart_rate_batch.dart';
-import 'health_sleep_session.dart';
 
 /// What we can do with the health store right now.
 enum HealthLinkState {
@@ -245,27 +248,36 @@ const kHealthStepsPrefixPurgeCursor = 'health_steps_prefix_purged';
 /// [cursor]. The per-day purge only runs for days exportAll still exports, and
 /// days already behind the cursor are never exported again, so on a store that
 /// never had its cursor cleared those samples would stay forever.
-Future<void> purgeLegacyStepsBehindCursor({
+///
+/// Returns whether the purge is done. Until it is, nothing may write steps:
+/// a purge that finishes later, behind an advanced cursor, deletes those and
+/// nothing rewrites them. [deleteSteps] answers "is the range clear", already
+/// read per platform (see [healthDeleteClearedRange]).
+Future<bool> purgeLegacyStepsBehindCursor({
   required String cursor,
   required Future<String?> Function(String name) getCursor,
   required Future<void> Function(String name, String value) setCursor,
   required Future<bool> Function(DateTime start, DateTime end) deleteSteps,
 }) async {
-  if (cursor.isEmpty) return;
   if ((await getCursor(kHealthStepsPrefixPurgeCursor) ?? '').isNotEmpty) {
-    return;
+    return true;
   }
-  final d = DateTime.tryParse(cursor);
-  if (d == null) return;
+  // An empty cursor (first export, or a reset) still has to finish the purge
+  // now, before this pass writes strap-counter steps.
+  final d = DateTime.tryParse(cursor) ?? DateTime.now();
   try {
     // HealthKit and Health Connect only delete this app's own samples.
-    await deleteSteps(
+    final cleared = await deleteSteps(
       DateTime.fromMillisecondsSinceEpoch(0),
       DateTime(d.year, d.month, d.day + 1),
     );
-    await setCursor(kHealthStepsPrefixPurgeCursor, cursor);
+    if (!cleared) return false;
+    await setCursor(
+        kHealthStepsPrefixPurgeCursor, cursor.isEmpty ? 'initial' : cursor);
+    return true;
   } catch (e) {
-    debugPrint('[health] purge legacy steps behind $cursor: $e');
+    debugPrintSynchronously('[health] purge legacy steps behind $cursor: $e');
+    return false;
   }
 }
 
@@ -354,12 +366,29 @@ Future<PrioritySleepExportResult> exportPrioritySleepBeforeBulk({
   required Future<bool> Function(Map<String, dynamic>) write,
   required Future<void> Function(String? androidSleepAlreadyWritten) exportBulk,
 }) async {
-  final priorityResult = await exportNewestPrioritySleep(
-    newestFirstDays: newestFirstDays,
-    write: write,
-  );
-  if (!priorityResult.succeeded) return priorityResult;
-  await exportBulk(priorityResult.date);
+  PrioritySleepExportResult priorityResult;
+  try {
+    priorityResult = await exportNewestPrioritySleep(
+      newestFirstDays: newestFirstDays,
+      write: write,
+    );
+  } catch (e) {
+    debugPrintSynchronously('[health] write priority Android sleep session: $e');
+    priorityResult = PrioritySleepExportResult(
+      date: newestFirstDays
+          .where((d) => normalizeHealthSleepSession(d.value) != null)
+          .firstOrNull
+          ?.key,
+      succeeded: false,
+    );
+  }
+  // A failed sleep write must not hold the rest of the export. Health Connect
+  // grants each type separately, so a user who leaves Sleep off (another app
+  // owns it) fails this write on every pass; holding bulk behind it meant no
+  // heart rate, RHR, HRV, energy or workouts ever reached the store. Bulk is
+  // told nothing was written, so it retries the sleep as part of that day and
+  // the day stays out of the cursor until the whole day lands.
+  await exportBulk(priorityResult.succeeded ? priorityResult.date : null);
   return priorityResult;
 }
 
@@ -484,7 +513,9 @@ class HealthExporter {
     HealthConnectHeartRateWriter? androidHeartRate,
     HealthExportPlatform platform = const SystemHealthExportPlatform(),
     @visibleForTesting Duration deleteTimeout = const Duration(seconds: 30),
-  }) : _androidHeartRate =
+    @visibleForTesting bool? isApple,
+  }) : _isAppleOverride = isApple,
+       _androidHeartRate =
            androidHeartRate ?? MethodChannelHealthConnectHeartRateWriter(),
        _platform = platform,
        _deleteTimeout = deleteTimeout;
@@ -519,7 +550,7 @@ class HealthExporter {
       return await shared
           .exportWorkout((await LocalDb.withoutFlagOffScores([row])).first);
     } catch (e) {
-      debugPrint('[health] exportWorkoutId $id: $e');
+      debugPrintSynchronously('[health] exportWorkoutId $id: $e');
       return false;
     }
   }
@@ -547,7 +578,7 @@ class HealthExporter {
         }
       });
     } catch (e) {
-      debugPrint('[health] reexportFrom $date: $e');
+      debugPrintSynchronously('[health] reexportFrom $date: $e');
     }
   }
 
@@ -574,7 +605,7 @@ class HealthExporter {
         );
       });
     } catch (e) {
-      debugPrint('[health] deleteWorkoutWindow: $e');
+      debugPrintSynchronously('[health] deleteWorkoutWindow: $e');
     }
   }
 
@@ -586,7 +617,7 @@ class HealthExporter {
 
   /// HealthKit only stores SDNN; Health Connect stores RMSSD — write whichever
   /// the platform supports (both are real, from cleaned RR).
-  HealthDataType get _hrvType => isApple
+  HealthDataType get _hrvType => _apple
       ? HealthDataType.HEART_RATE_VARIABILITY_SDNN
       : HealthDataType.HEART_RATE_VARIABILITY_RMSSD;
 
@@ -598,17 +629,19 @@ class HealthExporter {
     HealthDataType.HEART_RATE,
     HealthDataType.ACTIVE_ENERGY_BURNED,
     HealthDataType.BASAL_ENERGY_BURNED,
-    // STEPS is requested for DELETE SCOPE ONLY — nothing writes steps any
-    // more (see the block further down for why). We still need the write
-    // permission to purge the fabricated step samples earlier versions put
-    // into Apple Health / Health Connect, which is why WRITE_STEPS stays in
-    // the Android manifest. That purge is a ONE-SHOT migration and does not
+    // STEPS: only strap-counter days are written ([healthStepSpans]); the
+    // permission also covers the purge of the fabricated step samples
+    // earlier versions put into Apple Health / Health Connect. That purge is a ONE-SHOT migration and does not
     // belong in the per-day rewrite loop — see [_purgeLegacyStepsIfNeeded]
     // and [_rewriteTypes].
     HealthDataType.STEPS,
     for (final t in _sleepHealthTypes)
-      if (t != _foreignSleepEnvelope(isApple)) t,
+      if (t != _foreignSleepEnvelope(_apple)) t,
     HealthDataType.WORKOUT,
+    // Scale weighings (health_weight_export.dart). Authorization scope only:
+    // deliberately NOT in healthDeleteTypes / _rewriteTypes, because the
+    // per-day pass would delete weights it has no day_result to rewrite.
+    HealthDataType.WEIGHT,
   ];
 
   /// The types the per-day delete-then-write pass touches.
@@ -622,8 +655,8 @@ class HealthExporter {
   ///   * `healthDeleteTypes` (platform-aware) drops sleep on both stores and
   ///     HEART_RATE on Android, because the native sleep replace writers and
   ///     the minute-HR batch own their own cleanup there.
-  ///   * STEPS is then removed on top, because NOTHING writes steps any more.
-  ///     Deleting a type we never write would run on every re-export of the
+  ///   * STEPS is then removed on top: only strap-counter days write steps,
+  ///     and [_exportDay] clears those itself. Deleting a type we don't write would run on every re-export of the
   ///     not-yet-finalized tail forever, and — since a false `delete()` flips
   ///     `success` — could permanently stall a day's export cursor. The
   ///     historical fabricated samples are handled once by
@@ -631,7 +664,7 @@ class HealthExporter {
   ///   * HEART_RATE is removed on Apple too: the minute-HR block clears it
   ///     itself, only over the minutes it still has rows for.
   List<HealthDataType> get _rewriteTypes => [
-    for (final t in healthDeleteTypes(isApplePlatform: isApple))
+    for (final t in healthDeleteTypes(isApplePlatform: _apple))
       if (t != HealthDataType.STEPS && t != HealthDataType.HEART_RATE) t,
   ];
 
@@ -641,44 +674,115 @@ class HealthExporter {
 
   /// Delete the fabricated STEPS samples earlier versions wrote for [date].
   ///
-  /// ONE-SHOT, and deliberately not part of the day's success accounting: this
-  /// is a migration cleaning up data we should never have written, not part of
-  /// exporting the day. A failure here must not stall the export cursor for a
-  /// type nothing writes. Days are walked ascending, so the cursor advances
-  /// monotonically and a re-exported tail day is not re-purged.
-  Future<void> _purgeLegacyStepsIfNeeded(
+  /// Returns true when [date] is confirmed purged (or already behind the
+  /// cursor with no pending retry) and false when the purge could not be
+  /// confirmed. Callers treat false like a purge hold (`_dayHeldForPurge`)
+  /// so `health_export_through` does not advance past [date] and an ordinary
+  /// later pass retries it (delete-then-write) without spending an attempt.
+  ///
+  /// STRICTLY ONE DAY PER DELETE. A retry keeps that day's own absolute bounds
+  /// and runs only while that day is being exported again, which rewrites its
+  /// steps immediately afterwards. Widening a delete over earlier days would
+  /// erase valid strap-counter samples that nothing rewrites.
+  Future<bool> _purgeLegacyStepsIfNeeded(
     String date,
     DateTime dayStart,
     DateTime dayEnd,
     StoreGeneration generation,
   ) async {
     _stepsPurgedThrough ??= await LocalDb.getCursor(_kStepsPurgeCursor) ?? '';
-    if (Prefs.getBool(Prefs.demoModeEnabled, false)) return;
+    if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
+    _requireSameStore(generation);
+    _stepsPurgePending ??= await _loadPendingPurges();
     final through = _stepsPurgedThrough!;
-    if (through.isNotEmpty && date.compareTo(through) <= 0) return;
-    if (_storeHung) return;
+    final pending = _stepsPurgePending!;
+    final retry = pending[date];
+    // A day with a persisted retry is being written right now, so its purge
+    // runs before its new steps. Days at or before the confirmed cursor
+    // without a retry are done.
+    if (retry == null && through.isNotEmpty && date.compareTo(through) <= 0) {
+      return true;
+    }
+    if (_storeHung || _stepsPurgeCursorHeld) return false;
+    // Steps are held while the prefix purge has not finished. A purge now would
+    // delete the current day's valid samples and the held write would not put
+    // them back, so leave both the marker and the day for a later pass.
+    if (_stepWritesHeld) return false;
+    final today = (
+      startMs: dayStart.millisecondsSinceEpoch,
+      endMs: dayEnd.millisecondsSinceEpoch,
+    );
+    // A retry keeps the range of the first attempt, but only the part of it
+    // that is still THIS day. If the timezone has moved since, the stored range
+    // can reach into a neighbouring day that is not being exported now, and
+    // that day's valid strap steps would be deleted and never rewritten. A
+    // clipped retry can leave a few fabricated samples behind; that is the
+    // lesser defect.
+    final stored = retry;
+    final clipped = stored == null
+        ? today
+        : (
+            startMs: stored.startMs > today.startMs ? stored.startMs : today.startMs,
+            endMs: stored.endMs < today.endMs ? stored.endMs : today.endMs,
+          );
+    final range = clipped.endMs > clipped.startMs ? clipped : today;
+    // Retry intent BEFORE the delete: a crash after a refused delete must
+    // leave the day recoverable.
     try {
-      await _health
-          .delete(
-            type: HealthDataType.STEPS,
-            startTime: dayStart,
-            endTime: dayEnd,
-          )
-          .timeout(_deleteTimeout);
-      if (Prefs.getBool(Prefs.demoModeEnabled, false)) return;
-      // A wipe during the delete: the stamp belongs to the old store, never
-      // the new one; the pass stops.
-      _requireSameStore(generation);
-      if (!await LocalDb.setCursorUnlessReplaced(_kStepsPurgeCursor, date, generation)) {
-        throw const _StoreReplacedDuringExport();
+      if (retry == null) {
+        pending[date] = range;
+        try {
+          await _savePendingPurges(generation);
+        } catch (_) {
+          // The delete below is not issued, so an unrecorded attempt cannot be
+          // lost to a crash: take the entry back out of memory and hold the
+          // purge cursor so a later day in this pass cannot jump over this one.
+          pending.remove(date);
+          _stepsPurgeCursorHeld = true;
+          rethrow;
+        }
       }
-      _stepsPurgedThrough = date;
+      // A false from the store is a genuine failure on Health Connect — the
+      // same rule every other delete here reads through this helper — so an
+      // unconfirmed purge must not be recorded as done. On Apple a false means
+      // "found nothing", which the helper translates back to cleared.
+      final cleared = healthDeleteClearedRange(
+        deleted: await _nativeDelete(
+          HealthDataType.STEPS,
+          DateTime.fromMillisecondsSinceEpoch(range.startMs),
+          DateTime.fromMillisecondsSinceEpoch(range.endMs),
+        ),
+        ios: _apple,
+      );
+      _requireSameStore(generation);
+      if (!cleared) {
+        debugPrintSynchronously('[health] purge legacy steps $date: the store did not '
+            'confirm the delete');
+        return false;
+      }
+      // ONLY this day. This delete did not cover another pending day's range,
+      // so that marker must survive for its own re-export.
+      pending.remove(date);
+      await _savePendingPurges(generation);
+      if (!_stepsPurgeCursorHeld &&
+          (through.isEmpty || date.compareTo(through) > 0)) {
+        _stepsPurgedThrough = date;
+        if (!await LocalDb.setCursorUnlessReplaced(_kStepsPurgeCursor, date, generation)) {
+          throw const _StoreReplacedDuringExport();
+        }
+      }
+      return true;
     } on _StoreReplacedDuringExport {
       rethrow;
     } catch (e) {
       if (e is TimeoutException) _storeHung = true;
-      // Leave the cursor where it is so the next pass retries this day.
-      debugPrint('[health] purge legacy steps $date: $e');
+      // Either the retry intent is on disk already, or no delete was issued.
+      // Both leave the day retryable and the cursor aiming at it. The entry is
+      // NOT taken out of memory here: a delete that threw after the intent was
+      // saved must keep it, or the next save for another day would rewrite the
+      // file from the map and drop it.
+      debugPrintSynchronously('[health] purge legacy steps $date: $e');
+      return false;
     }
   }
 
@@ -697,14 +801,12 @@ class HealthExporter {
     if (_storeHung) return false;
     try {
       return healthDeleteClearedRange(
-        deleted: await _health
-            .delete(type: type, startTime: start, endTime: end)
-            .timeout(_deleteTimeout),
-        ios: isApple,
+        deleted: await _nativeDelete(type, start, end),
+        ios: _apple,
       );
     } catch (e) {
       if (e is TimeoutException) _storeHung = true;
-      debugPrint('[health] delete ${type.name}: $e');
+      debugPrintSynchronously('[health] delete ${type.name}: $e');
       return false;
     }
   }
@@ -722,7 +824,7 @@ class HealthExporter {
       await _health.configure();
       _configured = true;
     } catch (e) {
-      debugPrint('[health] configure: $e');
+      debugPrintSynchronously('[health] configure: $e');
     }
   }
 
@@ -737,7 +839,7 @@ class HealthExporter {
         return HealthLinkState.needsUpdate;
       }
     } catch (e) {
-      debugPrint('[health] sdkStatus: $e');
+      debugPrintSynchronously('[health] sdkStatus: $e');
     }
     return null;
   }
@@ -750,7 +852,7 @@ class HealthExporter {
     try {
       return await _androidUnavailable() ?? HealthLinkState.ready;
     } catch (e) {
-      debugPrint('[health] check: $e');
+      debugPrintSynchronously('[health] check: $e');
       return HealthLinkState.unsupported;
     }
   }
@@ -767,8 +869,13 @@ class HealthExporter {
         _types,
         permissions: _types.map((_) => HealthDataAccess.WRITE).toList(),
       );
+      // WEIGHT is in _types: the scale path need not ask a second time.
+      await (await SharedPreferences.getInstance()).setBool(
+        kHealthWeightPermAskedPref,
+        true,
+      );
     } catch (e) {
-      debugPrint('[health] requestAuthorization: $e');
+      debugPrintSynchronously('[health] requestAuthorization: $e');
     }
     return HealthLinkState.ready;
   }
@@ -779,7 +886,7 @@ class HealthExporter {
     try {
       await _health.installHealthConnect();
     } catch (e) {
-      debugPrint('[health] installHealthConnect: $e');
+      debugPrintSynchronously('[health] installHealthConnect: $e');
     }
   }
 
@@ -797,7 +904,7 @@ class HealthExporter {
         await AndroidIntent(action: action).launch();
         return;
       } catch (e) {
-        debugPrint('[health] open settings ($action): $e');
+        debugPrintSynchronously('[health] open settings ($action): $e');
       }
     }
   }
@@ -895,45 +1002,44 @@ class HealthExporter {
       }
     }
 
+    _stepsPurgeCursorHeld = false;
+    var days = 0;
     try {
       await ensureHealthSleepExportEpoch(
         getCursor: LocalDb.getCursor,
         setCursor: stamp,
         // Same platform flag the delete types use — the epoch rewrite is an
         // Apple-HealthKit concern only.
-        isApplePlatform: isApple,
+        isApplePlatform: _apple,
       );
       if (reset) {
         await stamp('health_export_through', '');
         await stamp(_kRetryCursor, '');
       }
       final cursor = await LocalDb.getCursor('health_export_through') ?? '';
-      if (!Prefs.getBool(Prefs.demoModeEnabled, false)) {
-        await purgeLegacyStepsBehindCursor(
-          cursor: cursor,
-          getCursor: LocalDb.getCursor,
-          // purgeLegacyStepsBehindCursor swallows every throw, so a refused
-          // stamp is checked by requireSameStore() right after, not thrown here.
-          setCursor: (name, value) =>
-              LocalDb.setCursorUnlessReplaced(name, value, exportGeneration),
-          // Same hung-store bound as every other delete under this lock.
-          deleteSteps: (start, end) async {
-            try {
-              return await _health
-                  .delete(
-                    type: HealthDataType.STEPS,
-                    startTime: start,
-                    endTime: end,
-                  )
-                  .timeout(_deleteTimeout);
-            } on TimeoutException {
-              _storeHung = true;
-              rethrow;
-            }
-          },
-        );
-        requireSameStore();
-      }
+      if (Prefs.getBool(Prefs.demoModeEnabled, false)) return 0;
+      _stepWritesHeld = !await purgeLegacyStepsBehindCursor(
+        cursor: cursor,
+        getCursor: LocalDb.getCursor,
+        setCursor: (name, value) => LocalDb.setCursorUnlessReplaced(name, value, exportGeneration),
+        // Bounded like every other delete: a locked store ends the pass
+        // here instead of hanging it.
+        deleteSteps: (start, end) async {
+          if (_storeHung) return false;
+            requireSameStore();
+            if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
+          try {
+            return healthDeleteClearedRange(
+              deleted: await _nativeDelete(HealthDataType.STEPS, start, end),
+              ios: _apple,
+            );
+          } on TimeoutException {
+            _storeHung = true;
+            rethrow;
+          }
+        },
+      );
+      requireSameStore();
       final retryState = await _loadRetryState();
       var retryStateDirty = false;
       // METADATA ONLY — 400 days of payload is ~300 MB resident, measured, and
@@ -1055,7 +1161,10 @@ class HealthExporter {
               lastAttemptMs = null;
             }
             final nowMs = DateTime.now().millisecondsSinceEpoch;
-            final shouldAttempt = shouldAttemptHealthExport(
+            // The same gate bulk applies to this day, so a day that is due here
+            // is due there too: when the sleep write fails, bulk retries the
+            // whole day and its retry entry is the one accounting for it.
+            final shouldAttempt = shouldAttemptHealthBulkExport(
               attempts: attempts,
               maxAttempts: _kMaxExportAttempts,
               now: DateTime.fromMillisecondsSinceEpoch(nowMs),
@@ -1063,6 +1172,7 @@ class HealthExporter {
                   ? null
                   : DateTime.fromMillisecondsSinceEpoch(lastAttemptMs),
               backoff: _backoffFor(attempts),
+              prioritySleepAlreadyWritten: false,
               lastSuccess: okMs == null
                   ? null
                   : DateTime.fromMillisecondsSinceEpoch(okMs),
@@ -1071,66 +1181,30 @@ class HealthExporter {
                   : _kNonFinalizedRewriteInterval,
               force: forceRetry,
             );
-            if (!shouldAttempt) {
-              // The priority day is held back by the CAP or by the success-side
-              // rewrite throttle (it exported cleanly &lt;30 min ago) — in either
-              // case its sleep session is already in the store and is not what's
-              // blocking, so still export every OTHER pending day. Only a
-              // genuine retry backoff (recent FAILURE, still under the cap) holds
-              // bulk, matching the pre-throttle behaviour. A day with `ok_ms` set
-              // carries no pending failure (the success branch clears
-              // attempts/last_ms), so the two conditions are mutually exclusive.
-              final throttledBySuccess = okMs != null &&
-                  !pendingPriorityDay.finalized &&
-                  nowMs - okMs < _kNonFinalizedRewriteInterval.inMilliseconds;
-              if (attempts >= _kMaxExportAttempts || throttledBySuccess) {
-                return exportBulk(null);
-              }
-              return 0;
-            }
-            Future<void> recordPriorityFailure() async {
-              // A timed-out (unavailable) store isn't a failed export; don't
-              // spend an attempt on it.
-              if (_storeHung) return;
-              if (Prefs.getBool(Prefs.demoModeEnabled, false)) return;
-              retryState[priorityDay!.key] = {
-                'attempts': attempts + 1,
-                'last_ms': nowMs,
-                'finalized': pendingPriorityDay.finalized,
-              };
-              await stamp(_kRetryCursor, jsonEncode(retryState));
-            }
+            // Not due (backoff, cap, or it exported cleanly moments ago): the
+            // other pending days still go out. Holding them behind this one
+            // day's backoff is what kept every metric out of Health Connect
+            // whenever the sleep write alone was failing.
+            if (!shouldAttempt) return exportBulk(null);
 
             var bulkDone = 0;
-            try {
-              final priorityResult = await exportPrioritySleepBeforeBulk(
-                // `exportNewestPrioritySleep` returns the first day carrying a
-                // sleep session, and the scan above already found exactly that
-                // day — so one entry is equivalent to the whole list, without
-                // holding 400 decoded bundles to re-derive the same answer.
-                newestFirstDays: [priorityDay],
-                write: (bundle) async {
-                  if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
-                  final wrote = await _androidSleep.replace(bundle);
-                  requireSameStore(); // a wipe during the write: no stamp, no bulk
-                  return wrote;
-                },
-                exportBulk: (androidSleepAlreadyWritten) async {
-                  bulkDone = await exportBulk(androidSleepAlreadyWritten);
-                },
-              );
-              if (!priorityResult.succeeded) {
-                await recordPriorityFailure();
-                return 0;
-              }
-              return bulkDone;
-            } on _StoreReplacedDuringExport {
-              rethrow; // no retry stamp into a store that is no longer ours
-            } catch (e) {
-              debugPrint('[health] write priority Android sleep session: $e');
-              await recordPriorityFailure();
-              return 0;
-            }
+            await exportPrioritySleepBeforeBulk(
+              // `exportNewestPrioritySleep` returns the first day carrying a
+              // sleep session, and the scan above already found exactly that
+              // day — so one entry is equivalent to the whole list, without
+              // holding 400 decoded bundles to re-derive the same answer.
+              newestFirstDays: [priorityDay],
+              write: (bundle) async {
+                if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
+                final wrote = await _androidSleep.replace(bundle);
+                requireSameStore();
+                return wrote;
+              },
+              exportBulk: (androidSleepAlreadyWritten) async {
+                bulkDone = await exportBulk(androidSleepAlreadyWritten);
+              },
+            );
+            return bulkDone;
           }
         }
         return exportBulk(null);
@@ -1209,6 +1283,7 @@ class HealthExporter {
             // Not due for retry yet — don't hammer the health store on every
             // drain/derive pass; counts as "not done" for the cursor below.
           } else {
+            _dayHeldForPurge = false;
             ok = await _exportDay(
               date,
               bundle,
@@ -1233,11 +1308,12 @@ class HealthExporter {
                 retryState[date] = {'ok_ms': nowMs};
                 retryStateDirty = true;
               }
-            } else if (_storeHung) {
-              // Store timed out (locked phone): transient, not a failed
-              // export. Leave the day pending without spending an attempt,
-              // or locked background passes burn the cap and give it up.
-              debugPrint('[health] day $date not exported, store unavailable');
+            } else if (_storeHung || _dayHeldForPurge) {
+              // Store timed out (locked phone), or the day's steps are waiting
+              // on the legacy purge: transient, not a failed export. Leave the
+              // day pending without spending an attempt, or the cap gives it
+              // up and the cursor skips its steps for good.
+              debugPrintSynchronously('[health] day $date not exported, store unavailable');
             } else {
               final nextAttempts = attempts + 1;
               retryState[date] = {
@@ -1246,12 +1322,12 @@ class HealthExporter {
                 'finalized': finalized,
               };
               retryStateDirty = true;
-              debugPrint(
+              debugPrintSynchronously(
                 '[health] day $date export incomplete (attempt $nextAttempts/$_kMaxExportAttempts)',
               );
               // Only a finalized day is ever given up; the tail just retries.
               if (finalized && nextAttempts >= _kMaxExportAttempts) {
-                debugPrint(
+                debugPrintSynchronously(
                   '[health] day $date exceeded $_kMaxExportAttempts export attempts — giving up, will stop blocking newer days',
                 );
               }
@@ -1283,23 +1359,64 @@ class HealthExporter {
         if (retryStateDirty) {
           await stamp(_kRetryCursor, jsonEncode(retryState));
         }
-        debugPrint(
+        debugPrintSynchronously(
           '[health] exported $done day(s); finalized-cursor=$newCursor',
         );
         return done;
       };
 
-      try {
-        return await exportPriorityOrBulk();
-      } on _StoreReplacedDuringExport {
-        return 0; // stop quietly: the next pass lists the new store afresh
-      }
+      days = await exportPriorityOrBulk();
     } on _StoreReplacedDuringExport {
-      return 0; // replaced before the walk began (e.g. during the steps purge)
-    } catch (e) {
-      debugPrint('[health] exportAll: $e');
       return 0;
+    } catch (e) {
+      // Weighings do not depend on the day results: log and carry on.
+      debugPrintSynchronously('[health] exportAll: $e');
     }
+    try {
+      requireSameStore();
+      if (!_storeHung && !Prefs.getBool(Prefs.demoModeEnabled, false)) {
+        await exportScaleWeighings(
+          reset: reset,
+          forceRetry: forceRetry,
+          stopped: () => _storeHung || LocalDb.storeGeneration != exportGeneration || Prefs.getBool(Prefs.demoModeEnabled, false),
+          permitted: _weightWriteAllowed,
+          weightGranted: _weightGranted,
+          syncEnabled: () async =>
+              (await SharedPreferences.getInstance()).getBool(kHealthSyncPref) ==
+              true,
+          deleteOwn: (a, b) => _deleteOwnSamples(HealthDataType.WEIGHT, a, b),
+          write: (kg, at) async {
+            if (_storeHung) return false;
+            requireSameStore();
+            if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
+            try {
+              // A timeout is rethrown: the weighing export records the instant
+              // as possibly written (persisted) and clears it, safely, before
+              // the retry.
+              return await _health
+                  .writeHealthData(
+                    value: kg,
+                    type: HealthDataType.WEIGHT,
+                    startTime: at,
+                    endTime: at,
+                    unit: HealthDataUnit.KILOGRAM,
+                  )
+                  .timeout(_deleteTimeout);
+            } catch (e) {
+              debugPrintSynchronously('[health] write WEIGHT: $e');
+              if (e is TimeoutException) {
+                _storeHung = true;
+                rethrow;
+              }
+              return false;
+            }
+          },
+        );
+      }
+    } catch (e) {
+      debugPrintSynchronously('[health] exportAll weighings: $e');
+    }
+    return days;
     });
   }
 
@@ -1329,19 +1446,14 @@ class HealthExporter {
 
     // Sleep is the smallest, highest-value write. Native replace owns cleanup
     // on both stores (Health Connect SleepSessionRecord; HealthKit inBed+Core).
-    if (_platform.isAndroid && !androidSleepAlreadyWritten) {
-      if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
-      try {
-        // No night today means a clear, which must stop short of yesterday's
-        // night if that one woke after noon.
+    Future<DateTime?> previousWake() async {
         DateTime? previousWake;
-        if (normalizeHealthSleepSession(b) == null) {
           final prev = dayLabelOf(
               DateTime(dayStart.year, dayStart.month, dayStart.day - 1));
           final seen = _passWakes;
           if (seen != null && seen.containsKey(prev)) {
             // The Android scan already light-read that day this pass.
-            previousWake = seen[prev];
+            return seen[prev];
           } else {
             // The sleep-window projection is all normalizeHealthSleepSession
             // reads; no full decode of yesterday's bundle.
@@ -1358,42 +1470,82 @@ class HealthExporter {
             }
             seen?[prev] = previousWake;
           }
-        }
+
+        return previousWake;
+    }
+    if (_platform.isAndroid && !androidSleepAlreadyWritten) {
+      if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
+      try {
         if (!await _androidSleep.replace(
           b,
           dayStart: dayStart,
-          previousWake: previousWake,
+          // Only the no-night clear reads it; skip decoding yesterday's
+          // bundle on every other day of a long first export.
+          previousWake: normalizeHealthSleepSession(b) == null
+              ? await previousWake()
+              : null,
         )) {
-          debugPrint('[health] write Android sleep session returned false');
+          debugPrintSynchronously('[health] write Android sleep session returned false');
           success = false;
         }
       } catch (e) {
-        debugPrint('[health] write Android sleep session: $e');
+        debugPrintSynchronously('[health] write Android sleep session: $e');
         success = false;
       }
       _requireSameStore(generation);
     }
-    if (isApple) {
+    if (_apple) {
       if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
       try {
         if (!await _appleSleep.replace(
           bundle: b,
           dayStart: dayStart,
-          dayEnd: dayEnd,
+          previousWake: await previousWake(),
         )) {
-          debugPrint('[health] write Apple sleep session returned false');
+          debugPrintSynchronously('[health] write Apple sleep session returned false');
           success = false;
         }
       } catch (e) {
-        debugPrint('[health] write Apple sleep session: $e');
+        debugPrintSynchronously('[health] write Apple sleep session: $e');
         success = false;
       }
       _requireSameStore(generation);
+      // The sleep replace's noon-to-noon cleanup window covers the wake day's
+      // afternoon AND can reach into the previous calendar day, so it deletes
+      // OUR nap samples there. Re-write the confirmed naps of BOTH days after
+      // it on every pass (delete-then-write, so idempotent) — otherwise the
+      // next re-derive of a non-finalized day would silently remove a nap the
+      // user confirmed.
+      final prevDate = dayLabelOf(
+        DateTime(dayStart.year, dayStart.month, dayStart.day - 1),
+      );
+      try {
+        // Both days independently: a failure on one must not skip the other —
+        // the cleanup may already have deleted that day's nap samples.
+        final todayOk = await HealthNapExporter.shared.exportDayNaps(date);
+        _requireSameStore(generation);
+        final prevOk = await HealthNapExporter.shared.exportDayNaps(prevDate);
+        _requireSameStore(generation);
+        if (!todayOk || !prevOk) {
+          debugPrintSynchronously('[health] write Apple naps returned false');
+          success = false;
+        }
+      } on TimeoutException {
+        // A hung nap write means the store is busy/locked — same handling as
+        // the other native deletes: stop the pass instead of burning the
+        // day's retry budget (and holding the lock) for 30 s per nap.
+        _storeHung = true;
+        success = false;
+      }
     }
 
     // One-shot cleanup of the fabricated step samples earlier versions wrote.
-    // Outside the success accounting on purpose — see the method doc.
-    await _purgeLegacyStepsIfNeeded(date, dayStart, dayEnd, generation);
+    // A refused purge holds the day out of the clean-export set (like a steps
+    // hold) so the cursor does not skip it and an ordinary pass retries it.
+    if (!await _purgeLegacyStepsIfNeeded(date, dayStart, dayEnd, generation)) {
+      success = false;
+      _dayHeldForPurge = true;
+    }
     _requireSameStore(generation);
 
     // Continuous Heart Rate (minute-by-minute average).
@@ -1434,7 +1586,7 @@ class HealthExporter {
         [startTs, endTs],
       );
     } catch (e) {
-      debugPrint('[health] query continuous hr: $e');
+      debugPrintSynchronously('[health] query continuous hr: $e');
       success = false;
     }
     // Rows read from a store that replaced this pass's one are not this day's.
@@ -1453,11 +1605,9 @@ class HealthExporter {
     //
     // A type whose delete did NOT clear the window must not be re-written on
     // top of the survivor — that is how a retry turns one stale sample into
-    // two, then three. Only WORKOUT is tracked, because a duplicated workout
-    // is the one that shows up as a second entry in the user's activity list
-    // (and is the type `exportWorkout` re-writes out-of-band too); the scalar
-    // types below still write unconditionally, so an uncleared RHR/HRV window
-    // can still double until the next successful delete replaces both.
+    // two, then three, or how a delete still running from an earlier pass
+    // lands after the write and takes the new sample with it. Every type that
+    // didn't clear skips its write this pass and the day stays pending.
     //
     // This day-wide WORKOUT delete runs before the per-session loop below
     // skips any end_ts_fabricated row (see _writeOneWorkout) — that is safe
@@ -1469,14 +1619,16 @@ class HealthExporter {
     // row, that invariant breaks and this delete would need to become
     // per-session instead of day-wide.
     var workoutCleared = true;
+    final uncleared = <HealthDataType>{};
     for (final t in _rewriteTypes) {
       final from = t == HealthDataType.HEART_RATE ? hrFrom : dayStart;
       if (from == null) continue;
       final cleared = await _deleteOwnSamples(t, from, dayEnd);
       _requireSameStore(generation);
       if (cleared) continue;
-      debugPrint('[health] delete ${t.name} did not clear the day');
+      debugPrintSynchronously('[health] delete ${t.name} did not clear the day');
       success = false;
+      uncleared.add(t);
       if (t == HealthDataType.WORKOUT) workoutCleared = false;
     }
 
@@ -1503,6 +1655,7 @@ class HealthExporter {
         success = false;
         return;
       }
+      if (uncleared.contains(type)) return; // day already failed above
       try {
         final wrote = await _health.writeHealthData(
           value: v.toDouble(),
@@ -1512,11 +1665,11 @@ class HealthExporter {
           unit: unit,
         );
         if (!wrote) {
-          debugPrint('[health] write ${type.name} returned false');
+          debugPrintSynchronously('[health] write ${type.name} returned false');
           success = false;
         }
       } catch (e) {
-        debugPrint('[health] write ${type.name}: $e');
+        debugPrintSynchronously('[health] write ${type.name}: $e');
         success = false;
       }
       _requireSameStore(generation);
@@ -1531,7 +1684,7 @@ class HealthExporter {
     );
     await writeAt(
       _hrvType,
-      healthHrvExportValue(b, apple: isApple),
+      healthHrvExportValue(b, apple: _apple),
       HealthDataUnit.MILLISECOND,
       mid,
     );
@@ -1549,32 +1702,17 @@ class HealthExporter {
     );
     final bucketCount = bucketBounds.length - 1;
 
-    // Active energy: chunked into hourly buckets over the day.
-    // We subtract workout calories to prevent double-counting, because workouts
-    // are exported separately (their totalEnergyBurned already covers it, on
-    // Apple only — see healthWorkoutEnergyKcal).
-    // Upper bound is exclusive (dayEnd - 1s): sessionsInRange is inclusive on
-    // both ends, so a workout starting exactly at midnight would otherwise be
-    // double-subtracted from both this day and the next.
-    var cal = sc('calories')?.toDouble() ?? 0.0;
-    try {
-      final rows = await LocalDb.sessionsInRange(
-        dayStart.millisecondsSinceEpoch ~/ 1000,
-        (dayEnd.millisecondsSinceEpoch ~/ 1000) - 1,
-      );
-      final workoutCal =
-          healthWorkoutCaloriesToSubtract(rows, isApplePlatform: isApple);
-      cal = (cal > workoutCal) ? cal - workoutCal : 0.0;
-    } catch (e) {
-      // Unknown whether cal is workout-adjusted — still write our best guess
-      // below (idempotent re-export corrects it once this query succeeds),
-      // but flag the day so it isn't marked done on this pass.
-      debugPrint('[health] workout-calorie query: $e');
-      success = false;
-    }
-    _requireSameStore(generation);
+    // Active energy: chunked into hourly buckets over the day, workouts
+    // included. The WORKOUT sample's totalEnergyBurned is not counted by
+    // HealthKit's Active Energy total or the Move ring (those sum
+    // activeEnergyBurned samples only, and the plugin saves a bare HKWorkout
+    // with none attached), so taking workout kcal out of these buckets made
+    // them vanish from the day instead of preventing a double count.
+    final cal = sc('calories')?.toDouble() ?? 0.0;
 
-    if (cal > 0 && bucketCount > 0) {
+    if (cal > 0 &&
+        bucketCount > 0 &&
+        !uncleared.contains(HealthDataType.ACTIVE_ENERGY_BURNED)) {
       final calPerHour = cal / bucketCount;
       for (int i = 0; i < bucketCount; i++) {
         if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
@@ -1587,11 +1725,11 @@ class HealthExporter {
             unit: HealthDataUnit.KILOCALORIE,
           );
           if (!wrote) {
-            debugPrint('[health] write active energy bucket $i returned false');
+            debugPrintSynchronously('[health] write active energy bucket $i returned false');
             success = false;
           }
         } catch (e) {
-          debugPrint('[health] write energy bucket $i: $e');
+          debugPrintSynchronously('[health] write energy bucket $i: $e');
           success = false;
         }
         _requireSameStore(generation);
@@ -1604,7 +1742,8 @@ class HealthExporter {
     if (calTotal != null &&
         rawCal != null &&
         calTotal > rawCal &&
-        bucketCount > 0) {
+        bucketCount > 0 &&
+        !uncleared.contains(HealthDataType.BASAL_ENERGY_BURNED)) {
       final basal = (calTotal - rawCal).toDouble();
       final basalPerHour = basal / bucketCount;
       for (int i = 0; i < bucketCount; i++) {
@@ -1618,11 +1757,11 @@ class HealthExporter {
             unit: HealthDataUnit.KILOCALORIE,
           );
           if (!wrote) {
-            debugPrint('[health] write basal energy bucket $i returned false');
+            debugPrintSynchronously('[health] write basal energy bucket $i returned false');
             success = false;
           }
         } catch (e) {
-          debugPrint('[health] write basal energy bucket $i: $e');
+          debugPrintSynchronously('[health] write basal energy bucket $i: $e');
           success = false;
         }
         _requireSameStore(generation);
@@ -1651,12 +1790,53 @@ class HealthExporter {
       );
       _requireSameStore(generation);
       if (!wroteHeartRate) {
-        debugPrint('[health] write continuous heart rate returned false');
+        debugPrintSynchronously('[health] write continuous heart rate returned false');
         success = false;
       }
     }
 
-    // STEPS ARE DELIBERATELY NOT EXPORTED.
+    // Steps: only the strap's on-chip counter spans (see [healthStepSpans]).
+    // Delete-then-write over our own samples, and only on days we write, so a
+    // phone-counted day never runs a delete for a type nothing writes.
+    final stepSpans = healthStepSpans(b);
+    final stepsMap = b['steps'];
+    if (stepSpans.isEmpty &&
+        stepsMap is Map &&
+        stepsMap['band_measured'] != null) {
+      // A counter day the counter lost (a not-yet-final day it won on an
+      // earlier pass) must not keep the samples written then. A failed clear
+      // fails the day, so the next pass tries again.
+      if (!await _deleteOwnSamples(HealthDataType.STEPS, dayStart, dayEnd)) {
+        success = false;
+      }
+    }
+    if (stepSpans.isNotEmpty) {
+      if (_stepWritesHeld) {
+        success = false;
+        _dayHeldForPurge = true;
+      } else if (!await _deleteOwnSamples(
+          HealthDataType.STEPS, dayStart, dayEnd)) {
+        success = false;
+      } else {
+        for (final s in stepSpans) {
+          try {
+            final wrote = await _health.writeHealthData(
+              value: s.steps.toDouble(),
+              type: HealthDataType.STEPS,
+              startTime: s.start,
+              endTime: s.end,
+              unit: HealthDataUnit.COUNT,
+            );
+            if (!wrote) success = false;
+          } catch (e) {
+            debugPrintSynchronously('[health] write steps: $e');
+            success = false;
+          }
+        }
+      }
+    }
+
+    // NO OTHER STEPS ARE EXPORTED.
     //
     // We used to write `scalars.steps` here as a plain HealthDataType.STEPS
     // sample. Two reasons that had to stop:
@@ -1691,7 +1871,7 @@ class HealthExporter {
           (dayEnd.millisecondsSinceEpoch ~/ 1000) - 1,
         );
       } catch (e) {
-        debugPrint('[health] query workouts: $e');
+        debugPrintSynchronously('[health] query workouts: $e');
         success = false;
       }
       _requireSameStore(generation);
@@ -1705,7 +1885,7 @@ class HealthExporter {
           final wrote = await _writeOneWorkout(r);
           _requireSameStore(generation);
           if (wrote == false) {
-            debugPrint('[health] write workout returned false');
+            debugPrintSynchronously('[health] write workout returned false');
             success = false;
           }
         }
@@ -1740,6 +1920,9 @@ class HealthExporter {
     if ((r['private'] as num?)?.toInt() == 1) {
       return null; // skip, not a failure
     }
+    if (r['source'] == kScoredImportSessionSource) {
+      return null; // skip, not a failure
+    }
     final st = (r['start_ts'] as num?)?.toInt();
     final en = (r['end_ts'] as num?)?.toInt();
     if (st == null || en == null || en <= st) {
@@ -1750,11 +1933,11 @@ class HealthExporter {
         activityType: _activity(r['type']?.toString()),
         start: DateTime.fromMillisecondsSinceEpoch(st * 1000),
         end: DateTime.fromMillisecondsSinceEpoch(en * 1000),
-        totalEnergyBurned: healthWorkoutEnergyKcal(r, isApplePlatform: isApple),
+        totalEnergyBurned: healthWorkoutEnergyKcal(r, isApplePlatform: _apple),
         title: healthWorkoutTitleForType(r['type']?.toString()),
       );
     } catch (e) {
-      debugPrint('[health] write workout @$st: $e');
+      debugPrintSynchronously('[health] write workout @$st: $e');
       return false;
     }
   }
@@ -1790,6 +1973,7 @@ class HealthExporter {
     // exported workout, and deleting it here — only to have _writeOneWorkout
     // refuse to write the replacement — would erase it for nothing.
     if ((session['end_ts_fabricated'] as num?)?.toInt() == 1) return false;
+    if (session['source'] == kScoredImportSessionSource) return false;
     final st = (session['start_ts'] as num?)?.toInt();
     final en = (session['end_ts'] as num?)?.toInt();
     if (st == null || en == null || en <= st) return false;
@@ -1811,12 +1995,12 @@ class HealthExporter {
         // hands the caller a retry, which would write a third. Bail instead:
         // the same false still asks for a retry, but the retry re-attempts the
         // delete FIRST and only writes once it actually clears.
-        debugPrint('[health] delete workout @$st did not clear the window');
+        debugPrintSynchronously('[health] delete workout @$st did not clear the window');
         return false;
       }
       return (await _writeOneWorkout(session)) ?? false;
     } catch (e) {
-      debugPrint('[health] exportWorkout: $e');
+      debugPrintSynchronously('[health] exportWorkout: $e');
       return false;
     }
     });
@@ -1826,7 +2010,7 @@ class HealthExporter {
   // (the HRV type, the delete list, the store name) keys off the same getter,
   // and a divergence here would hand macOS the Health Connect spellings.
   HealthWorkoutActivityType _activity(String? type) =>
-      healthActivityForType(type, ios: isApple);
+      healthActivityForType(type, ios: _apple);
 
   static Map<String, dynamic>? _sub(Map<String, dynamic>? b, String path) {
     var cur = b;
@@ -1846,6 +2030,160 @@ class HealthExporter {
         d = int.tryParse(p[2]);
     if (y == null || m == null || d == null) return null;
     return DateTime(y, m, d);
+  }
+
+
+  /// Native deletes still running. [Future.timeout] doesn't cancel the
+  /// plugin call, so a delete that timed out can still land after a later
+  /// pass wrote into its range and take those samples with it.
+  final _pendingDeletes =
+      <({HealthDataType type, DateTime start, DateTime end, DateTime since})>[];
+
+  // ponytail: a hung native call may never call back, so the hold is capped;
+  // a delete landing after the cap can still remove a newer sample.
+  static const _kPendingDeleteHold = Duration(minutes: 30);
+
+  /// Every native delete goes through here. One that overlaps a delete of the
+  /// same type still running reads as a busy store (a timeout): nothing gets
+  /// written into that range and the pass ends without spending an attempt.
+  Future<bool> _nativeDelete(
+    HealthDataType type,
+    DateTime start,
+    DateTime end,
+  ) {
+    final now = DateTime.now();
+    _pendingDeletes
+        .removeWhere((d) => now.difference(d.since) >= _kPendingDeleteHold);
+    if (_pendingDeletes.any((d) =>
+        d.type == type && d.start.isBefore(end) && start.isBefore(d.end))) {
+      return Future.error(
+          TimeoutException('an earlier ${type.name} delete is still running'));
+    }
+    final entry = (type: type, start: start, end: end, since: now);
+    _pendingDeletes.add(entry);
+    final f = _health.delete(type: type, startTime: start, endTime: end);
+    f.whenComplete(() => _pendingDeletes.remove(entry)).ignore();
+    return f.timeout(_deleteTimeout);
+  }
+
+  /// Set when the legacy steps prefix purge hasn't finished: step writes wait
+  /// for it (see [purgeLegacyStepsBehindCursor]).
+  bool _stepWritesHeld = false;
+
+  /// Set by [_exportDay] when the day failed only because its steps were held
+  /// behind the purge: exportAll keeps it pending without spending an attempt.
+  bool _dayHeldForPurge = false;
+
+  /// Set when saving a day's purge retry intent fails in the current pass so
+  /// a later day's confirmed delete cannot advance `_stepsPurgedThrough` past
+  /// the unrecorded day.
+  bool _stepsPurgeCursorHeld = false;
+
+  final bool? _isAppleOverride;
+
+  /// [isApple], or what a test pinned through the constructor. The host VM is
+  /// macOS on a Mac and Linux in CI, so a test of one store's behaviour
+  /// otherwise passes or fails depending on whose machine runs it.
+  bool get _apple => _isAppleOverride ?? isApple;
+
+  /// Per-day retries for a legacy-STEPS delete the store did NOT confirm.
+  ///
+  /// `{day: (startMs, endMs)}`, captured when the delete was first refused.
+  /// A MAP, not one earliest day: widening a later day's delete over an earlier
+  /// one would remove that earlier day's valid strap steps, and only the day
+  /// being exported has its steps rewritten afterwards. Each entry is its own
+  /// day's absolute bounds, so a timezone change cannot move the retry range
+  /// and leave a gap. Written BEFORE the delete is issued and removed only
+  /// when that same day's delete is confirmed.
+  static const _kStepsPurgePending = 'health_steps_purge_pending';
+  Map<String, ({int startMs, int endMs})>? _stepsPurgePending;
+
+  Future<Map<String, ({int startMs, int endMs})>> _loadPendingPurges() async {
+    final raw = await LocalDb.getCursor(_kStepsPurgePending) ?? '';
+    if (raw.isEmpty) return <String, ({int startMs, int endMs})>{};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return <String, ({int startMs, int endMs})>{};
+      return {
+        for (final entry in decoded.whereType<Map>())
+          if (entry['day'] is String &&
+              entry['start_ms'] is num &&
+              entry['end_ms'] is num)
+            entry['day'] as String: (
+              startMs: (entry['start_ms'] as num).toInt(),
+              endMs: (entry['end_ms'] as num).toInt(),
+            ),
+      };
+    } catch (e) {
+      debugPrintSynchronously('[health] steps purge pending: $e');
+      return <String, ({int startMs, int endMs})>{};
+    }
+  }
+
+  Future<void> _savePendingPurges(StoreGeneration generation) async {
+    _requireSameStore(generation);
+    final pending = _stepsPurgePending!;
+    final saved = await LocalDb.setCursorUnlessReplaced(
+      _kStepsPurgePending,
+      pending.isEmpty
+          ? ''
+          : jsonEncode([
+              for (final entry in pending.entries)
+                {
+                  'day': entry.key,
+                  'start_ms': entry.value.startMs,
+                  'end_ms': entry.value.endMs,
+                },
+            ]),
+      generation,
+    );
+    if (!saved) throw const _StoreReplacedDuringExport();
+  }
+
+  /// WEIGHT write permission, for the weight export only. Existing users were
+  /// authorized before WEIGHT joined [_types] and are never re-prompted by
+  /// [request], so a plain attempt would no-op forever. HealthKit hides write
+  /// auth, so the one-time request runs there too (idempotent; shows the sheet
+  /// only for undetermined types); asked for at most once per install. The per-day pass keeps its
+  /// attempt-everything behaviour (see below).
+  Future<bool> _weightWriteAllowed() async {
+    final types = [HealthDataType.WEIGHT];
+    const access = [HealthDataAccess.WRITE];
+    final prefs = await SharedPreferences.getInstance();
+    return weightWritePermitted(
+      check: () async =>
+          await _health
+              .hasPermissions(types, permissions: access)
+              .timeout(_deleteTimeout) ==
+          true,
+      request: () async {
+        try {
+          await _health
+              .requestAuthorization(types, permissions: access)
+              .timeout(_deleteTimeout);
+        } catch (e) {
+          if (e is TimeoutException) _storeHung = true;
+          rethrow;
+        }
+      },
+      asked: () async => prefs.getBool(kHealthWeightPermAskedPref) == true,
+      markAsked: () => prefs.setBool(kHealthWeightPermAskedPref, true),
+    );
+  }
+
+  /// Current WEIGHT grant for the cap-reset transition; null = unknown.
+  Future<bool?> _weightGranted() async {
+    try {
+      return await _health
+          .hasPermissions(
+            [HealthDataType.WEIGHT],
+            permissions: [HealthDataAccess.WRITE],
+          )
+          .timeout(_deleteTimeout);
+    } catch (e) {
+      debugPrintSynchronously('[health] weight grant read: $e');
+      return null;
+    }
   }
 }
 
@@ -1938,7 +2276,10 @@ HealthWorkoutActivityType healthActivityForType(
   String? type, {
   required bool ios,
 }) {
-  switch ((type ?? '').toLowerCase()) {
+  // Spaces as underscores: rows imported from a WHOOP export before the
+  // importer normalised its activity names are stored as 'mountain biking',
+  // and the importer never rewrites a row it already holds.
+  switch ((type ?? '').trim().toLowerCase().replaceAll(RegExp(r'\s+'), '_')) {
     case 'run':
     case 'running':
     case 'treadmill':
@@ -1950,6 +2291,7 @@ HealthWorkoutActivityType healthActivityForType(
     case 'biking':
     case 'indoor_bike':
     case 'mountain_biking':
+    case 'spin': // WHOOP's name, on rows imported before the alias existed
       return HealthWorkoutActivityType.BIKING;
     case 'walk':
     case 'walking':
@@ -1968,6 +2310,9 @@ HealthWorkoutActivityType healthActivityForType(
     case 'weight_training':
     case 'powerlifting':
     case 'kettlebell':
+    // WHOOP's names, on rows imported before the importer mapped them.
+    case 'weightlifting':
+    case 'strength_trainer':
       return ios
           ? HealthWorkoutActivityType.TRADITIONAL_STRENGTH_TRAINING
           : HealthWorkoutActivityType.STRENGTH_TRAINING;
@@ -1982,9 +2327,11 @@ HealthWorkoutActivityType healthActivityForType(
       return HealthWorkoutActivityType.ROWING;
     case 'hike':
     case 'hiking':
+    case 'hiking/rucking':
       return HealthWorkoutActivityType.HIKING;
     case 'climb':
     case 'climbing':
+    case 'rock_climbing':
       // Bare `CLIMBING` is iOS-only; `ROCK_CLIMBING` is the one spelling both
       // stores accept, which is the #184 lesson applied ahead of the bug.
       return HealthWorkoutActivityType.ROCK_CLIMBING;
@@ -2011,6 +2358,12 @@ HealthWorkoutActivityType healthActivityForType(
     case 'padel':
     case 'badminton':
       return HealthWorkoutActivityType.TENNIS;
+    case 'pickleball':
+      // iOS has its own type; Health Connect has none, so it files with the
+      // other racquet sports.
+      return ios
+          ? HealthWorkoutActivityType.PICKLEBALL
+          : HealthWorkoutActivityType.TENNIS;
     case 'basketball':
       return HealthWorkoutActivityType.BASKETBALL;
     case 'soccer':
@@ -2043,3 +2396,38 @@ HealthWorkoutActivityType healthActivityForType(
       return HealthWorkoutActivityType.OTHER;
   }
 }
+
+
+/// The step samples to write for a day: the strap's on-chip counter spans,
+/// and only when that counter is the day's answer (`source: strap_counter`).
+/// Any day the phone counted gets nothing, because the phone already writes
+/// its own steps to the store and ours would double them.
+@visibleForTesting
+List<({DateTime start, DateTime end, int steps})> healthStepSpans(
+  Map<String, dynamic> b,
+) {
+  final steps = b['steps'];
+  if (steps is! Map || steps['source'] != 'strap_counter') return const [];
+  final spans = steps['spans'];
+  if (spans is! List) return const [];
+  return [
+    for (final s in spans)
+      if (s is Map &&
+          s['start_ts'] is int &&
+          s['end_ts'] is int &&
+          s['steps'] is int &&
+          (s['steps'] as int) > 0 &&
+          (s['end_ts'] as int) > (s['start_ts'] as int))
+        (
+          start: DateTime.fromMillisecondsSinceEpoch(
+              (s['start_ts'] as int) * 1000),
+          end: DateTime.fromMillisecondsSinceEpoch((s['end_ts'] as int) * 1000),
+          steps: s['steps'] as int,
+        ),
+  ];
+}
+
+/// `sessions.source` of a session scored from an imported workout's window.
+/// The import came from the health store and the original is still there, so
+/// writing this one as well would list the same workout twice.
+const String kScoredImportSessionSource = 'scored_import';

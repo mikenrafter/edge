@@ -61,6 +61,13 @@ List<Map<String, dynamic>> series(int n,
 /// throws, like the base class.
 class OlderRepo extends LocalRepository {
   final Map<String, List<Map<String, dynamic>>> charts;
+
+  @override
+  Future<Map<String, dynamic>> getWorkouts({String range = 'month'}) async =>
+      const {'workouts': []};
+  @override
+  Future<Map<String, dynamic>> getRecords() async => const {};
+
   final Map<String, Map<String, dynamic>> dayStrain;
   OlderRepo({this.charts = const {}, this.dayStrain = const {}});
 

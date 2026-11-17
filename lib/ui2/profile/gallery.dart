@@ -1,37 +1,13 @@
-// The component gallery, and the one set of fixtures behind it.
-//
-// Two things live here, and the second is the reason for the first.
-//
-//   · [galleryCases] — every reusable component in lib/ui2, built once, with
-//     a name. `test/ui2_component_sweep_test.dart` sweeps the same map, so
-//     the screen on the phone and the sweep cannot describe two different
-//     design systems.
-//   · [GalleryScreen] — that map on a real device, at a real text scale, in
-//     both themes. Every layout bug this project has shipped lived in one of
-//     those two dimensions, and neither is visible on a laptop at 1.0×.
-//
-// The fixtures are deliberately the LONGEST realistic value for every slot,
-// never the tidiest. Three shipped bugs — cards overflowing at 2.0×, a status
-// row that fitted only the word "Connected", a greeting baked in the evening
-// so the morning branch never rendered — were all invisible because the
-// example was two characters long and the happy branch.
-//
-// Nothing here reads the database, the band or the repository: a gallery that
-// needs data is a gallery nobody opens on a fresh install.
-
 import 'dart:convert';
 import 'dart:math';
-
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:share_plus/share_plus.dart';
-
 import '../../coach/coach_config.dart';
 import '../../data/day_label.dart';
 import '../../ecg/ecg_controller.dart';
@@ -57,10 +33,7 @@ import '../activity/setup.dart' show ActivitySetup;
 import '../activity/tiles.dart';
 import '../activity/share.dart' show ShareSheet, shareOrigin;
 import '../activity/summary.dart';
-import '../onboarding/welcome.dart'
-    show ImportOutcome, ImportReport, PostImportNotes;
-// Screens are deliberately not re-exported from the ui2 barrel (see the
-// barrel test), so their components are imported by path.
+import '../onboarding/welcome.dart';
 import '../screens/screens.dart';
 import '../../notify/buzz_sequence.dart';
 import '../../state/control_operations.dart';
@@ -72,6 +45,38 @@ import 'devices.dart';
 import 'import_progress_view.dart';
 import 'profile.dart';
 import 'wearable_numbers.dart';
+import '../../coach/coach_engine.dart' show CoachSessionMeta;
+import '../guides/help_entry.dart';
+import '../screens/slot_scrub.dart';
+import '../pairing/whoop_firmware_warning.dart';
+
+
+// The component gallery, and the one set of fixtures behind it.
+//
+// Two things live here, and the second is the reason for the first.
+//
+//   · [galleryCases] — every reusable component in lib/ui2, built once, with
+//     a name. `test/ui2_component_sweep_test.dart` sweeps the same map, so
+//     the screen on the phone and the sweep cannot describe two different
+//     design systems.
+//   · [GalleryScreen] — that map on a real device, at a real text scale, in
+//     both themes. Every layout bug this project has shipped lived in one of
+//     those two dimensions, and neither is visible on a laptop at 1.0×.
+//
+// The fixtures are deliberately the LONGEST realistic value for every slot,
+// never the tidiest. Three shipped bugs — cards overflowing at 2.0×, a status
+// row that fitted only the word "Connected", a greeting baked in the evening
+// so the morning branch never rendered — were all invisible because the
+// example was two characters long and the happy branch.
+//
+// Nothing here reads the database, the band or the repository: a gallery that
+// needs data is a gallery nobody opens on a fresh install.
+
+
+
+
+// Screens are deliberately not re-exported from the ui2 barrel (see the
+// barrel test), so their components are imported by path.
 
 /// A deterministic series — a gallery cannot depend on random data.
 final _series =
@@ -98,11 +103,6 @@ const _tooShort = <double?>[50, 51, 50];
 const _ringsMeasured = HomeData(
   dayId: '2026-08-16',
   readiness: Metric(value: 72, confidence: .8, tier: MetricTier.high),
-  drivers: [
-    {'label': 'hrv'},
-    {'label': 'rhr'},
-    {'label': 'resp'},
-  ],
   strain: Metric(value: 14.2, confidence: .6, tier: MetricTier.estimate),
   sleepMin: Metric(
       value: 465, unit: 'min', confidence: .8, tier: MetricTier.estimate),
@@ -230,6 +230,8 @@ Map<String, Widget> componentCases() => {
       'ecg_reading_row': Surface(
           pad: EdgeInsets.zero,
           child: EcgReadingRow(reading: _ecgDemoReading, onTap: () {})),
+      'whoop_firmware_warning': const WhoopFirmwareWarning(),
+      'help_entry': const HelpEntry(topic: GuideTopic.today),
       'signal': const SignalCard(
           LucideIcons.heartPulse, C.blue, 'Resting heart rate', '52',
           unit: 'bpm', sub: '4 BELOW YOUR BASELINE'),
@@ -415,6 +417,33 @@ Map<String, Widget> _coachFigureCases() => {
       'sleep_min': 432,
       'skin_temp_z': -0.4,
     },
+  ),
+  // A reply carrying a markdown image: it has to draw the inert placeholder,
+  // never a fetched picture.
+  'coach_answer_text': const CoachAnswerText(
+    'Your **resting HR** sat 3 bpm under your usual this week.\n\n'
+    '![chart](https://example.invalid/hr.png)\n\n'
+    '- sleep held at 7 h 12 min\n- strain eased off midweek',
+  ),
+  // The band rename sheet's body, outside the dialog route that hosts it.
+  'rename_band_dialog': const RenameBandDialog(current: 'WHOOP 4A1B2C'),
+  // The past-chats list, open and while a reply is still coming in (locked:
+  // no open, no delete control).
+  'coach_chat_list': CoachChatList(
+    sessions: [
+      CoachSessionMeta('a', 'Why was my HRV low?', 0,
+          'Two short nights in a row pulled it under your usual.'),
+      CoachSessionMeta('b', '', 0, 'Plan a lighter week'),
+    ],
+    locked: false,
+    onOpen: (_) {},
+    onDelete: (_) async {},
+  ),
+  'coach_chat_list_locked': CoachChatList(
+    sessions: [CoachSessionMeta('a', 'Why was my HRV low?', 0, '')],
+    locked: true,
+    onOpen: (_) {},
+    onDelete: (_) async {},
   ),
 };
 
@@ -664,6 +693,7 @@ Map<String, Widget> _nutritionAndWellnessCases() {
       64, 65, 65, 66, 67, 66, 65, 66, 68, 69, 70, 69, 68, 67, 66, 66, 67, 68,
       69, 68, 67, 67, 68, 69, 70, 71, 70, 69, 68, 68,
     ]),
+    'nap_auto_log_row': const IgnorePointer(child: NapAutoLogRow()),
     'mood_picker': MoodPicker(value: 4, onChanged: (_) {}),
     'mood_picker_blank': MoodPicker(onChanged: (_) {}),
     'field_stepper': Surface(
@@ -1131,6 +1161,35 @@ Map<String, Widget> extraCases() => {
               child: CustomPaint(
                   size: Size.infinite,
                   painter: LineChart(hr, p.on(C.red))),
+            ),
+          ),
+        );
+      }),
+      'slot_scrub': Builder(builder: (c) {
+        final p = P.of(c);
+        final series = <double?>[30, 55, null, 70, 40, 65, 80];
+        return Surface(
+          child: SlotScrub(
+            series: series,
+            anchor: DateTime.now(),
+            bars: true,
+            label: 'Heart effort by day',
+            color: p.on(C.purple),
+            format: (v) => '${v.round()} points',
+            builder: (c, pick, scrub, panel) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  height: 88,
+                  child: scrub.wrap(CustomPaint(
+                    size: Size.infinite,
+                    painter: Bars(series, p.on(C.purple),
+                        highlight: pick ?? -1),
+                  )),
+                ),
+                const SizedBox(height: S.x3),
+                panel,
+              ],
             ),
           ),
         );
@@ -2913,3 +2972,4 @@ class _GalleryNerdStats implements NerdStatsListener {
   @override
   void openNerdStats() {}
 }
+

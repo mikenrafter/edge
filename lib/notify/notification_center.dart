@@ -340,6 +340,7 @@ class NotificationCenter {
     List<MedDef>? medDefs,
     Map<String, Map<int, Map<String, Object?>>> medDosesToday = const {},
     bool armedTonight = false,
+    bool expectedTonight = false,
     ReminderSleepGate? sleep,
   }) => _synchronized(
     () => _scheduleStandingReminders(
@@ -350,6 +351,7 @@ class NotificationCenter {
       medDefs: medDefs,
       medDosesToday: medDosesToday,
       armedTonight: armedTonight,
+      expectedTonight: expectedTonight,
       sleep: sleep,
     ),
   );
@@ -362,6 +364,7 @@ class NotificationCenter {
     List<MedDef>? medDefs,
     Map<String, Map<int, Map<String, Object?>>> medDosesToday = const {},
     bool armedTonight = false,
+    bool expectedTonight = false,
     ReminderSleepGate? sleep,
   }) async {
     final gate = sleep ?? await ReminderSleepGate.load(now: DateTime.now());
@@ -459,6 +462,7 @@ class NotificationCenter {
     final nightCheck = alarmNightCheckSlot(
       prefs,
       armedTonight: armedTonight,
+      expectedTonight: expectedTonight,
       nowMin: now.hour * 60 + now.minute,
     );
     if (water.isEmpty &&
@@ -490,6 +494,7 @@ class NotificationCenter {
     final freshNightCheck = alarmNightCheckSlot(
       prefs,
       armedTonight: armedTonight,
+      expectedTonight: expectedTonight,
       nowMin: freshNow.hour * 60 + freshNow.minute,
     );
     if (freshNightCheck != null &&
@@ -547,6 +552,9 @@ class NotificationCenter {
   /// The check-in's wall-clock minute, or null when it must not be armed: the
   /// toggle is off, an alarm IS armed for tonight (the honest gate — the whole
   /// point is to catch the GAP, not to nag someone who already has one set),
+  /// no alarm is EXPECTED tonight (no enabled schedule slot falls tonight —
+  /// someone who never uses the band alarm, or a night deliberately left off,
+  /// has no gap to be warned about; this was firing every evening for them),
   /// or 19:00 has already passed today (a one-shot rolled to tomorrow would
   /// warn about TONIGHT a day late). No quiet-hours cap like windDown/checkIn:
   /// 19:00 is fixed and outside the default quiet window, and moving it to
@@ -554,9 +562,12 @@ class NotificationCenter {
   static int? alarmNightCheckSlot(
     NotificationPrefs prefs, {
     required bool armedTonight,
+    required bool expectedTonight,
     required int nowMin,
   }) {
-    if (!prefs.alarmNightCheckEnabled || armedTonight) return null;
+    if (!prefs.alarmNightCheckEnabled || armedTonight || !expectedTonight) {
+      return null;
+    }
     final t = alarmNightCheckHour * 60;
     if (nowMin >= t) return null;
     return t;
@@ -735,11 +746,13 @@ class NotificationCenter {
     // Wrap across midnight, staying non-negative (Dart % can go negative for
     // negative operands only when the modulus is... it cannot here — but the
     // +1440 makes the intent explicit and survives sign changes).
-    var t =
-        ((bedtimeMinOfDay.round() - windDownBeforeBedMin) % 1440 + 1440) % 1440;
+    final bed = bedtimeMinOfDay.round();
+    var t = ((bed - windDownBeforeBedMin) % 1440 + 1440) % 1440;
     if (prefs.quietEnabled && prefs.quietStartMin > prefs.quietEndMin) {
       final cap = prefs.quietStartMin - _windDownQuietMarginMin;
-      if (t > cap) t = cap;
+      // After-midnight bedtimes need the same quiet-hours cap as 23:50.
+      final wrappedLate = t < prefs.quietEndMin && prefs.inQuietHours(bed);
+      if (t > cap || wrappedLate) t = cap;
     }
     if (prefs.inQuietHours(t)) return null;
     if (sleep != null) {
@@ -765,17 +778,23 @@ class NotificationCenter {
   /// — the reason the slot sat unwired for so long was that nothing honest
   /// could fill it. Priority: medical flags first (they are the sanctioned
   /// detections), then a plainly-stated resting-HR drift, then silence.
-  static String? weeklyLookbackFinding(List<Map<String, dynamic>> recentDays) {
-    // `recent[]` is the whole rollup window (90 days, oldest first); the
-    // lookback is the last week of it.
-    // ponytail: last 7 rows, not 7 calendar days; a gappy week reaches a bit
-    // further back.
-    final week = recentDays.length > 7
-        ? recentDays.sublist(recentDays.length - 7)
-        : recentDays;
-    final days = week
-        .where((d) => d['unsettled'] != true)
-        .toList(growable: false);
+  static String? weeklyLookbackFinding(
+      List<Map<String, dynamic>> recentDays,
+      {String? today}) {
+    // `recent[]` is the whole rollup window (90 days, oldest first) and holds
+    // DERIVED days only, so its tail is whatever was last derived — after a
+    // wear gap that can be weeks old. The copy says "this week", so the window
+    // is the last 7 calendar days ending today, by date, never the last 7 rows.
+    final end = today ?? todayLabel();
+    final start = dayLabelBefore(end, 7);
+    if (start == null) return null;
+    final days = recentDays.where((d) {
+      final date = d['date'];
+      return date is String &&
+          date.compareTo(start) > 0 &&
+          date.compareTo(end) <= 0 &&
+          d['unsettled'] != true;
+    }).toList(growable: false);
     if (days.isEmpty) return null;
 
     // Medical flags, counted per kind. These reuse the same detectors the
@@ -788,7 +807,7 @@ class NotificationCenter {
     if (anomaly > 0) parts.add('unusual physiology ×$anomaly');
     if (temp > 0) parts.add('elevated skin temperature ×$temp');
     if (parts.isNotEmpty) {
-      return 'This week flagged: ${parts.join(', ')}. See Health for details.';
+      return 'This week flagged: ${parts.join(', ')}. Details live on Health.';
     }
 
     // Resting-HR drift across the week: mean of the last three nights vs the
@@ -926,13 +945,17 @@ class NotificationCenter {
   /// never after it. A 01:00 bedtime must not produce a midnight prompt.
   static int? checkInMinute(NotificationPrefs prefs, double? bedtimeMinOfDay) {
     if (!prefs.checkInEnabled) return null;
-    var t = bedtimeMinOfDay == null
-        ? checkInFallbackMin
-        : bedtimeMinOfDay.round() - checkInBeforeBedMin;
+    var t = checkInFallbackMin;
+    if (bedtimeMinOfDay != null) {
+      t = (bedtimeMinOfDay.round() - checkInBeforeBedMin) % (24 * 60);
+      if (t < 12 * 60) t += 24 * 60;
+    }
     if (prefs.quietEnabled && prefs.quietStartMin > prefs.quietEndMin) {
       final cap = prefs.quietStartMin - 30;
       if (t > cap) t = cap;
     }
+    // A prompt about today must remain on this side of midnight.
+    if (t >= 24 * 60) t = 24 * 60 - 1;
     if (t < checkInEarliestMin) t = checkInEarliestMin;
     // A degenerate quiet window (one that swallows the whole evening) leaves
     // nowhere honest to put this. Nothing is armed rather than something at
@@ -1064,6 +1087,19 @@ class NotificationCenter {
     required bool journalDoneToday,
     String? sweepHeadline,
     ReminderSleepGate? sleep,
+  }) => _synchronized(() => _scheduleAiReminders(prefs, ai,
+      aiConfigured: aiConfigured, bedtimeMinOfDay: bedtimeMinOfDay,
+      journalDoneToday: journalDoneToday, sweepHeadline: sweepHeadline,
+      sleep: sleep));
+
+  Future<void> _scheduleAiReminders(
+    NotificationPrefs prefs,
+    AiPrefs ai, {
+    required bool aiConfigured,
+    double? bedtimeMinOfDay,
+    required bool journalDoneToday,
+    String? sweepHeadline,
+    ReminderSleepGate? sleep,
   }) async {
     final gate = sleep ?? await ReminderSleepGate.load(now: DateTime.now());
     final svc = NotificationService.instance;
@@ -1081,7 +1117,8 @@ class NotificationCenter {
     ).where((s) => NotificationService.maySchedule(s.id)).toList();
     if (plan.isEmpty) return;
     await svc.ensureTimezone();
-    final nowMin = DateTime.now().hour * 60 + DateTime.now().minute;
+    final now = DateTime.now();
+    final nowMin = now.hour * 60 + now.minute;
     for (final s in plan) {
       // ONE-SHOT, and only when the slot is still ahead TODAY.
       //
@@ -1093,7 +1130,7 @@ class NotificationCenter {
       // happen on. Nothing is armed instead — this re-runs on the next
       // foreground pass, which is where the finding is recomputed anyway.
       if (s.hour * 60 + s.minute <= nowMin) continue;
-      final at = svc.nextDailyInstant(s.hour, s.minute);
+      final at = svc.nextDailyInstant(s.hour, s.minute, now: now);
       if (gate.reasonAt(prefs, at) != null) continue;
       await svc.scheduleOnce(
         id: s.id,
@@ -1105,4 +1142,7 @@ class NotificationCenter {
       );
     }
   }
+  // Old official builds persisted these guards; keep their expiry vocabulary.
+  static const morningBriefAnnouncedPrefix = 'morning_brief_announced:';
+  static const morningBriefSlotPrefix = 'morning_brief_slot:';
 }

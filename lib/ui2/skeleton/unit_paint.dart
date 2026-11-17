@@ -1,3 +1,13 @@
+import 'dart:ui' show ClipOp;
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import '../guides/guide_dim.dart';
+import '../guides/guide_accordion.dart';
+import '../guides/tree_geometry.dart';
+import 'skeleton.dart';
+import 'placeholder_paint.dart';
+import '../grammar.dart' show Pressable;
+
 // THE COMPONENTS THAT PAINT THEIR OWN GUIDE LOOK (owner design, 2026-11-14).
 //
 // A guide run dims or skeletonizes the screen. Painting that in an overlay above
@@ -23,16 +33,8 @@
 // With a plan, a repaint of a dimmed component is one rect; a skeleton component
 // re-reads its own text lines per paint (a few paragraphs).
 
-import 'dart:ui' show ClipOp;
 
-import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 
-import '../guides/guide_dim.dart';
-import '../guides/guide_accordion.dart';
-import '../guides/tree_geometry.dart';
-import 'skeleton.dart';
-import 'placeholder_paint.dart';
 
 /// True for a paragraph that is an icon glyph (one private-use code point): icons
 /// are never planned, dimmed or skeletonized on their own.
@@ -68,7 +70,7 @@ Iterable<RenderParagraph> looseParagraphs(Element layer) sync* {
 Iterable<RenderParagraph> _looseBelow(Element e) sync* {
   final w = e.widget;
   // Chrome (a NavBar, a title, a tab bar) is never dimmed, whatever the plan says of it.
-  if (w is GuideUnitMark || w is GuideLooseLayer || isGuideChromeWidget(w)) return;
+  if (w is GuideUnitMark && !_marksLooseLabels(w) || w is GuideLooseLayer || isGuideChromeWidget(w)) return;
   final ro = e is RenderObjectElement ? e.renderObject : null;
   if (ro is RenderParagraph) yield ro;
   final children = <Element>[];
@@ -456,4 +458,13 @@ class PulseSubscription {
     _on = null;
     _callback = null;
   }
+}
+
+
+/// True for a mark whose component the planner never makes a unit: a Pressable with no
+/// tap is not a control ([isGuideControl]), so its label is planned as loose text and
+/// nothing else paints it.
+bool _marksLooseLabels(GuideUnitMark mark) {
+  final c = mark.component;
+  return c is Element && c.widget is Pressable && (c.widget as Pressable).onTap == null;
 }

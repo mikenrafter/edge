@@ -1100,7 +1100,7 @@ int syncActionLines(BuildContext c, double width, [AppLocalizations? l]) {
   if (worst <= math.max(0, width - S.tap - HomeSyncStatus.endGap) * .6) {
     return 0;
   }
-  return pair <= width ? 1 : 2;
+  return pair <= math.max(0, width - S.tap - HomeSyncStatus.endGap) ? 1 : 2;
 }
 
 /// Whether the sync actions leave row 1 at all (see [syncActionLines]).

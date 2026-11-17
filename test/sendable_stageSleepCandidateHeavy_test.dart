@@ -125,7 +125,7 @@ void main() {
       () async {
     final sub = _night();
     final warm = ana.CardioRowCache();
-    prepareSleepSessionCandidate(sub, targetDay: _day, rowCache: warm);
+    prepareSleepSessionCandidateHeavy(sub, targetDay: _day, rowCache: warm);
     final input = _input(sub, [encodeCardioRowsHeavy(warm)]);
     await expectIsolateRoundTrip<SleepStagingInput>(input,
         project: _inputShape);
@@ -150,7 +150,7 @@ void main() {
       'are all hits', () async {
     final sub = _night();
     final warm = ana.CardioRowCache();
-    prepareSleepSessionCandidate(sub, targetDay: _day, rowCache: warm);
+    prepareSleepSessionCandidateHeavy(sub, targetDay: _day, rowCache: warm);
     final input = _input(sub, [encodeCardioRowsHeavy(warm)]);
 
     SleepStagingResult run() => stageSleepCandidateHeavy(_inputs, input);

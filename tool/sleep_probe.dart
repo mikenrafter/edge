@@ -56,8 +56,8 @@ void main(List<String> args) {
   final hr = sub.hr1hz();
 
   // What the app actually produces:
-  final days = calendarDays(sub);
-  print('=== calendarDays() → ${days.length} day(s) ===');
+  final days = calendarDaysHeavy(sub);
+  print('=== calendarDaysHeavy() → ${days.length} day(s) ===');
   for (final d in days) {
     final s = d.sleep;
     final w = s.window;

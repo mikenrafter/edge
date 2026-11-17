@@ -34,7 +34,7 @@ final _alarmRow = GuideTarget.label(ScreenLabel.settingsAlarmRowTitle);
 // The Sleep tab's own warning line: printed on that page in every state (sleep_detail.dart
 // `_frame`), so the anchor does not also resolve on Today or Health, which print a
 // "Sleep" label of their own.
-final _sleepTab = GuideTarget.firstLabel(ScreenLabel.sleepDetailMedicalDisclaimer);
+final _sleepTab = GuideTarget.firstLabel(ScreenLabel.sleepDetailNavTitle);
 final _dayOnRow = GuideTarget.key(const ValueKey('alarm-day-enabled'));
 final _wakeTime = GuideTarget.key(const ValueKey('alarm-wake-time'));
 
@@ -72,7 +72,9 @@ Guide get alarmScheduleGuide => Guide(
             target: GuideTarget.label(ScreenLabel.alarmSave),
             // Save exists even with every day off. Wake time gates this step.
             anchor: _wakeTime,
-            alsoTap: [TargetContent(_wakeTime)],
+            // Editing the picker is context, not completion: main's alsoTap
+            // alternatives complete the action, whose target here is Save.
+            alsoKeep: [_wakeTime],
             action: GuideAction.tap,
             caption: GuideCopy.alarmCaptionSetWakeTime,
           ),

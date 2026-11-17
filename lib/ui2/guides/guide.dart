@@ -32,6 +32,10 @@ abstract interface class GuideContent {
   List<TargetFound> resolve(Element root, AppLocalizations l);
 }
 
+/// Page-wide content does not identify a particular neighbouring control.
+/// The overlay must not keep an unrelated page's entire control list real.
+abstract interface class UnscopedGuideContent implements GuideContent {}
+
 /// The order a multi-target step's hand visits its targets in.
 enum GuideVisit {
   /// One continuous wave through the targets in order and back.
@@ -83,9 +87,14 @@ class GuideStep {
   /// In custom guides without a node, it also identifies the page.
   final GuideTarget anchor;
 
+  /// The previous step's target must have been tapped in this run before this
+  /// step can match. Used when its anchor can predate the guide, as with undo.
+  final bool requiresPreviousTap;
+
   /// Extra units kept readable besides the target's (step 3 keeps "Your zones").
   final List<GuideTarget> alsoKeep;
-  /// P7: caption-offered controls kept full colour. All page input passes
+  /// P7: caption-offered controls kept full colour; tapping one also completes
+  /// the step, like the primary target. All page input passes
   /// through independently of this visual declaration (owner amendment A/C).
   final List<GuideContent> alsoTap;
 
@@ -109,6 +118,7 @@ class GuideStep {
     required this.target,
     this.node,
     required this.anchor,
+    this.requiresPreviousTap = false,
     this.alsoKeep = const [],
     this.alsoTap = const [],
     this.alsoRead = const [],
@@ -206,10 +216,11 @@ class Guide {
   List<GuideFooter> get doneFooters =>
       [for (final f in footers) if (f.kind != GuideFooterKind.missingTarget) f];
 
-  /// Bands any variant covers; an "any" variant covers both.
+  /// Bands any variant covers; an "any" variant covers both. A variant with no
+  /// steps covers nothing: a run on it would have no step to show.
   Set<BandGeneration> get devices => {
         for (final v in variants)
-          ...(v.devices.isEmpty ? BandGeneration.values : v.devices),
+          if (v.steps.isNotEmpty) ...(v.devices.isEmpty ? BandGeneration.values : v.devices),
       };
 
   /// An exact-band variant beats an "any" variant; no match -> [GuideNoVariant].
@@ -218,6 +229,7 @@ class Guide {
   GuideVariantResult variantFor(BandGeneration? band) {
     GuideVariant? any;
     for (final v in variants) {
+      if (v.steps.isEmpty) continue; // nothing to run: never an empty guide
       if (band != null && v.devices.contains(band)) return GuideVariantFound(v);
       if (v.devices.isEmpty) any ??= v;
     }

@@ -18,15 +18,15 @@ void main() {
   // the word for "earlier" it must not: today can be in the list.
   const singular = {
     'en': 'this day', 'de': 'diesem Tag', 'es': 'este día', 'fr': 'ce jour',
-    'hi': 'इस दिन', 'ru': 'этот день', 'zh': '这一天',
+    'hi': 'इस दिन', 'ru': 'этот день', 'zh': '这一天', 'th': 'วันที่ระบุนี้',
   };
   const plural = {
     'en': 'these days', 'de': 'diesen Tagen', 'es': 'estos días', 'fr': 'ces jours',
-    'hi': 'इन दिनों', 'ru': 'эти дни', 'zh': '这些天',
+    'hi': 'इन दिनों', 'ru': 'эти дни', 'zh': '这些天', 'th': 'วันเหล่านี้',
   };
   const earlier = {
     'en': 'earlier', 'de': 'früher', 'es': 'anterior', 'fr': 'antérieur',
-    'hi': 'पिछले', 'ru': 'ранн', 'zh': '之前',
+    'hi': 'पिछले', 'ru': 'ранн', 'zh': '之前', 'th': 'ก่อนหน้า',
   };
 
   // why: R2-W1. Render every case in every locale: one day, two, five and

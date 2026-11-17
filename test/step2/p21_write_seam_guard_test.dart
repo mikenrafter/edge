@@ -139,8 +139,6 @@ const _pinnedDynamicWriters = <String, String>{
       'DATA: compute_freshness read-modify-write in one transaction',
   'lib/data/db.dart LocalDb.exportCopy':
       'DATA: deletes the substrate archive table from the EXPORT copy, not the store',
-  'lib/data/recent_slice.dart exportRecentSlice':
-      'DATA: writes the issue-report slice FILE (schema + recent rows copied from an attached store), not the store',
   'lib/data/substrate_archive.dart SubstrateArchive.writePolicy':
       'DATA: the substrate archive table only (SubstrateArchive.table)',
   'lib/data/substrate_archive.dart SubstrateArchive._archiveBucket':

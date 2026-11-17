@@ -21,7 +21,7 @@ void main() {
         skinTemp: List.filled(ts.length, 0),
         skinContact: List.filled(ts.length, 0),
       );
-      final candidate = prepareSleepSessionCandidate(
+      final candidate = prepareSleepSessionCandidateHeavy(
         sub,
         targetDay: '2026-09-30',
         override: SleepWindowOverride(

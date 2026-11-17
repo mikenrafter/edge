@@ -47,5 +47,9 @@ class FakeAlarmEngine extends BleEngine {
   }
 
   @override
-  Future<void> disableAlarm({int? id}) async => disables++;
+  Future<({DateTime? armed, bool echoed})> armAlarm(DateTime when, {int index = 0, List<int>? haptics}) async =>
+      (armed: await setAlarm(when, index: index, haptics: haptics), echoed: false);
+
+  @override
+  Future<bool> disableAlarm({int? id}) async { disables++; return true; }
 }

@@ -77,8 +77,8 @@ void main() {
       const stress = ConfounderProfile(stress: true);
       const sick = ConfounderProfile(sick: true);
       const meal = ConfounderProfile(lateMeal: true);
-      // Stress and sickness belong to one multiplier class: .5 only once.
-      expect(stress.combine(sick).combine(meal).trendThresholdFactor, .75);
+      // Stress and sickness contribute .5 once; a late meal never loosens it.
+      expect(stress.combine(sick).combine(meal).trendThresholdFactor, .5);
     },
   );
 }

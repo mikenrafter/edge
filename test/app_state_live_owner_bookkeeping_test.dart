@@ -8,7 +8,6 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'support/app_state_derive_harness.dart' show TickCounter;
 import 'support/app_state_live_harness.dart';
 
 const _hr = Cmd.toggleRealtimeHr;

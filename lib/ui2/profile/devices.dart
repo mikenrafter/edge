@@ -1,3 +1,69 @@
+import '../pairing/registered_pair.dart';
+import '../../l10n/display_text.dart';
+import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:provider/provider.dart';
+import '../../ble/adapters/_registry.dart'
+    show
+        BandEntry,
+        kBandRegistry,
+        kBleHrs,
+        kColmi,
+        kCoros,
+        kGarmin,
+        kMiBand234,
+        kMiScale2,
+        kMiScaleComposition,
+        kOura,
+        kPebble,
+        kPolarPmd,
+        kThermometer,
+        kUltrahuman,
+        declaredSignals;
+import '../../ble/adapters/signals.dart' show InputSignal, kRankedSignals;
+import '../../data/coverage_resolver.dart'
+    show CoverageInterval, effectivePriority;
+import '../../ble/colmi_link.dart' show ColmiLink;
+import '../../ble/coros_link.dart' show CorosLink;
+import '../../ble/garmin_link.dart' show GarminLink;
+import '../../ble/hrs_link.dart' show HrsLink, HrsReading;
+import '../../ble/miband_link.dart';
+import '../../ble/oura_link.dart'
+    show OuraLink, OuraSyncCategory, pairOuraRing;
+import '../../ble/pebble_link.dart' show PebbleLink;
+import '../../ble/polar_pmd_link.dart' show PolarPmdLink;
+import '../../ble/session_link.dart' show SessionLink;
+import '../../ble/ultrahuman_link.dart' show UltrahumanLink;
+import '../../ble/band_status_l10n.dart' show localizedBandStatus;
+import '../../ble/ble_state.dart' show BandStatus, kMaxConcurrentSecondaryLinks;
+import '../../compute/inputs/canonical.dart' show columnFor, flagOnOrPrimary;
+import '../../data/db.dart' show LocalDb;
+import '../../data/step_calibration.dart';
+import '../../l10n/app_localizations.dart';
+import '../../notify/battery_forecast.dart';
+import '../../state/prefs.dart' show Prefs;
+import '../../sync/paired_device.dart' show cleanDeviceLabel;
+import '../../state/app_state.dart';
+import '../../state/clock_format.dart' show formatClockOf;
+import '../../state/capabilities.dart';
+import '../../state/capabilities_scope.dart';
+import '../pairing/device_picker.dart' show DevicePickerScreen;
+import '../pairing/pair_text.dart';
+import '../../ble/slot_comparison.dart' show DeviceSlot;
+import '../pairing/device_slot_card.dart'
+    show DeviceSlotCard, pairedDeviceSlot;
+
+import '../onboarding/profile_setup.dart' show formatDay;
+import '../ui2.dart';
+import '../sources/source_catalog_screen.dart' show SourceCatalogScreen;
+import '../sources/source_views.dart' show SourceViews;
+import 'profile.dart';
+import 'settings.dart' show backToRoot;
+import 'wearable_numbers.dart' show DeviceUseSwitch, WearableDayScreen;
+
+
+import 'firmware_flash_screen.dart' show FirmwareFlashScreen;
+
 // Sources, not "devices".
 //
 // This is where the band-agnostic thesis has to be legible, because this is
@@ -36,70 +102,7 @@
 // derives from it yet, because no one on this project has held one
 // (ASSUMPTIONS R6).
 
-import '../../l10n/display_text.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart'
-    show BluetoothDevice;
-import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:provider/provider.dart';
 
-import '../../ble/adapters/_registry.dart'
-    show
-        BandEntry,
-        kBandRegistry,
-        kBleHrs,
-        kColmi,
-        kCoros,
-        kGarmin,
-        kMiBand234,
-        kMiScale2,
-        kMiScaleComposition,
-        kOura,
-        kPebble,
-        kPolarPmd,
-        kThermometer,
-        kUltrahuman,
-        declaredSignals;
-import '../../ble/adapters/signals.dart' show InputSignal, kRankedSignals;
-import '../../data/coverage_resolver.dart'
-    show CoverageInterval, effectivePriority;
-import '../../ble/colmi_link.dart' show ColmiLink;
-import '../../ble/coros_link.dart' show CorosLink;
-import '../../ble/garmin_link.dart' show GarminLink;
-import '../../ble/hrs_link.dart' show HrsLink, HrsReading;
-import '../../ble/miband_link.dart' show MiBand234Link, pairMiBand234;
-import '../../ble/oura_link.dart'
-    show OuraLink, OuraSyncCategory, pairOuraRing;
-import '../../ble/pebble_link.dart' show PebbleLink;
-import '../../ble/polar_pmd_link.dart' show PolarPmdLink;
-import '../../ble/session_link.dart' show SessionLink;
-import '../../ble/ultrahuman_link.dart' show UltrahumanLink;
-import '../../ble/band_status_l10n.dart' show localizedBandStatus;
-import '../../ble/ble_state.dart' show BandStatus, kMaxConcurrentSecondaryLinks;
-import '../../compute/inputs/canonical.dart' show columnFor, flagOnOrPrimary;
-import '../../data/db.dart' show LocalDb;
-import '../../data/step_calibration.dart';
-import '../../l10n/app_localizations.dart';
-import '../../notify/battery_forecast.dart';
-import '../../state/prefs.dart' show Prefs;
-import '../../sync/paired_device.dart' show cleanDeviceLabel;
-import '../../state/app_state.dart';
-import '../../state/clock_format.dart' show formatClockOf;
-import '../../state/capabilities.dart';
-import '../../state/capabilities_scope.dart';
-import '../pairing/device_picker.dart' show DevicePickerScreen;
-import '../pairing/pair_text.dart' show pairL10n;
-import '../../ble/slot_comparison.dart' show DeviceSlot;
-import '../pairing/device_slot_card.dart'
-    show DeviceSlotCard, pairedDeviceSlot;
-import '../pairing/pair_text.dart' show slotPill;
-import '../onboarding/profile_setup.dart' show formatDay;
-import '../ui2.dart';
-import '../sources/source_catalog_screen.dart' show SourceCatalogScreen;
-import '../sources/source_views.dart' show SourceViews;
-import 'profile.dart';
-import 'settings.dart' show backToRoot;
-import 'wearable_numbers.dart' show DeviceUseSwitch, WearableDayScreen;
 
 /// Measurement quality, which is the ONLY thing that decides precedence.
 enum SourceTier {
@@ -1066,12 +1069,8 @@ List<HealthSource> liveSources(AppState app,
           // marks an unrelated paired Oura row as connected just because
           // some sensor happens to be live right now.
           connected: liveAdapterIds.contains(r['adapter_id']),
-          batteryPct: (r['battery_pct'] as num?)?.toDouble(),
-          // Last time a sync committed data (or the pairing, before any).
-          lastData: r['last_seen'] == null
-              ? null
-              : DateTime.fromMillisecondsSinceEpoch(
-                  (r['last_seen'] as num).toInt() * 1000),
+          batteryPct: sensorRowBatteryPct(r),
+          lastData: sensorRowLastData(r),
           isBand: false,
           deviceId: r['id'] as String?,
           family: r['adapter_id'] as String?,
@@ -1191,7 +1190,7 @@ bool showSignalPriorityEntry(Capabilities caps, {required bool contended}) =>
 /// Data, not a switch statement, because the ONLY thing that differs between
 /// them is which entry the picker filters on and what has to happen once the
 /// user taps one. `PairSensorScreen` is generic over exactly that.
-final List<({BandEntry entry, String blurb, Future<String?> Function(BluetoothDevice)? pick})>
+final List<({BandEntry entry, String blurb, RegisteredPair? pick})>
     kPairableSensors = [
   (
     entry: kBleHrs,
@@ -1208,7 +1207,7 @@ final List<({BandEntry entry, String blurb, Future<String?> Function(BluetoothDe
         'Oura app already uses and pair without a reset. Pairing with a new '
         'key replaces the Oura app\'s key, so that app stops working with the '
         'ring. Close the Oura app before pairing here.',
-    pick: pairOuraRing,
+    pick: const RegisteredPair(pairOuraRing),
   ),
   (
     entry: kPolarPmd,
@@ -1276,7 +1275,7 @@ final List<({BandEntry entry, String blurb, Future<String?> Function(BluetoothDe
         'while pairing, tap it to confirm. Syncs its stored heart '
         'rate, steps and sleep. (Mi Band 4 needs the vendor pairing and is '
         'not supported.)',
-    pick: pairMiBand234,
+    pick: const RegisteredPair(pairMiBand234),
   ),
   (
     entry: kPebble,
@@ -1659,6 +1658,9 @@ extension _PairSection on MyDevicesView {
   List<Widget> _pairSection(BuildContext c, bool hasBand) {
     final l = pairL10n(c);
     final band = sources.where((s) => s.isBand).firstOrNull;
+    final phoneCounting = sources.any((s) => s.tier == SourceTier.phone && s.connected);
+    final everyDayWearable = sources.any((s) => !s.isBand && s.connected &&
+        slotDeviceOf(s)?.slot == DeviceSlot.everyDay);
     final children = <Widget>[
       // ONE card for the band, paired or not, so the section keeps its
       // height when the state flips: the status and the action in one box.
@@ -1670,6 +1672,11 @@ extension _PairSection on MyDevicesView {
               : null,
           onPair: onPair,
           onUnpair: onUnpair,
+          consequence: hasBand || everyDayWearable ? null : phoneCounting
+              ? (AppLocalizations.of(c)?.devicesPhoneCountingBody ??
+                  'Your phone can count steps, but it cannot record sleep or daily strain until a band is paired.')
+              : (AppLocalizations.of(c)?.devicesNothingMeasuringBody ??
+                  'Nothing is measuring your day. Missing numbers stay blank rather than estimated.'),
         ),
       if (onAddSensor != null)
         Surface(
@@ -1718,7 +1725,7 @@ class _YourBandCard extends StatelessWidget {
   final String? bandState;
   final VoidCallback? onPair, onUnpair;
   const _YourBandCard(
-      {this.bandName, this.bandState, this.onPair, this.onUnpair});
+      {this.bandName, this.bandState, this.onPair, this.onUnpair, this.consequence});
 
   @override
   Widget build(BuildContext c) {
@@ -1748,6 +1755,11 @@ class _YourBandCard extends StatelessWidget {
             : Text(l.pairCardBandBody,
                 key: const ValueKey('main-band-whoop-only-note'),
                 style: F.cap.copyWith(color: p.ink2)),
+        if (!paired && consequence != null) ...[
+          const SizedBox(height: S.x2),
+          Text(consequence!, key: const ValueKey('no-band-consequence'),
+              style: F.cap.copyWith(color: p.ink2)),
+        ],
         if (paired ? onUnpair != null : onPair != null) ...[
           const SizedBox(height: S.x4),
           paired
@@ -1762,6 +1774,11 @@ class _YourBandCard extends StatelessWidget {
       ]),
     );
   }
+
+
+  /// Unpaired only: what the app can and cannot measure without a band, in
+  /// the same card so the section says it once.
+  final String? consequence;
 }
 
 @visibleForTesting
@@ -2063,15 +2080,25 @@ class _DeviceDetailState extends State<DeviceDetail> {
 
   @override
   Widget build(BuildContext c) {
-    final s = widget.s;
-    final app = s.isBand ? c.watch<AppState>() : null;
+    final app = widget.s.isBand ? c.watch<AppState>() : null;
+    // A sensor page listens to its own row only, not every AppState tick.
+    final s = widget.s.isBand
+        ? widget.s
+        : refreshedSensorSource(
+            widget.s, c.select<AppState, List<Map<String, Object?>>>((a) => a.sensors));
+    // The page can open before the band has said which generation it is; the
+    // snapshot would then hide the gen5 rows for good. Read it live.
+    final family = s.isBand
+        ? currentBandFamily(s.family,
+            live: app?.device.generation, stored: app?.paired?.generation)
+        : s.family;
     return DeviceDetailView(
       s,
       status: app?.engine.bandStatus,
       wornOn: _wornOn,
       wornOnUnknown: _wornOnUnknown,
       // Only the gen5 counter is calibrated per wearing location.
-      onWearing: s.family != 'gen5'
+      onWearing: family != 'gen5'
           ? null
           : () async {
               final w = await _pickWearing(c);
@@ -2085,6 +2112,9 @@ class _DeviceDetailState extends State<DeviceDetail> {
       health: _health,
       forecast: _forecast,
       onFind: app?.buzzBand,
+      onInstallImage: (s.isBand && family == 'gen5')
+          ? () => goto(c, const FirmwareFlashScreen())
+          : null,
       liveHr: s.isBand ? app?.liveHr : null,
       onRename: (app != null && c.caps.has(Feature.bandRename))
           ? () => _renameBand(c, app, s.name)
@@ -2243,11 +2273,19 @@ Future<void> _syncMiband(BuildContext c) async {
       SnackBar(content: Text(l?.devicesSyncing ?? 'Syncing')));
   final ok = await MiBand234Link.instance.sync();
   if (!c.mounted) return;
+  // A rejected key needs a re-pair, which no amount of moving closer fixes.
+  final keyRejected = !ok &&
+      MiBand234Link.instance.lastSyncFailure ==
+          MiBand234SyncFailure.keyRejected;
   messenger?.showSnackBar(SnackBar(
     content: Text(ok
         ? (l?.devicesSynced ?? 'Synced.')
-        : 'Could not reach the band. It has to be nearby, and not '
-            'connected to another app.'),
+        : keyRejected
+            ? (l?.devicesBandKeyRefused ??
+                'The band rejected the key. Re-pair it to install a key it '
+                    'accepts.')
+            : 'Could not reach the band. It has to be nearby, and not '
+                'connected to another app.'),
   ));
 }
 
@@ -2359,51 +2397,10 @@ Future<void> _renameBand(BuildContext c, AppState app, String current) async {
   // Captured before the dialog: `c` is not safe to touch after the await.
   final messenger = ScaffoldMessenger.maybeOf(c);
   final l = AppLocalizations.of(c);
-  final ctl = TextEditingController(text: current);
-  final err = ValueNotifier<String?>(null);
   final name = await showDialog<String>(
     context: c,
-    builder: (d) => AlertDialog(
-      title: Text(l?.devicesNameThisBand ?? 'Name this band'),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        ValueListenableBuilder<String?>(
-          valueListenable: err,
-          builder: (_, e, _) => TextField(
-            controller: ctl,
-            autofocus: true,
-            maxLength: 20,
-            decoration: InputDecoration(
-              hintText: l?.devicesYourBand ?? 'Your band',
-              errorText: e,
-              helperText: l?.devicesNameCharset ??
-                  "Letters, numbers, space, and ' . _ -",
-            ),
-          ),
-        ),
-      ]),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.of(d).pop(),
-            child: Text(l?.actionCancel ?? 'Cancel')),
-        TextButton(
-          onPressed: () {
-            final v = ctl.text.trim();
-            if (v.isEmpty) {
-              err.value = l?.devicesGiveItAName ?? 'Give it a name';
-            } else if (cleanDeviceLabel(v) == null) {
-              err.value = l?.devicesNameCharsetError ??
-                  "Only letters, numbers, space, and ' . _ -";
-            } else {
-              Navigator.of(d).pop(v);
-            }
-          },
-          child: Text(l?.actionSave ?? 'Save'),
-        ),
-      ],
-    ),
+    builder: (_) => RenameBandDialog(current: current),
   );
-  ctl.dispose();
-  err.dispose();
   if (name == null) return;
   try {
     await app.renameStrap(name);
@@ -2493,6 +2490,7 @@ class DeviceDetailView extends StatelessWidget {
   const DeviceDetailView(this.s,
       {super.key,
       this.onFind,
+      this.onInstallImage,
       this.onForget,
       this.onSync,
       this.syncPresentation,
@@ -2770,6 +2768,13 @@ class DeviceDetailView extends StatelessWidget {
                                   'Vibrate the band to locate it',
                           chevron: false,
                           onTap: onFind),
+                    if (onInstallImage != null) ...[
+                      Divider(color: p.line, height: 1),
+                      SetRow(LucideIcons.upload, C.red,
+                          l?.devicesInstallImage ?? 'Install an image',
+                          sub: l?.devicesInstallImageSub ?? 'Use at your own risk',
+                          onTap: onInstallImage),
+                    ],
                   ]),
                 ],
                 const SizedBox(height: S.x5),
@@ -2788,6 +2793,11 @@ class DeviceDetailView extends StatelessWidget {
       ),
     );
   }
+
+
+  /// Opens the image-install screen. Non-null only on a WHOOP 5 band's page;
+  /// null hides the row.
+  final VoidCallback? onInstallImage;
 }
 
 /// "about 2 days left" — or null on an abstention, which is most of the time
@@ -2889,3 +2899,119 @@ Future<int?> _pickWearing(BuildContext c) async {
 /// month name is the whole point; `formatDay` already writes one.
 String formatDayTime(DateTime d, [AppLocalizations? l]) =>
     '${formatDay(d, l)}, ${formatClockOf(d)}';
+
+
+/// Battery percentage a sensor's `device` row holds, or null if never reported.
+double? sensorRowBatteryPct(Map<String, Object?> r) =>
+    (r['battery_pct'] as num?)?.toDouble();
+
+/// Last time a sync committed data (or the pairing, before any).
+DateTime? sensorRowLastData(Map<String, Object?> r) => r['last_seen'] == null
+    ? null
+    : DateTime.fromMillisecondsSinceEpoch((r['last_seen'] as num).toInt() * 1000);
+
+/// The band's family now: what the link reports, else what was stored at
+/// pairing, else the snapshot the page was opened with.
+String? currentBandFamily(String? snapshot, {String? live, String? stored}) =>
+    live ?? stored ?? snapshot;
+
+/// [s] with the battery and last-data values its `device` row holds now.
+///
+/// A sensor's page is pushed holding the row as it was when tapped, and a sync
+/// or battery report only rewrites the row. Without this the page kept saying
+/// "3 days ago" right after a manual sync reported "Synced.", which read as a
+/// sync that did nothing. Only the row's own columns are taken: `connected`
+/// and `flagOff` come from elsewhere and stay as the snapshot had them. A row
+/// that is gone (forgotten while the page was open) leaves [s] as it was.
+HealthSource refreshedSensorSource(
+    HealthSource s, List<Map<String, Object?>> rows) {
+  if (s.isBand || s.deviceId == null) return s;
+  final r = rows.where((r) => r['id'] == s.deviceId).firstOrNull;
+  if (r == null) return s;
+  return HealthSource(
+    name: s.name,
+    nameIsFallback: s.nameIsFallback,
+    kind: s.kind,
+    tier: s.tier,
+    icon: s.icon,
+    connected: s.connected,
+    syncing: s.syncing,
+    batteryPct: sensorRowBatteryPct(r),
+    charging: s.charging,
+    batteryPackPct: s.batteryPackPct,
+    lastData: sensorRowLastData(r),
+    isBand: s.isBand,
+    deviceId: s.deviceId,
+    family: s.family,
+    flagOff: s.flagOff,
+  );
+}
+
+/// The rename sheet owns its controller and error notifier so they are
+/// disposed with the route. `showDialog` completes at pop time, while the exit
+/// transition is still rebuilding the field; disposing them right after the
+/// await threw "used after being disposed" on every Save and Cancel.
+class RenameBandDialog extends StatefulWidget {
+  const RenameBandDialog({super.key, required this.current});
+
+  final String current;
+
+  @override
+  State<RenameBandDialog> createState() => _RenameBandDialogState();
+}
+
+class _RenameBandDialogState extends State<RenameBandDialog> {
+  late final TextEditingController _ctl =
+      TextEditingController(text: widget.current);
+  final ValueNotifier<String?> _err = ValueNotifier<String?>(null);
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    _err.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext d) {
+    final l = AppLocalizations.of(d);
+    return AlertDialog(
+      title: Text(l?.devicesNameThisBand ?? 'Name this band'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        ValueListenableBuilder<String?>(
+          valueListenable: _err,
+          builder: (_, e, _) => TextField(
+            controller: _ctl,
+            autofocus: true,
+            maxLength: 20,
+            decoration: InputDecoration(
+              hintText: l?.devicesYourBand ?? 'Your band',
+              errorText: e,
+              helperText: l?.devicesNameCharset ??
+                  "Letters, numbers, space, and ' . _ -",
+            ),
+          ),
+        ),
+      ]),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(d).pop(),
+            child: Text(l?.actionCancel ?? 'Cancel')),
+        TextButton(
+          onPressed: () {
+            final v = _ctl.text.trim();
+            if (v.isEmpty) {
+              _err.value = l?.devicesGiveItAName ?? 'Give it a name';
+            } else if (cleanDeviceLabel(v) == null) {
+              _err.value = l?.devicesNameCharsetError ??
+                  "Only letters, numbers, space, and ' . _ -";
+            } else {
+              Navigator.of(d).pop(v);
+            }
+          },
+          child: Text(l?.actionSave ?? 'Save'),
+        ),
+      ],
+    );
+  }
+}

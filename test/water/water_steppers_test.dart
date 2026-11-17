@@ -1,3 +1,4 @@
+import '../support/close_widget_database.dart';
 // The +/- steppers and the displays use the shared water formatter and the
 // unit-aware step (RED).
 //
@@ -209,8 +210,10 @@ void main() {
       t.view.physicalSize = const Size(390 * 3, 2400 * 3);
       t.view.devicePixelRatio = 3;
       addTearDown(t.view.reset);
+      await t.runAsync(() async { await LocalDb.instance; });
       final app = AppState.forTesting();
       addTearDown(app.dispose);
+      addTearDown(() => closeWidgetDatabase(t));
       final repo = _Repo()..journal = journal;
       app.repo = repo;
       final units = UnitsController.seed(system);

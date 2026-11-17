@@ -1,3 +1,4 @@
+import 'support/test_callable.dart';
 // Workout sensors and health measurements on a wearable's day, end to end.
 // A Pebble 2 is the ACTIVE WEARABLE (four synthetic days through the real
 // Pebble link, no primary band). A Bluetooth heart-rate strap, flagged on,
@@ -154,13 +155,16 @@ void main() {
       'on, and calories follow', () async {
     SharedPreferences.setMockInitialValues({});
     final app = AppState.forTesting()..user = {..._profileMap};
-    SessionLink.onSessionDone = app.adoptWeighing;
+    SessionLink.onSessionDone = TestCall0(app.adoptWeighing);
     addTearDown(() => SessionLink.onSessionDone = null);
     // Read as derived: adopting a weighing re-derives the open days itself.
     Future<num> kcal() async => (await _scalars())['calories'] as num;
 
     await LocalDb.upsertDevice(id: _scale, adapterId: 'miscale_bc');
-    final at = DateTime.utc(2026, 10, 4, 6, 55, 10);
+    // A morning weighing on the LOCAL day, sent on the UTC clock the session
+    // sets the scale to. `DateTime.utc(…6, 55)` was the evening before
+    // at UTC−7 and further west, so the day held no weighing at all.
+    final at = DateTime(2026, 10, 4, 6, 55, 10).toUtc();
     final dt = [
       at.year & 0xff, at.year >> 8, at.month, at.day, at.hour, at.minute,
       at.second,

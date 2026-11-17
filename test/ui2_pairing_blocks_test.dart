@@ -1,5 +1,5 @@
-// The two swappable pairing building blocks: the capability matrix (C1) and
-// the category filter pills (K3), plus the registry field the pills read.
+// The two swappable pairing building blocks: the capability matrix and
+// the category filter pills, plus the registry field the pills read.
 // Rendered, not read: both are layout.
 import 'dart:convert';
 import 'dart:io';
@@ -29,13 +29,13 @@ bool _sel(SemanticsNode n) => n.getSemanticsData().flagsCollection.isSelected ==
 
 void main() {
   group('BandEntry.kind', () {
-    test('every registry entry says what it physically is', () {
-      // WHY: an `other` default would put a new device under the catch-all pill.
+    test('only generic HRS leaves physical placement unknown', () {
+      // WHY: HRS can be a watch, armband or strap; named devices retain their kinds.
       final other = [
         for (final e in kBandRegistry)
           if (e.kind == DeviceKind.other) e.id
       ];
-      expect(other, isEmpty);
+      expect(other, ['ble_hrs']);
     });
 
     test('the kinds the owner named', () {
@@ -46,13 +46,13 @@ void main() {
       expect(kUltrahuman.kind, DeviceKind.ring);
       expect(kGarmin.kind, DeviceKind.watch);
       expect(kMiBand234.kind, DeviceKind.band);
-      expect(kBleHrs.kind, DeviceKind.chestStrap);
+      expect(kBleHrs.kind, DeviceKind.other);
       expect(kThermometer.kind, DeviceKind.thermometer);
       expect(kMiScale2.kind, DeviceKind.scale);
     });
   });
 
-  group('CategoryFilterPills (K3)', () {
+  group('CategoryFilterPills', () {
     Widget pills(List<DeviceKind> kinds,
             {PairFilter? selected, ValueNotifier<PairFilter?>? selection}) =>
         Scaffold(
@@ -180,12 +180,12 @@ void main() {
     });
 
     test('filterByGroup keeps only that group, null keeps all', () {
-      final all = [kWhoopGen5, kOura, kColmi, kMiBand234, kBleHrs, kMiScale2];
+      final all = [kWhoopGen5, kOura, kColmi, kMiBand234, kBleHrs, kPolarPmd, kMiScale2];
       expect(filterByGroup(all, null), all);
       expect(filterByGroup(all, PairFilter.rings), [kOura, kColmi]);
       expect(filterByGroup(all, PairFilter.whoop), [kWhoopGen5]);
       expect(filterByGroup(all, PairFilter.watches), [kMiBand234]);
-      expect(filterByGroup(all, PairFilter.straps), [kBleHrs]);
+      expect(filterByGroup(all, PairFilter.straps), [kPolarPmd]);
     });
   });
 
@@ -235,7 +235,7 @@ void main() {
     });
   });
 
-  group('SlotTable (C1)', () {
+  group('SlotTable', () {
     Widget table(SlotComparison c, {DeviceSlot? focus, DeviceSlot? dim}) =>
         Scaffold(
             body: SingleChildScrollView(

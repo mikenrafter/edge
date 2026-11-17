@@ -110,6 +110,8 @@ Future<R2Mounted> pumpR2Scene(WidgetTester t, R2Scene scene, {Size size = r2Size
     final started = await app.runner.start(guide, band: null);
     expect(started, isA<GuideStarted>());
     final run = (started as GuideStarted).run;
+    // This undo scene is an existing run that already opened the manual editor.
+    if (scene.manual) run.targetTapped();
     if (scene.history) {
       await settleLiveGuide(t, frames: 12);
       await t.tap(find.text(r2Locale.workoutTabHistory));

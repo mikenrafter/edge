@@ -1,6 +1,7 @@
 import 'dart:math';
-
 import 'package:flutter/material.dart';
+
+
 
 const double kSpiralSeparator = 1.5;
 
@@ -271,3 +272,4 @@ void paintSpiral(Canvas canvas, Size size,
 }
 
 double gradientAt(double s, double total) => SpiralGeometry.gradientAt(s, total);
+

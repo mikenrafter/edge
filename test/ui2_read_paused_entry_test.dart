@@ -20,10 +20,6 @@ import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/sync/import_focus.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
-import 'package:openstrap_edge/ui2/screens/ai_briefing.dart';
-import 'package:openstrap_edge/ui2/screens/explorer.dart';
-import 'package:openstrap_edge/ui2/screens/journal_compose.dart';
-import 'package:openstrap_edge/ui2/screens/naps.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 

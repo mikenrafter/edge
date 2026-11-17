@@ -1,15 +1,17 @@
-// Replaces content at paint time. Decorations keep their own paint; there is
-// no erase/fill over the card, so gradients, images and icon controls survive.
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-
 import '../guides/guide_accordion.dart';
-import '../grammar.dart' show ChartFrame, ChartKeyReadout;
+import '../grammar.dart';
 import '../theme.dart';
 import '../guides/guide_dim.dart' show GuideKeepsControls;
 import 'guide_plot.dart';
 import 'pending_scope.dart';
 import 'skeleton.dart';
+
+
+// Replaces content at paint time. Decorations keep their own paint; there is
+// no erase/fill over the card, so gradients, images and icon controls survive.
+
 
 class GuidePlaceholderPaint {
   @visibleForTesting
@@ -287,3 +289,4 @@ class _PlaceholderContext extends PaintingContext {
     }
   }
 }
+

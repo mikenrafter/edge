@@ -100,7 +100,7 @@ double _ouraSkinTempC(int recTs) => 33.0 + (recTs % 9) / 10;
 }
 
 Map<String, dynamic> _deriveSingleDay(Substrate sub) {
-  final payload = prepareDerivationPayload(sub);
+  final payload = prepareDerivationPayloadHeavy(sub);
   expect(payload.days, isNotEmpty, reason: 'a calendar day always exists');
   final day = payload.days.first;
   final daySub = day.daySub;

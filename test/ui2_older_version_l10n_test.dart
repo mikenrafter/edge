@@ -59,7 +59,7 @@ void main() {
       theme: buildTheme(Brightness.light),
       home: const Scaffold(
           body: OlderVersionNote(
-              id: 'x', version: 104, reason: 'need_input:name=wake_hr')),
+              id: 'x', version: 104, reason: 'need_input:name=untranslated_fixture_input')),
     ));
     expect(find.text(de.olderVersionNoteNoReason(104)), findsOneWidget);
     expect(find.textContaining('waking heart rate'), findsNothing);

@@ -1,25 +1,8 @@
-// Headless LOCAL drain — runs the connect → drain → store-locally flow with NO UI,
-// NO Provider, and (since the cloud excision) NO upload. It may add an automatic
-// light derive when the saved calculation-power policy allows it.
-// Invoked by the iOS CoreBluetooth-restoration RECOVERY path (ios_ble_restore.dart)
-// when the band reappears after the live connection dropped.
-//
-// There is NO OS periodic scheduler on Android (the old WorkManager tasks were
-// removed — background_derivation.dart is a tombstone; main.dart still cancels
-// their persisted registrations by name). iOS registers opportunistic BGTasks
-// (ios_bg_task.dart) that are never guaranteed. Continuous capture is the
-// kept-alive live connection in AppState. This is purely the relaunch-recovery
-// fallback that pulls the band's offline flash backlog into the local SQLite
-// store (lib/data/db.dart), the system of record. A missed run is harmless;
-// the next reconnect catches up from the non-destructive cursor.
-
 import '../compute/processing_context.dart';
 import 'dart:convert';
-
 import 'package:flutter/widgets.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 import 'package:shared_preferences/shared_preferences.dart';
-
 import '../ble/adapters/_registry.dart' show kWhoopGen4;
 import '../ble/adapters/host.dart' show BandHost;
 import '../ble/adapters/whoop_gen4.dart' show WhoopFramedAdapter;
@@ -60,6 +43,24 @@ import 'reset_gate.dart';
 import 'paired_device.dart';
 import 'sync_policy.dart';
 
+// Headless LOCAL drain — runs the connect → drain → store-locally flow with NO UI,
+// NO Provider, and (since the cloud excision) NO upload. It may add an automatic
+// light derive when the saved calculation-power policy allows it.
+// Invoked by the iOS CoreBluetooth-restoration RECOVERY path (ios_ble_restore.dart)
+// when the band reappears after the live connection dropped.
+//
+// There is NO OS periodic scheduler on Android (the old WorkManager tasks were
+// removed — background_derivation.dart is a tombstone; main.dart still cancels
+// their persisted registrations by name). iOS registers opportunistic BGTasks
+// (ios_bg_task.dart) that are never guaranteed. Continuous capture is the
+// kept-alive live connection in AppState. This is purely the relaunch-recovery
+// fallback that pulls the band's offline flash backlog into the local SQLite
+// store (lib/data/db.dart), the system of record. A missed run is harmless;
+// the next reconnect catches up from the non-destructive cursor.
+
+
+
+
 /// Headless mirror of the foreground `AlarmConfirmation` self-heal: an
 /// ALARM_SET event (56) means the strap has this arm latched, independent of
 /// whatever `armNextScheduledOccurrence` decided this cycle (its same-epoch
@@ -73,9 +74,13 @@ import 'sync_policy.dart';
 /// after a relaunch. Returns the confirmed wake moment when that note
 /// completed the double confirmation, else null. Never throws.
 @visibleForTesting
-Future<int?> handleHeadlessAlarmEvent(int id, {int? tsEpoch}) async {
+Future<int?> handleHeadlessAlarmEvent(int id, {int? tsEpoch, int? tsSec}) async {
+  tsEpoch ??= tsSec;
   if (id == proto.EventId.strapDrivenAlarmSet) {
     final prefs = await SharedPreferences.getInstance();
+    final setAt = prefs.getInt('alarm_set_at_ms');
+    if (tsEpoch != null && tsEpoch >= kMinPlausibleUnix && setAt != null &&
+        tsEpoch < setAt ~/ 1000 - AlarmConfirmation.replaySlackSec) { return null; }
     await prefs.setBool('alarm_epoch_confirmed', true);
     return null;
   }
@@ -109,7 +114,7 @@ Future<int?> handleHeadlessAlarmEvent(int id, {int? tsEpoch}) async {
 @visibleForTesting
 Future<({AlarmArmResult result, bool confirmed})> headlessArmAndConfirm(
     Future<AlarmArmResult> Function() arm,
-    Future<bool> Function(int sinceMs) latchedSince) async {
+    Future<bool> Function(int sinceMs) latchedSince, {String? remoteId}) async {
   final armedAtMs = DateTime.now().millisecondsSinceEpoch;
   final result = await arm();
   final prefs = await SharedPreferences.getInstance();
@@ -118,8 +123,8 @@ Future<({AlarmArmResult result, bool confirmed})> headlessArmAndConfirm(
     await prefs.remove('alarm_epoch');
     await prefs.remove('alarm_epoch_confirmed');
   } else if (result.epoch != null) {
-    confirmed = await awaitAlarmLatch(() => latchedSince(armedAtMs));
-    await prefs.setInt('alarm_epoch', result.epoch!);
+    confirmed = result.echoed || await awaitAlarmLatch(() => latchedSince(armedAtMs));
+    await saveArmedAlarmEpoch(prefs, result.epoch!, remoteId);
     await prefs.setInt('alarm_set_at_ms', armedAtMs);
     await prefs.setBool('alarm_epoch_confirmed', confirmed);
   }
@@ -156,13 +161,17 @@ BleEngine createHeadlessSyncEngine({
   void Function(int moment)? onWakeConfirmed,
 }) {
   late final BandHost bandHost;
-  final engine = BleEngine(
+  // A reset that already finished must still invalidate this engine's writes.
+  final resetGen = ResetGate.generation;
+  bool stale() => ResetGate.changedSince(resetGen);
+  late final BleEngine engine;
+  engine = BleEngine(
     // EVERY write below is gated on [ResetGate]: a reset can begin at any
     // point during a drain, and these callbacks are the reason it is not
     // enough for AppState to guard only its own. Refusing loses nothing —
     // none of it has been ACKed, so it is all still on the band.
     onRecord: (sample, raw) async {
-      if (ResetGate.active) return;
+      if (stale()) return;
       await LocalDb.insertRecord(raw, sample, processingOrigin: ProcessingOrigin.recentSync);
     },
     onState: (_) {},
@@ -173,10 +182,11 @@ BleEngine createHeadlessSyncEngine({
     // A wake confirmation this event completed is handed to
     // [onWakeConfirmed] so the run can re-derive that night after the drain.
     onEvent: (e) async {
-      if (ResetGate.active) return;
+      if (stale()) return;
       await LocalDb.insertStrapEvent(e);
       final moment =
-          await handleHeadlessAlarmEvent(e.eventId, tsEpoch: e.tsEpoch);
+          await handleHeadlessAlarmEvent(e.eventId,
+              tsEpoch: e.tsEpoch + (engine.clockRef?.driftSec ?? 0));
       if (moment != null) onWakeConfirmed?.call(moment);
     },
     // The alarm lines (SET_ALARM_TIME, arm accepted/rejected, events) are the
@@ -184,7 +194,7 @@ BleEngine createHeadlessSyncEngine({
     // persisted; the rest of the drain chatter only in developer mode.
     log: (l) => _bgLog('[bgsync] $l', always: _mentionsAlarm(l)),
     onRecordsBatch: (raws, samples) async {
-      if (ResetGate.active) return;
+      if (stale()) return;
       await LocalDb.insertRecordsBatch(raws, samples, processingOrigin: ProcessingOrigin.recentSync);
     },
     // Routed through BandHost (M1a) rather than calling
@@ -204,7 +214,7 @@ BleEngine createHeadlessSyncEngine({
         // real data loss on a band the user may not be deleting after all if
         // the reset then fails. A throw blocks the ACK and the records stay
         // on the strap.
-        if (ResetGate.active) {
+        if (stale()) {
           throw StateError('data reset in progress — refusing to commit');
         }
         await bandHost.commitNativeBatch(raws, samples, trimTokenHex,
@@ -218,7 +228,7 @@ BleEngine createHeadlessSyncEngine({
       onCommitted?.call(samples.length);
     },
     onArchiveRecord: (raw) async {
-      if (ResetGate.active) return;
+      if (stale()) return;
       await LocalDb.archiveRawRecord(raw);
     },
     // A WHOOP MG left generating by a dead process must be cleaned up
@@ -246,6 +256,7 @@ BleEngine createHeadlessSyncEngine({
     isBackgroundDrainer: true,
   );
   bandHost = BandHost(
+    resetGeneration: resetGen,
     adapter: WhoopFramedAdapter(engine, kWhoopGen4),
     deviceId: LocalDb.kPrimaryDeviceId,
     onLog: (msg) => _bgLog('[bgsync][COMMIT] $msg', always: false),
@@ -270,7 +281,7 @@ Future<void> prepareHeadlessLink(BleEngine engine, PairedDevice paired) async {
   await engine.applyHighFreqWakeWindow(
     enabled: plan.shouldEnable,
     targetWake: plan.targetWake,
-    duration: plan.lease,
+    duration: plan.leaseFrom(DateTime.now()) ?? plan.lease,
     intervalSeconds: 61, // gen5 rejects <= 60
 
     reason: plan.source,
@@ -418,8 +429,9 @@ Future<HighFreqWakePlan> headlessWakeWindowPlan({DateTime? now}) async {
   ]);
   final prefs = await SharedPreferences.getInstance();
   await FeatureFlags.ensureLoaded(); // a headless run has no launch hook
+  final paired = await PairedDevice.load();
   final armed = plannedCollectionWindow(
-    epoch: prefs.getInt('alarm_epoch'),
+    epoch: paired == null ? null : persistedAlarmEpoch(prefs, paired.remoteId),
     schedule: schedule,
     upgrade: gateNaturalWake(await loadWakeUpgradeState()),
     now: now,
@@ -431,55 +443,6 @@ Future<HighFreqWakePlan> headlessWakeWindowPlan({DateTime? now}) async {
     scheduledWindowMinutes: armed?.minutes ?? 0,
     expectedSchedule: loadSavedExpectedSleepSchedule(prefs),
   );
-}
-
-/// Arms the next weekly-schedule occurrence on a headless connection. The band
-/// holds one armed epoch, so every connect path has to re-arm or the day after
-/// a fired alarm stays unarmed. Feature 1's arming engine, headless half: "on
-/// every successful connect AND after each headless sync". [phase] only labels
-/// the dev-log line. Never throws.
-Future<void> rearmHeadlessAlarm(BleEngine engine,
-        {String phase = 'on connect'}) =>
-    _headlessArm(engine, phase);
-
-/// One headless arm pass: no AppState here, so the schedule read and the
-/// `alarm_epoch` persistence go straight through LocalDb/SharedPreferences —
-/// the same store the foreground path uses, so whichever side runs next sees a
-/// consistent value. The schedule is read fresh each time (not reused from the
-/// window check) in case the user changed it while the link was busy. Never
-/// throws; the outcome goes to the debug log AND the persistent dev log.
-Future<void> _headlessArm(BleEngine engine, String phase) async {
-  void note(String line) => _bgLog('[bgsync] $line');
-
-  try {
-    final schedule = fillDefaultAlarmSchedule([
-      for (final r in await LocalDb.alarmScheduleRows())
-        AlarmScheduleEntry.fromRow(r),
-    ]);
-    final prefs = await SharedPreferences.getInstance();
-    final out = await headlessArmAndConfirm(
-      () => armNextScheduledOccurrence(
-        engine: engine,
-        schedule: schedule,
-        currentArmedEpoch: prefs.getInt('alarm_epoch'),
-        // An occurrence the user acknowledged and cancelled must not be
-        // re-armed by a background sync.
-        ackedThroughEpochSec: prefs.getInt('wake_acked_epoch'),
-      ),
-      LocalDb.alarmSetConfirmedSince,
-    );
-    final result = out.result;
-    if (result.disabled) {
-      note('[alarm] headless arm ($phase): schedule empty, band alarm disabled.');
-    } else if (result.epoch != null) {
-      note('[alarm] headless arm ($phase): wrote epoch=${result.epoch} '
-          'confirmed=${out.confirmed}.');
-    } else if (result.refused) {
-      note('[alarm] headless arm ($phase): the band did not take the alarm.');
-    }
-  } catch (e) {
-    note('[alarm] headless arm ($phase) skipped: $e');
-  }
 }
 
 /// One headless LOCAL drain pass. Safe to call from a background isolate. Never
@@ -496,6 +459,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     );
     return true;
   }
+  final runGen = ResetGate.generation;
   _bgLog(
     '[bgsync] acquired headless lease=${ownedLease.token} '
     '(${BandOwnership.debugState})',
@@ -557,7 +521,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
       // again after the drain (the second pass is deduped to nothing unless the
       // schedule changed meanwhile). This write overlaps the INIT drain the way
       // the foreground's and the Shortcut's connect-time writes do.
-      await _headlessArm(engine, 'before the drain');
+      await rearmHeadlessAlarm(engine, paired, phase: 'before the drain');
       // Await the full backlog (default timeout): a phone-free run/sleep can leave a
       // large offline backlog on the band's flash. The wait itself never aborts —
       // if iOS cuts the background window short, the offload persists what it got
@@ -569,11 +533,15 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
         await engine.runSync();
       } finally {
         // Re-arm after the drain, also when the drain threw.
-        await finishHeadlessDrain(engine,
-            rearm: (_) => _headlessArm(engine, 'after the drain'));
+        await finishHeadlessDrain(engine, paired,
+            rearm: (_, _) => rearmHeadlessAlarm(engine, paired, phase: 'after the drain'));
       }
     } finally {
       await disconnectHeadless(engine);
+    }
+    if (ResetGate.changedSince(runGen)) {
+      _bgLog('[bgsync] a data reset ran during this drain — stopping.');
+      return true;
     }
     // A confirmation this run completed finalizes the night: re-derive that day
     // first (forced, as the foreground does), ahead of the light pass.
@@ -596,77 +564,85 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
       '(${BandOwnership.debugState})',
     );
     BandOwnership.release(ownedLease);
-    // Piggyback paired sensors on the same OS wake window, after the band
-    // work is fully done so neither can ever delay or interfere with WHOOP's
-    // own timing. Both `sync()` calls already no-op when nothing is paired
-    // and never throw, but this is the one shared headless entry point (every
-    // wake source funnels through runHeadlessSync via HeadlessSyncGate) so a
-    // failure in either must not be allowed to escape and mark the WHOOP
-    // cycle as errored.
+    // A reset removes these pairings too; stale work must not refill the DB.
+    if (!ResetGate.changedSince(runGen)) await _syncPairedSensors();
+  }
+}
+
+/// The paired sensors' piggyback on a headless wake. Runs after the band work
+/// is fully done so it can never delay or interfere with WHOOP's own timing.
+Future<void> _syncPairedSensors() async {
+  // Piggyback paired sensors on the same OS wake window, after the band
+  // work is fully done so neither can ever delay or interfere with WHOOP's
+  // own timing. Both `sync()` calls already no-op when nothing is paired
+  // and never throw, but this is the one shared headless entry point (every
+  // wake source funnels through runHeadlessSync via HeadlessSyncGate) so a
+  // failure in either must not be allowed to escape and mark the WHOOP
+  // cycle as errored.
+  try {
+    await OuraLink.instance.sync();
+  } catch (e) {
+    _bgLog('[bgsync] oura sync skipped: $e');
+  }
+  // Same piggyback, same reasoning: CorosLink.sync() no-ops when nothing is
+  // paired and never throws, but this is the one shared headless entry
+  // point, so a failure here must not escape either.
+  try {
+    await CorosLink.instance.sync();
+  } catch (e) {
+    _bgLog('[bgsync] coros sync skipped: $e');
+  }
+  // Same piggyback, same reasoning: GarminLink.sync() no-ops when nothing
+  // is paired and never throws, but this is the one shared headless entry
+  // point, so a failure here must not escape either.
+  try {
+    await GarminLink.instance.sync();
+  } catch (e) {
+    _bgLog('[bgsync] garmin sync skipped: $e');
+  }
+  // Same piggyback, same reasoning: UltrahumanLink.sync() no-ops when
+  // nothing is paired and never throws, but this call must not be allowed
+  // to escape and mark the WHOOP cycle as errored either way.
+  try {
+    await UltrahumanLink.instance.sync();
+  } catch (e) {
+    _bgLog('[bgsync] ultrahuman sync skipped: $e');
+  }
+  // Same reasoning, same slot, for a paired Mi Band: MiBand234Link.sync()
+  // also no-ops when nothing is paired and never throws, but guard it
+  // anyway so a surprise failure here still can't mark the WHOOP cycle
+  // errored.
+  try {
+    await MiBand234Link.instance.sync();
+  } catch (e) {
+    _bgLog('[bgsync] miband234 sync skipped: $e');
+  }
+  // Same piggyback, same reasoning: a bounded connect-drain window that
+  // no-ops when nothing is paired and must never mark the WHOOP cycle
+  // errored on its own failure.
+  try {
+    await PebbleLink.instance.sync();
+  } catch (e) {
+    _bgLog('[bgsync] pebble sync skipped: $e');
+  }
+  // Same piggyback, same reasoning: no-ops when unpaired, must never let a
+  // failure here mark the WHOOP cycle as errored.
+  try {
+    await ColmiLink.instance.sync();
+  } catch (e) {
+    _bgLog('[bgsync] colmi sync skipped: $e');
+  }
+  // Thermometer and scales: same piggyback; each no-ops when unpaired and
+  // only reaches a device that happens to be awake and nearby.
+  for (final link in SessionLink.all) {
     try {
-      await OuraLink.instance.sync();
+      await link.sync();
     } catch (e) {
-      _bgLog('[bgsync] oura sync skipped: $e');
-    }
-    // Same piggyback, same reasoning: CorosLink.sync() no-ops when nothing is
-    // paired and never throws, but this is the one shared headless entry
-    // point, so a failure here must not escape either.
-    try {
-      await CorosLink.instance.sync();
-    } catch (e) {
-      _bgLog('[bgsync] coros sync skipped: $e');
-    }
-    // Same piggyback, same reasoning: GarminLink.sync() no-ops when nothing
-    // is paired and never throws, but this is the one shared headless entry
-    // point, so a failure here must not escape either.
-    try {
-      await GarminLink.instance.sync();
-    } catch (e) {
-      _bgLog('[bgsync] garmin sync skipped: $e');
-    }
-    // Same piggyback, same reasoning: UltrahumanLink.sync() no-ops when
-    // nothing is paired and never throws, but this call must not be allowed
-    // to escape and mark the WHOOP cycle as errored either way.
-    try {
-      await UltrahumanLink.instance.sync();
-    } catch (e) {
-      _bgLog('[bgsync] ultrahuman sync skipped: $e');
-    }
-    // Same reasoning, same slot, for a paired Mi Band: MiBand234Link.sync()
-    // also no-ops when nothing is paired and never throws, but guard it
-    // anyway so a surprise failure here still can't mark the WHOOP cycle
-    // errored.
-    try {
-      await MiBand234Link.instance.sync();
-    } catch (e) {
-      _bgLog('[bgsync] miband234 sync skipped: $e');
-    }
-    // Same piggyback, same reasoning: a bounded connect-drain window that
-    // no-ops when nothing is paired and must never mark the WHOOP cycle
-    // errored on its own failure.
-    try {
-      await PebbleLink.instance.sync();
-    } catch (e) {
-      _bgLog('[bgsync] pebble sync skipped: $e');
-    }
-    // Same piggyback, same reasoning: no-ops when unpaired, must never let a
-    // failure here mark the WHOOP cycle as errored.
-    try {
-      await ColmiLink.instance.sync();
-    } catch (e) {
-      _bgLog('[bgsync] colmi sync skipped: $e');
-    }
-    // Thermometer and scales: same piggyback; each no-ops when unpaired and
-    // only reaches a device that happens to be awake and nearby.
-    for (final link in SessionLink.all) {
-      try {
-        await link.sync();
-      } catch (e) {
-        _bgLog('[bgsync] ${link.entry.id} sync skipped: $e');
-      }
+      _bgLog('[bgsync] ${link.entry.id} sync skipped: $e');
     }
   }
 }
+
 
 // ── staleness escalation (meta-layer over the whole reconnect/sync ladder) ──
 // See sync_policy.dart's stalenessTierFor doc. Evaluated at the end of every
@@ -691,15 +667,16 @@ const String _kLastStalenessNotifiedMs = 'last_staleness_notified_ms';
 /// foreground app's do.
 @visibleForTesting
 Future<void> finishHeadlessDrain(
-  BleEngine engine, {
-  Future<void> Function(BleEngine) rearm = rearmHeadlessAlarm,
+  BleEngine engine,
+  PairedDevice paired, {
+  Future<void> Function(BleEngine, PairedDevice)? rearm,
 }) async {
   if (engine.offloadActive) {
     _bgLog('[bgsync] drain still active after the wait — ending the '
         'history task before configuration writes.');
   }
   await engine.endHistoryForLink(reason: 'headless_config_writes');
-  await rearm(engine);
+  await (rearm == null ? rearmHeadlessAlarm(engine, paired, phase: 'after the drain') : rearm(engine, paired));
 }
 
 /// Connect a headless engine. A connect that FAILS can still have taken in
@@ -796,5 +773,50 @@ Future<void> checkSyncStaleness({bool allowPermissionPrompt = false}) async {
     );
   } catch (e) {
     _bgLog('[bgsync] staleness check skipped: $e');
+  }
+}
+
+/// Arms the next weekly-schedule occurrence on a headless connection. The band
+/// holds one armed epoch, so every connect path has to re-arm or the day after
+/// a fired alarm stays unarmed. Never throws.
+/// [paired] is the band THIS headless session connected to. Never reload the
+/// current pairing here: a foreground replacement can commit another band while
+/// the sync runs, and SET_ALARM went to the session's band, so the epoch must be
+/// recorded under that band.
+Future<void> rearmHeadlessAlarm(BleEngine engine, PairedDevice paired, {String phase = 'on connect'}) async {
+  // Feature 1's arming engine, headless half: "on every successful
+  // connect AND after each headless sync". No AppState here, so the
+  // schedule read and the `alarm_epoch` persistence go straight through
+  // LocalDb/SharedPreferences — the same store the foreground path uses,
+  // so whichever side runs next sees a consistent value. Re-read fresh
+  // here (not [prepareHeadlessLink]'s copies) in case the user changed the
+  // schedule while `runSync()` was draining.
+  try {
+    final schedule = fillDefaultAlarmSchedule([
+      for (final r in await LocalDb.alarmScheduleRows())
+        AlarmScheduleEntry.fromRow(r),
+    ]);
+    final prefs = await SharedPreferences.getInstance();
+    final remoteId = paired.remoteId;
+    final out = await headlessArmAndConfirm(
+      () => armNextScheduledOccurrence(
+        engine: engine,
+        schedule: schedule,
+        currentArmedEpoch: persistedAlarmEpoch(prefs, remoteId),
+        ackedThroughEpochSec: prefs.getInt('wake_acked_epoch'),
+      ),
+      LocalDb.alarmSetConfirmedSince,
+      remoteId: remoteId,
+    );
+    final result = out.result;
+    if (result.disabled) {
+      _bgLog('[bgsync] [alarm] headless arm ($phase): schedule empty, band alarm disabled.');
+    } else if (result.epoch != null) {
+      _bgLog('[bgsync] [alarm] headless arm ($phase): wrote epoch=${result.epoch} confirmed=${out.confirmed}.');
+    } else if (result.refused) {
+      _bgLog('[bgsync] [alarm] headless arm ($phase): the band did not take the alarm.');
+    }
+  } catch (e) {
+    _bgLog('[bgsync] [alarm] headless arm ($phase) skipped: $e');
   }
 }

@@ -1,6 +1,6 @@
 // Reset-steps guard: a user whose device will not pair must always get steps,
 // in their language, and a device without sourced steps must be visibly queued
-// for a human. Three states: specific / unverified / noOfficialSite (S7).
+// for a human. Three states: specific / unverified / noOfficialSite.
 import 'dart:convert';
 import 'dart:io';
 
@@ -51,19 +51,22 @@ void main() {
     final names = _arbs().map((f) => f.uri.pathSegments.last).toList();
     expect(names, containsAll(<String>[
       'app_en.arb', 'app_de.arb', 'app_es.arb', 'app_fr.arb',
-      'app_hi.arb', 'app_ru.arb', 'app_zh.arb',
+      'app_hi.arb', 'app_ru.arb', 'app_th.arb', 'app_zh.arb',
     ]));
   });
 
-  test('reviewed help links and the Hindi strain label are the fixed ones (G2 r1 S3-S5)', () {
+  test('reviewed help links point to the right products', () {
     // WHY: review found a Polar H9/H10 page behind an OH1/Verity Sense entry, a
-    // different Xiaomi product's FAQ behind the body-composition scale, and a
-    // Hindi "stress level" for physical strain (two different app metrics).
+    // different Xiaomi product's FAQ behind the body-composition scale.
     for (final m in kPinnedOfficialUrl.entries) {
       final e = kBandRegistry.firstWhere((e) => e.id == m.key);
       expect(e.resetSteps?.officialUrl, m.value, reason: m.key);
       expect(Uri.parse(m.value).host, kPinnedOfficialHost[m.key], reason: m.key);
     }
+  });
+
+  test('Hindi physical strain is distinct from stress', () {
+    // WHY: the comparison table must not label physical strain as stress.
     final hi = _arb(File('lib/l10n/app_hi.arb'));
     expect(hi['capLabelStrain'], 'शारीरिक परिश्रम');
   });
@@ -86,7 +89,7 @@ void main() {
   });
 
   test('a specific procedure has at least one step', () {
-    // WHY (S9): a "specific" entry with zero steps shows the user an empty list.
+    // WHY: a "specific" entry with zero steps shows the user an empty list.
     final specific = _of(ResetKind.specific).toList();
     expect(specific, isNotEmpty, reason: 'positive control: gen5 is specific');
     for (final e in specific) {
@@ -96,7 +99,7 @@ void main() {
   });
 
   test('every specific step key has non-blank text in EVERY locale', () {
-    // WHY (S9): a missing or "" value renders blank text for that language.
+    // WHY: a missing or "" value renders blank text for that language.
     final keys = [
       for (final e in _of(ResetKind.specific)) ...?e.resetSteps!.keys,
     ];
@@ -112,8 +115,8 @@ void main() {
 
   group('unverified', () {
     test('an unverified entry carries an officialUrl on its pinned host', () {
-      // WHY (S9): unsourced steps point at the vendor's own help page, never a
-      // search engine or a look-alike host. DT8: zero unverified entries is
+      // WHY: unsourced steps point at the vendor's own help page, never a
+      // search engine or a look-alike host. zero unverified entries is
       // allowed (the goal), so the registry loop may be empty; the fixture
       // controls below prove the check can bite.
       for (final e in _of(ResetKind.unverified)) {
@@ -122,7 +125,7 @@ void main() {
     });
 
     test('control: the unverified check passes a good fixture and fails bad ones', () {
-      // WHY (DT8): a fixture, not a real registry entry, is the positive control.
+      // WHY: a fixture, not a real registry entry, is the positive control.
       const good = ResetSteps.unverified(officialUrl: 'https://support.whoop.com/x');
       const search = ResetSteps.unverified(
           officialUrl: 'https://www.google.com/search?q=whoop');
@@ -135,7 +138,7 @@ void main() {
     });
 
     test('a specific entry that has a URL has it on the pinned host', () {
-      // WHY (S9): the optional link on a specific procedure is held to the same rule.
+      // WHY: the optional link on a specific procedure is held to the same rule.
       for (final e in _of(ResetKind.specific)) {
         final url = e.resetSteps!.officialUrl;
         if (url == null) continue;
@@ -144,11 +147,11 @@ void main() {
       }
       // Positive control that the loop above can bite: WHOOP 4 and 5 share a
       // pinned host and at least the model declares one.
-      expect(kPinnedOfficialHost['gen5'], 'support.whoop.com');
+      expect(kPinnedOfficialHost['gen5'], 'www.community.whoop.com');
     });
   });
 
-  group('noOfficialSite (S7)', () {
+  group('noOfficialSite', () {
     test('needs a non-blank reason and no URL', () {
       // WHY: "no official site" without a why is a silent gap.
       for (final e in _of(ResetKind.noOfficialSite)) {
@@ -173,7 +176,7 @@ void main() {
       final actual = {for (final e in _of(ResetKind.noOfficialSite)) e.id};
       expect(expected, {'thermometer'},
           reason: 'only the thermometer is a registry entry on this branch');
-      // DT11: the generic HR profile has no maker either (no research row).
+      // the generic HR profile has no maker either (no research row).
       expect(actual, {...expected, 'ble_hrs'});
       expect(kBleHrs.resetSteps?.reason, 'Generic Bluetooth heart-rate profile; maker unknown');
     });
@@ -218,13 +221,13 @@ void main() {
       'empty': '',
     }.entries) {
       test('rejects ${bad.key}', () {
-        // WHY (S9): only the reviewed official host may be linked.
+        // WHY: only the reviewed official host may be linked.
         expect(resetUrlProblem(bad.value, pinnedHost: host), isNotNull);
       });
     }
   });
 
-  group('follow-up list (S8)', () {
+  group('follow-up list', () {
     test('lists exactly the entries whose help is not device-specific', () {
       // WHY: exact membership; an unverified/no-site device must be queued, a
       // specific one must not be. Zero is allowed (no isNotEmpty on the list).

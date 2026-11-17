@@ -109,6 +109,7 @@
 // EXPECTED RED REASONS: compile errors on the missing symbols (everything above).
 @Timeout(Duration(minutes: 10))
 library;
+import 'support/test_callable.dart';
 
 import 'dart:convert';
 
@@ -196,7 +197,7 @@ DerivationEngine _engine(
   final e = DerivationEngine(log: log?.add)
     ..auditPolicy = CalcPowerPolicy(mode)
     ..auditPowerRead = (() async => power);
-  if (tamper) e.debugAccumulatorTamper = _tamper;
+  if (tamper) e.debugAccumulatorTamper = TestCall2(_tamper);
   return e;
 }
 

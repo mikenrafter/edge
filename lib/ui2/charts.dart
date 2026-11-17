@@ -1,3 +1,14 @@
+import 'skeleton/guide_plot.dart';
+import 'spiral_ring.dart';
+import '../l10n/app_localizations.dart';
+import '../l10n/decimal_text.dart';
+import '../state/locale_controller.dart';
+import 'dart:math';
+import 'dart:typed_data';
+import 'dart:ui' show PointMode;
+import 'package:flutter/material.dart';
+import 'theme.dart';
+
 // The chart painters.
 //
 // Two rules run through this file and neither is negotiable.
@@ -38,18 +49,8 @@
 //    the drawn envelope is pixel-identical to the full series and every spike
 //    survives. Naive stride decimation would drop them.
 
-import 'skeleton/guide_plot.dart';
-import 'spiral_ring.dart';
-import '../l10n/app_localizations.dart';
-import '../l10n/decimal_text.dart';
-import '../state/locale_controller.dart';
-import 'dart:math';
-import 'dart:typed_data';
-import 'dart:ui' show PointMode;
 
-import 'package:flutter/material.dart';
 
-import 'theme.dart';
 
 /// Reduce [d] to at most two points per horizontal pixel: the minimum and the
 /// maximum inside each column, emitted in the order they occur so the polyline
@@ -1480,3 +1481,4 @@ class DayLanes extends CustomPainter implements GuideSteps {
       o.movement != movement ||
       o.p.dark != p.dark;
 }
+

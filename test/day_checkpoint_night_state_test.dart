@@ -597,7 +597,7 @@ void main() {
     test('syntax-damaged night section: night null, day part and rows intact',
         () {
       final rows = ana.CardioRowCache();
-      prepareSleepSessionCandidate(_build(-2, 7, _night),
+      prepareSleepSessionCandidateHeavy(_build(-2, 7, _night),
           targetDay: _day, rowCache: rows);
       final blob = _blob(night: warmPart, cardioRows: rows);
       final bad = _patch(blob, partJson.substring(0, 8), '~${partJson.substring(1, 8)}');
@@ -624,9 +624,9 @@ void main() {
     test('damaged rows section: rows null, night and day part intact, rows '
         'recompute to the same output', () {
       final sub = _build(-2, 7, _night);
-      final plain = prepareSleepSessionCandidate(sub, targetDay: _day);
+      final plain = prepareSleepSessionCandidateHeavy(sub, targetDay: _day);
       final rows = ana.CardioRowCache();
-      prepareSleepSessionCandidate(sub, targetDay: _day, rowCache: rows);
+      prepareSleepSessionCandidateHeavy(sub, targetDay: _day, rowCache: rows);
       final rowsJson = jsonEncode(rows.toJson());
       final blob = _blob(night: warmPart, cardioRows: rows);
 
@@ -642,7 +642,7 @@ void main() {
             reason: 'night section is whole');
         expect(decoded.folded, 900);
         final cache = _rowsOf(decoded) ?? ana.CardioRowCache();
-        final got = prepareSleepSessionCandidate(sub,
+        final got = prepareSleepSessionCandidateHeavy(sub,
             targetDay: _day, rowCache: cache);
         expect(_json(got), _json(plain));
         expect(cache.misses, greaterThan(0), reason: 'recomputed');
@@ -662,7 +662,7 @@ void main() {
     test('absent, night only, rows only and both decode the same day part', () {
       final part = _folded(full, 400).exportNight()!;
       final rows = ana.CardioRowCache();
-      prepareSleepSessionCandidate(_build(-2, 7, _night),
+      prepareSleepSessionCandidateHeavy(_build(-2, 7, _night),
           targetDay: _day, rowCache: rows);
 
       final bare = _blob();
@@ -687,7 +687,7 @@ void main() {
     test('a hand-built state carries both through encode and decode', () {
       final part = _folded(full, 400).exportNight()!;
       final rows = ana.CardioRowCache();
-      prepareSleepSessionCandidate(_build(-2, 7, _night),
+      prepareSleepSessionCandidateHeavy(_build(-2, 7, _night),
           targetDay: _day, rowCache: rows);
       final s = DayResumeState(
           nightJson: _nightBytes(part), cardioRowsJson: encodeCardioRowsHeavy(rows));
@@ -700,17 +700,17 @@ void main() {
   group('cardio rows ride the checkpoint', () {
     test('restored rows give hits, no misses, and the same candidate', () {
       final sub = _build(-2, 7, _night);
-      final plain = prepareSleepSessionCandidate(sub, targetDay: _day);
+      final plain = prepareSleepSessionCandidateHeavy(sub, targetDay: _day);
       expect(plain.present, isTrue, reason: 'guard: the fixture stages a night');
 
       final warm = ana.CardioRowCache();
-      prepareSleepSessionCandidate(sub, targetDay: _day, rowCache: warm);
+      prepareSleepSessionCandidateHeavy(sub, targetDay: _day, rowCache: warm);
       expect(warm.length, greaterThan(0));
 
       final decoded = decodeDayResumeState(_blob(cardioRows: warm))!;
       final rows = _rowsOf(decoded)!;
       expect(rows.length, warm.length);
-      final got = prepareSleepSessionCandidate(sub, targetDay: _day, rowCache: rows);
+      final got = prepareSleepSessionCandidateHeavy(sub, targetDay: _day, rowCache: rows);
       expect(_json(got), _json(plain));
       expect(rows.hits, greaterThan(0));
       expect(rows.misses, 0, reason: 'every row was restored');
@@ -719,8 +719,8 @@ void main() {
     test('restrictCardioRows keeps the window [lo, hi) of startSec only', () {
       final sub = _build(-2, 31, _twoNights);
       final all = ana.CardioRowCache();
-      prepareSleepSessionCandidate(sub, targetDay: _day, rowCache: all);
-      prepareSleepSessionCandidate(sub, targetDay: '2026-06-28', rowCache: all);
+      prepareSleepSessionCandidateHeavy(sub, targetDay: _day, rowCache: all);
+      prepareSleepSessionCandidateHeavy(sub, targetDay: '2026-06-28', rowCache: all);
 
       List<int> starts(ana.CardioRowCache c) => [
             for (final r in (c.toJson()['rows'] as List))

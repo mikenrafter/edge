@@ -238,7 +238,7 @@ void main() {
         noted = await _recorded(() async {
           // A new accessor that forgot its InputReads.note.
           await db.rawQuery('SELECT * FROM journal');
-          await db.rawQuery('SELECT hex FROM raw_archive WHERE reason = ?',
+          await db.rawQuery('SELECT hex FROM raw_archive_frames WHERE reason = ?',
               ['ultrahuman_record']);
         });
       } finally {

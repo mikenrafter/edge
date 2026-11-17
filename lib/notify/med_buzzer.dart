@@ -1,3 +1,8 @@
+import 'dart:async';
+import 'alert_dispatcher.dart';
+import 'alert_rule.dart';
+import 'notification_prefs.dart';
+
 // med_buzzer.dart — fires a strap haptic at each scheduled medication dose.
 //
 // The mirror of WaterBuzzer for the medication reminder, and the weaker half
@@ -15,18 +20,16 @@
 // medPromptSlots hands back exactly the still-upcoming slots over its 3-day
 // horizon. So this class consumes DateTimes, not minutes-from-midnight.
 
-import 'dart:async';
 
-import 'alert_dispatcher.dart';
-import 'alert_rule.dart';
-import 'notification_prefs.dart';
 
 class MedBuzzer {
   MedBuzzer({
     required this.buzz,
     required this.isConnected,
     AlertDispatcher? dispatcher,
-  }) : _legacyTransport = dispatcher == null,
+    DateTime Function()? now,
+  }) : _now = now ?? _systemNow,
+       _legacyTransport = dispatcher == null,
        dispatcher =
            dispatcher ??
            AlertDispatcher(
@@ -36,6 +39,7 @@ class MedBuzzer {
                return true;
              },
              isConnected: isConnected,
+             now: now,
              ledger: MemoryAlertDeliveryLedger(),
            );
 
@@ -58,7 +62,7 @@ class MedBuzzer {
   /// Past instants are skipped, not fired late: a buzz for a dose window that
   /// already passed is noise about a decision the user already made.
   void configure({required List<DateTime> slotInstants}) {
-    final now = DateTime.now();
+    final now = _now();
     _slots = slotInstants.where((t) => t.isAfter(now)).toList()..sort();
     _reschedule();
   }
@@ -69,7 +73,9 @@ class MedBuzzer {
     if (_disposed) return;
     if (_slots.isEmpty) return;
 
-    final now = DateTime.now();
+    final now = _now();
+    _slots.removeWhere((slot) => now.difference(slot) > lateTolerance);
+    if (_slots.isEmpty) return;
     final next = _slots.first;
     var delay = next.difference(now);
     if (delay.isNegative) delay = Duration.zero;
@@ -80,8 +86,10 @@ class MedBuzzer {
   Future<void> _fire() async {
     // Consume the slot whether or not the buzz landed — the link being down at
     // the dose instant is not a reason to re-buzz minutes later.
-    final sourceTime = _slots.isNotEmpty ? _slots.removeAt(0) : DateTime.now();
-    if (isConnected()) {
+    if (_disposed || _slots.isEmpty) return;
+    final sourceTime = _slots.removeAt(0);
+    final onTime = _now().difference(sourceTime) <= lateTolerance;
+    if (onTime && isConnected()) {
       try {
         final rule = _legacyTransport
             ? const AlertRule(
@@ -112,4 +120,16 @@ class MedBuzzer {
     _timer = null;
     _slots = const [];
   }
+
+
+  final DateTime Function() _now;
+
+  /// How late (wall-clock) a fire may land and still buzz. Dart timers run on
+  /// the monotonic clock, which stops while the device is suspended, so a timer
+  /// armed hours ahead can expire hours after its slot — at night, for a dose
+  /// the notification already covered. Past this, the slot is dropped silently.
+  static const lateTolerance = Duration(minutes: 10);
 }
+
+
+DateTime _systemNow() => DateTime.now();

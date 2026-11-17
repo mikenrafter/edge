@@ -1,3 +1,15 @@
+import 'dart:math' as math;
+import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:openstrap_analytics/onehz.dart' show mdc, robustBaseline;
+import 'package:provider/provider.dart';
+import '../../data/day_label.dart';
+import '../../l10n/app_localizations.dart';
+import '../../state/app_state.dart';
+import '../ui2.dart';
+import '../onboarding/profile_setup.dart' show formatDay;
+import 'metric_detail.dart' show detailScaffold;
+
 // CYCLE — the domain that was fully built in the data layer and dark in the UI.
 //
 // Three rules shape every line of it:
@@ -41,19 +53,8 @@
 //      any AI-briefing prompt — exports are allow-listed to views, so keeping
 //      it out is one line, and it is worth a test.
 
-import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:openstrap_analytics/onehz.dart' show mdc, robustBaseline;
-import 'package:provider/provider.dart';
 
-import '../../data/day_label.dart';
-import '../../l10n/app_localizations.dart';
-import '../../state/app_state.dart';
-import '../ui2.dart';
-import '../onboarding/profile_setup.dart' show formatDay;
-import 'metric_detail.dart' show detailScaffold;
 
 /// WH-08 — the published range for an adult menstrual cycle, in days.
 ///
@@ -186,10 +187,16 @@ class CycleData {
 /// screen's own `ListView` the way the other four tabs do.
 class CycleTab extends StatefulWidget {
   final CycleData? data;
-  const CycleTab({super.key, this.data});
+
+  const CycleTab({super.key, this.data, this.loader});
 
   @override
   State<CycleTab> createState() => _CycleTabState();
+
+
+  /// Replaces the repository read, so a test can make it throw.
+  @visibleForTesting
+  final Future<CycleData> Function()? loader;
 }
 
 class _CycleTabState extends State<CycleTab> with RevisionReload, RememberedExpansion<CycleTab> {
@@ -225,10 +232,11 @@ class _CycleTabState extends State<CycleTab> with RevisionReload, RememberedExpa
   Future<void> _load() async {
     final t = beginRead(#cycle);
     try {
-      final d = await CycleData.load(context.read<AppState>());
-      if (stillNewest(#cycle, t)) setState(() => _d = d);
+      final d = await (widget.loader?.call() ??
+          CycleData.load(context.read<AppState>()));
+      if (stillNewest(#cycle, t)) setState(() => (_d = d, _failed = false));
     } catch (_) {
-      if (stillNewest(#cycle, t)) setState(() => _d = const CycleData());
+      if (stillNewest(#cycle, t)) setState(() => _failed = true);
     }
   }
 
@@ -326,13 +334,21 @@ class _CycleTabState extends State<CycleTab> with RevisionReload, RememberedExpa
     await _load();
   }
 
+  /// The toggle happens against the stored row, in the store, so two chips
+  /// tapped before the reload lands both count — toggling against `_d` here let
+  /// the second write REPLACE the first.
   Future<void> _toggleSymptom(String s) async {
     final repo = context.read<AppState>().repo;
-    final d = _d;
-    if (repo == null || d == null) return;
-    final now = [...?d.symptoms[_date]];
-    now.contains(s) ? now.remove(s) : now.add(s);
-    await repo.postCycleSymptoms(_date, now);
+    if (repo == null || _d == null) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final failed = AppLocalizations.of(context)?.journalComposeSaveFailed ??
+        'Could not save it — check storage and retry.';
+    try {
+      await repo.toggleCycleSymptom(_date, s);
+    } catch (_) {
+      messenger?.showSnackBar(SnackBar(content: Text(failed)));
+    }
+    if (!mounted) return;
     await _load();
   }
 
@@ -341,6 +357,13 @@ class _CycleTabState extends State<CycleTab> with RevisionReload, RememberedExpa
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final d = _d;
+    if (_failed) {
+      return StatusCard(
+        l?.healthCouldNotRead(l.cycleWhatCycleData) ?? 'Could not read your cycle data',
+        'Your cycle data has not changed; this was a read that went wrong.',
+        fix: 'Try again', onFix: _load, icon: LucideIcons.triangleAlert,
+      );
+    }
     if (d == null) {
       return InlineLoading(status: l?.loadingCycle ?? 'Reading your cycle');
     }
@@ -446,14 +469,24 @@ class _CycleTabState extends State<CycleTab> with RevisionReload, RememberedExpa
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          // A Wrap, not a Row with a Spacer: at large text sizes or in a
+          // longer language the label and the phase pill do not fit one
+          // line, and the row overflowed. Side by side when they fit, the
+          // pill on its own line when they don't.
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: S.x2,
+            runSpacing: S.x2,
             children: [
               Text(
                 l?.cycleDayInThisCycle ?? 'DAY IN THIS CYCLE',
                 style: F.over.copyWith(color: p.ink3),
               ),
-              const Spacer(),
-              if (d.phase != 'unknown') Pill(_phaseLabel(l, d.phase), C.pink),
+              if (d.phase != 'unknown')
+                // Wraps at large text rather than cutting a long phase name
+                // short with an ellipsis; one line at default sizes.
+                Pill(_phaseLabel(l, d.phase), C.pink, wrap: bigText(c)),
             ],
           ),
           const SizedBox(height: S.x2),
@@ -463,13 +496,18 @@ class _CycleTabState extends State<CycleTab> with RevisionReload, RememberedExpa
             children: [
               Text('${d.cycleDay}', style: F.n34.copyWith(color: p.ink)),
               const SizedBox(width: S.x2),
-              Text(
-                d.medianLength == null
-                    ? (l?.cycleCountedFromLastStart ??
-                          'counted from your last logged start')
-                    : (l?.cycleOfAboutDays(d.medianLength!.round()) ??
-                          'of about ${d.medianLength!.round()}'),
-                style: F.cap.copyWith(color: p.ink3),
+              // Wraps under itself rather than running off the card:
+              // "counted from your last logged start" is most of a line at
+              // the default size already.
+              Flexible(
+                child: Text(
+                  d.medianLength == null
+                      ? (l?.cycleCountedFromLastStart ??
+                            'counted from your last logged start')
+                      : (l?.cycleOfAboutDays(d.medianLength!.round()) ??
+                            'of about ${d.medianLength!.round()}'),
+                  style: F.cap.copyWith(color: p.ink3),
+                ),
               ),
             ],
           ),
@@ -774,6 +812,12 @@ class _CycleTabState extends State<CycleTab> with RevisionReload, RememberedExpa
       ),
     );
   }
+
+
+  /// The last read threw. Kept apart from [_d] because an empty `CycleData`
+  /// is `enabled: false`, and rendering that would tell her tracking is off
+  /// and offer to turn it on, when it is on and only the read went wrong.
+  bool _failed = false;
 }
 
 /// WH-06 — per-tag counts by week of the cycle, and the denominators they sit
@@ -1496,13 +1540,14 @@ String _mdcNote(
 ) {
   if (noise == null || noise <= 0 || medians.isEmpty) return '';
   final swing = medians.reduce(math.max) - medians.reduce(math.min);
+  final s = '${swing.toStringAsFixed(1)} $unit';
   final n = '${noise.toStringAsFixed(1)} $unit';
   return swing < noise
-      ? (l?.cycleMdcNoteInsideSpread ??
-            ' All within your normal night-to-night variation.')
-      : (l?.cycleMdcNoteVaries(n) ??
-            ' Your nights vary by $n on their own, so smaller differences '
-            'aren’t meaningful.');
+      ? (l?.cycleMdcNoteInsideSpread(s, n) ??
+            ' Every day here is within your normal night-to-night swing: the biggest gap is $s, and $n is the smallest real change. A shape, not a shift.')
+      : (l?.cycleMdcNoteVaries(n, s) ??
+            ' Your nights vary by $n on their own, so days closer together than '
+                'that are not separated. The biggest gap here is $s.');
 }
 
 /// A z with its sign always printed — "0.3" and "−0.3" are different findings
@@ -1514,3 +1559,4 @@ String _ymdOf(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-'
     '${d.month.toString().padLeft(2, '0')}-'
     '${d.day.toString().padLeft(2, '0')}';
+

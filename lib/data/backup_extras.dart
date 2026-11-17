@@ -1,3 +1,20 @@
+export '../settings/settings_repository.dart' show settingsRestoredSignal;
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
+import '../compute/derivation_engine.dart' show kAlgoVersion;
+import 'db.dart' show LocalDb;
+import 'import_reentry_store.dart';
+import 'dart:collection';
+import '../coach/coach_config.dart' show CoachConfig;
+import '../settings/settings_repository.dart' show SettingsRepository;
+import '../haptics/pattern_store.dart' show HapticPatternStore;
+import '../notify/notification_prefs.dart' show NotificationPrefs;
+
 // backup_extras.dart — what a full-database export carries besides SQL tables.
 //
 // A full-database export also carries the owner's settings and saved
@@ -21,18 +38,8 @@
 //  * The completeness audit lives in test/backup/settings_audit_guard_test.dart:
 //    every place the app keeps state (preferences, file roots, secure storage,
 //    native stores) is carried or listed below with a reason.
-import 'dart:convert';
-import 'dart:io';
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite/sqflite.dart';
 
-import '../compute/derivation_engine.dart' show kAlgoVersion;
-import 'db.dart' show LocalDb;
-import 'import_reentry_store.dart';
 
 const String kBackupPrefsTable = 'backup_prefs';
 const String kBackupFilesTable = 'backup_files';
@@ -63,6 +70,37 @@ const Map<String, String> kPrefsNotBackedUp = {
   'settings_recovery_journal_v1': 'transient write-ahead journal',
   'import_summary_v1': 'record of the last import on this install',
   'import_run_v1': 'bookkeeping of the import running on this install',
+  'paired_serial': 'identity mirror of the band paired to this phone',
+  'paired_generation': 'hardware generation of the band paired to this phone',
+  'paired_worn_on': 'wearing mirror includes a BLE handle; the device-row merge restores the choice',
+  'coach_chatgpt_present': 'the secure sign-in session does not travel; '
+      'sign in to ChatGPT again on this phone',
+  'coach_chatgpt_client_id': 'OAuth client registered for this installation; '
+      'a new sign-in registers its own client',
+  'coach_chatgpt_host_id': 'identifies this phone to the sign-in service',
+  'coach_chatgpt_welcomed': 'the new sign-in must show its welcome on this phone',
+  'coach_base_url': 'a custom server address can carry an access key; '
+      'a non-default one is reported for re-entry',
+  'companion_url': 'a server address a restored file must not be able to set; '
+      'it redirects announcements, updates and uploads',
+  'live.session_draft': 'unfinished workout entries, including private sessions, stay local',
+  'live_session_checkpoint': 'write-ahead step recovery for this phone; replay could duplicate steps',
+  'telemetry_outbox': 'queued diagnostics belong to this install and its consent',
+  'device_alerts.low_armed': 'low-battery latch belongs to the old band; '
+      'the new band must establish its own battery state',
+  'alarm_epoch': 'arm belongs to the old band; the restored schedule must arm again',
+  'alarm_remote_id': 'identifies the band that received this phone’s alarm; restored schedules arm again',
+  'alarm_epoch_confirmed': 'confirmation belongs to an arm on the old band',
+  'alarm_set_at_ms': 'confirmation replay floor for the old band arm',
+  'alarm_pending_until': 'pending confirmation window for the old band arm',
+  'alarm_latch_alert': 'pending latch alert for the old band arm',
+  'alarm_fired_at': 'last fire event from the old band, not the chosen schedule',
+  'smart_wake_fired_epoch': 'records that the early buzz fired for one arm on the old band; '
+      'a restored latch would suppress the buzz on the next night\'s arm',
+  'health_weight_perm_asked': 'WEIGHT write access is asked per install; '
+      'the new install has not asked yet',
+  'health_weight_grant_seen': 'the WEIGHT grant is per install; the new '
+      'install observes its own',
 };
 
 /// Key prefixes that stay on the device, each with the reason. Empty on
@@ -85,6 +123,8 @@ const Map<String, String> kSecretsNotBackedUp = {
       'that only works with the band it was issued for; pair the band again',
   'lib/ble/oura_link.dart': 'Oura ring pairing key per ring: a credential '
       'that only works with the ring it was issued for; pair the ring again',
+  'lib/coach/coach_chatgpt.dart': 'ChatGPT access and refresh tokens stay in '
+      'secure storage; sign in again on the new phone',
 };
 
 /// The [BackupExtrasResult.needsReentry] name for the coach API key.
@@ -115,6 +155,7 @@ const Map<String, String> kFileRootsBackedUp = {
 };
 
 const Map<String, String> kFileRootsNotBackedUp = {
+  'lib/data/disk_space.dart': 'reads the database volume free-space counter; writes no files',
   'lib/data/auto_backup.dart': 'the automatic backups themselves; they are '
       'what an import reads',
   'lib/sync/dev_log.dart': 'diagnostic log; not a setting, rotates',
@@ -190,7 +231,18 @@ Future<void> writeBackupExtras(
   try {
     await copy.execute('CREATE TABLE IF NOT EXISTS backup_prefs '
         '(key TEXT PRIMARY KEY, type TEXT, value TEXT)');
+    await copy.execute('CREATE TABLE IF NOT EXISTS backup_secrets (key TEXT PRIMARY KEY)');
     await copy.transaction((txn) async {
+      await txn.delete('backup_secrets');
+      for (final key in ['coach_api_key', 'coach_chatgpt']) {
+        if (sp.get('${key}_present') == true) {
+          await txn.insert('backup_secrets', {'key': key});
+        }
+      }
+      final server = sp.get('coach_base_url');
+      if (server is String && server.isNotEmpty && server != CoachConfig.defaultBaseUrl) {
+        await txn.insert('backup_secrets', {'key': 'coach_base_url'});
+      }
       for (final key in sp.getKeys()) {
         if (!prefsKeyBackedUp(key) && !kPrefsSignalOnly.contains(key)) continue;
         final row = _encodePref(sp.get(key));
@@ -243,38 +295,23 @@ Future<void> writeBackupExtras(
       _ => null,
     };
 
-Future<void> _writePref(
-    SharedPreferences sp, String key, String type, String value) async {
-  switch (type) {
-    case 'bool':
-      await sp.setBool(key, value == 'true');
-    case 'int':
-      await sp.setInt(key, int.parse(value));
-    case 'double':
-      await sp.setDouble(key, double.parse(value));
-    case 'string':
-      await sp.setString(key, value);
-    case 'stringList':
-      await sp.setStringList(
-          key, [for (final e in jsonDecode(value) as List) '$e']);
-    default:
-      throw FormatException('unknown pref type $type');
-  }
-}
-
 class BackupExtrasResult {
   const BackupExtrasResult({
     this.prefsRestored = 0,
     this.prefsKept = 0,
     this.filesRestored = 0,
+    this.refusedPrefs = const [],
+    this.unreadableSecrets = const [],
     this.keysWritten = const {},
     this.needsReentry = const [],
   });
   final int prefsRestored, prefsKept, filesRestored;
+  final List<String> refusedPrefs;
 
   /// Secrets the backup's owner had set that this install does not hold, by
   /// the names in [kNeedsReentryCoachKey]: the restore cannot bring them back.
   final List<String> needsReentry;
+  final List<String> unreadableSecrets;
 
   /// The pref keys this restore wrote, for the live settings reload.
   final Set<String> keysWritten;
@@ -285,19 +322,37 @@ Future<bool> _hasTable(Database db, String name) async => (await db.rawQuery(
         [name]))
     .isNotEmpty;
 
-/// True when the backup says a coach key was set and this install holds none.
-/// An unreadable keystore counts as none: the owner is told, never left to
-/// find a silent gap.
-Future<bool> _coachKeyLost(Database src) async {
-  final marker = await src.query(kBackupPrefsTable,
-      columns: ['value'], where: 'key = ?', whereArgs: ['coach_api_key_present']);
-  if (marker.isEmpty || '${marker.first['value']}' != 'true') return false;
-  try {
-    final have = await const FlutterSecureStorage().read(key: kNeedsReentryCoachKey);
-    return have == null || have.isEmpty;
-  } on Object {
-    return true;
+// Reads both export carriers. Old fork exports used one signal-only pref;
+// reviewed main exports use backup_secrets. Neither marker is a credential.
+Future<({List<String> needs, List<String> unreadable})> _secretReentry(Database src) async {
+  final present = <String>{};
+  if (await _hasTable(src, 'backup_secrets')) {
+    present.addAll((await src.query('backup_secrets')).map((r) => '${r['key']}'));
   }
+  if (await _hasTable(src, kBackupPrefsTable)) {
+    final marker = await src.query(kBackupPrefsTable, columns: ['value'],
+        where: 'key = ?', whereArgs: ['coach_api_key_present']);
+    if (marker.any((r) => r['value'] == 'true')) present.add('coach_api_key');
+  }
+  final needs = <String>[], unreadable = <String>[];
+  if (present.contains('coach_api_key')) {
+    try {
+      final key = await const FlutterSecureStorage().read(key: 'coach_api_key')
+          .timeout(const Duration(seconds: 6));
+      if (key == null || key.isEmpty) needs.add('coach_api_key');
+    } catch (_) { unreadable.add('coach_api_key'); }
+  }
+  if (present.contains('coach_base_url') || present.contains('coach_chatgpt')) {
+    final sp = await SharedPreferences.getInstance();
+    await sp.reload();
+    if (present.contains('coach_base_url') && _needsServerReentry(sp.getString('coach_base_url'))) {
+      needs.add('coach_base_url');
+    }
+    if (present.contains('coach_chatgpt') && sp.get('coach_chatgpt_present') != true) {
+      needs.add('coach_chatgpt');
+    }
+  }
+  return (needs: needs, unreadable: unreadable);
 }
 
 /// Restores prefs and files from the backup at [srcPath].
@@ -314,6 +369,7 @@ Future<BackupExtrasResult> restoreBackupExtras(
   try {
     var restored = 0, kept = 0, files = 0;
     final written = <String>{};
+    final refused = <String>[];
     if (await _hasTable(src, kBackupPrefsTable)) {
       final sp = await SharedPreferences.getInstance();
       await sp.reload();
@@ -325,11 +381,15 @@ Future<BackupExtrasResult> restoreBackupExtras(
           continue;
         }
         try {
-          await _writePref(sp, key, '${r['type']}', '${r['value']}');
+          final want = expectedPrefType(key);
+          if (want != null && r['type'] != want) { refused.add(key); continue; }
+          if (!await _write(sp, key, '${r['type']}', '${r['value']}')) {
+            throw StateError('Could not restore preference $key');
+          }
           restored++;
           written.add(key);
         } on FormatException {
-          // One unreadable row loses that setting only.
+          refused.add(key);
         }
       }
     }
@@ -374,33 +434,31 @@ Future<BackupExtrasResult> restoreBackupExtras(
         }
       }
     }
-    final reenter = <String>[];
-    if (await _hasTable(src, kBackupPrefsTable) && await _coachKeyLost(src)) {
-      reenter.add(kNeedsReentryCoachKey);
-    }
+    final secrets = await _secretReentry(src);
     return BackupExtrasResult(
+        refusedPrefs: refused,
         prefsRestored: restored,
         prefsKept: kept,
         filesRestored: files,
         keysWritten: written,
-        needsReentry: reenter);
+        needsReentry: secrets.needs, unreadableSecrets: secrets.unreadable);
   } finally {
     await src.close();
   }
 }
 
-/// True when this install holds no decoded rows and no day_result.
-Future<bool> isFreshInstall() async {
-  final db = await LocalDb.instance;
-  final r = await db.rawQuery(
-      'SELECT EXISTS(SELECT 1 FROM decoded_onehz) AS a, '
-      'EXISTS(SELECT 1 FROM day_result) AS b');
-  return r.first['a'] == 0 && r.first['b'] == 0;
-}
+/// Startup defaults alone do not establish an install; setup and user history do.
+Future<bool> isFreshInstall() async =>
+    LocalDb.backupPrefsFreshInstall();
 
 /// What the last import did, for the screen that follows it.
-class ImportSummary {
+class ImportSummary with MapMixin<String, int> {
+  final Map<String, int> tables;
   const ImportSummary({
+    this.tables = const {},
+    this.keysWritten = const {},
+    this.unreadableSecrets = const [],
+    this.refusedPrefs = const [],
     this.daysWithRaw = 0,
     this.daysDerived = 0,
     this.archiveBucketsSkipped = 0,
@@ -411,6 +469,17 @@ class ImportSummary {
     this.interruptedAndResumed = 0,
     this.needsReentry = const [],
   });
+
+  @override
+  int? operator [](Object? key) => tables[key];
+  @override
+  void operator []=(String key, int value) => throw UnsupportedError('import summary is read-only');
+  @override
+  Iterable<String> get keys => tables.keys;
+  @override
+  int? remove(Object? key) => throw UnsupportedError('import summary is read-only');
+  @override
+  void clear() => throw UnsupportedError('import summary is read-only');
 
   /// Secrets the owner must enter again ([kNeedsReentryCoachKey]); empty when
   /// nothing was lost. Band pairing keys are not listed: the paired band is
@@ -434,6 +503,13 @@ class ImportSummary {
 
   /// Times this import was interrupted and resumed (D38).
   final int interruptedAndResumed;
+
+
+  final Set<String> keysWritten;
+  /// Read failed or timed out; absence is unknown. A later import retries it.
+  final List<String> unreadableSecrets;
+  /// Rows in the backup that could not be read; skipped, the rest restored.
+  final List<String> refusedPrefs;
 }
 
 /// Kept in `compute_freshness`, not in the preferences: it is a record of this
@@ -537,4 +613,215 @@ Future<ImportSummary?> lastImportSummary() async {
   } on FormatException {
     return null;
   }
+}
+
+
+/// The app root reloads presentation controllers after AppState adopts prefs.
+
+
+/// The stored type of each backed-up key the app reads with a typed getter.
+/// A row of another type is refused, not written: the getter throws on a cast
+/// mismatch (int vs double included), on every launch after the restore. A
+/// backed-up key missing here is written as-is; the guard test keeps this
+/// table complete. Keys in [kPrefsNotBackedUp] need no entry.
+const Map<String, String> kPrefTypes = {
+  'activity.nap_auto_log_since_sec': 'int',
+  'ai.journal_done_day': 'string',
+  'ai_evening_enabled': 'bool',
+  'ai_evening_min': 'int',
+  'ai_journal_enabled': 'bool',
+  'ai_journal_min': 'int',
+  'ai_morning_enabled': 'bool',
+  'ai_morning_min': 'int',
+  'backup.cadence': 'string',
+  'band.strap_name': 'string',
+  'clock_format': 'string',
+  'coach_api': 'string',
+  'coach_model': 'string',
+  'coach_timeout_seconds': 'int',
+  'coach_use_chatgpt': 'bool',
+  'cycle_tracking_enabled': 'bool',
+  'dev.mode': 'bool',
+  'device_alerts.charge_shown_day': 'int',
+  'device_alerts.last_charge_event_ts': 'int',
+  'device_alerts.last_charge_wall_sec': 'int',
+  'gesture_double_tap': 'string',
+  'health_auto_import_last_ms': 'int',
+  'health_auto_import_workouts': 'bool',
+  'health_import_profile_at': 'int',
+  'health_import_workouts_at': 'int',
+  'health_sync': 'bool',
+  'health_workout_import_deleted': 'stringList',
+  'issue_reports_sent': 'string',
+  'last_inactivity_ms': 'int',
+  'last_recovery_notif_day': 'string',
+  'last_staleness_notified_ms': 'int',
+  'last_stepgoal_day': 'string',
+  'local_profile_json': 'string',
+  'locale_override': 'string',
+  'notif_alarm_latch_failed': 'bool',
+  'notif_alarm_night_check': 'bool',
+  'notif_auto_detect': 'bool',
+  'notif_battery_pct': 'int',
+  'notif_checkin': 'bool',
+  'notif_critical_override': 'bool',
+  'notif_device': 'bool',
+  'notif_fired_keys': 'stringList',
+  'notif_health': 'bool',
+  'notif_meds': 'bool',
+  'notif_movement': 'bool',
+  'notif_nap_detect': 'bool',
+  'notif_quiet_enabled': 'bool',
+  'notif_quiet_end': 'int',
+  'notif_quiet_start': 'int',
+  'notif_recovery': 'bool',
+  'notif_relay_enabled': 'bool',
+  'notif_relay_packages': 'stringList',
+  'notif_relay_seen': 'stringList',
+  'notif_reminders': 'bool',
+  'notif_stepgoal': 'bool',
+  'notif_water': 'bool',
+  'notif_water_interval': 'int',
+  'notif_winddown': 'bool',
+  'nutrition.barcode_lookup': 'bool',
+  'onboard.completed': 'bool',
+  'onboard.saw_profile_setup': 'bool',
+  'onboard.skipped_pairing': 'bool',
+  'onboarding_choice': 'string',
+  'phone_steps': 'bool',
+  'phone_steps_healthstore_purged': 'bool',
+  'rough_night.ask': 'string',
+  'rough_night.dismissed': 'string',
+  'share.map_tiles': 'bool',
+  'theme_choice': 'string',
+  'ui.shell_tab': 'int',
+  'ui.shell_tab.v2': 'int',
+  'ui.wearable_show_estimates': 'bool',
+  'ui.wearable_side_by_side': 'bool',
+  'units_system': 'string',
+  'update_checks_enabled': 'bool',
+  'whoop_import_deleted_workouts': 'stringList',
+  'workout.rpe_skips': 'int',
+  'workout.zone_alert_enabled': 'bool',
+  'workout.zone_alert_target_zone': 'int',
+  'calc_power_mode': 'string',
+  'demo.mode_enabled': 'bool',
+  'ecg_keep_waveform': 'bool',
+  'expected_sleep_schedule_v1': 'string',
+  'gesture_failures': 'string',
+  HapticPatternStore.prefsKey: 'string',
+  'haptics_editor_mode': 'string',
+  'haptics_gesture_cue_assign': 'string',
+  NotificationPrefs.storageKey: 'string',
+  SettingsRepository.channelsKey: 'string',
+  'notif_relay_only_worn': 'bool',
+  'resolved_window_days': 'int',
+  'ui.device_lab_tab': 'string',
+  'ui.explore_intraday': 'string',
+  'ui.explore_metrics': 'string',
+  'ui.explore_range': 'string',
+  'ui.explore_scale': 'string',
+  'ui.explore_z': 'string',
+  'ui.gestures_tab': 'string',
+  'ui.haptics_tab': 'string',
+  'ui.load_memory.v1': 'string',
+  'wake_acked_epoch': 'int',
+  'workout.stop_pending': 'string',
+  'alerts.zone_pref_migrated': 'bool',
+  'gesture_double_tap_actions': 'int',
+  'gesture_ecg_extra_sensitive': 'bool',
+  'gesture_ecg_fallback': 'bool',
+  'gesture_ecg_on_double_tap': 'bool',
+  'gesture_ecg_tolerant_startup': 'bool',
+  'gesture_follow_up_moments': 'bool',
+  'gesture_follow_up_moments_since_ms': 'int',
+  'gesture_repeat_lab': 'bool',
+  'gesture_repeat_window_ms': 'int',
+  'gesture_tap_method': 'string',
+  'gesture_time_buzz_mode': 'string',
+  'moment_review.queue': 'string',
+  'typical_large_meals_v1': 'string',
+  'ui.home_ring_details.v1': 'string',
+};
+
+/// Dated or per-item key families: (prefix, suffix, stored type).
+const List<(String, String, String)> kPrefTypeFamilies = [
+  ('ff.', '', 'bool'),
+  ('accordion_', '', 'bool'),
+  ('gesture_replay_', '', 'bool'),
+  ('gesture_slot_options_', '', 'string'),
+  ('gesture_tap_actions_', '', 'int'),
+  ('ai.briefing.', '', 'string'),
+  ('ecg.guard.', '', 'bool'),
+  ('ecg.wrist.', '', 'string'),
+  ('ecg.maverick.', '', 'bool'),
+  ('notif_fired:', '', 'bool'),
+  ('notif_osid:', '', 'int'),
+  ('notif_osslot:', '', 'string'),
+  ('notif_osnext:', '', 'int'),
+  ('nudge.', '.dismissed', 'bool'),
+  ('nudge.', '.last_shown_ms', 'int'),
+  // Per-scale weighing export state. Travels: the Health store usually
+  // survives a restore, and re-sending every weighing would stack duplicates.
+  ('health_weight_exported:', '', 'string'),
+  ('health_weight_attempts:', '', 'string'),
+  ('health_weight_maybe_landed:', '', 'string'),
+  ('health_weight_trimmed:', '', 'string'),
+];
+
+/// The stored type the app reads [key] with, or null when it is not known.
+String? expectedPrefType(String key) {
+  final exact = kPrefTypes[key];
+  if (exact != null) return exact;
+  for (final (prefix, suffix, type) in kPrefTypeFamilies) {
+    if (key.startsWith(prefix) && key.endsWith(suffix)) return type;
+  }
+  return null;
+}
+
+Future<void> writeBackupPrefs(String path) =>
+    writeBackupExtras(path, extras: BackupExtras.prefsOnly);
+
+Future<bool> _write(SharedPreferences prefs, String key,
+    String type, String value) async {
+  switch (type) {
+    case 'bool':
+      if (value != 'true' && value != 'false') {
+        throw const FormatException('invalid preference boolean');
+      }
+      return prefs.setBool(key, value == 'true');
+    case 'int':
+      return prefs.setInt(key, int.parse(value));
+    case 'double':
+      final d = double.parse(value);
+      if (!d.isFinite) throw const FormatException('invalid preference number');
+      return prefs.setDouble(key, d);
+    case 'string':
+      return prefs.setString(key, value);
+    case 'stringList':
+      final list = jsonDecode(value);
+      if (list is! List || list.any((v) => v is! String)) {
+        throw const FormatException('invalid preference list');
+      }
+      return prefs.setStringList(key, list.cast<String>());
+    default:
+      throw FormatException('unknown preference type $type');
+  }
+}
+
+/// This phone has no server of its own: unset, blank, or the default saved
+/// explicitly. Either way the user would silently stay on the default.
+bool _needsServerReentry(String? saved) {
+  final v = saved?.trim() ?? '';
+  return v.isEmpty || v == CoachConfig.defaultBaseUrl;
+}
+
+Future<ImportSummary> restoreBackupPrefs(String path, Map<String, int> counts, {
+  required bool freshInstall,
+}) async {
+  final extras = await restoreBackupExtras(path, freshInstall: freshInstall);
+  return ImportSummary(tables: counts, keysWritten: extras.keysWritten,
+      needsReentry: extras.needsReentry, unreadableSecrets: extras.unreadableSecrets,
+      refusedPrefs: extras.refusedPrefs, prefsRestored: extras.prefsRestored,
+      prefsKept: extras.prefsKept, filesRestored: extras.filesRestored);
 }

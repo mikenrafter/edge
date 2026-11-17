@@ -1,5 +1,81 @@
 import '../../data/sleep_edit_store.dart';
 import '../../l10n/date_text.dart';
+import 'dart:async';
+import '../../data/home_snapshot_store.dart';
+import '../read_prefetch.dart';
+import '../skeleton/load_memory.dart';
+import 'dart:math' as math;
+import 'dart:ui' as ui show TextDirection;
+import 'package:clock/clock.dart' as pc;
+import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:provider/provider.dart';
+import '../../models/chart_point.dart';
+export '../../models/chart_point.dart' show ChartPoint;
+import '../../ai/briefing.dart'
+    show Briefing, BriefingPeriod, BriefingStore, currentBriefingPeriod, resolveBriefingToShow;
+import '../../compute/derive_perf.dart' show RenderLatency;
+import '../../compute/findings.dart'
+    show
+        isRecentFindingDate,
+        kReadinessEasyBelow,
+        kReadinessGoodFrom,
+        kReadinessRestBelow;
+import '../../data/day_label.dart';
+import '../../compute/onehz_pipeline.dart'
+    show readinessInputShortfallNote, readinessUnstableBaselineNote;
+import '../../data/db.dart';
+import '../../data/journal_fields.dart' show formatMinuteOfDay;
+import '../../data/local_repository.dart';
+import '../../data/read_paused.dart';
+import '../../sync/import_focus.dart';
+import '../../l10n/app_localizations.dart';
+import '../../l10n/presentation_text.dart';
+import '../../l10n/display_text.dart';
+import '../../l10n/decimal_text.dart';
+import '../../state/locale_controller.dart';
+import 'package:intl/intl.dart';
+import 'package:openstrap_analytics/onehz.dart'
+    show quietHrrMinDays, readinessCompositeMinBaseline;
+import '../../models/metric.dart';
+import '../../models/payloads.dart' show todayHeadlineOf;
+import '../../notify/notification_prefs.dart' show NotificationPrefs;
+import '../../gestures/gesture_failures.dart';
+import '../../state/app_state.dart';
+import '../../state/clock_format.dart' show formatClockOf;
+import '../../state/prefs.dart';
+import '../../state/units_controller.dart';
+import '../../theme/theme_switcher.dart' show themedRoute;
+import '../activity/day_strain.dart' show DayStrainDetail;
+import '../profile/alarm.dart';
+import '../profile/devices.dart';
+import '../profile/profile.dart';
+import '../profile/settings.dart' show MoreSettings;
+import '../profile/wearable_numbers.dart';
+import '../ui2.dart';
+import '../guides/help_entry.dart';
+import '../why_row.dart';
+import 'ai_briefing.dart' show AiBriefingScreen;
+import 'coach.dart';
+import 'detected_activities.dart';
+import 'metric_detail.dart';
+import 'natural_wake_card.dart';
+import 'track_log.dart';
+import 'snooze_card.dart';
+import '../../alarm/snooze/snooze_controller.dart' show SnoozePhase;
+import 'readiness_detail.dart';
+import 'sleep_detail.dart';
+import 'sleep_tab.dart';
+import 'workout_screen.dart';
+import 'health_screen.dart';
+part 'home_ring_cache.dart';
+
+
+
+
+
+
+
 // HOME — decision-oriented. "What matters today?"
 //
 // Three rings that decide the day — what the night gave back, what the day has
@@ -28,81 +104,10 @@ import '../../l10n/date_text.dart';
 // data layer. They live here rather than in a fourth file because there are
 // only three of them and they are read together.
 
-import 'dart:async';
-import '../../data/home_snapshot_store.dart';
-import '../read_prefetch.dart';
-import '../skeleton/load_memory.dart';
-import 'dart:math' as math;
-import 'dart:ui' as ui show TextDirection;
 
-import 'package:clock/clock.dart' as pc;
-import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:provider/provider.dart';
-import '../../models/chart_point.dart';
 
-export '../../models/chart_point.dart' show ChartPoint;
 
-import '../../ai/briefing.dart'
-    show Briefing, BriefingPeriod, BriefingStore, currentBriefingPeriod, resolveBriefingToShow;
-import '../../compute/derive_perf.dart' show RenderLatency;
-import '../../compute/findings.dart'
-    show
-        isRecentFindingDate,
-        kReadinessEasyBelow,
-        kReadinessGoodFrom,
-        kReadinessRestBelow;
-import '../../data/day_label.dart' show todayLabel, calendarDaysBetween, dayLabelBefore;
-import '../../compute/onehz_pipeline.dart'
-    show readinessInputShortfallNote, readinessUnstableBaselineNote;
-import '../../data/db.dart' show DbRebuild;
-import '../../data/journal_fields.dart' show formatMinuteOfDay;
-import '../../data/local_repository.dart';
-import '../../data/read_paused.dart';
-import '../../sync/import_focus.dart';
-import '../../l10n/app_localizations.dart';
-import '../../l10n/presentation_text.dart';
-import '../../l10n/display_text.dart';
-import '../../l10n/decimal_text.dart';
-import '../../state/locale_controller.dart';
-import 'package:intl/intl.dart';
-import 'package:openstrap_analytics/onehz.dart'
-    show quietHrrMinDays, readinessCompositeMinBaseline;
-import '../../models/metric.dart';
-import '../../models/payloads.dart' show todayHeadlineOf;
-import '../../notify/notification_prefs.dart' show NotificationPrefs;
-import '../../gestures/gesture_failures.dart';
-import '../../state/app_state.dart';
-import '../../state/clock_format.dart' show formatClockOf;
-import '../../state/prefs.dart';
-import '../../state/units_controller.dart';
-import '../../theme/theme_switcher.dart' show themedRoute;
-import '../activity/day_strain.dart' show DayStrainDetail;
-import '../profile/alarm.dart'
-    show AlarmArmState, alarmArmOf, alarmGlanceCard;
-import '../profile/devices.dart' show formatDayTime;
-import '../profile/profile.dart' show ProfileAvatar;
-import '../profile/settings.dart' show MoreSettings;
-import '../profile/wearable_numbers.dart'
-    show WearableCells, kHomeWearableRows, wearableName;
-import '../ui2.dart';
-import '../guides/help_entry.dart';
-import '../why_row.dart';
-import 'ai_briefing.dart' show AiBriefingScreen;
-import 'coach.dart';
-import 'detected_activities.dart';
-import 'metric_detail.dart';
-import 'natural_wake_card.dart';
-import 'track_log.dart';
-import 'snooze_card.dart';
-import '../../alarm/snooze/snooze_controller.dart' show SnoozePhase;
-import 'readiness_detail.dart';
-import 'sleep_detail.dart';
-import 'sleep_tab.dart';
-import 'workout_screen.dart';
-import 'health_screen.dart';
 
-part 'home_ring_cache.dart';
 
 // ═══════════════════ shared plumbing ═══════════════════
 
@@ -1114,6 +1119,12 @@ class RingTrio extends StatelessWidget {
     final onlyStatus = observation == null && pressing.isEmpty &&
         older == null && note == null && status != null && status.text.isNotEmpty;
     final rows = <Widget>[
+      if (detail.sleepProvisional)
+        _HomeNoteRow(id: 'provisional:sleep',
+          title: l?.homeRingSleep ?? 'Sleep',
+          text: recoveryStateWord(detail.recoveryState, l) ??
+              l?.homeRecoveryFinishingUp ?? 'Finishing up',
+          onTap: _open(HomeRingKind.sleep)),
       ?observation,
       for (final k in pressing)
         _HomeWhyPanel(kind: k, data: detail, onTap: _open(k)),
@@ -1295,11 +1306,11 @@ String _recoveryWhy(HomeData d, AppLocalizations? l) {
 }
 
 String _strainWhy(HomeData d, AppLocalizations? l) {
-  String n(num v) => v == v.round() ? '${v.round()}' : v.toStringAsFixed(1);
+  String n(num v) => v == v.round() ? '${v.round()}' : displayFixed(v, 1);
   final t = d.strainTarget;
   final low = t?['low'], high = t?['high'];
   final range = low is num && high is num ? '${n(low)}–${n(high)}' : n(high as num);
-  final s = (d.strain.value ?? 0).toStringAsFixed(1);
+  final s = displayFixed(d.strain.value ?? 0, 1);
   return l?.homeWhyStrainBody(s, range) ??
       'Strain $s, above today’s target of $range.';
 }
@@ -1429,11 +1440,8 @@ String? recoveryUpdatedLine(Object? update, AppLocalizations? l) {
 /// it is not simply final: still asleep, finishing up, or changed since shown.
 /// Read off one `todayHeadlineOf` result so Home, Readiness and Health agree.
 String? recoveryStateLine(Map<String, dynamic> head, AppLocalizations? l) =>
-    switch (head['recovery_state']) {
-      'night_in_progress' => l?.homeRecoverySleeping ?? 'Sleeping…',
-      'provisional' => l?.homeRecoveryFinishingUp ?? 'Finishing up',
-      _ => recoveryUpdatedLine(head['recovery_update'], l),
-    };
+    recoveryStateWord(head['recovery_state'], l) ??
+    recoveryUpdatedLine(head['recovery_update'], l);
 
 /// Which ring. The three the app can stand behind on a home screen: what the
 /// night gave back, what the day has cost, and what the night was made of.
@@ -1452,7 +1460,7 @@ List<HomeRingKind> pressingRings(HomeData d, {DateTime? now}) {
     }
   }
   final sleep = d.sleepMin.value, need = d.sleepNeedMin.value;
-  if (sleep != null && d.sleepMin.fromOlderVersion == null && need != null && need > 0 && sleep / need < .85) {
+  if (!d.sleepProvisional && sleep != null && d.sleepMin.fromOlderVersion == null && need != null && need > 0 && sleep / need < .85) {
     ranked.add((HomeRingKind.sleep, sleep / need < .70 ? 3 : 2));
   }
   final strain = d.strain.value;
@@ -1603,7 +1611,7 @@ _RingState _ringOf(
           ? _gap(k, l?.homeRingStrain ?? MetricLabels.strain, LucideIcons.zap, C.purple,
               d.strain, l?.homeRingNoStrain ?? 'No strain', l, unit: 'days')
           : _RingState(k, l?.homeRingStrain ?? MetricLabels.strain, LucideIcons.zap, C.purple,
-              value: v.toStringAsFixed(1), sub: l?.homeStrainOf21 ?? 'of 21',
+              value: displayFixed(v, 1), sub: l?.homeStrainOf21 ?? 'of 21',
               // Bounded 0-21 scale: out of range is bad data, not overflow.
               frac: (v / 21).clamp(0.0, 1.0),
               olderVersion: d.strain.fromOlderVersion, olderReason: d.strain.olderVersionReason);
@@ -1655,7 +1663,8 @@ _RingState _ringOf(
                           '${m.pct}% of ${_compactHm(m.targetMin, l)}',
                     ],
               frac: m.sweep,
-              arcs: m.arcs);
+              arcs: m.arcs,
+              provisional: d.sleepProvisional);
         case SleepRingPhase.estimate:
           final est = hm(m.estimateMin);
           return _RingState(k, label, LucideIcons.moon, C.blue,
@@ -1745,12 +1754,18 @@ List<RingArc>? _stageArcs(_RingState r, P p) {
   return [
     for (final a in arcs)
       RingArc(
-          cols[switch (a.kind) {
-            SleepArcKind.deep => SleepStage.deep,
-            SleepArcKind.rem => SleepStage.rem,
-            SleepArcKind.light => SleepStage.light,
-            _ => SleepStage.awake,
-          }]!,
+          // A provisional night is a figure that can still move, so its stage
+          // arcs wear the same muted ink as the solid provisional arc and as
+          // the recovery ring in the same state. The FRACTIONS are the night's
+          // own and stay put: only the colour says "not settled yet".
+          r.provisional
+              ? p.ink3
+              : cols[switch (a.kind) {
+                  SleepArcKind.deep => SleepStage.deep,
+                  SleepArcKind.rem => SleepStage.rem,
+                  SleepArcKind.light => SleepStage.light,
+                  _ => SleepStage.awake,
+                }]!,
           a.fraction),
   ];
 }
@@ -2143,7 +2158,7 @@ class HomeData {
   /// (nothing is drawn, as before).
   final WearableDay? wearable;
 
-  const HomeData({
+  const HomeData({this.sleepProvisional = false, 
     this.name,
     this.dayId,
     this.readiness = Metric.empty,
@@ -2276,6 +2291,7 @@ class HomeData {
         readiness: readiness,
         drivers: drivers,
         sleepMin: sleepMin,
+        sleepProvisional: sleepProvisional,
         rhr: rhr,
         steps: steps,
         calories: calories,
@@ -2326,9 +2342,11 @@ class HomeData {
     // un-awaited on an early throw is safe.
     final wearable = _wearableOf(repo, date);
     final profile = await repo.getProfile();
-    final overview = await repo.getDayOverview(date);
-    final strain = await repo.getDayStrain(date);
-    final sleep = await repo.getDaySleepV2(date);
+    final (overview, strain, sleep) = await repo.sharingDayReads(InlineAsyncWork(() async => (
+      await repo.getDayOverview(date),
+      await repo.getDayStrain(date),
+      await repo.getDaySleepV2(date),
+    )));
     final readiness = metricOf(overview['readiness']);
     // Same lookup [load] does for today, for the same reason: the ring's
     // shortfall explanation needs the stored diagnostic, and a day the
@@ -2336,14 +2354,9 @@ class HomeData {
     final absentDiag = readiness.value != null
         ? null
         : await ReadinessData.readAbsentDiag(repo, date);
-    // The learned need, like [load]. A failed read leaves it absent — the ring
-    // then shows the labelled default, never an invented need.
-    ({Metric need, Metric bedtime})? coach;
-    try {
-      coach = sleepCoachOf(await repo.getInsights());
-    } catch (_) {
-      coach = null;
-    }
+    // Historical rings use the learned need returned with that night's read,
+    // never today's coach estimate. The repository omits an unlearned need.
+    final need = metricOf(sleep['need_min']);
     final pending = await _pendingActivitiesOf(repo);
     return HomeData(
       name: profile['name']?.toString(),
@@ -2357,7 +2370,7 @@ class HomeData {
       calories: _dayMetric(strain, 'calories'),
       caloriesTotal: _dayMetric(strain, 'calories_total'),
       sleepMin: metricOf(sleep['duration_min']),
-      sleepNeedMin: coach?.need ?? Metric.empty,
+      sleepNeedMin: need,
       sleepStages: sleepStagesOf(sleep),
       stepGoal: (profile['step_goal'] as num?)?.toInt() ?? kDefaultStepGoal,
       pendingActivities: pending.count,
@@ -2390,7 +2403,11 @@ class HomeData {
   /// [stored]: read what is persisted and do not wait for the freshness
   /// refresh (first paint); [refreshPending] then says whether one is owed.
   static Future<HomeData> load(LocalRepository repo, [AppLocalizations? l,
-      bool stored = false]) async {
+      bool stored = false]) => repo.sharingDayReads(
+        InlineAsyncWork(() => _loadShared(repo, l, stored)));
+
+  static Future<HomeData> _loadShared(LocalRepository repo, AppLocalizations? l,
+      bool stored) async {
     // Started first, awaited last (see loadForDay).
     final wearable = _wearableOf(repo, todayLabel());
     final today = await (stored ? repo.getTodayStored() : repo.getToday());
@@ -2416,13 +2433,17 @@ class HomeData {
     final status = today['status'] as Map?;
 
     final over = _overnightOf(today, l);
-    final sleepMin = over.sleepMin;
+    final provisionalSleep = provisionalSleepOf(today);
+    final sleepProvisional = over.sleepMin.value == null &&
+        provisionalSleep.value != null;
+    final sleepMin = sleepProvisional ? provisionalSleep : over.sleepMin;
 
     // Stage totals of TODAY'S OWN night only: a held-over night is refused
     // above, and its stages must not turn up under today's ring.
     SleepStageMin? stages;
     if (sleepMin.value != null) {
-      final night = (status?['overnight_day'] ?? status?['today_day'])?.toString();
+      final night = (sleepProvisional ? (status?['today_day']) :
+          (status?['overnight_day'] ?? status?['today_day']))?.toString();
       if (night != null) {
         try {
           stages = sleepStagesOf(await repo.getDaySleepV2(night));
@@ -2472,6 +2493,7 @@ class HomeData {
       ],
       strain: metricOf(d('strain')),
       sleepMin: sleepMin,
+      sleepProvisional: sleepProvisional,
       sleepStages: stages,
       learnedOnsetMin: learned.onsetMin,
       learnedWakeMin: learned.wakeMin,
@@ -2498,6 +2520,13 @@ class HomeData {
       wearable: await wearable,
     );
   }
+
+
+  /// Whether [sleepMin] is TODAY'S OWN night still arriving: the band has a
+  /// scored night for today, the drain has not yet run past its wake, and the
+  /// figure can still move (#638). The number is drawn greyed and the card says
+  /// so; recovery is still withheld entirely until the night settles.
+  final bool sleepProvisional;
 }
 
 Metric _dayMetric(Map<String, dynamic> row, String key) {
@@ -2622,6 +2651,7 @@ class _HomeScreenState extends State<HomeScreen>
     WidgetsBinding.instance.removeObserver(this);
     _tick?.cancel();
     HomeSnapshotStore.changes.removeListener(_storeChanged);
+    _lifecycle?.dispose();
     super.dispose();
   }
 
@@ -2640,6 +2670,8 @@ class _HomeScreenState extends State<HomeScreen>
       _loading = false;
       return;
     }
+    _lifecycle = AppLifecycleListener(
+        onHide: _onHide, onRestart: _onReturnFromBackground);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -2882,7 +2914,7 @@ class _HomeScreenState extends State<HomeScreen>
   /// already restricts the arrows to [_days] — so this just re-loads for it.
   void _goDay(String day) {
     setState(() {
-      _day = day;
+      _day = homeSwitcherDay(day, now: widget.now);
       _d = null;
       _recordingsThrough = null;
       _loading = true;
@@ -2990,7 +3022,7 @@ class _HomeScreenState extends State<HomeScreen>
       help = RingHelp.busy(l?.loadingHomeToday ?? 'Reading today');
     } else if (loaded == null && _failed) {
       help = RingHelp(
-          '${l?.homeLoadFailedTitle ?? 'Today could not be read'} · '
+          '${isToday ? (l?.homeLoadFailedTitle ?? 'Today could not be read') : (l?.homeDayLoadFailedTitle(prettyDay(_day, l)) ?? '${prettyDay(_day, l)} could not be read')} · '
           '${l?.homeTryAgain ?? 'Try again'}', onTap: () {
         setState(() => (_loading = true, _failed = false));
         _load();
@@ -3002,7 +3034,8 @@ class _HomeScreenState extends State<HomeScreen>
               : (l?.loadingWaitingToCalculateToday ??
                   'Waiting to calculate today'))
           : !isToday
-              ? const RingHelp('No data for this day. Nothing was recorded on this day.')
+              ? RingHelp('${l?.homeNoDataThisDayTitle ?? 'No data for this day'}. '
+                  '${l?.homeNoDataThisDayBody ?? 'Nothing was recorded on this day.'}')
               : (widget.workoutLive ?? workoutLiveOf(c))
                   ? RingHelp('${l?.homeWorkoutHoldTitle ?? 'A workout is still running'}. '
                       '${l?.homeWorkoutHoldBody ?? 'Today fills in when you finish the workout.'}')
@@ -3031,7 +3064,7 @@ class _HomeScreenState extends State<HomeScreen>
               : shortfall ??
                   whyFromNote(d.readiness.note) ??
                   (l?.homeReadinessNoReason ?? 'No reading.'),
-          onTap: () => go(c, const ReadinessDetail()));
+          onTap: () => go(c, ReadinessDetail(day: isToday ? null : _day)));
     } else if (firstWeeks && d.drivers.isEmpty) {
       help = RingHelp(guidance);
     }
@@ -3127,8 +3160,8 @@ class _HomeScreenState extends State<HomeScreen>
           onOpen: (k) => go(
               c,
               switch (k) {
-                HomeRingKind.recovery => const ReadinessDetail(),
-                HomeRingKind.strain => const DayStrainDetail(),
+                HomeRingKind.recovery => ReadinessDetail(day: isToday ? null : _day),
+                HomeRingKind.strain => DayStrainDetail(day: isToday ? null : _day),
                 // The night the ring was drawn from, not last night. Today
                 // stays null even after the switcher steps back onto it:
                 // today's ring is the held-over night, and only the default
@@ -3325,6 +3358,8 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _glance(BuildContext c, HomeData d, {required bool isToday}) {
     final l = AppLocalizations.of(c);
+    Widget detail(String key) => isToday || _day == null
+        ? MetricDetail(key) : metricDayScreen(key, _day!);
     final cards = <Widget>[];
     // Every tile reserves two caption lines, so a tile that is a dash today and
     // a reading tomorrow is the same box both ways.
@@ -3342,20 +3377,21 @@ class _HomeScreenState extends State<HomeScreen>
     // Resting heart rate comes off the SAME overnight block readiness does, and
     // it cannot be an older night — the loader refuses those — so every tile in
     // this row is today's and none of them needs a date.
-    final fillsNight = l?.homeGlanceFillsNight ?? 'Fills after a scored night';
-    final fillsMove = l?.homeGlanceFillsMove ?? 'Fills as you move';
+    final notRecorded = l?.dayTimelineNotRecorded ?? 'Not recorded';
+    final fillsNight = isToday ? (l?.homeGlanceFillsNight ?? 'Fills after a scored night') : notRecorded;
+    final fillsMove = isToday ? (l?.homeGlanceFillsMove ?? 'Fills as you move') : notRecorded;
     cards.add(d.rhr.isEmpty
         ? SignalCard(LucideIcons.heart, C.red, l?.homeHeartRate ?? 'Heart rate', '—',
             reserveUnit: 'bpm',
             sub: fillsNight,
             subMinLines: lines,
-            onTap: () => go(c, const MetricDetail('resting_hr')))
+            onTap: () => go(c, detail('resting_hr')))
         : SignalCard(LucideIcons.heart, C.red, l?.homeHeartRate ?? 'Heart rate',
             '${d.rhr.value!.round()}',
             unit: 'bpm',
             sub: l?.homeRestingSub ?? 'Resting',
             subMinLines: lines,
-            onTap: () => go(c, const MetricDetail('resting_hr'))));
+            onTap: () => go(c, detail('resting_hr'))));
     // Zero steps is a real reading — an unmoved counter — and renders as 0.
     // Only a counter that never reported is a dash.
     cards.add(SignalCard(
@@ -3377,7 +3413,7 @@ class _HomeScreenState extends State<HomeScreen>
               ?stepSensorLabel(d.steps, l),
             ].join(' · '),
       subMinLines: lines,
-      onTap: () => go(c, const MetricDetail('steps')),
+      onTap: () => go(c, detail('steps')),
       // The ring's 20 pt slot is kept when there is no ring, so the tile is the
       // same height with and without it.
       trailing: d.steps.value == null || d.stepGoal <= 0
@@ -3397,7 +3433,7 @@ class _HomeScreenState extends State<HomeScreen>
             l?.homeActiveEnergy ?? 'Active energy', '—',
             sub: fillsMove,
             subMinLines: lines,
-            onTap: () => go(c, const MetricDetail('calories')))
+            onTap: () => go(c, detail('calories')))
         : SignalCard(LucideIcons.flame, C.orange,
             l?.homeActiveEnergy ?? 'Active energy',
             thousands(d.calories.value),
@@ -3416,7 +3452,7 @@ class _HomeScreenState extends State<HomeScreen>
                 ? null
                 : d.caloriesTotal.fromOlderVersion,
             olderTotalReason: d.caloriesTotal.olderVersionReason,
-            onTap: () => go(c, const MetricDetail('calories'))));
+            onTap: () => go(c, detail('calories'))));
 
     return Column(children: [
       for (var i = 0; i < cards.length; i += 2) ...[
@@ -3483,8 +3519,8 @@ class _HomeScreenState extends State<HomeScreen>
           C.purple,
           met
               ? (l?.homeStrainTargetMet ?? 'Strain target met')
-              : (l?.homeAimForStrain(aim.toStringAsFixed(1)) ??
-                  'Aim for ${aim.toStringAsFixed(1)} strain'),
+              : (l?.homeAimForStrain(displayFixed(aim, 1)) ??
+                  'Aim for ${displayFixed(aim, 1)} strain'),
           // Built on a wearable's estimated TRIMP: say so.
           [
             l?.homeTraining ?? 'Training',
@@ -3492,8 +3528,8 @@ class _HomeScreenState extends State<HomeScreen>
           ].join(' · '),
           met
               ? (l?.actionDone ?? 'Done')
-              : '${(target['low'] as num?)?.toStringAsFixed(1) ?? ''}–'
-                  '${(target['high'] as num?)?.toStringAsFixed(1) ?? ''}',
+              : '${_fixed1OrEmpty(target['low'])}–'
+                  '${_fixed1OrEmpty(target['high'])}',
           met));
     } else {
       rows.add(_row(p, LucideIcons.zap, C.purple, '—',
@@ -3619,6 +3655,68 @@ class _HomeScreenState extends State<HomeScreen>
                   fontWeight: done ? FontWeight.w600 : FontWeight.w400)),
         ]),
       );
+
+
+  /// Brings Home back to today when the app returns from the background.
+  /// See [_onReturnFromBackground].
+  AppLifecycleListener? _lifecycle;
+
+  /// Today's label, the wall time and a running stopwatch, all taken as the
+  /// app went to the background (see [homeAwayFor]). The label catches
+  /// midnight.
+  String? _dayAtHide;
+  DateTime? _hiddenAt;
+  final Stopwatch _away = Stopwatch();
+
+  void _onHide() {
+    _dayAtHide = todayLabel(widget.now ?? debugHomeWallClock());
+    _hiddenAt = debugHomeWallClock();
+    _away
+      ..reset()
+      ..start();
+  }
+
+  /// COMING BACK LATER MEANS TODAY. Home is kept alive in the tab stack, so a
+  /// day stepped back onto used to survive the app going to the background —
+  /// overnight, too — and the next morning opened on that old day while every
+  /// detail screen behind it opened on today. A quick trip to another app and
+  /// back keeps the day (see [homeReturnsToToday]). `onRestart` fires only on
+  /// the way back from hidden (backgrounded), not for Control Center or a
+  /// permission sheet, which leave the app merely inactive.
+  ///
+  /// It also reloads when the switcher was already on today: a day that rolled
+  /// over while the app was backgrounded moves no database revision, so
+  /// nothing else would re-read it.
+  ///
+  /// A past day on screen is dropped before the read, not after it: kept, its
+  /// rings would sit under today's header while the read runs, and stay there
+  /// for good if the read failed, since the error card only shows with no day.
+  void _onReturnFromBackground() {
+    if (!mounted) return;
+    final hiddenAt = _hiddenAt;
+    final wall = hiddenAt == null
+        ? Duration.zero
+        : debugHomeWallClock().difference(hiddenAt);
+    final away = homeAwayFor(wall: wall, monotonic: _away.elapsed);
+    _away.stop();
+    _hiddenAt = null;
+    final back = homeReturnsToToday(
+        dayAtHide: _dayAtHide,
+        dayNow: todayLabel(widget.now ?? debugHomeWallClock()),
+        away: away);
+    _dayAtHide = null;
+    // A past day kept after a short absence needs no read here: if its data
+    // changes, the database revision reloads it like any other day.
+    if (_day != null && !back) return;
+    setState(() {
+      _day = null;
+      if (_d?.dayId != todayLabel(widget.now)) {
+        _d = null;
+        _loading = true;
+      }
+    });
+    _load();
+  }
 }
 
 /// The coach's one door on Today. It used to be an icon that appeared only
@@ -3653,3 +3751,107 @@ Widget coachChip(BuildContext c) {
     ),
   );
 }
+
+
+/// The card Home shows instead of "Sync the band" when no band is paired, or
+/// null when one is (or there is no AppState above us). Onboarding's "Skip for
+/// now" opens the app with nothing paired; a sync then returns at once, the
+/// tap grace held "Connecting to your band" up for 20 s over nothing, and
+/// nothing on Home pointed at pairing.
+Widget? noBandCard(BuildContext c, AppLocalizations? l) {
+  try {
+    if (c.read<AppState>().isPaired) return null;
+  } catch (_) {
+    return null;
+  }
+  return StatusCard(
+    l?.devicesNoBandPaired ?? 'No band is paired',
+    l?.pairingSkipNote ??
+        'The app opens without a band. Nothing is measured until one is paired.',
+    fix: l?.devicesPairABand ?? 'Pair a band',
+    icon: LucideIcons.watch,
+    onFix: () => goto(c, const RePair()),
+  );
+}
+
+/// TODAY'S OWN NIGHT while its drain is still arriving (#638), or an empty
+/// metric when `getToday` did not send one.
+///
+/// `getToday` withholds today's overnight block until it settles (#448), which
+/// is what keeps a partial night's readiness off this screen. Sleep is a
+/// different question: the Sleep tab has always shown that same stored row, so
+/// Home was the only surface that said nothing for an hour after waking — or
+/// twelve, when the band stopped recording at wake. The repository serves that
+/// night's sleep summary on its own key while it is provisional, and nothing on
+/// the recovery side reads it, so readiness, HRV and resting HR stay withheld
+/// exactly as #578 left them.
+Metric provisionalSleepOf(Map<String, dynamic> today) {
+  final b = today['sleep_provisional'];
+  if (b is! Map || b['provisional'] != true) return Metric.empty;
+  return Metric.parse(b['duration_min']);
+}
+
+/// Epoch seconds → "11:08 PM" / "23:08" in the device zone.
+/// When a carried wear figure was last computed (#450), as seen from the day
+/// on screen ([shownDay], a local label): a clock alone when it fell on that
+/// day, otherwise the date too. A past day's carried wear can date from a
+/// later day's sync, and "08:00" under that past day would name the wrong one.
+String asOfText(num ts, String shownDay, [AppLocalizations? l]) {
+  final day = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(ts.round() * 1000));
+  return day == shownDay
+      ? clockOfTs(ts)
+      : '${prettyDay(day, l)} ${clockOfTs(ts)}';
+}
+
+String _fixed1OrEmpty(Object? v) => v is num ? displayFixed(v, 1) : '';
+
+/// The word for the two states a night passes through before it is final:
+/// still asleep, then finishing up. Null once the state is final, so each
+/// caller falls through to whatever it says itself.
+///
+/// ONE mapping for both rings on the card: the sleep note and the recovery ring
+/// describe the SAME night, so they must not say two different things about it
+/// at 03:00 (#739). `night_in_progress` also covers the issue's 08:40 case,
+/// because a wake the edge has not run 30 min past is not a confirmed wake.
+String? recoveryStateWord(Object? state, AppLocalizations? l) =>
+    switch (state) {
+      'night_in_progress' => l?.homeRecoverySleeping ?? 'Sleeping…',
+      'provisional' => l?.homeRecoveryFinishingUp ?? 'Finishing up',
+      _ => null,
+    };
+
+/// What Home's switcher stores for [day]: null when it is today, so "today"
+/// keeps following the clock. Home lives in the shell's IndexedStack and is
+/// never disposed — a literal today's date stored by "Back to today" turned
+/// into yesterday at midnight, and the tab silently became a past-day view
+/// (no plan, no alarm, pull-to-refresh no longer synced).
+String? homeSwitcherDay(String day, {DateTime? now}) =>
+    day == todayLabel(now) ? null : day;
+
+/// How long the app has to be away before Home gives up the day it was on.
+/// A quick switch to another app and back keeps the place; a longer absence
+/// means the past day is no longer what the user came back for.
+const kHomeKeepDayAway = Duration(minutes: 30);
+
+/// Whether Home drops a past day for today on the way back from the
+/// background: after [kHomeKeepDayAway], or when the calendar day changed
+/// while away (a day stepped back onto on Friday evening is not what Saturday
+/// morning opens on). [dayAtHide] null means the leave was never seen, so
+/// the absence is unknown and today wins.
+bool homeReturnsToToday({
+  required String? dayAtHide,
+  required String dayNow,
+  required Duration away,
+}) =>
+    dayAtHide == null || dayAtHide != dayNow || away >= kHomeKeepDayAway;
+
+/// How long the app was away, from both clocks Home keeps: the longer one.
+/// The [monotonic] stopwatch stops while the phone sleeps, so a locked
+/// phone reads short on it; the [wall] clock can be set back while away.
+Duration homeAwayFor({required Duration wall, required Duration monotonic}) =>
+    wall > monotonic ? wall : monotonic;
+
+/// The wall clock Home reads for an absence; tests move it.
+DateTime _homeWallClock() => DateTime.now();
+@visibleForTesting
+DateTime Function() debugHomeWallClock = _homeWallClock;

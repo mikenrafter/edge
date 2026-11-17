@@ -26,6 +26,13 @@ import 'shift_run.dart';
 /// Home bundle + a sleep night + empty charts: every tab has loaded data.
 class TabsRepo extends HomeRepo {
   TabsRepo(super.today);
+
+  @override
+  Future<Map<String, dynamic>> getWorkouts({String range = 'month'}) async =>
+      const {'workouts': []};
+  @override
+  Future<Map<String, dynamic>> getRecords() async => const {};
+
   final _sleep = SleepRepo();
   final _well = WellnessRepo();
 

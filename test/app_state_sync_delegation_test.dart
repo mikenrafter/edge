@@ -140,7 +140,7 @@ void main() {
       final start = s.indexOf('void _onDataStored()');
       final body = s.substring(start, s.indexOf('void _onLiveEvent', start));
       final mark = body.indexOf('_markSyncActivity();');
-      final read = body.indexOf("getCursorInt('rec_ts_hw')");
+      final read = body.indexOf('getRecordFrontier()');
       final notify = body.indexOf('notifyListeners();');
       final stored = body.indexOf('markStoredData()');
       expect(mark, greaterThan(0));
@@ -153,7 +153,8 @@ void main() {
         () {
       final s = _src();
       // The commit-then-report order is run in controls/sync_wiring_guard_test.
-      expect(s.contains("throw StateError('data reset in progress — refusing to commit');"), isTrue);
+      expect(s, contains('if (ResetGate.active || _replacingBand)'));
+      expect(s, contains("throw StateError('data reset or band replacement in progress — refusing to commit');"));
     });
 
     test('the data edge is read by the engine as a staleness', () {
@@ -250,7 +251,7 @@ void main() {
         final at = s.indexOf(sig);
         expect(at, greaterThan(0), reason: sig);
         expect(s.substring(at, at + sig.length + 80),
-            contains('if (_resetting) return;'),
+            contains('if (_resetting || _replacingBand) return;'),
             reason: sig);
       }
     });

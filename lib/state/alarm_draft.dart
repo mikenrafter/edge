@@ -114,7 +114,7 @@ AlarmArmReport armReportOf(AlarmArmResult r) {
   }
   if (r.disabled) return const AlarmArmReport(wrote: true);
   if (r.epoch != null) {
-    return const AlarmArmReport(wrote: true, awaitsConfirmation: true);
+    return AlarmArmReport(wrote: true, awaitsConfirmation: !r.echoed);
   }
   return const AlarmArmReport();
 }

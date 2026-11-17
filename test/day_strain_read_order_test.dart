@@ -13,6 +13,8 @@ class _HeldStrainRepo extends LocalRepository {
   final strain = Completer<Map<String, dynamic>>();
   bool strainStarted = false;
   @override
+  Future<List<String>> availableDays() async => [todayId];
+  @override
   Future<Map<String, dynamic>> getDayWear(String day) => wear.future;
   @override
   Future<Map<String, dynamic>> getDayStrain(String day) {

@@ -993,7 +993,7 @@ void main() {
     test('the foreground event handler notes the evidence BEFORE the stale '
         'replay filter can return', () {
       final body = _codeOf('lib/state/app_state.dart',
-          'void _handleAlarmEvent(int id, int ts)');
+          'void _handleAlarmEvent(');
       final note = body.indexOf('WakeEvidenceKind.alarmFired');
       final filter = body.indexOf('predatesArm');
       expect(note, isNonNegative, reason: 'the handler notes alarmFired');

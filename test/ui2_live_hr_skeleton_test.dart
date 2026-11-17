@@ -381,12 +381,14 @@ void main() {
           }
 
           await look('loaded', _app()..also((a) => _feed(a, 6)));
-          await look('nobeat', _app(), reason: 'No beat in the last');
+          final l = lookupAppLocalizations(Locale(lang));
+          await look('nobeat', _app(),
+              reason: l.liveHrNoRecentBeatWhy(AppState.liveHrMaxAge.inSeconds));
           await look('one', _app()..also((a) => _feed(a, 1)));
           await look('disconnected', _app(connected: false),
-              reason: 'Your band is not connected');
+              reason: l.liveHrNotConnectedWhy);
           await look('unpaired', _app(paired: false, connected: false),
-              reason: 'No band is paired');
+              reason: l.liveHrNotPairedWhy);
           final ref = rects['loaded']!;
           for (final e in rects.entries) {
             expect(e.value[0], ref[0], reason: '${e.key}: card');

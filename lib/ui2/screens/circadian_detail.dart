@@ -520,10 +520,7 @@ class _CircadianDetailState extends State<CircadianDetail>
       child: child)).toList());
   }
 
-  String _hm(num hours) {
-    final m = (hours * 60).round();
-    return m < 60 ? '${m}m' : '${m ~/ 60}h ${(m % 60).toString().padLeft(2, '0')}m';
-  }
+  String _hm(num hours) => hm(hours * 60);
 
   /// CV-09 — daytime HRV by hour of day, motion-gated.
   ///
@@ -555,6 +552,9 @@ class _CircadianDetailState extends State<CircadianDetail>
     }
     final axis = AxisSpec.of(have, ticks: 3, floor: 0, format: axisInt);
     final drawn = d.hourly.where((v) => v != null).length;
+    final counts = [for (var h = 0; h < d.hourly.length && h < d.hourlyN.length; h++) if (d.hourly[h] != null) d.hourlyN[h]]..sort();
+    final lo = counts.isEmpty ? 0 : counts.first;
+    final hi = counts.isEmpty ? 0 : counts.last;
     return Surface(
       child: ChartFrame(
         title: l?.circadianDetailStillnessTitle ?? 'HRV while still',
@@ -565,7 +565,7 @@ class _CircadianDetailState extends State<CircadianDetail>
         // are wall-clock times rather than positions in an array.
         xLabels: [clock(0), clock(12 * 60), clock(23 * 60)],
         series: d.hourly,
-        footnote: l?.circadianDetailStillnessFootnote(drawn) ??
+        footnote: l?.circadianDetailStillnessFootnote(lo, hi, d.hourlyDays, drawn) ??
             '$drawn of 24 hours had enough still time to show. Read it as '
                 'stillness, not stress.',
         child: ChartScrub(

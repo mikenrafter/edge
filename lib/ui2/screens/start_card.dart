@@ -1,3 +1,8 @@
+import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../../l10n/app_localizations.dart';
+import '../ui2.dart';
+
 // The way into a tab. Full-bleed, a mascot, and one number.
 //
 // One widget, two uses: Workout's "start a session" and Wellness's "start a
@@ -31,11 +36,7 @@
 // renders it at a real phone width instead, which is where those three defects
 // actually became visible.
 
-import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../l10n/app_localizations.dart';
-import '../ui2.dart';
 
 class StartCard extends StatelessWidget {
   const StartCard({
@@ -174,3 +175,4 @@ class StartCard extends StatelessWidget {
     return card;
   }
 }
+

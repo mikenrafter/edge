@@ -10,10 +10,15 @@ part of '../db.dart';
 /// The source is first copied into app storage and journaled, so a process
 /// killed mid-copy is resumed (and reported) on the next start instead of
 /// leaving a silent partial import.
-Future<Map<String, int>> _ldbImportPlain(
+Future<ImportSummary> _ldbImportPlain(
     String file, void Function(ImportProgress p)? onProgress) async {
   // Before anything merges: "fresh" means this install held no data.
-  final fresh = await isFreshInstall();
+  final source = await openDatabase(file, readOnly: true, singleInstance: false);
+  final bool hasSettings;
+  try {
+    hasSettings = await LocalDb._objectType(source, 'backup_prefs') == 'table';
+  } finally { await source.close(); }
+  final fresh = hasSettings && await isFreshInstall();
   return ImportJournal.runExclusive(stage: 'copying', job: () async {
     ImportRun? run;
     try {
@@ -28,7 +33,7 @@ Future<Map<String, int>> _ldbImportPlain(
 
 /// Runs (or continues) the journaled import: tables, extras, summary, done.
 /// Throws on failure; the caller records it in the journal.
-Future<Map<String, int>> _ldbRunJournaledImport(ImportRun run, void Function(ImportProgress p)? onProgress) async {
+Future<ImportSummary> _ldbRunJournaledImport(ImportRun run, void Function(ImportProgress p)? onProgress) async {
     final file = run.sourcePath;
     final perfId = '${run.startedAt}-${run.id}';
     ImportPerf.start(perfId);
@@ -60,6 +65,12 @@ Future<Map<String, int>> _ldbRunJournaledImport(ImportRun run, void Function(Imp
       }
       ImportPerf.phase('copy', phaseWatch, run: perfId);
       final extras = await restoreBackupExtras(file, freshInstall: run.fresh);
+      final source = await openDatabase(file, readOnly: true, singleInstance: false);
+      try {
+        if (await LocalDb._objectType(source, 'backup_prefs') == 'table') {
+          await LocalDb.setCursor(LocalDb._kSettingsImported, '1');
+        }
+      } finally { await source.close(); }
       ImportPerf.phase('extras', phaseWatch, run: perfId);
       await recordImportSummary(
         file,
@@ -88,7 +99,11 @@ Future<Map<String, int>> _ldbRunJournaledImport(ImportRun run, void Function(Imp
         'end',
         'status=ok tables=$totalTables rows=$totalRows pages=${ImportPerf.finish(perfId)} ms=${watch.elapsedMilliseconds}',
       );
-      return counts;
+      return ImportSummary(tables: counts, keysWritten: extras.keysWritten,
+          refusedPrefs: extras.refusedPrefs, needsReentry: extras.needsReentry,
+          unreadableSecrets: extras.unreadableSecrets,
+          prefsRestored: extras.prefsRestored, prefsKept: extras.prefsKept,
+          filesRestored: extras.filesRestored, interruptedAndResumed: run.resumes);
     } catch (_) {
       ImportPerf.write(
         perfId,

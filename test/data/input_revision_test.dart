@@ -161,11 +161,13 @@ final Map<String, _Fx> _fixtures = {
     (d) => _s('DELETE FROM journal WHERE date = ?', [d]),
   ),
   'wearable_records': _Fx(
-    (d) => _s('INSERT INTO raw_archive(device_id,hex,packet_type,rec_ts,'
-        'captured_at,reason) VALUES(\'fx\',?,1,?,1,\'ultrahuman_record\')',
-        ['fx-$d', _noon(d)]),
-    (d) => _s('UPDATE raw_archive SET counter = 5 WHERE hex = ?', ['fx-$d']),
-    (d) => _s('DELETE FROM raw_archive WHERE hex = ?', ['fx-$d']),
+    (d) => _s('INSERT INTO raw_archive_frames(device_id,hash,hex,packet_type,rec_ts,'
+        'captured_at,reason) VALUES(\'fx\',?,?,1,?,1,\'ultrahuman_record\')',
+        [_archiveRow({'device_id':'fx', 'hex':'fx-$d', 'packet_type':1,
+          'rec_ts':_noon(d), 'captured_at':1, 'reason':'ultrahuman_record'})['hash'],
+          'fx-$d', _noon(d)]),
+    (d) => _s('UPDATE raw_archive_frames SET counter = 5 WHERE hex = ?', ['fx-$d']),
+    (d) => _s('DELETE FROM raw_archive_frames WHERE hex = ?', ['fx-$d']),
   ),
   'wearable_source': _Fx(
     (d) => _s('INSERT INTO sync_cursor(name,value,updated_at) '
@@ -224,6 +226,13 @@ Future<Database> _open(String name) async {
 
 Future<String> _path(String name) async =>
     p.join(await databaseFactory.getDatabasesPath(), name);
+
+// Trigger behavior uses valid physical rows from the archive's one encoder.
+Map<String, Object?> _archiveRow(Map<String, Object?> row) => LocalDb.rawArchiveRow(
+    deviceId: row['device_id'] as String, hex: row['hex'] as String,
+    counter: row['counter'] as int?, packetType: row['packet_type'] as int,
+    recTs: row['rec_ts'] as int?, capturedAt: row['captured_at'] as int,
+    reason: row['reason'] as String);
 
 void main() {
   const name = 'input_revision_test.db';
@@ -317,17 +326,17 @@ void main() {
         'back to its capture time', () async {
       final db = await LocalDb.instance;
       final before = await _rev('wearable_records', _d2);
-      await db.insert('raw_archive', {
+      await db.insert('raw_archive_frames', _archiveRow({
         'device_id': 'fx', 'hex': 'colmi-a', 'packet_type': 188,
         'rec_ts': _noon(_d2), 'captured_at': _noon(_d3) * 1000,
         'reason': 'colmi_big_0x25',
-      });
+      }));
       expect(await _rev('wearable_records', _d2), greaterThan(before));
       final before3 = await _rev('wearable_records', _d3);
-      await db.insert('raw_archive', {
+      await db.insert('raw_archive_frames', _archiveRow({
         'device_id': 'fx', 'hex': 'colmi-b', 'packet_type': 188,
         'captured_at': _noon(_d3) * 1000, 'reason': 'colmi_big_0x25',
-      });
+      }));
       expect(await _rev('wearable_records', _d3), greaterThan(before3));
     });
 
@@ -339,20 +348,20 @@ void main() {
           .single;
       final before = await all();
       for (final reason in ['undecodable_rec_v20', 'colmi_cmd_0x15', 'x']) {
-        await db.insert('raw_archive', {
+        await db.insert('raw_archive_frames', _archiveRow({
           'device_id': 'fx', 'hex': 'band-$reason', 'packet_type': 47,
           'rec_ts': _noon(_d2), 'captured_at': 1, 'reason': reason,
-        });
+        }));
       }
       expect(await all(), before);
       final trig = (await db.rawQuery("SELECT sql FROM sqlite_master WHERE "
-              "type = 'trigger' AND tbl_name = 'raw_archive' "
+              "type = 'trigger' AND tbl_name = 'raw_archive_frames' "
               "AND name LIKE 'ir\\_%' ESCAPE '\\'"))
           .map((r) => r['sql'] as String);
       expect(trig, isNotEmpty);
       for (final t in trig) {
         expect(t, contains('WHEN'),
-            reason: 'a raw_archive trigger without a WHEN taxes every band row');
+            reason: 'a raw_archive_frames trigger without a WHEN taxes every band row');
       }
     });
 

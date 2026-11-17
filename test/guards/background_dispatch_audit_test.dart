@@ -124,6 +124,7 @@ void main() {
     'sample carve': 'carveSamplePartHeavy',
     'sample reconstruct': 'reconstructSamplePartsHeavy',
     'bundle decode': 'decodeDayPayloadsHeavy',
+    'generic JSON payload lane': 'decodeJsonPayloadsHeavy',
     'track learning': 'trackLearningHeavy',
   };
   // Cancellable dispatches whose closure runs inline code rather than a

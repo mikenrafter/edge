@@ -1,3 +1,17 @@
+import 'dart:math' as math;
+import 'dart:ui' show ClipOp;
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
+import '../../l10n/app_localizations.dart';
+import '../grammar.dart' show ChartFrame, GuideBox, NavBar, Pressable, ScreenTitle, Section, Surface, SubTabs;
+import '../guides/guide_target.dart';
+import '../guides/guide_accordion.dart';
+import '../guides/tree_geometry.dart';
+import '../theme.dart';
+import 'guide_plot.dart';
+import 'async_section.dart' show PendingTone;
+
 // SKELETON OVERLAY (phase 1)
 //
 // Turns the real, laid-out screen into skeleton except the guide's target,
@@ -22,21 +36,8 @@
 // The guide run draws it live; the review views (test/support/guide_view.dart)
 // draw it on demo data.
 
-import 'dart:math' as math;
-import 'dart:ui' show ClipOp;
 
-import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
-import 'package:flutter/scheduler.dart';
 
-import '../../l10n/app_localizations.dart';
-import '../grammar.dart' show ChartFrame, GuideBox, NavBar, Pressable, ScreenTitle, Section, Surface, SubTabs;
-import '../guides/guide_target.dart';
-import '../guides/guide_accordion.dart';
-import '../guides/tree_geometry.dart';
-import '../theme.dart';
-import 'guide_plot.dart';
-import 'async_section.dart' show PendingTone;
 
 enum SkeletonKind {
   /// A card rect repainted in its own surface colour ([SkeletonShape.color]).
@@ -1386,3 +1387,4 @@ class _RenderSkeleton extends RenderProxyBox {
     return super.hitTest(result, position: position);
   }
 }
+

@@ -12,6 +12,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ui2/grammar.dart' show GuideBox, Section, Surface;
 import 'package:openstrap_edge/ui2/screens/metric_detail.dart' show DayNav;
+import 'package:openstrap_edge/l10n/app_localizations.dart';
+import 'package:openstrap_edge/ui2/guides/guide_target.dart';
 import 'package:openstrap_edge/ui2/guides/guide.dart';
 import 'package:openstrap_edge/ui2/guides/guide_catalogue.dart';
 import 'package:openstrap_edge/ui2/guides/guide_run.dart';
@@ -51,15 +53,12 @@ class DeviceLikeRepo extends GuideFakeRepo {
 
 Guide _guide(String id) => kGuideCatalogue.map((e) => e.guide).firstWhere((g) => g.id == id);
 
-Future<LiveGuideApp> _start(WidgetTester t, String id, GlobalKey key) async {
-  final app = await pumpLiveGuideApp(t,
+Future<LiveGuideApp> _start(WidgetTester t, String id, GlobalKey key) async { final app = await pumpLiveGuideApp(t,
       size: _screen, devicePixelRatio: _dpr, brightness: Brightness.dark, captureKey: key, repo: DeviceLikeRepo());
-  final started = await app.runner.start(_guide(id), band: null);
-  expect(started, isA<GuideStarted>());
-  await settleLiveGuide(t, frames: 14);
-  return app;
-}
-
+  final started = await app.runner.start(_guide(id), band: null); expect(started, isA<GuideStarted>());
+  await settleLiveGuide(t, frames: 14); final overlay = _overlay(t); for (var frame = 0; frame < 100; frame++) {
+    final page = app.runner.routes.page; final step = app.runner.activeRun?.currentStep; if (page != null && step != null && overlay.revealProgress == 1 &&
+        step.target.resolve(page, AppLocalizations.of(page)!) is TargetFound) { break; } await settleLiveGuide(t, frames: 1); } return app; }
 LiveGuideOverlayState _overlay(WidgetTester t) => t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
 
 Future<void> _png(WidgetTester t, GlobalKey key, String name) async {

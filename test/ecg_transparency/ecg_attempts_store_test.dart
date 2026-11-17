@@ -18,7 +18,6 @@
 // ASSUMED API (lib/data/db.dart): ecgAttempts(id), ecgReadingsForExport(...),
 // listEcgReadings(includeSuperseded:).
 
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';

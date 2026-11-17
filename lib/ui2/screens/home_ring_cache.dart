@@ -3,15 +3,15 @@ part of 'home_screen.dart';
 // Owner: HomeRingDetailCache keeps bounded presentation snapshots. These are
 // secondary, day-specific copies: never a source for ring scores or analytics.
 class HomeRingDetailCache {
-  HomeRingDetailCache({String Function()? userKey, int limit = 32})
+  HomeRingDetailCache({String Function()? userKey, int limit = 32, HomeSnapshotStore? store})
     : userKey =
           userKey ??
           (() => Prefs.getString('install_device_id', 'local-profile')),
-      _store = HomeSnapshotStore(limit: limit);
-  static final local = HomeRingDetailCache._local();
-  HomeRingDetailCache._local()
-    : userKey = (() => Prefs.getString('install_device_id', 'local-profile')),
-      _store = HomeSnapshotStore.local;
+      _store = store ?? HomeSnapshotStore(limit: limit);
+  static final local = HomeRingDetailCache(
+    store: HomeSnapshotStore.local,
+    userKey: () => Prefs.getString('install_device_id', 'local-profile'),
+  );
   static const prefKey = HomeSnapshotStore.prefKey;
   final String Function() userKey;
   final HomeSnapshotStore _store;

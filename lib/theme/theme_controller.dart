@@ -1,3 +1,10 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../widget/widget_service.dart';
+import 'tokens.dart';
+import 'theme.dart';
+
 // Theme controller — owns the user's appearance choice (System / Light / Dark),
 // tracks the OS brightness, and resolves the two into the *effective* mode that
 // MaterialApp paints. It keeps [AppColors.active] in lockstep (set synchronously
@@ -8,13 +15,7 @@
 // "Ember on Char" from the login/signup screen onward. The choice is persisted
 // and editable later from onboarding and Profile; UI updates live on change.
 
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../widget/widget_service.dart';
-import 'tokens.dart';
-import 'theme.dart';
 
 /// What the user picked. `system` defers to the OS brightness.
 enum AppThemeChoice { system, light, dark }
@@ -130,3 +131,4 @@ class ThemeController extends ChangeNotifier {
     ));
   }
 }
+

@@ -1,3 +1,14 @@
+import 'dart:async';
+import 'dart:math';
+import 'package:openstrap_protocol/openstrap_protocol.dart'
+    show alarmRev1Payload;
+import '../sync/sync_policy.dart'
+    show
+        isPlausibleUnix,
+        kForeignHistoryQuietSeconds,
+        kForeignHistoryStallSeconds,
+        kMinPlausibleUnix;
+
 // Pure transport-layer logic for the BLE engine — NO flutter_blue_plus, NO I/O.
 // Everything here is deterministic and unit-testable without hardware:
 //   - the connection-phase state machine + its legacy string projection
@@ -8,19 +19,9 @@
 // Keeping this layer pure makes the race-prone transitions unit-testable
 // without a real WHOOP band.
 
-import 'dart:async';
-import 'dart:math';
 
 // Pure byte-layer package (zero deps, no I/O) — purity of this file holds.
-import 'package:openstrap_protocol/openstrap_protocol.dart'
-    show alarmRev1Payload;
 
-import '../sync/sync_policy.dart'
-    show
-        isPlausibleUnix,
-        kForeignHistoryQuietSeconds,
-        kForeignHistoryStallSeconds,
-        kMinPlausibleUnix;
 
 /// The explicit connection state machine. The flutter_blue_plus connection-state
 /// stream is the SOURCE OF TRUTH for connected/disconnected; this enum layers the
@@ -124,6 +125,15 @@ BleBlocker? classifyBleBlocker({String? adapterState, Object? error}) {
   }
   if (error == null) return null;
   final s = error.toString().toLowerCase();
+  // FBP's Darwin plugin uses "bluetooth must be turned on" for EVERY
+  // CBManager state other than PoweredOn, including its initial Unknown.
+  // Prefer the native state it includes over that generic wording.
+  if (s.contains('cbmanagerstateunknown') ||
+      s.contains('cbmanagerstateresetting') ||
+      s.contains('cbmanagerstatepoweredon')) {
+    return null;
+  }
+  if (s.contains('cbmanagerstateunsupported')) return BleBlocker.unsupported;
   if (s.contains('unauthorized') ||
       s.contains('permission') ||
       s.contains('not authorized') ||
@@ -186,6 +196,10 @@ enum BandCondition {
   /// Syncs complete carrying no sensor data — the band's clock has lost sync.
   clockLost,
 
+  /// The band is on a firmware that withholds all data until a WHOOP-signed
+  /// membership token is on it (edge#673), and no data is arriving.
+  firmwareLocked,
+
   connected,
   connecting,
   scanning,
@@ -242,6 +256,7 @@ BandStatus bandStatusFor({
   bool strapNeedsReboot = false,
   bool syncClockLost = false,
   int bondRefusals = 0,
+  String? bandFirmware,
 }) {
   const repairFix = "Forget the band in your phone's Bluetooth settings, then pair it again here";
   switch (blocker) {
@@ -274,12 +289,16 @@ BandStatus bandStatusFor({
   if (autoReconnectPaused) {
     return BandStatus(
       BandCondition.reconnectPaused,
-      'Reconnecting stopped',
+      'Reconnecting has been paused',
       'The band refused the pairing key $bondRefusals times in a row, so the '
-      'app stopped retrying to avoid draining both batteries on a link that '
-      'will not open. The app does not reconnect '
-      'until you act.',
-      fix: repairFix,
+          'app stopped retrying rather than pin the radio and drain both '
+          'batteries on a link that will not open. It will try again on its '
+          'own in about 30 minutes.',
+      // BondRefusalGiveUp re-arms after its cooldown, and a refusal streak is
+      // often a transient OEM stack condition, so re-pairing (and the key
+      // churn it causes) is only the fix if the pause trips again.
+      fix: 'If it pauses again, forget the band in the phone’s Bluetooth '
+          'settings, then pair it again here',
       bondRefusals: bondRefusals,
     );
   }
@@ -302,6 +321,27 @@ BandStatus bandStatusFor({
       'batch. The band cannot move on until the '
       'confirmation arrives.',
       fix: 'Reconnect the band; if it repeats tomorrow, pair it again',
+    );
+  }
+  // The same two "no data is arriving" flags, explained by the firmware
+  // instead: a charger cycle or a re-pair cannot help a band that withholds
+  // its data by design, and both flags clear once records bank again. The
+  // flags cannot tell the lock from a real strap or clock fault, so the text
+  // says "probably", never "is". It sits BELOW the quarantine check on
+  // purpose: a quarantined batch is data that DID arrive, which a locked band
+  // does not send, so that diagnosis is the more specific one.
+  if ((strapNeedsReboot || syncClockLost) &&
+      isDataLockedFirmware(bandFirmware)) {
+    return const BandStatus(
+      BandCondition.firmwareLocked,
+      'The band’s firmware is probably holding back its data',
+      'This band runs WHOOP firmware 50.43, which can connect and answer the '
+          'app but send no recordings or live heart rate until a '
+          'WHOOP-signed membership token is on it. That is one possible '
+          'reason no data is arriving. OpenStrap cannot issue that token. '
+          'Everything already saved here is safe.',
+      fix: 'If it is the firmware, nothing in the app changes it, and this '
+          'clears once the band sends recordings again',
     );
   }
   if (strapNeedsReboot) {
@@ -695,6 +735,10 @@ class TrimAckPolicy {
   /// [droppedThisBurst] — RecordGate rejects during this burst. Combined with
   ///                     `!hadDurableRows`, refuses trim so gate-only bursts
   ///                     cannot delete flash we never stored.
+  /// [droppedBelowFloorThisBurst] — of [droppedThisBurst], the ones that failed
+  ///                     the ABSOLUTE floor (`kMinPlausibleUnix`).
+  /// [gateDropArchives] — plausibility drops buffered as raw archives for the
+  ///                     commit this verdict covers.
   /// [shortfallRetry]  — the caller has budget to spend one refusal
   ///                     on this token's positive shortfall. Pass `false` on
   ///                     the PRE-commit call: this refusal must happen only
@@ -706,6 +750,8 @@ class TrimAckPolicy {
     required bool commitDurable,
     bool hadDurableRows = true,
     int droppedThisBurst = 0,
+    int droppedBelowFloorThisBurst = 0,
+    int gateDropArchives = 0,
     bool shortfallRetry = false,
   }) {
     // Order is deliberate: a stale session must be refused before anything
@@ -715,7 +761,19 @@ class TrimAckPolicy {
     if (burstDiscarded) return TrimAckVerdict.blockedDiscardedBurst;
     if (!commitDurable) return TrimAckVerdict.blockedCommitFailed;
     if (!hadDurableRows && droppedThisBurst > 0) {
-      return TrimAckVerdict.blockedNoDurableProgress;
+      // Records under the absolute floor never become plausible: SET_CLOCK
+      // does not re-stamp what is already in flash, and a reconnect re-offers
+      // the same chunk. Refusing them wedged the drain on the oldest chunk
+      // forever (a band revived after years flat, or an RTC that reset and
+      // logged before the next SET_CLOCK), so nothing newer was ever offloaded.
+      // Once every one of them rides the commit as a raw archive (never
+      // pruned) the bytes are durable and the trim is safe. A future-dated or
+      // session-window drop keeps the refusal — a wandering clock can recover.
+      final floorOnly = droppedBelowFloorThisBurst == droppedThisBurst;
+      final allArchived = gateDropArchives >= droppedThisBurst;
+      if (!floorOnly || !allArchived) {
+        return TrimAckVerdict.blockedNoDurableProgress;
+      }
     }
     // Last: everything above is a reason the chunk must not be trimmed at all.
     // This one is a reason to ask for it AGAIN, and only once.
@@ -1495,7 +1553,7 @@ abstract interface class AlarmBandWriter {
   Future<DateTime?> setAlarm(DateTime when);
 
   /// DISABLE_ALARM.
-  Future<void> disableAlarm();
+  Future<bool> disableAlarm();
 }
 
 /// Effect of a strap alarm-lifecycle event, for the caller to act on.
@@ -1529,13 +1587,14 @@ class AlarmConfirmation {
   bool confirmed = false; // strap emitted ALARM_SET (56)
   int? setAtMs; // wall-ms of the SET write (for the grace window)
   int? lastEventId; // most recent alarm event seen
-  int? firedAt; // wall-ms of the last EXECUTED event
+  int? firedAt;
 
   /// Record a SET write (awaiting the strap's confirmation event).
   void set(int epoch, int nowMs) {
     targetEpoch = epoch;
     confirmed = false;
     setAtMs = nowMs;
+    pendingUntilMs = null;
   }
 
   /// Record an explicit disable/clear.
@@ -1543,6 +1602,7 @@ class AlarmConfirmation {
     targetEpoch = null;
     confirmed = false;
     setAtMs = null;
+    pendingUntilMs = null;
   }
 
   /// SET written but not yet confirmed AND still inside the grace window.
@@ -1550,7 +1610,8 @@ class AlarmConfirmation {
       targetEpoch != null &&
       !confirmed &&
       setAtMs != null &&
-      nowMs - setAtMs! < graceMs;
+      (nowMs - setAtMs! < graceMs ||
+          (pendingUntilMs != null && nowMs < pendingUntilMs!));
 
   /// Set but neither confirmed nor still pending — the soft-warning state.
   bool isUnconfirmed(int nowMs) =>
@@ -1589,14 +1650,33 @@ class AlarmConfirmation {
   /// 56 and 59 have to come after this arm's SET write, and a fire can't
   /// predate the wake time it fires for (or, with nothing armed, now). Null or an unset-RTC value can't be
   /// told apart and is taken as current.
-  AlarmEffect? onEvent(int id, int nowMs, {int? tsSec}) {
+  ///
+  /// [rawTsSec] is the strap's stamp before that mapping, used only to key
+  /// the fired notification. [payloadEpoch] is the wake time an event-56 body
+  /// names (see [setEventEpoch]).
+  AlarmEffect? onEvent(int id, int nowMs,
+      {int? tsSec, int? rawTsSec, int? payloadEpoch}) {
     final known = tsSec != null && tsSec >= kMinPlausibleUnix;
     bool before(int? sec) =>
         known && sec != null && tsSec < sec - replaySlackSec;
     final setAtSec = setAtMs == null ? null : setAtMs! ~/ 1000;
     switch (id) {
       case kEvtSet:
-        if (before(setAtSec)) return null;
+        // A 56 names the wake time it latched. The strap queues its events
+        // while the link is busy (a stalled offload held them 30+ s), so the
+        // stamp can't tell a late genuine 56 from a replay — the epoch can.
+        // A body that names a DIFFERENT wake time belongs to another arm and
+        // never confirms this one. [payloadSlackSec] absorbs the clock-drift
+        // refresh between the arm and the event (the strap-frame time is
+        // mapped back with the drift current at delivery).
+        if (payloadEpoch != null) {
+          final t = targetEpoch;
+          if (t == null || (payloadEpoch - t).abs() > payloadSlackSec) {
+            return null;
+          }
+        } else if (before(setAtSec)) {
+          return null;
+        }
         confirmed = true;
         lastEventId = id;
         return AlarmEffect.confirmed;
@@ -1606,6 +1686,8 @@ class AlarmConfirmation {
         if (before(targetEpoch ?? nowMs ~/ 1000)) return null;
         lastEventId = id;
         firedAt = nowMs;
+        firedTsSec = known ? tsSec : null;
+        firedRawTsSec = known ? rawTsSec : null;
         return AlarmEffect.fired;
       case kEvtAppExecuted:
         // RUN_ALARM (smart wake early buzz, test buzz). The armed SET_ALARM
@@ -1625,6 +1707,73 @@ class AlarmConfirmation {
         return null;
     }
   }
+ // wall-ms of the last EXECUTED event
+  int? firedTsSec; // that event's own stamp (wall sec), null when unplaceable
+  // The strap's own stamp before the drift mapping. The mapping moves when the
+  // clock correlation does, so only this one names the same fire twice.
+  int? firedRawTsSec;
+
+  /// Wall-ms the pending state lasts until when that is later than
+  /// `setAtMs + graceMs`: a relaunch inside an offload extension restores the
+  /// extended deadline here, while `setAtMs` stays the real arm time.
+  int? pendingUntilMs;
+
+  /// How far an event-56 body's wake time may sit from the armed one and still
+  /// name it: seconds of drift, kept under the 60 s gap between two
+  /// minute-granular alarms so an adjacent-minute alarm's 56 never matches.
+  static const int payloadSlackSec = 30;
+
+  /// The wake time (unix sec, strap frame) an ALARM_SET (56) event body
+  /// carries: 4 bytes LE at offset 13 of the inner hex. Null when the body is
+  /// too short or not an event 56.
+  static int? setEventEpoch(String hex) {
+    if (hex.length < 34 || hex.substring(4, 6) != '38') return null;
+    final e = int.tryParse(
+        hex.substring(32, 34) +
+            hex.substring(30, 32) +
+            hex.substring(28, 30) +
+            hex.substring(26, 28),
+        radix: 16);
+    return e != null && e >= kMinPlausibleUnix ? e : null;
+  }
+
+  /// The wake time (unix sec, strap frame) a WHOOP 4 SET_ALARM_TIME reply
+  /// echoes: `[type][seq][0x42][req seq][result][rev=1][u32 epoch LE][u16]`.
+  /// Null when the reply is too short or not revision 1.
+  static int? replyEchoEpoch(List<int> inner) {
+    if (inner.length < 10 || inner[5] != 1) return null;
+    final e = inner[6] | inner[7] << 8 | inner[8] << 16 | inner[9] << 24;
+    return e >= kMinPlausibleUnix ? e : null;
+  }
+
+  /// How long after the band fired a 57 may arrive and still be announced as
+  /// "just fired". A phone out of range at wake time gets the event on the
+  /// next reconnect, hours later; the fire still has to be consumed (the slot
+  /// is spent) but a critical alert that bypasses quiet hours at that point is
+  /// noise about something the band already did.
+  static const int lateFireNoticeSec = 600;
+
+  /// How far ahead of the phone a drift-mapped fire stamp may sit and still
+  /// count as now: the mapping is only as good as the last clock read.
+  static const int futureFireSlackSec = 5;
+
+  /// Whether the last fire is recent enough at [nowMs] to notify about. An
+  /// unplaceable stamp can't be judged and is taken as current; one mapped
+  /// further into the future than the slack is a bad mapping, not news.
+  bool firedJustNow(int nowMs) {
+    if (firedTsSec == null) return true;
+    final age = nowMs ~/ 1000 - firedTsSec!;
+    return age >= -futureFireSlackSec && age <= lateFireNoticeSec;
+  }
+
+  /// Dedupe key for the fired notification. Keyed on the band's own stamp so
+  /// the same fire delivered twice collapses; receive time differs per
+  /// delivery and never would.
+  String get firedNoticeKey => 'alarm_fired:${firedRawTsSec != null
+      ? 'r${firedRawTsSec!}'
+      : firedTsSec != null
+          ? firedTsSec! * 1000
+          : (firedAt ?? 0)}';
 }
 
 // ── command/response correlation ────────────────────────────────────
@@ -2278,16 +2427,24 @@ enum LiveStreamStep {
 /// gen4 bundle can be half-applied). Dirty ALWAYS replays the newest desired
 /// direction before convergence, even when nothing is desired: a dirty OFF
 /// must be cleaned up, unlike a fresh one.
+///
+/// [holdImuOn] — a history offload is running on gen4. Arming the bundle
+/// mid-burst silences the strap: the burst stops, the 60 s idle watchdog
+/// aborts it and the drain restarts. Only the ON is held; the caller
+/// re-runs the reconcile when the offload ends.
 LiveStreamStep? nextLiveStreamStep({
   required LiveStreamIntent applied,
   required LiveStreamIntent desired,
   bool imuFresh = false,
   bool imuDirty = false,
   bool hrDirty = false,
+  bool holdImuOn = false,
 }) {
   final replayImu = imuDirty || (imuFresh && desired.any);
   if (desired.hr && (!applied.hr || hrDirty)) return LiveStreamStep.hrOn;
-  if (desired.imu && (!applied.imu || replayImu)) return LiveStreamStep.imuOn;
+  if (desired.imu && (!applied.imu || replayImu) && !holdImuOn) {
+    return LiveStreamStep.imuOn;
+  }
   if (!desired.imu && (applied.imu || replayImu)) return LiveStreamStep.imuOff;
   if (!desired.hr && (applied.hr || hrDirty)) return LiveStreamStep.hrOff;
   return null;
@@ -2417,4 +2574,127 @@ Future<T> withSecondaryLinkSlot<T>(
   } finally {
     releaseSecondaryLinkSlot();
   }
+}
+
+
+/// Wait past the adapter's initial/transition states before issuing a radio
+/// command. A deadline or an ended stream leaves the state unknown; neither
+/// proves that Bluetooth is off. State names keep this independent of FBP.
+Future<String> waitForBleAdapterState(
+  Stream<String> states, {
+  required Duration timeout,
+}) async {
+  final result = Completer<String>();
+  final sub = states.listen((state) {
+    if (state != 'unknown' && state != 'turningOn' && !result.isCompleted) {
+      result.complete(state);
+    }
+  }, onError: (Object error, StackTrace stack) {
+    if (!result.isCompleted) result.completeError(error, stack);
+  }, onDone: () {
+    if (!result.isCompleted) result.complete('unknown');
+  });
+  final deadline = Timer(timeout, () {
+    if (!result.isCompleted) result.complete('unknown');
+  });
+  try {
+    return await result.future;
+  } finally {
+    deadline.cancel();
+    await sub.cancel();
+  }
+}
+
+/// True when a GATT error [code] means the band will not accept the phone's
+/// encryption key: insufficient authentication (5), authorization (8) or
+/// encryption (15), or an auth failure (137). On iOS there is no explicit bond
+/// step, so a stale or rejected key only ever shows up here, on the first
+/// notification registration.
+bool isLinkAuthRefusal(int? code) =>
+    code == 5 || code == 8 || code == 15 || code == 137;
+
+/// True for WHOOP 5.0 / MG firmware 50.43.x, which keeps answering commands
+/// but sends no history or live data until a WHOOP-signed membership token is
+/// on the band (edge#673; reported on 50.43.1.0 and 50.43.2.0).
+/// [firmware] is `Gen5HelloInfo.firmwareVersion` (`major.minor.build.x`).
+// ponytail: a version prefix, not a probe for the token itself. A later
+// firmware with the same lock needs adding here; one that lifts it on 50.43
+// still only shows this while the data flags below are tripped.
+bool isDataLockedFirmware(String? firmware) =>
+    firmware != null && firmware.startsWith('50.43.');
+
+/// Firmware version from a revision-3 gen5 HELLO body (hex): bytes 96..99 are
+/// major, minor, patch, build. Null when the body is too short. Diagnostics
+/// only — the revision-1 map stays the only one anything is published from.
+String? gen5HelloRev3Firmware(String bodyHex) {
+  if (bodyHex.length < 200) return null;
+  int b(int i) => int.parse(bodyHex.substring(i * 2, i * 2 + 2), radix: 16);
+  return '${b(96)}.${b(97)}.${b(98)}.${b(99)}';
+}
+
+/// Per-session inbound notification tally plus an optional capped capture
+/// window, so a log can say what (if anything) arrived after a request the
+/// band accepted but never acted on. Pure bookkeeping, no behaviour.
+class NotifyDiag {
+  static const int maxChunks = 40;
+  static const int prefixBytes = 12;
+
+  final Map<String, int> chunks = {};
+  final Map<String, int> bytes = {};
+  bool _windowOpen = false;
+  final List<String> _windowChunks = [];
+  final Map<String, int> _windowFrames = {};
+  int _windowDropped = 0;
+
+  /// Start (or restart) the capture window.
+  void openWindow() {
+    _windowOpen = true;
+    _windowChunks.clear();
+    _windowFrames.clear();
+    _windowDropped = 0;
+  }
+
+  void chunk(String role, List<int> data) {
+    chunks[role] = (chunks[role] ?? 0) + 1;
+    bytes[role] = (bytes[role] ?? 0) + data.length;
+    if (!_windowOpen) return;
+    if (_windowChunks.length >= maxChunks) {
+      _windowDropped++;
+      return;
+    }
+    final n = data.length < prefixBytes ? data.length : prefixBytes;
+    final hex = [
+      for (final x in data.take(n)) x.toRadixString(16).padLeft(2, '0'),
+    ].join();
+    _windowChunks.add('$role/${data.length}B:$hex');
+  }
+
+  /// One reassembled frame (or reject) seen inside the window. [kind] is the
+  /// packet type for a decodable frame, or `rev?` / `crc` for a reject.
+  void frame(String role, String kind) {
+    if (!_windowOpen) return;
+    final k = '$role:$kind';
+    _windowFrames[k] = (_windowFrames[k] ?? 0) + 1;
+  }
+
+  String totals() => chunks.isEmpty
+      ? 'none'
+      : [for (final r in chunks.keys) '$r=${chunks[r]}/${bytes[r]}B'].join(' ');
+
+  /// Close the window and render it as one line.
+  String closeWindow() {
+    _windowOpen = false;
+    final frames = _windowFrames.isEmpty
+        ? 'none'
+        : [for (final e in _windowFrames.entries) '${e.key}=${e.value}']
+            .join(' ');
+    final list = _windowChunks.isEmpty ? 'none' : _windowChunks.join(' ');
+    final more = _windowDropped > 0 ? ' (+$_windowDropped more)' : '';
+    return 'frames[$frames] chunks[$list]$more';
+  }
+}
+
+/// Per-write arm acknowledgement; an echo is evidence from this write only.
+abstract interface class AlarmEchoWriter {
+  Future<({DateTime? armed, bool echoed})> armAlarm(DateTime when);
 }

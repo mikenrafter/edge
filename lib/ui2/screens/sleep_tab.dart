@@ -1,3 +1,8 @@
+import 'package:flutter/material.dart';
+import '../ui2.dart';
+import '../guides/help_entry.dart';
+import 'sleep_detail.dart';
+
 // The Sleep tab.
 //
 // Sleep used to be spread over the Home ring, a Health row that opened a
@@ -6,10 +11,6 @@
 // with those pieces under the night. The screens are the same ones; only
 // where they live changed.
 
-import 'package:flutter/material.dart';
-import '../ui2.dart';
-import '../guides/help_entry.dart';
-import 'sleep_detail.dart';
 
 class SleepTab extends StatelessWidget {
   const SleepTab({super.key});
@@ -21,3 +22,4 @@ class SleepTab extends StatelessWidget {
       footer: const [HelpEntry(topic: GuideTopic.sleep)]);
   }
 }
+

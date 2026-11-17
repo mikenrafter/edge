@@ -52,6 +52,8 @@ const _t0 = 1790000000; // 2026-09-21, an arbitrary fixed second
 /// Stamped with DateTime.now(), not LocalDb.nowMs: differs between any two
 /// runs, so the equivalence dump leaves it out.
 const _wallClockColumns = {
+  // A file-local random cache identity is intentionally regenerated on restore.
+  'store_identity': {'id'},
   'compute_freshness': {'updated_at'},
   'activity_review_meta': {'activated_at', 'alert_after_ts'},
   // The run's own bookkeeping (D38): when it started, its saved copy's mtime,
@@ -397,8 +399,8 @@ void main() {
 
       test('a table the export lacks is skipped; an unknown column is dropped',
           () async {
-        expect(counts.containsKey('band_battery'), isFalse);
-        expect(counts.containsKey('raw_archive'), isFalse);
+        expect(counts['band_battery'] ?? 0, 0);
+        expect(counts['raw_archive'] ?? 0, 0);
         final ev = await db.rawQuery('SELECT * FROM events');
         expect(ev, hasLength(1));
         expect(ev.single.containsKey('extra'), isFalse);

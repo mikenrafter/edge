@@ -24,7 +24,7 @@ import 'moment_review_queue.dart' show isRangeChoice;
 
 /// Null when [start]..[end] can be written as a [choice] range.
 ///
-/// Nap: end after start, 5 min..6 h (`manualNapWindowIsValid`), not in the
+/// Nap: end after start, 5 min..3 h (`manualNapWindowIsValid`), not in the
 /// future (an overlap with [existingNaps] is allowed: it extends). Workout: `validateManualWindow`
 /// against [existingSpans]. Only Nap and Workout are range choices
 /// (ArgumentError otherwise). Pure; wall-clock DateTimes in, epoch seconds out.

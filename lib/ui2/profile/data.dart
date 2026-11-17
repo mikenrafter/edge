@@ -1,3 +1,6 @@
+import '../../data/export_retention.dart';
+import '../../compute/derivation_engine.dart' show CompactStep;
+import '../../data/substrate_archive.dart' show SubstrateArchivePolicy;
 // Your data — getting it out, keeping a copy, bringing one back.
 //
 // Everything here was already written, tested, and reachable from nothing.
@@ -75,6 +78,14 @@ class _DataScreenState extends State<DataScreen> {
   /// AppState.importProgress already shows.
   bool _noteIsImport = false;
   ImportOutcome? _outcome;
+  SubstrateArchivePolicy? _archivePolicy;
+  int? _dbBytes;
+  @override
+  void initState() {
+    super.initState();
+    _loadStorage();
+  }
+
 
   void _say(String s, {bool failed = false, bool isImport = false}) {
     if (mounted) {
@@ -191,7 +202,7 @@ class _DataScreenState extends State<DataScreen> {
     final l = AppLocalizations.of(context);
     final origin = shareOrigin(context);
     // VACUUM INTO — a transactionally consistent snapshot, not a file copy.
-    final path = await LocalDb.exportCopy();
+    final path = await _manualExportCopy();
     await Share.shareXFiles([XFile(path)],
         subject: 'OpenStrap database', sharePositionOrigin: origin);
     return (
@@ -206,13 +217,21 @@ class _DataScreenState extends State<DataScreen> {
   /// The plaintext intermediate is deleted whatever happens: an encrypted
   /// backup that leaves a readable copy of the whole health record in the
   /// share directory has encrypted nothing.
+  Future<String> _manualExportCopy() async {
+    final dir = await sharedExportDir();
+    final path = await LocalDb.exportCopy(into: dir);
+    await pruneSharedExports(dir, current: path);
+    await pruneLegacyRootExports(dir.parent);
+    return path;
+  }
+
   Future<_Note> _exportEncrypted() async {
     final pass = await askBackupPassphrase(context, creating: true);
     if (pass == null) return ('', false); // cancelled
     if (!mounted) return ('', false);
     final l = AppLocalizations.of(context);
     final origin = shareOrigin(context);
-    final plain = await LocalDb.exportCopy();
+    final plain = await _manualExportCopy();
     final dest = '$plain.osbk';
     try {
       // 210 000 PBKDF2 rounds is seconds of solid CPU. On the UI isolate that
@@ -252,7 +271,10 @@ class _DataScreenState extends State<DataScreen> {
             r['date'] as String: (r['value'] as num).round(),
         };
     final before = await recovery();
-    final n = await app.reanalyzeAll();
+    final outcome = await app.reanalyzeAll();
+    if (outcome.error != null) return (outcome.error!, true);
+    final n = outcome.days;
+    final failedDays = outcome.failedDays;
     final after = await recovery();
     // Which days' recovery a re-analysis actually moved, newest first.
     // ponytail: first 5 only; the note is a heads-up, not an audit log.
@@ -265,13 +287,18 @@ class _DataScreenState extends State<DataScreen> {
       final label = d == null ? c.day : ml.formatShortMonthDay(d);
       return '$label ${c.from} → ${c.to}';
     }).join(', ');
-    final done =
+    var done =
         l?.dataDaysReanalyzed(n) ?? '$n day${n == 1 ? '' : 's'} re-analyzed.';
+    if (failedDays > 0) {
+      final notDone = l?.dataReanalyzeDaysFailed(failedDays) ??
+          '$failedDays days could not be analyzed.';
+      done = '$done $notDone';
+    }
     return (
       changed.isEmpty
           ? done
           : '$done ${l?.dataRecoveryChanged(changed) ?? 'Recovery changed: $changed'}',
-      false
+      failedDays > 0
     );
   }
 
@@ -403,8 +430,107 @@ class _DataScreenState extends State<DataScreen> {
       onPhoneImport: () => goto(c, const PhoneImport()),
       onReanalyze: () => _run(l?.loadingReanalyze ?? 'Recalculating every day',
           () => _reanalyze(app)),
+      archiveKeepDays: _archivePolicy?.keepDays,
+      databaseBytes: _dbBytes,
+      onArchiveWindow: () => _run(l?.dataKeepHistory ?? 'Keep raw readings',
+          () => _stepArchiveWindow(app)),
+      onCompact: () => _run(l?.dataCompact ?? 'Compact database', () => _compact(app)),
       onReset: () => confirmResetAllData(c, app),
     );
+  }
+
+
+
+  Future<void> _loadStorage() async {
+    try {
+      final policy = await LocalDb.substrateArchivePolicy();
+      final bytes = await LocalDb.databaseBytesOnDisk();
+      if (mounted) {
+        setState(() {
+          _archivePolicy = policy;
+          _dbBytes = bytes;
+        });
+      }
+    } catch (_) {
+      // The row stays blank; tapping it re-reads.
+    }
+  }
+
+
+  /// Step to the next archive window. A shorter one deletes archived days
+  /// for good, so it asks first.
+  Future<_Note> _stepArchiveWindow(AppState app) async {
+    final l = AppLocalizations.of(context);
+    final current = _archivePolicy ?? await LocalDb.substrateArchivePolicy();
+    final next = current.next;
+    if (current.keepsLongerThan(next)) {
+      if (!mounted) return ('', false);
+      final window = _windowLabel(l, next.keepDays);
+      final ok = await confirmRemove(
+        context,
+        title: l?.dataKeepShorterTitle(window) ??
+            'Keep $window of raw readings?',
+        body: l?.dataKeepShorterBody(window) ??
+            'Readings more than about $window before your latest one are '
+                'deleted now. Those days keep their scores, but '
+                "can't be re-scored after future updates.",
+        remove: l?.dataKeepShorterConfirm ?? 'Delete older readings',
+        keep: l?.dataKeepShorterCancel ?? 'Keep them',
+      );
+      if (!ok) return ('', false);
+    }
+    await app.setSubstrateArchiveWindow(next);
+    if (mounted) setState(() => _archivePolicy = next);
+    return ('', false);
+  }
+
+
+  Future<_Note> _compact(AppState app) async {
+    final l = AppLocalizations.of(context);
+    try {
+      final r = await app.compactDatabase(onStep: (step) {
+        if (!mounted) return;
+        setState(() => _busyStatus = switch (step) {
+              CompactStep.prune =>
+                l?.dataCompactPruning ?? 'Clearing old data…',
+              CompactStep.vacuum => l?.dataCompactVacuuming ?? 'Compacting…',
+            });
+      });
+      if (r == null) {
+        return (
+          l?.dataCompactBusy ??
+              "A sync or a live session is running. Try again once it's done.",
+          true
+        );
+      }
+      int mb(int bytes) => (bytes / (1 << 20)).round();
+      if (mounted) setState(() => _dbBytes = r.afterBytes);
+      if (!r.vacuumed) {
+        final free = r.freeBytes;
+        return free == null
+            ? (
+                l?.dataCompactUnknownSpace ??
+                    "Old data was cleared, but the phone's free space couldn't "
+                        'be read, so the file was not compacted.',
+                true
+              )
+            : (
+                l?.dataCompactNoSpace(mb(r.neededBytes), mb(free)) ??
+                    'Old data was cleared, but compacting needs '
+                        '${mb(r.neededBytes)} MB free and the phone has '
+                        '${mb(free)} MB.',
+                true
+              );
+      }
+      return (
+        l?.dataCompactFreed(mb(r.freedBytes), mb(r.afterBytes)) ??
+            'Freed ${mb(r.freedBytes)} MB. The database is now '
+                '${mb(r.afterBytes)} MB.',
+        false
+      );
+    } finally {
+      if (mounted) setState(() => _busyStatus = null);
+    }
   }
 }
 
@@ -443,9 +569,16 @@ class DataScreenView extends StatelessWidget {
     this.onPhoneImport,
     this.onReanalyze,
     this.onReset,
+    this.archiveKeepDays,
+    this.databaseBytes,
+    this.onArchiveWindow,
+    this.onCompact,
   });
 
   final Widget? rebuiltCard;
+  final int? archiveKeepDays, databaseBytes;
+  final VoidCallback? onArchiveWindow, onCompact;
+
 
   /// What the running action is doing, under the spinner while [busy].
   final String? busyStatus;
@@ -622,6 +755,29 @@ class DataScreenView extends StatelessWidget {
                               'body temperature',
                       onTap: busy ? null : onPhoneImport),
                 ]),
+                SettingsAccordion(l?.dataStorageGroup ?? 'Storage',
+                    id: 'data_storage', children: [
+                  SetRow(LucideIcons.archive, C.teal,
+                      l?.dataKeepHistory ?? 'Keep raw readings',
+                      sub: l?.dataKeepHistorySub ??
+                          "A compressed copy of each day's second-by-second "
+                              'readings, kept after the app clears them. A day '
+                              "older than this keeps its scores but can't be "
+                              're-scored when scoring improves', 
+                      value: archiveKeepDays == null ? '' :
+                          _windowLabel(l, archiveKeepDays!),
+                      onTap: busy ? null : onArchiveWindow),
+                  SetRow(LucideIcons.minimize2, C.blue,
+                      l?.dataCompact ?? 'Compact database',
+                      sub: l?.dataCompactSub ??
+                          'Clears what the settings above no longer keep, then '
+                              'gives the unused space back to the phone. Needs '
+                              "free space of about twice the database's size",
+                      value: databaseBytes == null ? '' :
+                          (l?.dataSizeMb((databaseBytes! / (1 << 20)).round()) ??
+                              '${(databaseBytes! / (1 << 20)).round()} MB'),
+                      onTap: busy ? null : onCompact),
+                ]),
                 SettingsAccordion('Advanced',
                     id: 'data_advanced',
                     children: [
@@ -769,6 +925,21 @@ Future<void> confirmResetAllData(BuildContext c, AppState app) async {
               'Some files or folder access may remain.'),
     ));
   }
+  if (app.resetLeftChatGpt && messenger.mounted) {
+    messenger.showSnackBar(SnackBar(
+      content: Text(l?.settingsResetChatGptWarning ??
+          'App data deleted, but the ChatGPT sign-in may not be fully removed. '
+              'Disconnect OpenStrap in ChatGPT settings to make sure its access is revoked. '
+              'Deleting everything again only retries removing what is left on this device.'),
+    ));
+  }
+  if (app.resetLeftPairingKeys && messenger.mounted) {
+    messenger.showSnackBar(SnackBar(
+      content: Text(l?.settingsResetPairingKeyWarning ??
+          'App data deleted, but a sensor pairing key could not be removed '
+              'from secure storage. Delete everything again to retry.'),
+    ));
+  }
 }
 
 /// Off → Daily → Weekly → Off. Three states cycle in a row; a picker for three
@@ -780,3 +951,11 @@ String _stamp(DateTime t) {
   String two(int v) => v.toString().padLeft(2, '0');
   return '${t.year}-${two(t.month)}-${two(t.day)} ${formatClockOf(t)}';
 }
+
+
+/// The archive window as the row shows it.
+String _windowLabel(AppLocalizations? l, int keepDays) => keepDays < 0
+    ? (l?.dataKeepForever ?? 'Forever')
+    : keepDays == 365
+        ? (l?.dataKeepYear ?? '1 year')
+        : (l?.dataKeepDays(keepDays) ?? '$keepDays days');

@@ -1,8 +1,8 @@
 // GUIDE RUNNER (live mode): starts, owns and ends the one [GuideRun] of the
 // app, and does the navigation around it.
 //
-//  * start: retain a screen matching a guide step, or bring the app to its
-//    first step (pop unrelated routes, then select [Guide.start] with the shell API:
+//  * start: bring the app to the guide's start (pop every route above the
+//    shell's root route, then select [Guide.start] with the SHELL'S OWN API:
 //    the tab selection AppShell already follows, or the Settings screen), then
 //    put a [LiveGuideOverlay] into the ROOT Overlay of the app's Navigator,
 //    above every route.
@@ -17,7 +17,8 @@
 // [live_guide_integration_test 'Exit removes the overlay'].
 // CLAIM(run-one-at-a-time): starting a run while another is active ends the
 // first; there is never more than one overlay entry
-// [live_guide_runner_test 'a second start replaces the first'].
+// [live_guide_runner_test 'a second start replaces the first';
+// guide_exit_reentrancy_test].
 //
 // Mating parts: the app shell registers a [GuideShellLink] (attachShell) when
 // it mounts and removes it when it goes; Help (help_screen.dart) and, later,
@@ -94,6 +95,10 @@ class GuideRunner extends ChangeNotifier {
   GuideRun? _run;
   GuideShellLink? _shell;
   OverlayEntry? _entry;
+  /// Bumped by every [exit] (and so by every [start]). A [start] that awaits
+  /// Back keeps the value it began with and stops once it is no longer current,
+  /// so two overlapping starts never leave two overlays on the stack.
+  int _startToken = 0;
   Future<void>? _backToGuideFuture;
   GuideRun? _backToGuideRun;
   GuideRun? get activeRun => _run;
@@ -121,16 +126,21 @@ class GuideRunner extends ChangeNotifier {
     if (choice is GuideNoVariant) return GuideStartNoVariant(choice);
     final nav = navigatorKey.currentState;
     if (_shell == null || nav == null) return const GuideStartNoShell();
+    // Exit listeners may synchronously start another run. That newer request
+    // owns installation, just as it does across an awaited Back decision.
+    final token = _startToken + 1;
     exit();
+    if (token != _startToken) return const GuideStartBlocked();
     final shell = _shell;
     final variant = (choice as GuideVariantFound).variant;
-
     while (nav.canPop() && !_matchesCurrentScreen(variant)) {
       final before = routes.topRoute;
       // maybePop invokes the screen's own refusal/cleanup handler. A handled
       // Back can return true without removing the route (PopScope, capture).
       final handled = await nav.maybePop();
       if (!nav.mounted || !identical(shell, _shell)) return const GuideStartNoShell();
+      // A newer start or an exit took over while Back was being handled.
+      if (token != _startToken) return const GuideStartBlocked();
       if (!handled || before?.isActive != false || identical(before, routes.topRoute)) return const GuideStartBlocked();
     }
     final inPlace = _matchesCurrentScreen(variant);
@@ -345,14 +355,17 @@ class GuideRunner extends ChangeNotifier {
   /// Ends the active run (no-op without one).
   /// ↳ CLAIM(run-exit-in-place)
   void exit() {
+    _startToken++;
     final run = _run;
     if (run == null) return;
+    final entry = _entry;
     _run = null;
-    run.removeListener(_runChanged);
-    run.exit();
-    _entry?.remove();
-    _entry?.dispose();
     _entry = null;
+    run.removeListener(_runChanged);
+    // Release ownership before notifying: a listener may install a new entry.
+    run.exit();
+    entry?.remove();
+    entry?.dispose();
     notifyListeners();
   }
 

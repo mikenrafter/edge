@@ -1,3 +1,15 @@
+import 'dart:math' as math;
+import 'package:collection/collection.dart';
+import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:provider/provider.dart';
+import '../state/app_state.dart';
+import 'profile/devices.dart'
+    show HealthSource, deviceIdOf, liveSources, rankSources;
+import 'ui2.dart';
+import './skeleton/guide_plot.dart';
+
 // The heart rate arriving RIGHT NOW.
 //
 // Live HR is not a workout-only quantity, but the stream is not free either:
@@ -26,19 +38,8 @@
 //   · It repaints ALONE. A 1 Hz stream hung off a `watch` in a parent would
 //     rebuild that whole tree once a second for the life of the connection.
 
-import 'dart:math' as math;
 
-import 'package:collection/collection.dart';
-import 'package:flutter/material.dart';
-import '../l10n/app_localizations.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:provider/provider.dart';
 
-import '../state/app_state.dart';
-import 'profile/devices.dart'
-    show HealthSource, deviceIdOf, liveSources, rankSources;
-import 'ui2.dart';
-import './skeleton/guide_plot.dart';
 
 /// The tap's cycling rule: the next streaming device after [current] in
 /// [ranked]'s order, wrapping — a two-device tap is a toggle, a three-device
@@ -83,8 +84,9 @@ class LiveHrCard extends StatelessWidget {
       'The app connects when you open it with the band in range. '
       'Live beats need that connection.';
 
-  static String _caption(String? saved, int n, int lo, int hi) =>
-      'The last $n readings, $lo to $hi bpm. ${saved ?? _notSavedEn}';
+  static String _caption(AppLocalizations? l, int n, int lo, int hi) =>
+      l?.liveHrTraceCaption(n, lo, hi) ??
+      'The last $n readings, $lo to $hi bpm. $_notSavedEn';
   static const _notSavedEn = 'The live stream is not saved.';
 
   // Reserve the whole capped stream before the first beat, so neither a new
@@ -131,15 +133,17 @@ class LiveHrCard extends StatelessWidget {
     final live = [for (final v in trace) v.toDouble()];
     final saved = l?.liveHrStreamNotSaved;
     final notSaved = saved ?? _notSavedEn;
-    final why = _absenceMessage(paired: paired, connected: connected);
+    final fixUnpaired = l?.liveHrNotPairedFix ?? _fixUnpaired;
+    final fixDisconnected = l?.liveHrNotConnectedFix ?? _fixDisconnected;
+    final why = _absenceMessage(l, paired: paired, connected: connected);
     final waiting = hr != null || (paired && connected);
     final caption = hasChart
-        ? _caption(saved, trace.length, trace.reduce(math.min), trace.reduce(math.max))
+        ? _caption(l, trace.length, trace.reduce(math.min), trace.reduce(math.max))
         : hr != null || waiting
             ? notSaved
             : !paired
-                ? _fixUnpaired
-                : _fixDisconnected;
+                ? fixUnpaired
+                : fixDisconnected;
     final waitingLabel =
         l?.liveHrWaitingSemantics ?? 'Live heart rate chart, waiting for live data';
     // Same cells as the chart's own key row, with no value in them.
@@ -153,9 +157,9 @@ class LiveHrCard extends StatelessWidget {
 
     final bodyStyle = F.body.copyWith(color: p.ink2);
     final reasons = {
-      _absenceMessage(paired: false, connected: false),
-      _absenceMessage(paired: true, connected: false),
-      _absenceMessage(paired: true, connected: true),
+      _absenceMessage(l, paired: false, connected: false),
+      _absenceMessage(l, paired: true, connected: false),
+      _absenceMessage(l, paired: true, connected: true),
     }.toList();
 
     return Surface(
@@ -300,10 +304,10 @@ class LiveHrCard extends StatelessWidget {
             style: F.over.copyWith(color: p.ink3),
             // Every text this slot can hold, so no state is taller.
             candidates: [
-              _caption(saved, 90, 100, 200),
+              _caption(l, 90, 100, 200),
               notSaved,
-              _fixUnpaired,
-              _fixDisconnected,
+              fixUnpaired,
+              fixDisconnected,
             ],
           ),
         ],
@@ -311,12 +315,13 @@ class LiveHrCard extends StatelessWidget {
     );
   }
 
-  String _absenceMessage({required bool paired, required bool connected}) =>
+  String _absenceMessage(AppLocalizations? l, {required bool paired, required bool connected}) =>
       !paired
-          ? 'No band is paired.'
+          ? (l?.liveHrNotPairedWhy ?? 'No band is paired.')
           : !connected
-              ? 'Your band is not connected.'
-              : 'No beat in the last ${AppState.liveHrMaxAge.inSeconds} seconds.';
+              ? (l?.liveHrNotConnectedWhy ?? 'Your band is not connected.')
+              : (l?.liveHrNoRecentBeatWhy(AppState.liveHrMaxAge.inSeconds) ??
+                  'No beat in the last ${AppState.liveHrMaxAge.inSeconds} seconds.');
 }
 
 /// Draws a candidate text so that it takes up its space but cannot be seen,
@@ -392,3 +397,4 @@ class _LiveHrSkeleton extends CustomPainter implements GuideDecoration {
   @override
   bool shouldRepaint(_LiveHrSkeleton old) => frame != old.frame || axis != old.axis;
 }
+

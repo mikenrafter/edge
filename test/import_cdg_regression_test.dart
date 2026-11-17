@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/compute/day_checkpoint_policy.dart';
 import 'support/frozen_day_result_fixtures.dart';
 
 void main() {
@@ -15,7 +16,7 @@ void main() {
     await db.insert('day_checkpoint', {
       'day_id': '2026-07-01',
       'algo_version': 104,
-      'fmt': 1,
+      'fmt': kDayCheckpointFmt,
       'ctx_sig': 'sig',
       'cp_rec_ts': 100,
       'rev_vec': state,

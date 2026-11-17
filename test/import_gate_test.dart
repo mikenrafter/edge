@@ -3,7 +3,6 @@
 // One owner (ImportGate), a sealed answer, every sync entry point consulting
 // it, a visible "waiting for the import" state, and an import that never
 // starts under a drain that is mid-chunk (commit-before-ACK, AGENTS 3.1).
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';

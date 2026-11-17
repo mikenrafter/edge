@@ -8,6 +8,7 @@ import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_state.dart';
+import 'package:openstrap_edge/sync/sync_policy.dart' show BondRefusalGiveUp;
 
 void main() {
   group('ReconnectPolicy backoff schedule', () {
@@ -587,6 +588,30 @@ void main() {
           BleBlocker.unsupported);
     });
 
+    test('CoreBluetooth startup is not a powered-off radio', () {
+      for (final state in ['Unknown', 'Resetting']) {
+        expect(
+          classifyBleBlocker(error: Exception('PlatformException(connect, '
+              'bluetooth must be turned on. (CBManagerState$state), null, null)')),
+          isNull,
+        );
+      }
+    });
+
+    test('CoreBluetooth reports its real blocker despite generic off wording', () {
+      for (final entry in {
+        'PoweredOff': BleBlocker.adapterOff,
+        'Unauthorized': BleBlocker.permissionDenied,
+        'Unsupported': BleBlocker.unsupported,
+      }.entries) {
+        expect(
+          classifyBleBlocker(error: Exception('PlatformException(connect, '
+              'bluetooth must be turned on. (CBManagerState${entry.key}), null, null)')),
+          entry.value,
+        );
+      }
+    });
+
     test('a usable stack and an ordinary band failure classify as null', () {
       expect(classifyBleBlocker(adapterState: 'on'), isNull);
       expect(classifyBleBlocker(adapterState: 'unknown'), isNull);
@@ -613,6 +638,10 @@ void main() {
         bandStatusFor(connection: 'connected', syncChunkQuarantined: true),
         bandStatusFor(connection: 'connected', strapNeedsReboot: true),
         bandStatusFor(connection: 'connected', syncClockLost: true),
+        bandStatusFor(
+            connection: 'connected',
+            strapNeedsReboot: true,
+            bandFirmware: '50.43.2.0'),
       ];
       for (final s in faults) {
         expect(s.isFault, isTrue, reason: '${s.condition}');
@@ -659,6 +688,20 @@ void main() {
       );
     });
 
+    test('the pause copy says it lifts on its own after the cooldown', () {
+      // BondRefusalGiveUp re-arms auto-reconnect after its cooldown, so the
+      // card must not claim nothing happens until the user acts, and must not
+      // push a forget-and-re-pair for a refusal streak that clears itself.
+      final s = bandStatusFor(
+          connection: 'disconnected',
+          autoReconnectPaused: true,
+          bondRefusals: 5);
+      final minutes = BondRefusalGiveUp().cooldown.inMinutes;
+      expect(s.reason, contains('$minutes minutes'));
+      expect(s.reason.toLowerCase(), isNot(contains('until you act')));
+      expect(s.fix, startsWith('If it pauses again'));
+    });
+
     test('a data-flow flag outranks the plain link state', () {
       // "Not connected" is true and useless next to "the clock is lost".
       expect(
@@ -671,6 +714,93 @@ void main() {
             .condition,
         BandCondition.syncStuck,
       );
+    });
+
+    test('a 50.43 band that sends nothing is named by its firmware (#673)', () {
+      for (final flags in [
+        (stuck: true, clock: false),
+        (stuck: false, clock: true),
+      ]) {
+        final s = bandStatusFor(
+          connection: 'connected',
+          strapNeedsReboot: flags.stuck,
+          syncClockLost: flags.clock,
+          bandFirmware: '50.43.2.0',
+        );
+        expect(s.condition, BandCondition.firmwareLocked, reason: '$flags');
+        expect(s.isFault, isTrue);
+        expect(s.reason, contains('50.43'));
+        // This card replaces the charge / re-pair advice, so the fix line
+        // says only that the app cannot change a firmware lock and that the
+        // status clears once recordings arrive. It neither recommends nor
+        // dismisses charging or re-pairing.
+        expect(s.fix, contains('nothing in the app changes it'));
+        expect(s.fix, contains('clears once the band sends recordings again'));
+        final fix = s.fix!.toLowerCase();
+        expect(fix, isNot(contains('charg')));
+        expect(fix, isNot(contains('pair')));
+        expect(fix, isNot(contains('worth a try')));
+        expect(fix, isNot(contains('will not help')));
+        expect(s.title, contains('probably'));
+      }
+    });
+
+    test('the firmware lock card calls the token a possible reason, not the likely one',
+        () {
+      // The app does not probe for a membership token and nothing here was
+      // checked against hardware, so the card must not rank the lock as the
+      // most likely cause of missing data.
+      final s = bandStatusFor(
+        connection: 'connected',
+        strapNeedsReboot: true,
+        bandFirmware: '50.43.2.0',
+      );
+      expect(s.reason, contains('possible'));
+      expect(s.reason.toLowerCase(), isNot(contains('most likely')));
+    });
+
+    test('a quarantined batch on 50.43 stays syncStuck, not the firmware lock',
+        () {
+      // A quarantined batch is data that DID arrive, which a locked band does
+      // not send, so the transfer diagnosis wins over the firmware one.
+      for (final flags in [
+        (stuck: true, clock: false),
+        (stuck: false, clock: true),
+      ]) {
+        expect(
+          bandStatusFor(
+            connection: 'connected',
+            syncChunkQuarantined: true,
+            strapNeedsReboot: flags.stuck,
+            syncClockLost: flags.clock,
+            bandFirmware: '50.43.2.0',
+          ).condition,
+          BandCondition.syncStuck,
+          reason: '$flags',
+        );
+      }
+    });
+
+    test('firmware alone is not a fault, and other firmware keeps its advice',
+        () {
+      // A token-unlocked 50.43 band that is syncing shows as connected.
+      expect(
+        bandStatusFor(connection: 'connected', bandFirmware: '50.43.1.0')
+            .condition,
+        BandCondition.connected,
+      );
+      expect(
+        bandStatusFor(
+          connection: 'connected',
+          strapNeedsReboot: true,
+          bandFirmware: '50.38.1.0',
+        ).condition,
+        BandCondition.strapUnresponsive,
+      );
+      expect(isDataLockedFirmware(null), isFalse);
+      expect(isDataLockedFirmware('50.43.1.0'), isTrue);
+      expect(isDataLockedFirmware('50.430.0.0'), isFalse);
+      expect(isDataLockedFirmware('5.43.0.0'), isFalse);
     });
 
     test('the ordinary link states are not faults', () {
@@ -936,5 +1066,14 @@ void main() {
         ..ended();
       expect(w.isLive(101), isFalse);
     });
+  });
+
+  test('isLinkAuthRefusal: only the key-refusal GATT codes', () {
+    for (final c in [5, 8, 15, 137]) {
+      expect(isLinkAuthRefusal(c), isTrue, reason: '$c');
+    }
+    for (final c in [null, 0, 6, 14, 133]) {
+      expect(isLinkAuthRefusal(c), isFalse, reason: '$c');
+    }
   });
 }

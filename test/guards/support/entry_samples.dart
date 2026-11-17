@@ -1,3 +1,12 @@
+import '../../support/incremental_day_fixture.dart';
+import 'package:openstrap_edge/compute/night_day_worker.dart';
+import 'package:openstrap_edge/compute/night_checkpoint.dart';
+import 'package:openstrap_edge/compute/night_rr_state.dart';
+import 'package:openstrap_edge/compute/ed2b_stream_diagnostics.dart';
+import '../../support/calendar_days_fixture.dart';
+import 'package:openstrap_edge/compute/calendar_days_worker.dart';
+import '../../support/crossday_artifact_fixture.dart';
+import 'package:openstrap_edge/compute/crossday_artifact_worker.dart';
 // entry_samples.dart — one sample per registered worker entry, used by the
 // per-entry sendability and determinism tests (design 02).
 //
@@ -52,7 +61,6 @@ import 'package:openstrap_edge/wake/wake_confounders.dart';
 import 'package:openstrap_edge/wake/wake_night_context_db.dart';
 
 import '../../support/day_stream_fixture.dart';
-import '../../support/incremental_day_fixture.dart';
 import '../../support/sample_heavy_fixtures.dart';
 import 'sendability.dart';
 
@@ -268,6 +276,65 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
           r.rowsJson?.toList(),
         ],
       );
+    },
+  ),
+  'deriveNightDayHeavy': (
+    roundTrip: () async {
+      const inputs = WorkerInputs(nowEpochMs: 1794703000000, zoneId: 'UTC', localeTag: 'en');
+      final json = incrementalDay();
+      final job = NightDayInput(json, null, CalculationMode.forced,
+        NightRrState(), Ed2bStreamDiagnostics(), null, 7, 2, 125,
+        false, false, const [], json['date'] as String, 'context',
+        0, 0, Uint8List(0));
+      await expectIsolateRoundTrip(job, project: (i) => [i.json, i.revision,
+        i.generation, i.algorithm, i.context, i.revisions]);
+      await _sameInWorker(() => deriveNightDayHeavy(inputs, job),
+        json: (r) => [r.bundle, r.resumed, r.rejected]);
+    },
+  ),
+  'restoreNightCheckpointHeavy': (
+    roundTrip: () async {
+      const inputs = WorkerInputs(nowEpochMs: 1794703000000, zoneId: 'UTC', localeTag: 'en');
+      const from = 1794700800, boundary = from + 1800;
+      final rr = [for (var i = 0; i < 2000; i++) 950.0 + i % 7];
+      final times = [for (var i = 0; i < 2000; i++) (from + i) * 1000.0];
+      final state = NightRrState()..correctHeavy(rr, times,
+          day: '2026-11-15', onsetSec: from);
+      final revisions = checkpointRevisions(const {}, from, boundary);
+      final encoded = encodeNightCheckpointHeavy(state, const [], '2026-11-15',
+          125, 'context', from, boundary, revisions)!;
+      final job = NightCheckpointInput(<String, Object?>{
+        'day_id': '2026-11-15', 'algo_version': 125,
+        'fmt': nightCheckpointFormat, 'ctx_sig': 'context',
+        'cp_rec_ts': boundary, 'rev_vec': revisions, 'state': encoded.bytes,
+        'night_ref': null, 'computed_at': 7,
+      }, '2026-11-15', 125, 'context', from, from + 1999, const {}, rr, times);
+      await expectIsolateRoundTrip(job, project: (i) => [i.row, i.searchRr,
+          i.searchTimes, i.context, i.from, i.through]);
+      await _sameInWorker(() => restoreNightCheckpointHeavy(inputs, job),
+        json: (r) => [r.value.rejection, r.value.night?.retainedNightBeats,
+          r.value.payload, r.value.cardio]);
+    },
+  ),
+  'segmentCalendarDaysHeavy': (
+    roundTrip: () async {
+      const inputs = WorkerInputs(nowEpochMs: 1792022400000, zoneId: 'UTC', localeTag: 'en');
+      final sub = calendarDaysFixture();
+      await expectIsolateRoundTrip(sub, project: (s) => s.toJson());
+      final input = CalendarDaysInput(sub);
+      await expectIsolateRoundTrip(input, project: (i) => i.substrate.toJson());
+      await _sameInWorker(() => segmentCalendarDaysHeavy(inputs, input),
+        json: (result) => [for (final d in result.days)
+          [d.date, d.startSec, d.endSec, d.sleep.toJson(), d.sleepSource]]);
+    },
+  ),
+  'buildCrossDayArtifactHeavy': (
+    roundTrip: () async {
+      final input = crossDayArtifactFixture();
+      await expectIsolateRoundTrip(input, project: (i) => [i.days, i.profile,
+          i.cycleStarts, i.sessionTypes, i.zone, i.inputSignature]);
+      await _sameInWorker(() => buildCrossDayArtifactHeavy(input),
+          json: (r) => [r.json, r.dropped, r.needMin]);
     },
   ),
   'buildCrossDayBundle': (

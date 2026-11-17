@@ -379,6 +379,14 @@ final Map<String, Expect> kExpectations = {
     symbols: {HeavyRule.sendableShapeTestMissing: {'payloadHeavy'}},
   ),
 
+  'unresolved_ok_project_default': const Expect.clean(),
+  'unresolved_bad_project_default_override': const Expect(
+    {HeavyRule.unresolvedInvocation},
+    symbols: {HeavyRule.unresolvedInvocation: {'invoke'}}),
+  'unresolved_ok_interface_parameter': const Expect.clean(),
+  'unresolved_bad_interface_parameter': const Expect(
+    {HeavyRule.unresolvedInvocation},
+    symbols: {HeavyRule.unresolvedInvocation: {'RealWork.use'}}),
   'unresolved_ok_concrete_local_closure': const Expect.clean(),
   'unresolved_ok_effect_contract': const Expect.clean(),
   'unresolved_ok_null_callback_defaults': const Expect.clean(),

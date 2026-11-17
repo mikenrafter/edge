@@ -2,7 +2,7 @@
 // second inside our auto window and stays awake afterwards, analytics ends the
 // night there (`SleepSegmentation.bandOffsetTrimSec`). These pin the EDGE
 // wiring of that rule end to end:
-//   (a) the trim reaches the day `calendarDays` builds (AUTO path only);
+//   (a) the trim reaches the day `calendarDaysHeavy` builds (AUTO path only);
 //   (b) the day payload carries `sleep.band_offset_trim_sec` (null when absent);
 //   (c) which day owns a midnight-crossing night is decided on the UNTRIMMED
 //       end — the band moves the wake time, never the night's day;
@@ -106,14 +106,16 @@ _Sec _lieAt(int t) {
   if (s < 3600) return (hr: 78, still: false, band: _wake);
   if (s < 7 * 3600 + 600) return (hr: 50, still: true, band: _sleep);
   if (s < 7 * 3600 + 1800) return (hr: 90, still: false, band: _up);
-  if (s < 8 * 3600 + 1800) return (hr: 56, still: true, band: _up);
+  // 75 min, past the hour the nap detector books as the night's own tail when
+  // it starts this soon after the main sleep, so the control still sees a nap.
+  if (s < 8 * 3600 + 2700) return (hr: 56, still: true, band: _up);
   return (hr: 78, still: false, band: _wake);
 }
 
 void main() {
-  group('(a) the band trim reaches the day calendarDays builds', () {
+  group('(a) the band trim reaches the day calendarDaysHeavy builds', () {
     test('band-trimmed: the owning day ends at the band\'s last SLEEP', () {
-      final days = calendarDays(_build(_nightStart, _nightLen, _nightAt));
+      final days = calendarDaysHeavy(_build(_nightStart, _nightLen, _nightAt));
       final owner = days.singleWhere((d) => d.sleep.present);
       expect(owner.sleepSource, 'auto');
       expect(_offSec(owner), _bandWake);
@@ -122,7 +124,7 @@ void main() {
     });
 
     test('band absent: the old, later end and no trim', () {
-      final days = calendarDays(
+      final days = calendarDaysHeavy(
           _build(_nightStart, _nightLen, _nightAt, withBand: false));
       final owner = days.singleWhere((d) => d.sleep.present);
       expect(_offSec(owner), greaterThan(_bandWake));
@@ -130,9 +132,9 @@ void main() {
     });
 
     test('trimmed + trim == the untrimmed end of the no-band run', () {
-      final trimmed = calendarDays(_build(_nightStart, _nightLen, _nightAt))
+      final trimmed = calendarDaysHeavy(_build(_nightStart, _nightLen, _nightAt))
           .singleWhere((d) => d.sleep.present);
-      final plain = calendarDays(
+      final plain = calendarDaysHeavy(
               _build(_nightStart, _nightLen, _nightAt, withBand: false))
           .singleWhere((d) => d.sleep.present);
       expect(trimmed.date, plain.date);
@@ -173,7 +175,7 @@ void main() {
 
     test('trimmed: the key equals the segmentation\'s trim', () {
       final sub = _build(_nightStart, _nightLen, _nightAt);
-      final day = calendarDays(sub).singleWhere((d) => d.sleep.present);
+      final day = calendarDaysHeavy(sub).singleWhere((d) => d.sleep.present);
       expect(day.sleep.bandOffsetTrimSec, isNotNull, reason: 'precondition');
       final sleep = payloadFor(day, sub);
       expect(sleep.containsKey('band_offset_trim_sec'), isTrue);
@@ -182,7 +184,7 @@ void main() {
 
     test('band absent: the key is null', () {
       final sub = _build(_nightStart, _nightLen, _nightAt, withBand: false);
-      final day = calendarDays(sub).singleWhere((d) => d.sleep.present);
+      final day = calendarDaysHeavy(sub).singleWhere((d) => d.sleep.present);
       expect(payloadFor(day, sub)['band_offset_trim_sec'], isNull);
     });
   });
@@ -217,8 +219,8 @@ void main() {
                   x.date: (x.sleep.window!.onsetMs! ~/ 1000, _offSec(x)),
             };
 
-        final baseline = owners(calendarDays(_build(start, n, at, withBand: false)));
-        final banded = calendarDays(_build(start, n, at));
+        final baseline = owners(calendarDaysHeavy(_build(start, n, at, withBand: false)));
+        final banded = calendarDaysHeavy(_build(start, n, at));
         expect(baseline, isNotEmpty, reason: 'precondition: a night exists');
         expect(banded.any((x) => x.sleep.bandOffsetTrimSec != null), isTrue,
             reason: 'precondition: the band rule actually fired');
@@ -234,7 +236,7 @@ void main() {
   group('(d) the trimmed-off lie-in is not a nap', () {
     // The untrimmed end the edge would have used without the band.
     int untrimmedEnd() {
-      final day = calendarDays(_build(_lieDay, _lieLen, _lieAt))
+      final day = calendarDaysHeavy(_build(_lieDay, _lieLen, _lieAt))
           .singleWhere((x) => x.sleep.present);
       expect(day.sleep.bandOffsetTrimSec, isNotNull, reason: 'precondition');
       expect(_offSec(day), _lieTrimmed, reason: 'precondition');
@@ -245,7 +247,7 @@ void main() {
     // detector's output is read from `candidates`.
     List<Map<String, dynamic>>? naps(int excludeEnd) {
       final sub = _build(_lieDay, _lieLen, _lieAt);
-      final onset = calendarDays(sub)
+      final onset = calendarDaysHeavy(sub)
               .singleWhere((x) => x.sleep.present)
               .sleep
               .window!

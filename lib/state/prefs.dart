@@ -1,3 +1,15 @@
+import 'dart:async' show unawaited;
+import 'package:flutter/foundation.dart' show ValueNotifier;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:openstrap_analytics/onehz.dart' as ana;
+import '../compute/calc_power_policy.dart' show CalcPowerMode;
+import '../data/db/input_revision_store.dart' show bumpInputRev;
+import '../haptics/band_queue.dart'
+    show
+        kBandCommandLimitDefault,
+        kBandCommandLimitMax,
+        kBandCommandLimitMin;
+
 // Prefs — a tiny synchronous façade over SharedPreferences for UI selection
 // state (selected tab, per-metric range toggles, etc.). Local-first, no auth.
 //
@@ -9,19 +21,8 @@
 // If a screen is somehow built before [ensureLoaded] completes, reads fall back
 // to the provided default — never throws, never blocks.
 
-import 'dart:async' show unawaited;
 
-import 'package:flutter/foundation.dart' show ValueNotifier;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:openstrap_analytics/onehz.dart' as ana;
 
-import '../compute/calc_power_policy.dart' show CalcPowerMode;
-import '../data/db/input_revision_store.dart' show bumpInputRev;
-import '../haptics/band_queue.dart'
-    show
-        kBandCommandLimitDefault,
-        kBandCommandLimitMax,
-        kBandCommandLimitMin;
 
 class Prefs {
   Prefs._();
@@ -38,6 +39,18 @@ class Prefs {
   static ana.StagingMethod get sleepStagingMethod => experimentalSleepHmm
       ? ana.StagingMethod.hmm628
       : ana.StagingMethod.cardio;
+
+  /// Refresh a headless isolate's staging choice. As with [ensureLoaded], an
+  /// unavailable preference store leaves the cached/default choice usable;
+  /// it must not prevent deriving a day (upstream _hmmStagesOn also abstains).
+  static Future<ana.StagingMethod> refreshSleepStagingMethod() async {
+    try {
+      await reload();
+    } catch (_) {
+      // Keep the last known choice, or the explicit default on a cold start.
+    }
+    return sleepStagingMethod;
+  }
 
   static const sleepWakeZoom = 'ui.sleep_wake_zoom';
   static bool get sleepWakeZoomOn => getBool(sleepWakeZoom, true);
@@ -282,4 +295,27 @@ class Prefs {
   /// `AppState._persistPaired` (purge before a real pairing ever touches the
   /// database) — see `lib/demo/demo_data_generator.dart`.
   static const String demoModeEnabled = 'demo.mode_enabled';
+
+
+  /// Refresh the synchronous cache after a backup restores settings.
+  static Future<void> reload() async {
+    _sp = await SharedPreferences.getInstance();
+    await _sp!.reload();
+  }
+
+  /// [setBoolAcked] for an int: false when there is no storage or the platform
+  /// refused the write, never a throw.
+  static Future<bool> setIntAcked(String key, int value) async {
+    try {
+      return await _sp?.setInt(key, value) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// "Log clear naps automatically" (#625). Absent = off. Holds WHEN it was
+  /// turned on, in epoch seconds, so only naps that end after that are logged
+  /// without asking: switching it on never rewrites days already past.
+  static const String napAutoLogSinceSec = 'activity.nap_auto_log_since_sec';
 }
+

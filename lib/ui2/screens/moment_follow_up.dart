@@ -561,6 +561,7 @@ class _MomentReviewEditorState extends State<MomentReviewEditor> {
   String _rangeMessage(AppLocalizations? l, MomentChoice c, ManualWindowError e) {
     final nap = c == MomentChoice.nap;
     return switch (e) {
+      ManualWindowError.scoreNotRecomputable => l?.sleepDetailCorrectionUnavailable ?? 'This workout cannot be recalculated without its recordings.',
       ManualWindowError.endNotAfterStart => l?.momentReviewRangeEnd ??
           'The end has to be after the start.',
       ManualWindowError.tooShort || ManualWindowError.tooLong => nap

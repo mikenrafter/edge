@@ -104,7 +104,7 @@ extension _EngineCrossDayPrune on DerivationEngine {
       )..sort((a, b) => b.compareTo(a)); // newest first, like the sweep
       if (days.isEmpty) return 0;
       _log('derive: re-scoring ${days.length} day(s) owed a quiet level');
-      await runWithConcurrency(days, _deriveConcurrency, (dayId) async {
+      await _runDayPool(days, (dayId) async {
         try {
           await DerivationEngine.debugQuietRepassHook?.call(dayId);
           final prepared = await _prepareTargetDay(dayId);
@@ -132,6 +132,7 @@ extension _EngineCrossDayPrune on DerivationEngine {
 
   Future<bool> _runCrossDayUntimed(Profile profile) async {
     try {
+      final zone = DerivationEngine.crossDayZoneStamp();
       final reviewRevision = await LocalDb.activityReviewRevision();
       final days = await _crossDayInputDays();
       if (days.length < 3) {
@@ -185,30 +186,23 @@ extension _EngineCrossDayPrune on DerivationEngine {
         return true;
       }
       _crossDayComputed++;
-      final (bundleJson, dropped) = await DerivationEngine._runIsolateCancellable(
-        () {
-          final bundle =
-              buildCrossDayBundle(
-                  days,
-                  profileMap,
-                  cycleStartDates: cycleStarts,
-                  sessionTypesByDate: sessionTypes,
-                )
-                ..['algo_version'] = kAlgoVersion
-                ..['built_for_day'] = builtForDay
-                ..['built_at_epoch'] = builtAtEpoch;
-          if (inputSig != null) bundle['input_sig'] = inputSig;
-          // Encode-safety BEFORE jsonEncode, never a try/catch around it: one
-          // non-finite leaf must cost that leaf, not the whole artifact.
-          final paths = <String>[];
-          final safe = sanitizeForJson(bundle, paths) as Map<String, dynamic>;
-          if (paths.isNotEmpty) safe['encode_dropped_fields'] = paths;
-          return (jsonEncode(safe), paths);
-        },
+      final input = CrossDayArtifactInput(DerivationEngine._workerInputs(),
+          days, profileMap, cycleStarts, sessionTypes, kMethodFamily,
+          kAlgoVersion, builtForDay, builtAtEpoch, zone, inputSig);
+      final result = await DerivationEngine._runIsolateCancellable(
+        () => buildCrossDayArtifactHeavy(input),
         DerivationEngine._crossDayTimeout,
         label: 'crossday',
       );
-      if (!await LocalDb.putReviewedBaseline('crossday', bundleJson, reviewRevision)) {
+      final bundleJson = result.json;
+      final dropped = result.dropped;
+      final needMin = result.needMin;
+      if (DerivationEngine.crossDayZoneStamp() != zone) {
+        _log('crossday: zone changed during the build; not stored');
+        return false;
+      }
+      if (!await LocalDb.putReviewedBaseline('crossday', bundleJson, reviewRevision,
+          series: (date: builtForDay, key: 'sleep_need_min', value: needMin))) {
         _log('crossday: newer activity review; leaving its refresh queued');
         return false;
       }
@@ -236,6 +230,7 @@ extension _EngineCrossDayPrune on DerivationEngine {
     // A review (accepting or editing a nap or workout) started after this read
     // must not be overwritten by it (putReviewedBaseline below). Imported days'
     // vendor scores are masked out of the rollup (crossDayInputRecord).
+    final zone = DerivationEngine.crossDayZoneStamp();
     final reviewRevision = await LocalDb.activityReviewRevision();
     final imported = await LocalDb.importedDates();
     // Per-day records are kept between passes (see crossday_input.dart): the
@@ -258,7 +253,8 @@ extension _EngineCrossDayPrune on DerivationEngine {
     }
     // Only an artifact of THIS version has the record shape this build writes.
     final sameVersion =
-        previous is Map && (previous['algo_version'] as num?)?.toInt() == kAlgoVersion;
+        previous is Map && (previous['algo_version'] as num?)?.toInt() == kAlgoVersion &&
+        previous['zone'] == zone;
     if (sameVersion &&
         DerivationEngine.crossDayArtifactUsableToday(previous, today) &&
         crossDayInputCurrent(previous, meta)) {
@@ -306,6 +302,7 @@ extension _EngineCrossDayPrune on DerivationEngine {
           'algo_version': kAlgoVersion,
           'built_for_day': today,
           'review_revision': reviewRevision,
+          'zone': zone,
           'days': out.days,
           'row_keys': out.keys,
         })

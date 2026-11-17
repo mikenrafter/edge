@@ -1,3 +1,17 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:provider/provider.dart';
+import '../../l10n/app_localizations.dart';
+import '../../models/metric.dart';
+import '../../state/app_state.dart';
+import '../../state/capabilities.dart';
+import '../../state/capabilities_scope.dart';
+import '../../stress/breath_phases.dart';
+import '../../stress/session_effect.dart';
+import '../ui2.dart';
+
 // Paced breathing — the one screen in the app whose job is to slow you down.
 //
 // The phase engine is `lib/stress/breath_phases.dart`, which is pure and
@@ -12,21 +26,8 @@
 // not connected the pacer still runs; it just says plainly that there will be
 // no score.
 
-import 'dart:async';
 
-import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:provider/provider.dart';
 
-import '../../l10n/app_localizations.dart';
-import '../../models/metric.dart';
-import '../../state/app_state.dart';
-import '../../state/capabilities.dart';
-import '../../state/capabilities_scope.dart';
-import '../../stress/breath_phases.dart';
-import '../../stress/session_effect.dart';
-import '../ui2.dart';
 
 /// Session lengths offered, in minutes. Converted to whole pattern cycles so
 /// a session always ends on a completed breath rather than mid-exhale.
@@ -593,15 +594,9 @@ class _CalmBreathingState extends State<CalmBreathing>
     // A session the band paces keeps running when the screen is left.
     final busy = (_running && !_adopted) || _quiet != null;
     return PopScope(
-      canPop: !busy,
-      onPopInvokedWithResult: (didPop, _) async {
-        if (didPop || !busy) return;
-        if (_running) {
-          await _stop(abort: true);
-        } else {
-          await _abortQuiet();
-        }
-        if (mounted) Navigator.of(context).pop();
+      canPop: !busy && !_closing,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && busy) _close();
       },
       child: Scaffold(
         backgroundColor: p.bg,
@@ -616,14 +611,7 @@ class _CalmBreathingState extends State<CalmBreathing>
                   child: Pressable(
                     semanticLabel:
                         l?.calmBreathingCloseBreathing ?? 'Close breathing',
-                    onTap: () async {
-                      if (_running && !_adopted) {
-                        await _stop(abort: true);
-                      } else if (_quiet != null) {
-                        await _abortQuiet();
-                      }
-                      if (c.mounted) Navigator.of(c).pop();
-                    },
+                    onTap: _close,
                     child: Icon(LucideIcons.x, size: 22, color: p.ink2),
                   ),
                 ),
@@ -688,6 +676,33 @@ class _CalmBreathingState extends State<CalmBreathing>
         ),
       ),
     );
+  }
+
+
+  /// Set by the first X tap or back swipe. The teardown behind it (banking the
+  /// session, scoring both quiet windows, re-reading the effect) takes long
+  /// enough with nothing changing on screen that a second tap is natural, and
+  /// each exit ends in its own `pop()` — the second one removed the route
+  /// underneath (Wellness, or the home route behind a /breathing deep link).
+  bool _closing = false;
+
+  /// The one exit for both the X and the back gesture.
+  Future<void> _close() async {
+    if (_closing) return;
+    setState(() => _closing = true);
+    // The pop sits in `finally`: `_closing` is never cleared and `canPop` is
+    // false while it is set, so a throw from the teardown (the session insert,
+    // or the effect re-read) would otherwise leave the user on a screen with a
+    // dead X and a blocked back gesture. The error still propagates.
+    try {
+      if (_running && !_adopted) {
+        await _stop(abort: true);
+      } else if (_quiet != null) {
+        await _abortQuiet();
+      }
+    } finally {
+      if (mounted) Navigator.of(context).pop();
+    }
   }
 }
 
@@ -1305,3 +1320,4 @@ class _SweepResult extends StatelessWidget {
             '$w gave your strongest response. Your pace changes after two sittings agree.');
   }
 }
+

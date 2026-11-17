@@ -303,10 +303,12 @@ void main() {
 
   group('Heart Screener', () {
     testWidgets('Take ECG follows ecgTake', (t) async {
-      await pump(t, const EcgHomeScreen(), _caps());
+      await pump(t, const EcgHomeScreen(), _caps(),
+          ready: find.text('No readings yet.'));
       expect(find.text('Take ECG needs a connected WHOOP MG.'), findsOneWidget);
       await pump(
-          t, const EcgHomeScreen(), _caps(connected: true, ecgLive: true));
+          t, const EcgHomeScreen(), _caps(connected: true, ecgLive: true),
+          ready: find.text('No readings yet.'));
       expect(find.text('WHOOP MG · band-reported'), findsOneWidget);
     });
   });

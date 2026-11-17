@@ -1,3 +1,25 @@
+import '../util/callable.dart';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import '../data/day_label.dart';
+import '../data/db.dart';
+import '../sync/import_focus.dart';
+import '../data/local_repository.dart';
+import '../models/payloads.dart' show todayHeadlineOf;
+import 'coach_actions.dart';
+import 'coach_chat_completions.dart';
+import 'coach_config.dart';
+import 'coach_db.dart';
+import 'coach_prompt.dart';
+import 'coach_responses.dart';
+import '../ai/journal_ai.dart' show mergeJournalEntry;
+import '../sync/reset_gate.dart';
+import 'coach_chatgpt.dart';
+
 // CoachEngine — the agentic core. Talks to an OpenAI-compatible provider directly
 // (BYOK), runs a tool-calling loop over read-only data tools + a plot tool + action
 // tools (writes require user confirmation), and streams items back to the UI.
@@ -11,24 +33,7 @@
 // surface, implemented on-device by the future analytics re-layer. The LLM call
 // itself still uses `http` directly (BYOK, the user's own provider — not our backend).
 
-import 'dart:convert';
-import 'dart:io';
-import 'dart:math';
-import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 
-import '../data/day_label.dart';
-import '../data/db.dart';
-import '../sync/import_focus.dart';
-import '../data/local_repository.dart';
-import '../models/payloads.dart' show todayHeadlineOf;
-import 'coach_actions.dart';
-import 'coach_chat_completions.dart';
-import 'coach_config.dart';
-import 'coach_db.dart';
-import 'coach_prompt.dart';
-import 'coach_responses.dart';
 
 // ── value types ──────────────────────────────────────────────────────────────
 
@@ -271,7 +276,10 @@ class CoachEngine {
   int _historyChars() {
     var n = 0;
     for (final m in _history) {
-      n += jsonEncode(m).length;
+      // Bytes, as the limit says and as the request size is checked: a
+      // character count lets non-ASCII history through the trim and then
+      // over kMaxRequestBytes.
+      n += utf8.encode(jsonEncode(m)).length;
     }
     return n;
   }
@@ -292,6 +300,39 @@ class CoachEngine {
           );
         }
         _history.removeRange(0, nextTurn);
+      }
+      return;
+    }
+    // The current turn starts at the LAST user message and is never dropped:
+    // a tool-heavy turn (a handful of 16k run_sql results, each re-escaped by
+    // jsonEncode) can outgrow the budget by itself, and walking the history
+    // down past the question sent the provider a bare system prompt — the
+    // model then answered "how can I help?" or the provider 400'd on a request
+    // with no user message, and the question was gone from the saved session.
+    if (_history.any((m) => m['role'] == 'user')) {
+      // Whole older turns go first, oldest first. The search from index 1
+      // stops at or before the current question, so it is never removed.
+      while (_historyChars() > kMaxHistoryChars &&
+          _history.lastIndexWhere((m) => m['role'] == 'user') > 0) {
+        _history.removeRange(
+            0, _history.indexWhere((m) => m['role'] == 'user', 1));
+      }
+      // Still over with only the current turn left: replace this turn's
+      // oldest tool results with a stub. The message itself stays so its
+      // tool_call_id still pairs with the assistant turn that requested it.
+      for (var i = 0;
+          i < _history.length && _historyChars() > kMaxHistoryChars;
+          i++) {
+        final m = _history[i];
+        if (m['role'] == 'tool' && m['content'] != _kDroppedToolResult) {
+          _history[i] = {...m, 'content': _kDroppedToolResult};
+        }
+      }
+      if (_historyChars() > kMaxHistoryChars) {
+        throw CoachException(
+          'This turn exceeded the conversation size limit. '
+          'Start a new chat or ask a narrower question.',
+        );
       }
       return;
     }
@@ -318,7 +359,10 @@ class CoachEngine {
   Future<Directory> _dir() => getApplicationDocumentsDirectory();
   Future<File> _sessionFile(String id) async => File('${(await _dir()).path}/coach_s_${storageKey}_$id.json');
   Future<File> _indexFile() async => File('${(await _dir()).path}/coach_idx_$storageKey.json');
-  String _newId() => '${DateTime.now().millisecondsSinceEpoch}';
+  /// Millisecond stamp first so ids still read and sort by time, then a random
+  /// suffix: two screens' engines can start a chat in the same millisecond.
+  String _newId() => '${DateTime.now().millisecondsSinceEpoch}-'
+      '${_idRandom.nextInt(1 << 32).toRadixString(16).padLeft(8, '0')}';
 
   /// All saved sessions for this user, most recent first.
   Future<List<CoachSessionMeta>> listSessions() async {
@@ -378,30 +422,7 @@ class CoachEngine {
   }
 
   /// Persist the current session (caps history, updates the index).
-  Future<void> persist() async {
-    if (transcript.isEmpty) return;
-    if (_sessionId.isEmpty) _sessionId = _newId();
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (_createdAt == 0) _createdAt = now;
-    if (_title.isEmpty) _title = _deriveTitle();
-    if (_history.length > 60) {
-      // A message-count cut can orphan function results or reasoning state.
-      // Advance to a complete user turn; keep an oversized current turn intact.
-      final cut = _history.indexWhere(
-        (m) => m['role'] == 'user',
-        _history.length - 60,
-      );
-      if (cut > 0) _history.removeRange(0, cut);
-    }
-    try {
-      final f = await _sessionFile(_sessionId);
-      await f.writeAsString(jsonEncode({
-        'title': _title, 'createdAt': _createdAt, 'updatedAt': now,
-        'history': _history, 'transcript': transcript.map((e) => e.toJson()).toList(),
-      }));
-      await _updateIndex(_sessionId, _title, now, _preview());
-    } catch (_) {}
-  }
+  Future<void> persist() => _serialFiles(_persist);
 
   Future<void> _updateIndex(String id, String title, int updatedAt, String preview) async {
     final metas = await listSessions();
@@ -421,18 +442,8 @@ class CoachEngine {
   }
 
   /// Delete a session (and start fresh if it was the current one).
-  Future<void> deleteSession(String id) async {
-    try {
-      final f = await _sessionFile(id);
-      if (await f.exists()) await f.delete();
-    } catch (_) {}
-    final metas = await listSessions()..removeWhere((m) => m.id == id);
-    try {
-      final f = await _indexFile();
-      await f.writeAsString(jsonEncode(metas.map((m) => m.toJson()).toList()));
-    } catch (_) {}
-    if (id == _sessionId) newSession();
-  }
+  Future<void> deleteSession(String id) =>
+      _serialFiles(() => _deleteSession(id));
 
   String _deriveTitle() {
     for (final it in transcript) {
@@ -571,14 +582,46 @@ class CoachEngine {
         final fn = (tc['function'] as Map?) ?? const {};
         final name = fn['name']?.toString() ?? '';
         Map<String, dynamic> args = {};
+        var argsParsed = false;
         try {
           final a = fn['arguments'];
-          if (a is String && a.isNotEmpty) {
-            args = jsonDecode(a) as Map<String, dynamic>;
-          } else if (a is Map) {
+          if (a is Map) {
             args = a.cast<String, dynamic>();
+            argsParsed = true;
+          } else if (a is String && a.isNotEmpty) {
+            final decoded = jsonDecode(a);
+            if (decoded is Map) {
+              args = decoded.cast<String, dynamic>();
+              argsParsed = true;
+            }
           }
-        } catch (_) {}
+        } catch (_) {
+          argsParsed = false;
+        }
+        // No arguments at all is a valid call for a read tool that asks for none.
+        if (!argsParsed && kNoArgumentReadTools.contains(name)) {
+          final raw = fn['arguments'];
+          if (raw == null || (raw is String && raw.trim().isEmpty)) {
+            argsParsed = true;
+          }
+        }
+        // Only an OBJECT is a valid argument map. Empty/missing strings,
+        // arrays and numbers are normal failures from OpenAI-compatible
+        // providers. Running the tool with `{}` built the confirmation from
+        // fabricated defaults (and on confirm wrote them: `log_period` logged
+        // today, `start_workout` started `other`). Tell the model instead, so
+        // it can re-issue a complete call.
+        if (!argsParsed) {
+          _history.add({
+            'role': 'tool',
+            'tool_call_id': id,
+            'name': name,
+            'content': 'Error: the "$name" arguments were not a complete JSON '
+                'object, so the tool was NOT run and nothing was written. '
+                'Call it again with valid JSON arguments.',
+          });
+          continue;
+        }
 
         onStatus(_statusFor(name, args));
         final result = await _runTool(name, args, onItem: emit, confirm: confirm);
@@ -685,32 +728,19 @@ class CoachEngine {
     final model = body['model'] as String? ?? '';
     final api = config.api;
     final apiBase = config.apiBase;
-    // Recent Claude models reject sampling params with a 400, on Anthropic's
-    // own endpoint and through any pass-through provider alike. Strip them for
-    // exactly those model versions; older Claude models and every other
-    // provider keep their sampling params untouched.
-    if (claudeRejectsSampling(body['model'] as String? ?? '')) {
-      body = {...body}
-        ..remove('temperature')
-        ..remove('top_p')
-        ..remove('top_k');
-    }
-    // FAIL-CLOSED size ceiling. Nothing leaves the device until this passes —
-    // the request is never truncated and silently sent, it is refused, so a
-    // runaway tool loop cannot ship the health database to a third party.
-    final payload = jsonEncode(body);
-    if (payload.length > kMaxRequestBytes) {
-      throw CoachException(
-          'That request is ${payload.length ~/ 1024} KB, over the '
-          '${kMaxRequestBytes ~/ 1024} KB limit on data sent from this '
-          'device. Start a new chat or ask a narrower question. Aggregate with '
-          'AVG/MIN/MAX/COUNT instead of selecting every row.');
-    }
+    final chatgpt = config.usesChatGpt;
+    // Replayed reasoning is tied to who paid for it, so a ChatGPT-plan turn
+    // never replays an API-key turn's output on the same base, or another
+    // account's, or vice versa.
+    final replayBase = chatgpt
+        ? '$apiBase#chatgpt:${config.chatgpt.session?.sub ?? ''}'
+        : apiBase;
     try {
       body = switch (api) {
-        CoachApi.responses => CoachResponses.request(body, apiBase: apiBase),
+        CoachApi.responses => CoachResponses.request(body, apiBase: replayBase),
         CoachApi.chatCompletions => CoachChatCompletions.request(body),
       };
+      if (chatgpt) body = chatGptRequest(body);
       // Recent Claude models reject sampling params with a 400, on Anthropic's
       // own endpoint and through any pass-through provider alike. Strip them for
       // exactly those model versions; older Claude models and every other
@@ -731,27 +761,36 @@ class CoachEngine {
           'That question pulled in too much data '
           '(${payloadBytes ~/ 1024} KB; the limit is '
           '${kMaxRequestBytes ~/ 1024} KB), so nothing was sent. Try a shorter '
-          'time range, or start a new chat.',
+          'time range, or start a new chat. Aggregate with '
+          'AVG/MIN/MAX/COUNT instead of selecting every row.',
         );
       }
+      final bearer = chatgpt
+          ? await config.chatgpt.accessToken()
+          : (config.hasKey ? config.apiKey : null);
       final resp = await c
           .post(
             Uri.parse('$apiBase/${api.endpoint}'),
             headers: {
-              if (config.hasKey) 'Authorization': 'Bearer ${config.apiKey}',
+              if (bearer != null) 'Authorization': 'Bearer $bearer',
               'content-type': 'application/json',
             },
             body: payload,
           )
           .timeout(config.requestTimeout);
       if (resp.statusCode != 200) {
-        throw CoachException(
-          'Provider error (${resp.statusCode}): ${_briefErr(resp.body)}',
-        );
+        throw CoachException(chatgpt
+            ? chatGptHttpError(resp.statusCode, utf8.decode(resp.bodyBytes))
+            : 'Provider error (${resp.statusCode}): ${_briefErr(resp.body)}');
       }
       final Object? j;
       try {
-        j = jsonDecode(utf8.decode(resp.bodyBytes));
+        // The plan route only streams; the buffered body is its SSE events.
+        j = chatgpt
+            ? chatGptCompletedResponse(utf8.decode(resp.bodyBytes))
+            : jsonDecode(utf8.decode(resp.bodyBytes));
+      } on ChatGptException {
+        rethrow;
       } catch (_) {
         throw CoachException(
           'Provider returned a non-JSON response. Check the API base URL — '
@@ -761,11 +800,13 @@ class CoachEngine {
       if (j is! Map) throw CoachException('Unexpected response from provider.');
       return switch (api) {
         CoachApi.responses => CoachResponses.reply(
-            j.cast<String, dynamic>(), model, apiBase: apiBase),
+            j.cast<String, dynamic>(), model, apiBase: replayBase),
         CoachApi.chatCompletions => CoachChatCompletions.reply(
             j.cast<String, dynamic>()),
       };
     } on FormatException catch (e) {
+      throw CoachException(e.message);
+    } on ChatGptException catch (e) {
       throw CoachException(e.message);
     } finally {
       if (client == null) c.close();
@@ -884,8 +925,24 @@ class CoachEngine {
             summary: 'Add journal for $journalDate: tags ${args['tags'] ?? []}, note "${args['note'] ?? ''}".',
             args: args,
           ), () async {
-            await api.postJournal(journalDate,
-                ((args['tags'] as List?) ?? const []).map((e) => '$e').toList(), '${args['note'] ?? ''}');
+            // postJournal replaces the day's whole row, so the stored day is
+            // read and merged first — otherwise "log that I had coffee" wipes
+            // every tag and note already logged for that day.
+            Map<String, dynamic>? row;
+            for (final e in await api.getJournal(range: 'all')) {
+              if (e['date'] == journalDate) row = e;
+            }
+            final merged = mergeJournalEntry(
+              existingTags: ((row?['tags'] as List?) ?? const [])
+                  .map((e) => '$e')
+                  .toList(),
+              existingNote: (row?['note'] as String?) ?? '',
+              newTags: ((args['tags'] as List?) ?? const [])
+                  .map((e) => '$e')
+                  .toList(),
+              newNote: '${args['note'] ?? ''}',
+            );
+            await api.postJournal(journalDate, merged.tags, merged.note);
             return 'Journal saved.';
           });
         case 'log_period':
@@ -1200,6 +1257,115 @@ class CoachEngine {
     _fn('end_workout', 'End the active workout (asks the user to confirm).', {'workout_id': {'type': 'string'}}, ['workout_id']),
     _fn('set_step_goal', 'Set the daily step goal (asks the user to confirm).', {'goal': {'type': 'integer'}}, ['goal']),
   ];
+ // per-user, so accounts don't share a transcript
+
+  /// The data generation this engine started under. A reply still in flight
+  /// when "Delete everything" runs lands after the chat files were swept, and
+  /// saving it would write the deleted conversation back.
+  /// An engine built while a reset is still running (the UI is not blocked
+  /// during one) would otherwise take the new generation and save after the
+  /// sweep; -1 never matches, so it never saves.
+  final int _resetGen = ResetGate.active ? -1 : ResetGate.generation;
+
+  /// What an over-budget tool result in the current turn is replaced with.
+  static const String _kDroppedToolResult =
+      '(earlier result dropped to fit the conversation size limit — '
+      're-run the query if it is still needed)';
+  static final _idRandom = Random();
+
+  /// Deletes every saved chat for every storage key. The transcripts live as
+  /// files beside the database, not in it, so wiping the database leaves
+  /// them, and the key is the same 'local' after a reset — the next profile
+  /// would reopen the previous one's conversations, tool results included.
+  /// Returns the number of files that could not be deleted.
+  static Future<int> deleteAllSavedSessions() =>
+      _serialFiles(_deleteAllSavedSessions);
+
+  /// One queue for every chat-file write and the reset's sweep. A save that
+  /// had already passed its reset check could otherwise still be writing
+  /// while the sweep listed the folder, and land after it.
+  static Future<void> _filesTail = Future<void>.value();
+
+  /// Chats deleted in this process. Each screen has its own engine, so a
+  /// second screen on the same chat still holds its id; this is what stops
+  /// that engine's next save. Ids are minted fresh per chat and only reopened
+  /// from the saved list, so a deleted one never legitimately comes back.
+  /// Keyed `storageKey/id`, since chats of different accounts sit side by side.
+  static final Set<String> _deletedSessionIds = {};
+
+  /// Test seam: awaited by a save right after its reset check passes, so a
+  /// test can hold a save mid-write while a reset sweeps.
+  @visibleForTesting
+  static Call0<Future<void>>? debugAfterSaveCheck;
+  static Future<T> _serialFiles<T>(Future<T> Function() body) {
+    final run = _filesTail.then((_) => body());
+    _filesTail = run.then((_) {}, onError: (_) {});
+    return run;
+  }
+
+  static Future<int> _deleteAllSavedSessions() async {
+    _deletedSessionIds.clear();
+    final dir = await getApplicationDocumentsDirectory();
+    if (!await dir.exists()) return 0;
+    var failed = 0;
+    await for (final e in dir.list(followLinks: false)) {
+      if (e is! File) continue;
+      final name = e.uri.pathSegments.last;
+      if (!name.endsWith('.json')) continue;
+      if (!name.startsWith('coach_s_') && !name.startsWith('coach_idx_')) continue;
+      try {
+        await e.delete();
+      } catch (_) {
+        failed++;
+      }
+    }
+    return failed;
+  }
+
+  Future<void> _persist() async {
+    // Checked inside the queue: a reset that started while this waited has
+    // swept the files by now, and this must not write the chat back.
+    if (transcript.isEmpty || ResetGate.changedSince(_resetGen)) return;
+    // Deleted from another screen's engine on the same chat: its late save
+    // must not write the file and index entry back.
+    if (_deletedSessionIds.contains('$storageKey/$_sessionId')) return;
+    await debugAfterSaveCheck?.call();
+    if (_sessionId.isEmpty) _sessionId = _newId();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (_createdAt == 0) _createdAt = now;
+    if (_title.isEmpty) _title = _deriveTitle();
+    if (_history.length > 60) {
+      // A message-count cut can orphan function results or reasoning state.
+      // Advance to a complete user turn; keep an oversized current turn intact.
+      final cut = _history.indexWhere(
+        (m) => m['role'] == 'user',
+        _history.length - 60,
+      );
+      if (cut > 0) _history.removeRange(0, cut);
+    }
+    try {
+      final f = await _sessionFile(_sessionId);
+      await f.writeAsString(jsonEncode({
+        'title': _title, 'createdAt': _createdAt, 'updatedAt': now,
+        'history': _history, 'transcript': transcript.map((e) => e.toJson()).toList(),
+      }));
+      await _updateIndex(_sessionId, _title, now, _preview());
+    } catch (_) {}
+  }
+
+  Future<void> _deleteSession(String id) async {
+    _deletedSessionIds.add('$storageKey/$id');
+    try {
+      final f = await _sessionFile(id);
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
+    final metas = await listSessions()..removeWhere((m) => m.id == id);
+    try {
+      final f = await _indexFile();
+      await f.writeAsString(jsonEncode(metas.map((m) => m.toJson()).toList()));
+    } catch (_) {}
+    if (id == _sessionId) newSession();
+  }
 }
 
 class CoachException implements Exception {
@@ -1208,3 +1374,14 @@ class CoachException implements Exception {
   @override
   String toString() => message;
 }
+
+
+// ── engine ───────────────────────────────────────────────────────────────────
+
+/// Read-only tools with nothing required to ask for. A provider that sends NO
+/// arguments at all for one of these (an empty string, or no `arguments` key)
+/// is making a valid call, so it runs with `{}`. Refusing it would leave the
+/// coach unable to read today's data on a provider that never sends `"{}"`.
+/// Everything that writes is NOT here: an empty or missing argument for those
+/// would run on fabricated defaults. Malformed text still refuses for all.
+const kNoArgumentReadTools = {'get_today', 'get_medications', 'get_nutrition'};

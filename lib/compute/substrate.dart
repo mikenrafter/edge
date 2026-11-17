@@ -1,3 +1,13 @@
+import '../util/heavy.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'dart:math' as math;
+import 'dart:typed_data';
+import 'package:collection/collection.dart' show lowerBound;
+import 'package:openstrap_analytics/onehz.dart' as ana;
+import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
+import '../data/day_label.dart';
+import 'vendor_sleep.dart';
+
 // substrate.dart — the ONE decoded form of the raw R24 ledger (ARCHITECTURE_V2
 // invariant 1 "Substrate-first" + the canonical Substrate schema).
 //
@@ -7,20 +17,12 @@
 // per-day coordinator, every metric) slices THIS object — nothing decodes raw a
 // second time.
 //
-// It also owns the DAY MODEL: `calendarDays` walks the substrate and
+// It also owns the DAY MODEL: `calendarDaysHeavy` walks the substrate and
 // returns wake-to-wake `PhysioDay`s anchored on each detected WAKE (sleep
 // offset), with a noon-to-noon fallback so a day always exists when there's data.
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
-import 'dart:math' as math;
-import 'dart:typed_data';
-import 'package:collection/collection.dart' show lowerBound;
 
-import 'package:openstrap_analytics/onehz.dart' as ana;
-import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 
-import '../data/day_label.dart';
-import 'vendor_sleep.dart';
 
 /// Minimum fraction of a nocturnal search window that must carry a REAL
 /// gravity vector before accel-led (van Hees) sleep detection is trusted.
@@ -622,70 +624,8 @@ class Substrate {
         'device_ids': deviceIds.toList(),
       };
 
-  static Substrate fromJson(Map<String, dynamic> m) {
-    List<int> ints(Map<String, dynamic> m, String k) =>
-        ((m[k] as List?) ?? const []).map((e) => (e as num).toInt()).toList();
-    // Straight into a Float64List — see [_packed]. This runs on the RECEIVING
-    // (main) isolate for every substrate handed back from a worker, so the
-    // growable intermediate was ~400 000 boxes allocated and immediately
-    // thrown away, on the UI thread.
-    Float64List dbls(String k) {
-      final src = (m[k] as List?) ?? const [];
-      final out = Float64List(src.length);
-      for (var i = 0; i < src.length; i++) {
-        out[i] = (src[i] as num).toDouble();
-      }
-      return out;
-    }
-
-
-    final tsSec = ints(m, 'ts_sec');
-    final n = tsSec.length;
-    
-    List<int> safeI(String k) {
-      final l = ints(m, k);
-      return (l.isEmpty && n > 0) ? List<int>.filled(n, 0) : l;
-    }
-    List<double> safeD(String k) {
-      final l = dbls(k);
-      return (l.isEmpty && n > 0) ? Float64List(n) : l;
-    }
-
-    return Substrate(
-      tsSec: tsSec,
-      hr: safeI('hr'),
-      rrTsMs: dbls('rr_ts_ms'), // rrTsMs and rrMs don't have to match n
-      rrMs: dbls('rr_ms'),
-      ax: safeD('ax'),
-      ay: safeD('ay'),
-      az: safeD('az'),
-      spo2Red: safeI('spo2_red'),
-      spo2Ir: safeI('spo2_ir'),
-      skinTemp: safeI('skin_temp'),
-      skinContact: safeI('skin_contact'),
-      // NOT `safeI`: a missing/short list means the counter was ABSENT, and the
-      // absent marker is -1, not 0 (0 is a real, unmoved counter reading).
-      stepCount: () {
-        final l = ints(m, 'step_count');
-        return l.length == n ? l : List<int>.filled(n, -1);
-      }(),
-      // Same reason as `step_count`: the absent marker is -1. 0 is a real
-      // reading — the band saying THIS second's beat is not trustworthy.
-      hrValid: () {
-        final l = ints(m, 'hr_valid');
-        return l.length == n ? l : List<int>.filled(n, -1);
-      }(),
-      // Same reason again: absent is -1, and 0 is a real "wake".
-      bandSleepState: () {
-        final l = ints(m, 'band_sleep_state');
-        return l.length == n ? l : List<int>.filled(n, -1);
-      }(),
-      deviceFamily: m['device_family'] as String?,
-      deviceIds: ((m['device_ids'] as List?) ?? const [])
-          .map((e) => e.toString())
-          .toSet(),
-    );
-  }
+  static Substrate fromJson(Map<String, dynamic> m) =>
+      _fromColumns(m, adopt: false);
 
   static List<int> _transferInts(Map<String, dynamic> m, String key) {
     final value = m[key];
@@ -746,6 +686,75 @@ class Substrate {
       stepCount: _transferAbsentMarkerInts(m, 'step_count', n),
       hrValid: _transferAbsentMarkerInts(m, 'hr_valid', n),
       bandSleepState: _transferAbsentMarkerInts(m, 'band_sleep_state', n),
+      deviceFamily: m['device_family'] as String?,
+      deviceIds: ((m['device_ids'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toSet(),
+    );
+  }
+
+
+  static Substrate _fromColumns(Map<String, dynamic> m, {required bool adopt}) {
+    List<int> ints(Map<String, dynamic> m, String k) {
+      final src = m[k];
+      if (adopt && src is List<int>) return src;
+      return ((src as List?) ?? const [])
+          .map((e) => (e as num).toInt()).toList();
+    }
+    // Convert loose lists straight into packed doubles, without a boxed
+    // intermediate. The worker already packs these through the constructor.
+    Float64List dbls(String k) {
+      final src = (m[k] as List?) ?? const [];
+      if (adopt && src is Float64List) return src;
+      final out = Float64List(src.length);
+      for (var i = 0; i < src.length; i++) {
+        out[i] = (src[i] as num).toDouble();
+      }
+      return out;
+    }
+
+
+    final tsSec = ints(m, 'ts_sec');
+    final n = tsSec.length;
+    
+    List<int> safeI(String k) {
+      final l = ints(m, k);
+      return (l.isEmpty && n > 0) ? List<int>.filled(n, 0) : l;
+    }
+    List<double> safeD(String k) {
+      final l = dbls(k);
+      return (l.isEmpty && n > 0) ? Float64List(n) : l;
+    }
+
+    return Substrate(
+      tsSec: tsSec,
+      hr: safeI('hr'),
+      rrTsMs: dbls('rr_ts_ms'), // rrTsMs and rrMs don't have to match n
+      rrMs: dbls('rr_ms'),
+      ax: safeD('ax'),
+      ay: safeD('ay'),
+      az: safeD('az'),
+      spo2Red: safeI('spo2_red'),
+      spo2Ir: safeI('spo2_ir'),
+      skinTemp: safeI('skin_temp'),
+      skinContact: safeI('skin_contact'),
+      // NOT `safeI`: a missing/short list means the counter was ABSENT, and the
+      // absent marker is -1, not 0 (0 is a real, unmoved counter reading).
+      stepCount: () {
+        final l = ints(m, 'step_count');
+        return l.length == n ? l : List<int>.filled(n, -1);
+      }(),
+      // Same reason as `step_count`: the absent marker is -1. 0 is a real
+      // reading — the band saying THIS second's beat is not trustworthy.
+      hrValid: () {
+        final l = ints(m, 'hr_valid');
+        return l.length == n ? l : List<int>.filled(n, -1);
+      }(),
+      // Same reason again: absent is -1, and 0 is a real "wake".
+      bandSleepState: () {
+        final l = ints(m, 'band_sleep_state');
+        return l.length == n ? l : List<int>.filled(n, -1);
+      }(),
       deviceFamily: m['device_family'] as String?,
       deviceIds: ((m['device_ids'] as List?) ?? const [])
           .map((e) => e.toString())
@@ -1197,10 +1206,10 @@ class PhysioDay {
   final ana.SleepSegmentation sleep;
 
   /// Index range [sleepLoIdx, sleepHiIdx) of the sleep window INTO THE FULL
-  /// substrate — the same one passed to [calendarDays], NOT the day slice.
-  /// (`calendarDays` builds them as `loS + onsetIdx`, where `loS` is a lower
+  /// substrate — the same one passed to [calendarDaysHeavy], NOT the day slice.
+  /// (`calendarDaysHeavy` builds them as `loS + onsetIdx`, where `loS` is a lower
   /// bound into the full arrays, and both live callers slice the full substrate
-  /// with them; this doc used to say "day-sliced", contradicting `calendarDays`'
+  /// with them; this doc used to say "day-sliced", contradicting `calendarDaysHeavy`'
   /// own doc and pointing a future caller at a window offset by up to the
   /// nocturnal lookback.) Both 0 when no sleep.
   final int sleepLoIdx;
@@ -1237,7 +1246,7 @@ class PhysioDay {
   bool get hasSleep => sleep.present;
 }
 
-/// How far BEFORE a calendar day's local midnight [calendarDays] searches for
+/// How far BEFORE a calendar day's local midnight [calendarDaysHeavy] searches for
 /// the main sleep that ends in that day — the previous local NOON.
 ///
 /// Exported because the coordinator has to LOAD at least this much substrate
@@ -1249,7 +1258,7 @@ class PhysioDay {
 const int kNocturnalSearchLookbackSec = 12 * 3600;
 
 /// A user-asserted sleep window for one day — manual entry (Approach 1) or a
-/// confirmation of the HR-led fallback (Approach 2). Passed into [calendarDays]
+/// confirmation of the HR-led fallback (Approach 2). Passed into [calendarDaysHeavy]
 /// so it overrides auto detection for the matching [dayId].
 class SleepWindowOverride {
   final String dayId;
@@ -1259,7 +1268,7 @@ class SleepWindowOverride {
   // 'rejected': onsetSec/offsetSec still carry the window being rejected (the
   // auto-detected window at the time of rejection, same convention the
   // already-shipped rejected-nap rows use), but the window is never staged —
-  // see calendarDays' `ov.source == 'rejected'` branch.
+  // see calendarDaysHeavy' `ov.source == 'rejected'` branch.
 
   const SleepWindowOverride({
     required this.dayId,
@@ -1284,14 +1293,19 @@ bool userReplacesNight(String source) =>
 String localDateLabel(int epochSec) =>
     dayLabelOf(DateTime.fromMillisecondsSinceEpoch(epochSec * 1000));
 
-/// Test seam: force [calendarDays] to segment and stage every walked day, the
+/// Test seam: force [calendarDaysHeavy] to segment and stage every walked day, the
 /// pre-optimisation behaviour.
 @visibleForTesting
 bool debugStageEveryWalkedDay = false;
 
-/// Test seam: days whose body ran in [calendarDays] (skipped days do not count).
+/// Test seam: days whose body ran in [calendarDaysHeavy] (skipped days do not count).
 @visibleForTesting
 int debugSegmentedDayCount = 0;
+
+// Copied back from the registered staging worker as execution diagnostics.
+void resetStagingWalkDiagnostics() => debugSegmentedDayCount = 0;
+int get stagingWalkSegmentedDays => debugSegmentedDayCount;
+
 
 /// Split the substrate into CALENDAR days (local midnight → next local midnight).
 ///
@@ -1331,7 +1345,8 @@ int debugSegmentedDayCount = 0;
 /// skipped whole. The caller must not need the skipped days' side effects (the
 /// profile-observation fold uses [recordTargetOnly]). Not a rows-cache concern: the cache only
 /// gains rows, a skipped day just adds none.
-List<PhysioDay> calendarDays(
+@heavy
+List<PhysioDay> calendarDaysHeavy(
   Substrate sub, {
   ana.StagingMethod method = ana.StagingMethod.cardio,
   SleepWindowOverride? override,
@@ -1467,6 +1482,8 @@ List<PhysioDay> calendarDays(
 
       ana.SleepSegmentation s;
       String src;
+      // Keep the segmenter's actual refusal when a detected HR dip was unobserved.
+      ana.SleepSegmentation? fallbackUnobserved;
       if (ov != null && userBlanksNight(ov.source)) {
         // The user's word: this was NOT sleep ('rejected'). Skip
         // detection/staging entirely rather than force a window — the day
@@ -1550,6 +1567,10 @@ List<PhysioDay> calendarDays(
             if (s2.present) {
               s = s2;
               src = 'auto_fallback';
+            } else if (s2.absenceReason != null &&
+                cand.offsetSec >= dayStart &&
+                cand.offsetSec < dayEnd) {
+              fallbackUnobserved = s2;
             }
           }
         }
@@ -1576,6 +1597,7 @@ List<PhysioDay> calendarDays(
               hrBaseline: hrBaseline,
               rrMs: rrMsSeg,
               rrTsMs: rrTsSeg,
+              rowCache: rowCache,
               forcedWindow: (onsetSec: vn.onsetSec, offsetSec: vn.offsetSec),
             );
             final staged = vendorStagedSegmentation(forced, vn);
@@ -1616,13 +1638,26 @@ List<PhysioDay> calendarDays(
             ));
           }
         }
-      } else if (ov != null) {
-        sleepSource = ov.source;
+      } else if (ov != null && !userBlanksNight(ov.source)) {
+        // A saved but unobserved window must retain its refusal and source.
+        final span = ov.offsetSec - ov.onsetSec;
+        final have = _lowerBound(sub.tsSec, ov.offsetSec) -
+            _lowerBound(sub.tsSec, ov.onsetSec);
+        seg = (s.absenceReason == null &&
+                span > 0 &&
+                have < span * ana.kMinObservedFractionForSleep)
+            ? ana.SleepSegmentation.unobservedWindow(
+                'only ${have}s of a ${span}s window were recorded; below the '
+                '${(ana.kMinObservedFractionForSleep * 100).round()}% floor')
+            : s;
+        sleepSource = src;
       } else if (src == 'rejected') {
         // No window to stage (deliberately), but the day still needs to know
         // it was a rejection rather than an ordinary absence — sleep_detail
         // reads this to keep the "not sleep" state from re-prompting.
         sleepSource = 'rejected';
+      } else if (fallbackUnobserved != null) {
+        seg = fallbackUnobserved;
       }
     }
 
@@ -1718,3 +1753,4 @@ int _lowerBound(List<int> xs, int target) {
   }
   return lo;
 }
+

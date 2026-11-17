@@ -1,3 +1,8 @@
+import 'dart:convert';
+import '../data/day_label.dart';
+import '../data/db.dart';
+import 'nap_edits.dart' show napMinutes;
+
 // ONE-SHOT, RAW-FREE — naps that were really the start of the next night.
 //
 // Before v106 a sleep begun before midnight was also booked as that day's nap
@@ -7,11 +12,7 @@
 // halves of the answer: its own naps and the next day's main window. So the
 // overlap is dropped from the stored bundle, in place, once.
 
-import 'dart:convert';
 
-import '../data/day_label.dart';
-import '../data/db.dart';
-import 'nap_edits.dart' show napMinutes;
 
 /// `compute_freshness` key marking the cleanup as applied (an import clears it).
 const String kNapNextNightCleanupKey = LocalDb.kNapNextNightCleanupKey;
@@ -20,8 +21,10 @@ const String kNapNextNightCleanupKey = LocalDb.kNapNextNightCleanupKey;
 const int kNapNextNightFixedIn = 106;
 
 /// [naps] without the detected ones overlapping the next day's main sleep
-/// [nextOnsetSec, nextOffsetSec). A nap the user logged (it carries a
-/// `source`) is kept. Null when nothing is dropped.
+/// [nextOnsetSec, nextOffsetSec). A nap the user logged or confirmed is kept.
+/// A `legacy` one is not: that is an old detection copied aside when its day
+/// was rewritten, so it carries the same double count. Null when nothing is
+/// dropped.
 List<Map<String, dynamic>>? napsWithoutNextNight(
   List<Map<String, dynamic>> naps,
   int nextOnsetSec,
@@ -29,7 +32,8 @@ List<Map<String, dynamic>>? napsWithoutNextNight(
 ) {
   final kept = [
     for (final n in naps)
-      if (n['source'] != null ||
+      if (n['source'] == 'manual' ||
+          n['source'] == 'confirmed' ||
           n['start'] is! num ||
           n['end'] is! num ||
           (n['end'] as num) <= nextOnsetSec ||
@@ -39,8 +43,8 @@ List<Map<String, dynamic>>? napsWithoutNextNight(
   return kept.length == naps.length ? null : kept;
 }
 
-/// Runs the cleanup once over every stored day below [kNapNextNightFixedIn].
-/// Returns the days rewritten. Marked done only after it finishes.
+/// Runs once over every stored day: raw-free backfills can restamp a pre-v106
+/// bundle without changing its old naps. Marked done only after completion.
 Future<int> cleanNextNightNapsOnce() async {
   if (await LocalDb.computeFreshness(kNapNextNightCleanupKey) != null) return 0;
   final versions = await LocalDb.dayResultVersions();
@@ -50,7 +54,6 @@ Future<int> cleanNextNightNapsOnce() async {
   // and the (otherwise permanent) retry never starts.
   final skipped = <String, String>{};
   for (final day in days) {
-    if (versions[day]! >= kNapNextNightFixedIn) continue;
     // Calendar arithmetic on the label (noon avoids any DST edge).
     final d = DateTime.parse(day);
     final nextDay = dayLabelOf(DateTime(d.year, d.month, d.day + 1, 12));
@@ -59,8 +62,6 @@ Future<int> cleanNextNightNapsOnce() async {
     final payload = _decode(row?['payload_json']);
     // Absent figures are stored as an envelope whose `value` is a string
     // ("—"), so every level is type-tested, never cast.
-    final naps = _at(payload, ['naps', 'value']);
-    if (payload == null || naps is! List || naps.isEmpty) continue;
     final win = _at(_decode((await LocalDb.dayResult(nextDay))?['payload_json']),
         ['sleep', 'window', 'value']);
     final on = win is Map ? win['onset_ms'] : null;
@@ -69,6 +70,11 @@ Future<int> cleanNextNightNapsOnce() async {
       skipped[day] = 'no_next_night_window';
       continue;
     }
+    // Main462b53251: a rewritten bundle may have copied this old detection
+    // aside as a legacy edit. Remove it there too, never a logged/confirmed nap.
+    await LocalDb.deleteLegacyNapsOverlapping(day, on ~/ 1000, off ~/ 1000);
+    final naps = _at(payload, ['naps', 'value']);
+    if (payload == null || naps is! List || naps.isEmpty) continue;
     final kept = napsWithoutNextNight(
       [for (final n in naps) if (n is Map) n.cast<String, dynamic>()],
       on ~/ 1000,
@@ -142,3 +148,4 @@ Map<String, dynamic>? _decode(Object? json) {
     return null;
   }
 }
+

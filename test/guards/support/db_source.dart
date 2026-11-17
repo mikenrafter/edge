@@ -51,11 +51,21 @@ Map<String, String> _movedBodies(String root) {
 String readDbSource([String root = '.']) {
   final bodies = _movedBodies(root);
   final src = File('$root/lib/data/db.dart').readAsStringSync();
-  return src.replaceAllMapped(_forward, (m) {
+  final forwarded = src.replaceAllMapped(_forward, (m) {
     final body = bodies[m[1]!];
     if (body == null) throw StateError('no moved body for ${m[1]}');
     return ' $body';
   });
+  // The reset gate forwards a tear-off rather than a direct call. Reconstruct
+  // its closure too: moving wipeAll behind the gate must not blind scans.
+  return forwarded.replaceAllMapped(
+    RegExp(r'=>\s*_withReaderInvalidated\(\(\) => _withCommitGate\((_ldb\w+)\)\);'),
+    (m) {
+      final body = bodies[m[1]!];
+      if (body == null) throw StateError('no moved body for ${m[1]}');
+      return '=> _withReaderInvalidated(() => _withCommitGate(() $body));';
+    },
+  );
 }
 
 /// A LocalDb part file reports as `lib/data/db.dart`, the file it belongs to.

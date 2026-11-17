@@ -1,3 +1,10 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:archive/archive.dart';
+import 'package:path/path.dart' as p;
+import 'package:sqflite/sqflite.dart';
+
 // import_container.dart — what did the user actually hand us?
 //
 // WHY THIS EXISTS (issues #199, #160)
@@ -26,12 +33,7 @@
 // imported for real; anything we cannot use gets a message naming the file we
 // DO want, instead of a byte offset.
 
-import 'dart:async';
-import 'dart:io';
-import 'dart:typed_data';
 
-import 'package:archive/archive.dart';
-import 'package:path/path.dart' as p;
 
 /// What the first bytes of the picked file say it is.
 enum ImportContainer {
@@ -744,4 +746,67 @@ Future<List<String>> _extractCsvMembers(
     await input.close();
   }
   return out;
+}
+
+
+/// True when [path] is a database THIS app wrote: an export, an auto-backup,
+/// or a quarantined copy — judged by CONTENT when the name does not say so.
+///
+/// The router used to go by name alone (`.db`, `.db.gz`, `.db.unopenable-`).
+/// A backup that came back off Drive, a mail attachment or a file manager
+/// under any other name is still a SQLite file, so it fell through to
+/// [isNoopExport], which claims every SQLite file, and the user restoring
+/// their own history was told "That database is not a NOOP backup" (#606).
+/// `LocalDb.importFromDbFile` already reads by magic bytes for the same
+/// reason; this makes the router agree with it.
+///
+/// A name that says it is ours is still believed without opening the file, so
+/// a damaged backup reaches the backup importer and gets ITS message.
+///
+/// Null means the inspection itself failed (the file would not open or
+/// query), which is not the same as "not ours": the caller must not hand it to
+/// [isNoopExport], which claims every SQLite file.
+Future<bool?> isEdgeBackup(String path) async {
+  final lower = path.toLowerCase();
+  if (lower.endsWith('.db') ||
+      lower.endsWith('.db.gz') ||
+      lower.contains('.db.unopenable-')) {
+    return true;
+  }
+  // Never throws: this runs while a decrypted backup may be sitting in the
+  // temp directory, before the caller's cleanup is armed. An unreadable file
+  // is reported as null, and the caller shows the generic unreadable-file path.
+  ResolvedNoopDatabase? resolved;
+  try {
+    final kind = await sniffFile(path);
+    if (kind != ImportContainer.sqlite && kind != ImportContainer.gzip) {
+      return false;
+    }
+    // Unwraps the gzip; null when it does not hold a database.
+    resolved = await resolveNoopDatabase(path);
+    if (resolved == null) return false;
+    final src = await openDatabase(resolved.path,
+        readOnly: true, singleInstance: false);
+    try {
+      final tables = {
+        for (final r in await src
+            .rawQuery("SELECT name FROM sqlite_master WHERE type = 'table'"))
+          r['name'],
+      };
+      // `hrSample` is NOOP's spine. Ours is the raw ledger, the baselines and
+      // a per-day result table TOGETHER: one generic name such as `samples`
+      // in somebody else's database must not get its rows merged into the
+      // user's history.
+      return !tables.contains('hrSample') &&
+          tables.contains('samples') &&
+          tables.contains('baselines') &&
+          (tables.contains('day_result') || tables.contains('derived_day'));
+    } finally {
+      await src.close();
+    }
+  } catch (_) {
+    return null;
+  } finally {
+    await resolved?.dispose();
+  }
 }

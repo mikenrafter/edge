@@ -1,3 +1,4 @@
+import 'attach_copy.dart';
 // The "last 2 weeks" database for an issue report: a new SQLite file with the
 // SAME schema as the live database (tables, indexes, views, triggers,
 // user_version), so every tool that opens a full export opens this too. The
@@ -5,10 +6,7 @@
 // second ones possibly fewer, to fit the upload cap); the small, diagnostic
 // tables come whole. The live database is only ever READ.
 //
-// Built entirely inside SQLite (ATTACH the live file read side, INSERT ...
-// SELECT into the new one), so no row passes through Dart. sqflite runs those
-// statements off the UI thread (a native worker on iOS/Android, a helper
-// isolate under sqflite_common_ffi).
+// Built entirely inside SQLite by [attachCopy], so no row passes through Dart.
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -57,6 +55,8 @@ const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   'decoded_rr': (SliceKeep.highRate, 'rec_ts', 'beat-to-beat intervals'),
   'samples': (SliceKeep.highRate, 'ts', 'per-second heart rate'),
   'raw_archive': (SliceKeep.highRate, 'captured_at', 'records the app could not decode, by when they arrived'),
+  'raw_archive_frames': (SliceKeep.highRate, 'captured_at', 'records the app could not decode, by when they arrived'),
+  'raw_archive_legacy': (SliceKeep.highRate, 'captured_at', 'the same records in the older layout, until they are moved'),
   'events': (SliceKeep.recent, 'ts', 'strap event stream'),
   'band_events': (SliceKeep.recent, 'ts', 'decoded strap events'),
   'band_battery': (SliceKeep.recent, 'ts', 'battery readings every few minutes'),
@@ -91,6 +91,10 @@ const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   'spectral_archive': (SliceKeep.none, null, 'compressed sample archive of old 1 Hz data'),
   'import_journal': (SliceKeep.none, null, 'where this install\'s last backup import stands'),
   // Resumable derive state: large blobs, only the recent days are useful.
+  'night_checkpoint': (SliceKeep.none, null, 'night resume scratch'),
+  'store_identity': (SliceKeep.none, null, 'identity of this local store'),
+  'session_ceiling_rev': (SliceKeep.all, null, 'local session revision'),
+  'derive_fingerprint': (SliceKeep.none, null, 'rebuildable input fingerprint'),
   'day_checkpoint': (SliceKeep.recentDay, 'day_id', 'derive resume checkpoints'),
   'group_row': (SliceKeep.recentDay, 'day_id', 'per-group derive rows (payload blobs)'),
   'day_manifest': (SliceKeep.recentDay, 'day_id', 'which group revisions each day published'),
@@ -126,6 +130,10 @@ const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   'activity_review_days': (SliceKeep.all, null, 'activity review state'),
   'activity_review_meta': (SliceKeep.all, null, 'activity review state'),
   'breathing_session': (SliceKeep.all, null, 'breathing sessions'),
+  'hyrox_session': (SliceKeep.all, null, 'HYROX sessions'),
+  'hyrox_segment': (SliceKeep.all, null, 'HYROX round segments'),
+  'triathlon_session': (SliceKeep.all, null, 'triathlon sessions'),
+  'triathlon_segment': (SliceKeep.all, null, 'triathlon segments'),
   'exercise_def': (SliceKeep.all, null, 'exercise list'),
   // What the user logs: small.
   'journal': (SliceKeep.all, null, 'journal'),
@@ -156,6 +164,9 @@ const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   'signal_priority': (SliceKeep.all, null, 'which device feeds which signal'),
   'step_calibration': (SliceKeep.all, null, 'step calibration'),
   'step_calibration_day': (SliceKeep.all, null, 'step calibration days'),
+  'live_step_calibration': (SliceKeep.all, null, 'live step calibration'),
+  'live_step_calibration_run':
+      (SliceKeep.all, null, 'live step calibration runs'),
   'sync_cursor': (SliceKeep.all, null, 'sync position'),
   'alarm_schedule': (SliceKeep.all, null, 'alarm settings'),
   'notifications': (SliceKeep.all, null, 'in-app notifications'),
@@ -186,59 +197,8 @@ Future<String> exportRecentSlice({DateTime? now, int rawDays = kSliceDays}) asyn
       dayLabelOf(DateTime(t.year, t.month, t.day - kSliceDays));
   final dest = p.join((await getTemporaryDirectory()).path,
       'openstrap_slice_${DateTime.now().microsecondsSinceEpoch}.db');
-  await deleteDatabase(dest);
-  final out = await openDatabase(dest, singleInstance: false);
-  try {
-    await out.execute('ATTACH DATABASE ? AS src', [live.path]);
-    final schema = await out.rawQuery(
-        "SELECT type, name, sql FROM src.sqlite_master WHERE sql IS NOT NULL "
-        "AND name NOT LIKE 'sqlite_%' ORDER BY rowid");
-    final have = {
-      for (final r in await out.rawQuery(
-          "SELECT name FROM main.sqlite_master WHERE type = 'table'"))
-        r['name'] as String
-    };
-    // One DEFERRED transaction = one consistent read of the live file, and
-    // only a read lock on it. sqflite's transaction() is BEGIN IMMEDIATE,
-    // which would take the live file's write lock too and stall syncing.
-    await out.execute('BEGIN');
-    for (final r in schema) {
-      if (r['type'] != 'table' || have.contains(r['name'])) continue;
-      final name = r['name'] as String;
-      await out.execute(r['sql'] as String);
-      final where = await _where(out, name, cutoff, rawCutoff, cutoffDay);
-      if (where == null) continue;
-      await out.execute(
-          'INSERT INTO main."$name" SELECT * FROM src."$name"$where');
-    }
-    final seq = await out.rawQuery(
-        "SELECT 1 FROM src.sqlite_master WHERE name = 'sqlite_sequence'");
-    if (seq.isNotEmpty) {
-      await out.execute('DELETE FROM main.sqlite_sequence');
-      await out.execute(
-          'INSERT INTO main.sqlite_sequence SELECT * FROM src.sqlite_sequence');
-    }
-    // Indexes, views and triggers after the rows (a trigger must not fire
-    // on the copy).
-    for (final type in const ['index', 'view', 'trigger']) {
-      for (final r in schema) {
-        if (r['type'] == type) await out.execute(r['sql'] as String);
-      }
-    }
-    final v = await out.rawQuery('PRAGMA src.user_version');
-    await out.execute('PRAGMA user_version = ${v.first.values.first}');
-    await out.execute('COMMIT');
-    await out.execute('DETACH DATABASE src');
-    await out.close();
-  } catch (_) {
-    try {
-      await out.close();
-    } catch (_) {}
-    try {
-      await deleteDatabase(dest);
-    } catch (_) {}
-    rethrow;
-  }
+  await attachCopy(live.path, dest,
+      (db, name) => _where(db, name, cutoff, rawCutoff, cutoffDay));
   return dest;
 }
 

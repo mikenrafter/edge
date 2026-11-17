@@ -1,22 +1,9 @@
 import '../profile/profile.dart' show SettingsAccordion;
-// The shared metric drill-down — density 2 of 3.
-//
-// Glance (a row on Health) → MetricDetail (your normal range, what moves it,
-// how this week compares) → Nerd stats (everything, in mono). There is no
-// "advanced mode" switch: depth is a place you walk to, not a preference you
-// set, so the same person gets the shallow read on Monday and the deep one
-// when something looks wrong.
-//
-// Every metric goes through THIS screen. Forty bespoke detail screens is how
-// the old UI ended up with forty different opinions about what a chart is.
-
-
 import 'package:clock/clock.dart' as pkg_clock;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
-
 import '../../ble/adapters/signals.dart';
 import '../../data/day_label.dart';
 import '../../data/sleep_edit_store.dart';
@@ -47,6 +34,20 @@ import '../profile/devices.dart'
         signalWinners,
         unanimousWinner;
 import 'sleep_detail.dart';
+
+// The shared metric drill-down — density 2 of 3.
+//
+// Glance (a row on Health) → MetricDetail (your normal range, what moves it,
+// how this week compares) → Nerd stats (everything, in mono). There is no
+// "advanced mode" switch: depth is a place you walk to, not a preference you
+// set, so the same person gets the shallow read on Monday and the deep one
+// when something looks wrong.
+//
+// Every metric goes through THIS screen. Forty bespoke detail screens is how
+// the old UI ended up with forty different opinions about what a chart is.
+
+
+
 
 // ═══════════════════ the vocabulary ═══════════════════
 
@@ -1134,9 +1135,10 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
     // modal sheet the user can dismiss by leaving the screen. Guarded here and
     // not at each call site — one guard where every caller already routes.
     if (!mounted) return;
+    final gen = ++_loadGen;
     final repo = repoOf(context);
     if (repo == null) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && gen == _loadGen) setState(() => _loading = false);
       return;
     }
     try {
@@ -1171,7 +1173,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
                 onLast: (hit) {
                   // Only while nothing is shown yet: a re-read of a screen
                   // that already has a fresh result is not stale.
-                  if (!mounted || _journal != null) return;
+                  if (!mounted || gen != _loadGen || _journal != null) return;
                   setState(() {
                     _journal = hit.value;
                     _cachedAt = hit.cachedAt;
@@ -1183,7 +1185,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
       final loaded = await pausedRead(MetricData.load(repo, widget.metricKey,
           candidates: candidates, journal: false));
       if (loaded.paused) {
-        if (mounted) setState(() { _loading = false; _paused = true; });
+        if (mounted && gen == _loadGen) setState(() { _loading = false; _paused = true; });
         return;
       }
       final d = loaded.value!;
@@ -1205,21 +1207,22 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
         // the one above — nothing reads `context` past this point, but the
         // guard is unconditional for every await here, not just the ones
         // that happen to touch it.
-        if (!mounted) return;
+        if (!mounted || gen != _loadGen) return;
         winners = resolved;
       }
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
       setState(() {
         _base = d;
         _recompose();
         _winners = winners;
         _loading = false;
         _paused = false;
+        _failed = false;
         _openOnDay(d);
       });
       if (slow == null) return;
       final j = await slow;
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
       setState(() {
         if (j != null) {
           _journalFailed = false;
@@ -1233,9 +1236,11 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
         _recompose();
       });
     } on ReadPaused {
-      if (mounted) setState(() { _loading = false; _paused = true; });
+      if (mounted && gen == _loadGen) setState(() { _loading = false; _paused = true; });
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && gen == _loadGen) {
+        setState(() => (_loading = false, _failed = true));
+      }
     }
   }
 
@@ -1318,6 +1323,23 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
         _ranges(c, d, spec.color),
         const SizedBox(height: S.x5),
         const PausedOlderDays(),
+      ] else if (_failed) ...[
+        // Outranks a cached series on purpose: those numbers are from the last
+        // read that WORKED, and a failed refresh must not present them as the
+        // current answer. The only way forward is the retry.
+        const SizedBox(height: S.x2),
+        StatusCard(
+          l?.wellnessLoadFailedTitle ?? 'This could not be read',
+          l?.homeLoadFailedBody ??
+              'The stored day failed to load. Nothing was deleted — this is a '
+                  'read that went wrong, not missing data.',
+          fix: l?.homeTryAgain ?? 'Try again',
+          icon: LucideIcons.databaseZap,
+          onFix: () {
+            setState(() => (_loading = true, _failed = false));
+            _load();
+          },
+        ),
       ] else if (vals.isEmpty && !_loading) ...[
         _ranges(c, d, spec.color),
         const SizedBox(height: S.x5),
@@ -1339,8 +1361,11 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
             // them to wear the band is a promise that cannot change anything —
             // they already did, and the days are one tab away.
             fix: all.isEmpty
-                ? (l?.metricDetailWearBandFix ??
-                    'Wear the band overnight to start the series')
+                ? (kDaytimeMetricKeys.contains(widget.metricKey)
+                    ? (l?.dayStrainWearBandFix ??
+                        'Wear the band through the day')
+                    : (l?.metricDetailWearBandFix ??
+                        'Wear the band overnight to start the series'))
                 : '',
             icon: spec.icon,
           ),
@@ -1874,6 +1899,14 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
                 (version: latestPoint?.olderVersion, reason: latestPoint?.olderReason),
               ];
               return ChartKeyReadout(
+                announceLatest: true,
+                note: _pick != null && v == null ? '' :
+                    (_labelSources(d) ? _contributors(_labelsFor(
+                        _dayOfSlot(selected, series.length), d.coverage, d.sources)) : ''),
+                reserveNote: _labelSources(d),
+                openLabel: AppLocalizations.of(panelContext)?.metricDetailOpenDay(
+                    prettyDay(_dayOfSlot(selected, series.length), AppLocalizations.of(panelContext))) ??
+                    'Open ${_dayOfSlot(selected, series.length)}',
                 cells: [
                   ChartCell(spec.title, p.on(spec.color), value: fmtValue(v),
                     older: selectedPoint?.olderVersion == null ? null :
@@ -1887,8 +1920,8 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
                 nerdStats: this,
                 // The day's own detail where one exists; tappable even for a
                 // day with no value yet. Nerd stats is the panel's own action.
-                onOpen: _hasDayScreen(widget.metricKey) ? () => go(panelContext,
-                    _dayScreen(widget.metricKey, _dayOfSlot(selected, series.length)))
+                onOpen: v != null ? () => go(panelContext,
+                    metricDayScreen(widget.metricKey, _dayOfSlot(selected, series.length)))
                     : null,
               );
             }),
@@ -2256,6 +2289,18 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
   }
 
   String _fmt(MetricSpec spec, double v) => metricValue(spec.unit, v);
+
+
+  /// The last read threw. A failed read is NOT "nothing recorded": rendering it
+  /// as the ordinary empty state told someone with data on disk to wear the
+  /// band, and offered no way back. It also outranks any series still in `_d`:
+  /// a refresh that failed must not pass the older numbers off as current.
+  bool _failed = false;
+
+  /// Which read is newest. A step-goal save and the failure card's retry can
+  /// both start one while another is in flight; without this the OLDER request
+  /// can finish last and install its own `_d`/`_failed` over the newer answer.
+  int _loadGen = 0;
 }
 
 /// Today's steps against the goal, as one small ring — the same [Ring]
@@ -2307,7 +2352,14 @@ class _StepGoalGaugeState extends State<_StepGoalGauge> {
 
   Future<void> _save() async {
     final t = Typed.of(_ctrl.text);
-    final typed = (t.bad || t.value == null) ? null : t.value!.round();
+    // "12k" or "12,000" is not a blank field: closing the editor here kept
+    // the old goal under a screen that looked as if it had saved the new one.
+    // Keep the editor open with what was typed and say it was not read.
+    if (t.bad) {
+      sayUnreadable(context, [uiText(context, 'Goal')]);
+      return;
+    }
+    final typed = t.value?.round();
     if (typed == null) {
       setState(() => _editing = false);
       return;
@@ -2681,3 +2733,35 @@ class MonoTable extends StatelessWidget {
     );
   }
 }
+
+
+/// Metrics a day's wear produces, not a night's. Their empty state asks for
+/// the band through the day; "overnight" would send someone to bed to get a
+/// step count.
+const kDaytimeMetricKeys = {
+  'steps',
+  'calories',
+  'strain',
+  'trimp',
+  'active_min',
+  'wear',
+  // After a workout, and sleep outside the main night.
+  'hrr',
+  'nap_min',
+};
+
+/// Where one day of a metric opens. Each metric lands on the screen that
+/// actually shows that day — Nerd stats is the fallback because it is the one
+/// screen that exists for every key.
+///
+/// Shared with Home: a tile on a PAST day has to open that day, and
+/// [MetricDetail] is anchored to today, so it cannot.
+Widget metricDayScreen(String key, String day) => switch (key) {
+      'sleep' ||
+      'deep' ||
+      'rem' ||
+      'efficiency' =>
+        SleepDetail(day: day),
+      'steps' => DayStepsDetail(day: day),
+      _ => Investigate(key, day: day),
+    };

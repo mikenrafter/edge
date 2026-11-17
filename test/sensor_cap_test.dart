@@ -14,6 +14,7 @@ import 'package:openstrap_edge/ui2/profile/pair_sensor.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'support/close_widget_database.dart';
 
 List<Map<String, Object?>> _rows(int secondaries,
         {bool band = true, String adapter = 'ble_hrs'}) =>
@@ -133,6 +134,7 @@ void main() {
       t.view.physicalSize = const Size(390 * 3, 2400 * 3);
       t.view.devicePixelRatio = 3;
       addTearDown(t.view.reset);
+      addTearDown(() => closeWidgetDatabase(t));
       await t.pumpWidget(MaterialApp(
         theme: buildTheme(Brightness.light),
         home: PairSensorScreen(

@@ -1,0 +1,5 @@
+// WHY: one unknown interface caller must still fail the closed-source check.
+// CLAIM(resolved-effects).
+abstract class Work { void use(void Function() cb); }
+class RealWork extends Work { @override void use(void Function() cb) { cb(); } }
+void run(void Function() unknown) { final Work w = RealWork(); w.use(unknown); }

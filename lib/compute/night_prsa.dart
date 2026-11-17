@@ -1,87 +1,74 @@
-// night_prsa.dart — the night's PRSA deceleration and acceleration capacity,
-// folded across passes with the analytics prsaAggregator.
-//
-// Owner: the [NightPrsa] instance is owned by DayCalculationState, which feeds
-// it only the night corrector's settled beats.
-
+import '../util/heavy.dart';
 import 'dart:typed_data';
 
 import 'package:openstrap_analytics/aggregate.dart';
 import 'package:openstrap_analytics/onehz.dart';
 
-import '../util/heavy.dart';
-
-typedef _PrsaAgg = Aggregator<dynamic, DoubleColumn, Metric<PrsaResult>>;
-
-_PrsaAgg? _dcAgg, _acAgg;
-
 @heavy
-_PrsaAgg _aggHeavy(bool deceleration) => deceleration
-    ? (_dcAgg ??= prsaAggregator(deceleration: true))
-    : (_acAgg ??= prsaAggregator(deceleration: false));
+Aggregator<dynamic, DoubleColumn, Metric<PrsaResult>> _dcHeavy() =>
+    prsaAggregator(deceleration: true);
+@heavy
+Aggregator<dynamic, DoubleColumn, Metric<PrsaResult>> _acHeavy() =>
+    prsaAggregator(deceleration: false);
 
-/// [decelerationCapacity] / [accelerationCapacity] over a growing night.
-///
-/// Settled beats are added with sequential `addSlice` calls only, never
-/// `combine`: sequential folding keeps the profile sums in the reference's
-/// order, which is what makes the result identical bit for bit. An ask adds
-/// the provisional tail to a copy (`addSlice` mutates its state).
+/// Settled night NN in reference order. Provisional tails only touch copies.
 class NightPrsa {
-  NightPrsa._(this._dc, this._ac);
+  NightPrsa._();
+  Object? _dcState, _acState;
 
   @heavy
-  static NightPrsa emptyHeavy() =>
-      NightPrsa._(_aggHeavy(true).empty(), _aggHeavy(false).empty());
+  Map<String, dynamic> toJsonHeavy() => {
+    'v': 1, 'dc': _dcHeavy().encodeState(_dcState), 'ac': _acHeavy().encodeState(_acState),
+  };
 
-  Object? _dc, _ac;
+  @heavy
+  static NightPrsa fromJsonHeavy(Object? raw, [int? expectedFed]) {
+    if (raw is! Map) throw const FormatException('night PRSA');
+    final json = raw.cast<String, dynamic>();
+    final dcCount = json['dc'];
+    if (dcCount is! List || dcCount.isEmpty || dcCount.first is! int) {
+      throw const FormatException('night PRSA count');
+    }
+    final fed = expectedFed ?? dcCount.first as int;
+    if (json['v'] != 1) throw const FormatException('PRSA version');
+    final dc = json['dc'], ac = json['ac'];
+    if (dc is! List || ac is! List || dc.first != fed || ac.first != fed) {
+      throw const FormatException('PRSA feed count');
+    }
+    return NightPrsa.emptyHeavy()
+      .._dcState = _dcHeavy().decodeState(dc)
+      .._acState = _acHeavy().decodeState(ac);
+  }
 
   @heavy
   void foldHeavy(List<double> nn) {
-    if (nn.isEmpty) return;
-    final col = DoubleColumn(Float64List.fromList(nn));
-    _dc = _aggHeavy(true).addSlice(_dc, col, 0, col.length);
-    _ac = _aggHeavy(false).addSlice(_ac, col, 0, col.length);
+    final column = DoubleColumn(Float64List.fromList(nn));
+    _dcState = _dcHeavy().addSlice(_dcState, column, 0, column.length);
+    _acState = _acHeavy().addSlice(_acState, column, 0, column.length);
   }
 
   @heavy
-  static Metric<PrsaResult> _snapshotHeavy(
-      _PrsaAgg agg, Object? state, List<double> tailNn) {
-    final copy = agg.decodeState(agg.encodeState(state));
+  (Metric<PrsaResult>, Metric<PrsaResult>) snapshotHeavy(List<double> tailNn) {
     final tail = DoubleColumn(Float64List.fromList(tailNn));
-    return agg.finish(agg.addSlice(copy, tail, 0, tail.length));
-  }
-
-  /// [decelerationCapacity] over the folded beats followed by [tailNn].
-  @heavy
-  Metric<PrsaResult> dcHeavy(List<double> tailNn) =>
-      _snapshotHeavy(_aggHeavy(true), _dc, tailNn);
-
-  /// [accelerationCapacity] over the folded beats followed by [tailNn].
-  @heavy
-  Metric<PrsaResult> acHeavy(List<double> tailNn) =>
-      _snapshotHeavy(_aggHeavy(false), _ac, tailNn);
-
-  /// Plain data for the checkpoint (the aggregators' own JSON conventions).
-  @heavy
-  Map<String, dynamic> toJsonHeavy() => {
-        'v': 1,
-        'dc': _aggHeavy(true).encodeState(_dc),
-        'ac': _aggHeavy(false).encodeState(_ac),
-      };
-
-  /// Inverse of [toJsonHeavy]; throws [FormatException] on anything malformed.
-  @heavy
-  static NightPrsa fromJsonHeavy(Object? json) {
-    try {
-      if (json is! Map || json['v'] != 1) {
-        throw const FormatException('night PRSA: bad version');
-      }
-      return NightPrsa._(_aggHeavy(true).decodeState(json['dc']),
-          _aggHeavy(false).decodeState(json['ac']));
-    } on FormatException {
-      rethrow;
-    } catch (e) {
-      throw FormatException('malformed night PRSA: $e');
+    Metric<PrsaResult> finish(
+        Aggregator<dynamic, DoubleColumn, Metric<PrsaResult>> agg,
+        Object? state) {
+      final copy = agg.decodeState(agg.encodeState(state));
+      return agg.finish(agg.addSlice(copy, tail, 0, tail.length));
     }
+    // Sequential addSlice preserves anchor order; never combine partial sums.
+    // Merged analytics prsa_aggregator.dart declares profile/capacity abs+rel 1e-9,
+    // confidence abs 1e-12 parity with the batch functions.
+    return (finish(_dcHeavy(), _dcState), finish(_acHeavy(), _acState));
   }
+
+  @heavy
+  static NightPrsa emptyHeavy() => NightPrsa._()
+      .._dcState = _dcHeavy().empty()
+      .._acState = _acHeavy().empty();
+  @heavy
+  Metric<PrsaResult> dcHeavy(List<double> tail) => snapshotHeavy(tail).$1;
+  @heavy
+  Metric<PrsaResult> acHeavy(List<double> tail) => snapshotHeavy(tail).$2;
+
 }

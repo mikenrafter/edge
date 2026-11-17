@@ -1,3 +1,4 @@
+import 'support/test_callable.dart';
 import 'support/sleep_edit_effects.dart';
 // WHY: durable sleep edits must survive failed calculations and unrelated edits.
 // CLAIM(sleep-edit-r2): regression cases for R2-1 through R2-4.
@@ -167,8 +168,8 @@ void main() {
     () async {
       await raw(b);
       await edit(b);
-      DerivationEngine.debugSecondHalfHook = (_) async =>
-          throw StateError('transient second-half failure');
+      DerivationEngine.debugSecondHalfHook = TestCall1((_) async =>
+          throw StateError('transient second-half failure'));
       final app = AppState.forTesting();
       try {
         await app.sleepEditRunner.start().timeout(const Duration(seconds: 90));
@@ -287,9 +288,9 @@ void main() {
       await raw(a);
       await raw(b);
       await edit(a);
-      DerivationEngine.debugSecondHalfHook = (day) async {
+      DerivationEngine.debugSecondHalfHook = TestCall1((day) async {
         if (day == b) throw StateError('dependent partial');
-      };
+      });
       final app = AppState.forTesting();
       try {
         await app.sleepEditRunner.start();
@@ -361,12 +362,12 @@ void main() {
         [a],
       );
       final entered = Completer<void>(), release = Completer<void>();
-      DerivationEngine.debugSecondHalfHook = (day) async {
+      DerivationEngine.debugSecondHalfHook = TestCall1((day) async {
         if (day == b) {
           entered.complete();
           await release.future;
         }
-      };
+      });
       final engine = DerivationEngine();
       final otherPass = engine.runDays(const Profile(), {b}, force: true);
       try {

@@ -297,7 +297,7 @@ const String kAnalyticsPin = 'd876c427ce59eed95b5e54411e3b69253f294ae6';
 // main merge commit. Re-pointed at that branch's Huami gap fix (minutes()
 // empty after a counter gap); NO kAlgoVersion bump: the adapter already
 // decoded only gap-free transfers, so no output changes.
-const String kProtocolPin = '89080bcfac7767b3a871fd3a7d9307f5f30dad26';
+const String kProtocolPin = 'fbadb5bd055965d9400e266d6cf42748992ba950';
 
 // Fold idempotency, the minimum-nights warm-up, and legacy-payload handling
 // all live in SleepProfilePolicy (pure, unit-tested) — see
@@ -1033,11 +1033,63 @@ class _BaselineHistoryCache {
     return [for (var i = from; i < end; i++) series[i].value];
   }
 
+  /// The `yyyy-MM-dd` dates of exactly the entries [valuesBefore] returns for
+  /// the same arguments, index for index. A rows window can't tell a night
+  /// from yesterday from one three weeks back across a wear gap; the dates
+  /// let a calendar-windowed baseline drop the stale ones.
+  List<String> datesBefore(String key, String beforeDate, {String? family}) {
+    final series = _seriesFor(key, family);
+    final end = _beforeIndex(series, beforeDate);
+    final from = end <= _baselineWindowDays ? 0 : end - _baselineWindowDays;
+    return [for (var i = from; i < end; i++) series[i].date];
+  }
+
   static List<double> _trailing(List<_DatedValue> samples) {
     final from = samples.length <= _baselineWindowDays
         ? 0
         : samples.length - _baselineWindowDays;
     return [for (var i = from; i < samples.length; i++) samples[i].value];
+  }
+
+  /// The dated quiet levels [_quietFingerprint] covers, newest included, as
+  /// `[date, value]` pairs: what [rescanRecent] compares against the list it
+  /// stored last time to find the days whose strain window moved.
+  List<List<Object>> quietWindowEntries() {
+    final series = _series['quiet_hrr'] ?? const <_DatedValue>[];
+    const span = _rescanWindowDays + _baselineWindowDays + 1;
+    final from = series.length <= span ? 0 : series.length - span;
+    return [
+      for (var i = from; i < series.length; i++)
+        [series[i].date, series[i].value],
+    ];
+  }
+
+  /// Every history value a derive of [date] can read, hashed: each series'
+  /// entries strictly before [date] with their method family (the windows
+  /// `valuesBefore`/`maxBefore` serve), plus every `dyn_p90` entry, whose
+  /// dates the frozen movement floor reads whole. Days after [date] are left
+  /// out, so today's values moving through the day do not unsettle the days
+  /// before it.
+  String inputsBefore(String date) {
+    final b = StringBuffer();
+    for (final key in _series.keys.toList()..sort()) {
+      final series = _series[key]!;
+      final fams = _families[key];
+      final end =
+          key == 'dyn_p90' ? series.length : _beforeIndex(series, date);
+      b.write('|$key:');
+      for (var i = 0; i < end; i++) {
+        final v = series[i];
+        b
+          ..write(v.date)
+          ..write('=')
+          ..write(v.value)
+          ..write('@')
+          ..write(fams?[v.date] ?? '')
+          ..write(',');
+      }
+    }
+    return sha1.convert(utf8.encode(b.toString())).toString();
   }
 
   /// Strain's quiet-waking level is a baseline too, and [rescanRecent] has to
@@ -1249,7 +1301,7 @@ class _IsolateValue {
 /// Test seam for [DerivationEngine._runIsolateCancellable] — the isolate
 /// lifecycle guarantees (value / error / killed-on-timeout) are what the engine
 /// depends on to never hang, so they're pinned directly.
-@visibleForTesting
+/// Also used by wearable and session-window preparation in production.
 Future<R> runCancellableIsolate<R>(
   FutureOr<R> Function() compute,
   Duration timeout, {
@@ -1409,6 +1461,10 @@ class _DayBlocksInput {
 /// [seriesPatch] / [scalarPatch] are merged into the isolate-1 bundle on the main
 /// isolate; [wake] is persisted; candidates are reconciled and session HRR
 /// writes are applied by the database-owning caller.
+class _CeilingScanCounter {
+  int count = 0;
+}
+
 class _DayBlocksOutput {
   final List<Map<String, dynamic>> mealSuggestions;
   final List<Map<String, dynamic>> napSuggestions;
@@ -1421,6 +1477,7 @@ class _DayBlocksOutput {
 
   /// Finished sessions whose observed ceiling was scanned this pass, by id.
   final Map<String, ({Map<String, dynamic> json, double? bpm})> ceilingComputed;
+  final int ceilingComputations;
   final Map<String, dynamic> bundlePatch;
   final Map<String, dynamic> seriesPatch;
   final Map<String, dynamic> scalarPatch;
@@ -1433,6 +1490,7 @@ class _DayBlocksOutput {
   const _DayBlocksOutput({
     required this.calculationState,
     required this.ceilingComputed,
+    required this.ceilingComputations,
     required this.bundlePatch,
     this.napSuggestions = const [],
     this.mealSuggestions = const [],
@@ -1475,3 +1533,96 @@ double? _median(List<double> xs) {
   final mid = vs.length ~/ 2;
   return vs.length.isOdd ? vs[mid] : (vs[mid - 1] + vs[mid]) / 2;
 }
+
+
+/// How long the device has to sit in a new timezone (>=3h from the guard's
+/// baseline) before a heavy pass releases the travel hold on its own. Long
+/// enough that a layover or a same-day hop does not trigger it.
+const int kTzTravelSettleMs = 24 * 60 * 60 * 1000;
+const int _tzJumpThresholdMin = 180;
+
+/// One step of the timezone-travel guard, pure so it can be tested without a
+/// database or a real clock. [stored] is the decoded `tz_travel_guard`
+/// payload; `write` is what to persist (null = leave it as it is).
+///
+/// `offset_min` is the baseline zone and only moves when no jump stands.
+/// While one does, `away_offset_min`/`away_since_ms` record which zone the
+/// device is in and since when, so the hold can end once that zone has
+/// stood for [kTzTravelSettleMs] instead of waiting for a manual restage.
+@visibleForTesting
+({bool held, bool settled, Map<String, Object?>? write}) evaluateTzTravelGuard({
+  required Map<dynamic, dynamic>? stored,
+  required int nowOffsetMin,
+  required int nowMs,
+}) {
+  final lastOffsetMin = (stored?['offset_min'] as num?)?.toInt();
+  final jumped = lastOffsetMin != null &&
+      (nowOffsetMin - lastOffsetMin).abs() >= _tzJumpThresholdMin;
+  if (!jumped) {
+    return (
+      held: false,
+      settled: false,
+      write: {'offset_min': nowOffsetMin},
+    );
+  }
+  final awayOffsetMin = (stored?['away_offset_min'] as num?)?.toInt();
+  final awaySinceMs = (stored?['away_since_ms'] as num?)?.toInt();
+  // A different away zone (a second hop) or a clock that went backwards
+  // restarts the wait rather than counting time spent somewhere else.
+  if (awayOffsetMin != nowOffsetMin ||
+      awaySinceMs == null ||
+      awaySinceMs > nowMs) {
+    return (
+      held: true,
+      settled: false,
+      write: {
+        'offset_min': lastOffsetMin,
+        'away_offset_min': nowOffsetMin,
+        'away_since_ms': nowMs,
+      },
+    );
+  }
+  return (
+    held: true,
+    settled: nowMs - awaySinceMs >= kTzTravelSettleMs,
+    write: null,
+  );
+}
+
+/// Where a [DerivationEngine.compactStorage] has got to.
+enum CompactStep { prune, vacuum }
+
+/// What a [DerivationEngine.compactStorage] did. Sizes are the database file
+/// plus its WAL, in bytes.
+class CompactResult {
+  const CompactResult({
+    required this.beforeBytes,
+    required this.afterBytes,
+    required this.freeBytes,
+    required this.neededBytes,
+    required this.vacuumed,
+    this.deferred = false,
+  });
+
+  final int beforeBytes, afterBytes, neededBytes;
+
+  /// True when the VACUUM was skipped because a writer that must not wait on
+  /// it (a sync, a live session) started while the prune ran. The prune
+  /// still ran.
+  final bool deferred;
+
+  /// Free space on the volume when it was checked; null when the platform
+  /// could not say.
+  final int? freeBytes;
+
+  /// False when the free-space gate refused the VACUUM, or it was [deferred]
+  /// (the prune still ran).
+  final bool vacuumed;
+
+  int get freedBytes => beforeBytes > afterBytes ? beforeBytes - afterBytes : 0;
+}
+
+/// The experimental HMM sleep staging switch (Settings), default off.
+const kSleepHmmStagesPref = 'sleep_hmm_stages';
+
+typedef _CeilingInput = ({int generation, Map<int, int> revisions});

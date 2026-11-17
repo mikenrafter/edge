@@ -140,7 +140,8 @@ class _ShotsRepo extends GuideFakeRepo {
     required int startTs,
     required int endTs,
     required String type,
-  }) => _writes.logManualWorkout(startTs: startTs, endTs: endTs, type: type);
+    String source = 'manual',
+  }) => _writes.logManualWorkout(startTs: startTs, endTs: endTs, type: type, source: source);
 
   @override
   Future<DayReviewReceipt> saveDayReview({

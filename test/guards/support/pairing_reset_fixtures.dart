@@ -8,7 +8,7 @@
 /// set below or a research gap (see [kResearchGapIds]).
 const Map<String, String> kPinnedOfficialHost = <String, String>{
   'gen4': 'support.whoop.com', // WHOOP 4.0 row
-  'gen5': 'support.whoop.com', // WHOOP 5.0 / MG row
+  'gen5': 'www.community.whoop.com', // WHOOP 5.0 / MG row
   'polar_pmd': 'support.polar.com', // OH1 / Verity Sense (the H-series is not this entry)
   'oura': 'support.ouraring.com',
   'ultrahuman': 'www.ultrahuman.com',
@@ -21,7 +21,7 @@ const Map<String, String> kPinnedOfficialHost = <String, String>{
   'miscale2': 'www.mi.com', // Mi Smart Scale 2 row
 };
 
-/// Exact reviewed URLs where a wrong page was found in review (G2 r1 S3, S4).
+/// Exact reviewed URLs where a wrong page was found in review.
 /// The host pin above cannot tell a right page from a wrong one on the same host.
 const Map<String, String> kPinnedOfficialUrl = <String, String>{
   // OH1 / Verity Sense reset page. The old page was the H9/H10 one (battery

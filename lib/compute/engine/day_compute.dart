@@ -41,7 +41,7 @@ extension _EngineDayCompute on DerivationEngine {
     // Told when the day would finalize but tonight's sleep (the next day's
     // stored window) changed since it was prepared; the day is then written
     // provisional and the caller re-derives it. Null: finalize as decided.
-    void Function(String day)? onStaleTonight,
+    Set<String>? onStaleTonight,
   }) async {
     _declineReasons.remove(day.date);
     // No state from an earlier pass in this process (a headless wake, a cold
@@ -175,14 +175,81 @@ extension _EngineDayCompute on DerivationEngine {
 
     // Cancellable: on timeout the isolate is KILLED, not merely abandoned to
     // keep burning a core behind the worker pool's back.
-    final first = batchReference
-        ? await _runAuditBatch(withHistory, day.date)
-        : await perf.stage('bundle_isolate', () =>
-      DerivationEngine._runDayBundleCancellable(withHistory,
-      previousState, calculationMode, _perDayTimeout,
-      label: 'day-bundle ${day.date}'));
-    var bundle = first.bundle;
-    var candidateState = first.state;
+    final nightEpoch = _retentionEpoch;
+    final retainNight = _canRetainSubstrate && !suppliedSubstrate && !batchReference;
+    final diagnostics = debugNightStreams;
+    final checkpointPlan = _checkpointPlans.remove(day.date);
+    final checkpointEnabled = !debugCheckpoints.disabled && retainNight &&
+        checkpointPlan?.context != null && checkpointPlan!.epoch == nightEpoch &&
+        checkpointPlan.generation == LocalDb.cacheGeneration &&
+        day.sleepOnsetSec >= checkpointPlan.from &&
+        day.sleepOffsetSec <= checkpointPlan.through + 1;
+    var nightRevision = 0, nightGeneration = LocalDb.cacheGeneration;
+    var nightProvenance = false;
+    // Keep DB reads and engine fields outside the shipped closure. A changed
+    // revision rejects even a byte-identical replacement; raw prefix proofs in
+    // the worker additionally detect moved windows and in-memory mutations.
+    NightRrState? nightState;
+    if ((retainNight && sleepSub.rrMs.isNotEmpty) || diagnostics != null) {
+      nightState = _nightStates.remove(day.date) ?? NightRrState();
+      try {
+        final (revision, generation) =
+            await _nightInputRevision(day.sleepOnsetSec, day.sleepOffsetSec);
+        nightState.context(inputRevision: revision, generation: generation,
+            algorithm: kAlgoVersion);
+        nightState.window = (day.sleepOnsetSec, day.sleepOffsetSec);
+        nightRevision = revision;
+        nightGeneration = generation;
+        nightProvenance = true;
+      } catch (_) {
+        nightState.clear(); // Unavailable provenance never certifies reuse.
+      }
+      diagnostics?.nightState = nightState;
+    }
+    final canCheckpoint = checkpointEnabled && nightProvenance &&
+        nightEpoch == _retentionEpoch &&
+        LocalDb.cacheGeneration == checkpointPlan.generation;
+    final restoredNight = canCheckpoint ? checkpointPlan.restored : null;
+    final checkpointContext = checkpointEnabled ? checkpointPlan.context! : '';
+    final checkpointBoundary = checkpointEnabled ? checkpointPlan.boundary : 0;
+    final checkpointFrom = checkpointEnabled ? checkpointPlan.from : 0;
+    final checkpointVector = checkpointEnabled ? checkpointRevisions(
+        checkpointPlan.revisions, checkpointFrom, checkpointBoundary) : Uint8List(0);
+    final checkpointRows = checkpointEnabled ? checkpointPlan.cardio : <Uint8List>[];
+    final checkpointDay = day.date;
+    final job = NightDayInput(withHistory, previousState, calculationMode,
+        nightState, diagnostics, restoredNight, nightRevision, nightGeneration,
+        kAlgoVersion, batchReference, canCheckpoint, checkpointRows,
+        checkpointDay, checkpointContext, checkpointFrom, checkpointBoundary,
+        checkpointVector);
+    late final NightDayResult workerResult;
+    final bundleWatch = Stopwatch()..start();
+    try {
+      workerResult = await DerivationEngine._runNightDayCancellable(
+        DerivationEngine._workerInputs(), job, _perDayTimeout,
+        'day-bundle ${day.date}');
+    } finally {
+      perf.addStage('bundle_isolate', bundleWatch.elapsedMilliseconds);
+    }
+    var bundle = workerResult.bundle;
+    var candidateState = workerResult.dayState;
+    if (workerResult.resumed) debugCheckpoints.hits++;
+    if (workerResult.rejected) {
+      debugCheckpoints.rejections.add('checkpoint night prefix/window');
+      debugCheckpoints.misses++;
+    }
+    if (diagnostics != null) debugNightStreams = workerResult.diagnostics;
+    final returnedNight = workerResult.night;
+    if (returnedNight != null && retainNight && _canRetainSubstrate &&
+        nightEpoch == _retentionEpoch) {
+      _nightStates[day.date] = returnedNight;
+      while (_nightStates.length > math.min(2, _retainedCalculationDays)) {
+        _nightStates.remove(_nightStates.keys.first)?.clear();
+      }
+    } else {
+      returnedNight?.clear();
+    }
+    debugOnNightBundle?.call(withHistory, bundle);
     // Readiness came back absent for TODAY specifically (not a historical
     // backfill day, which would just be noise) — log why. This ran inside
     // Isolate.run so it couldn't call Firebase itself; it just returned the
@@ -500,6 +567,7 @@ extension _EngineDayCompute on DerivationEngine {
       // sample, so a completed session the band's PPG lost contact for
       // entirely (zero HR samples at all, e.g. a wrist-gripping lift) can
       // fall outside them and never reach the zero-coverage credit below.
+      final sessionRevision = await _sessionCeilingRevision();
       final savedSessions = await LocalDb.sessionsInRange(
         DerivationEngine._localDayLabelToSec(day.date),
         localNextMidnightSecForDayLabel(day.date),
@@ -507,7 +575,8 @@ extension _EngineDayCompute on DerivationEngine {
       // A finished session's observed ceiling does not change unless its
       // samples do: a periodic awake pass reuses the result whose signature
       // still matches. Every other mode computes in full.
-      final ceilingSigs = await _ceilingSignatures(day, savedSessions);
+      final ceilingSigs = debugDisableSessionReuse ? const <String, String>{}
+          : await _ceilingSignatures(day, savedSessions, sessionRevision);
       final ceilingReuse =
           <String, ({Map<String, dynamic> json, double? bpm})>{};
       if (calculationMode == ana.CalculationMode.periodicAwake) {
@@ -519,6 +588,9 @@ extension _EngineDayCompute on DerivationEngine {
         });
         _ceilingHits += ceilingReuse.length;
       }
+
+      // Removed/live/changed sessions cannot resurrect a previous ceiling.
+      _ceilingCache.removeWhere((key, _) => key.startsWith('${day.date}|'));
 
       // Off-wrist / charging spans over the NAP window (which runs past this
       // day's end), read here because the isolate has no DB handle. These are
@@ -562,7 +634,9 @@ extension _EngineDayCompute on DerivationEngine {
       // The window the user rejected or set by hand. Its metrics are blank, and
       // the same still, low-HR hours must not come back as a nap — shown as
       // "Asleep" and credited to sleep need.
-      final blankedSpans = <List<int>>[];
+      final blankedSpans = <List<int>>[
+        ...await DerivationEngine._rejectedSleepSpans(day.date),
+      ];
       if (blankSource != null) {
         final ov = await LocalDb.getSleepOverride(day.date);
         final lo = (ov?['onset_ts'] as num?)?.toInt();
@@ -694,12 +768,12 @@ extension _EngineDayCompute on DerivationEngine {
       final blocks = await perf.stage('blocks_isolate',
           () => DerivationEngine._runDayBlocksCancellable(blocksInput, _perDayTimeout));
       candidateState = blocks.calculationState;
+      _ceilingComputed += blocks.ceilingComputations;
       // Keep what was computed. An entry is a pure function of its signature,
       // so it is safe to keep even if a later step of this day fails.
-      for (final e in blocks.ceilingComputed.entries) {
+      for (final e in {...ceilingReuse, ...blocks.ceilingComputed}.entries) {
         final sig = ceilingSigs[e.key];
         if (sig == null) continue;
-        _ceilingComputed++;
         final key = '${day.date}|${e.key}';
         _ceilingCache.remove(key);
         _ceilingCache[key] = (sig: sig, json: e.value.json, bpm: e.value.bpm);
@@ -795,6 +869,17 @@ extension _EngineDayCompute on DerivationEngine {
             'logged this day can raise (heart-rate strain '
             '${hrStrain.toStringAsFixed(1)})';
       }
+      // The plotted build-up and the headline share the saved-session floor.
+      final seriesNow = bundle['series'];
+      final curveNow = seriesNow is Map ? seriesNow['strain_curve'] : null;
+      if (scStrain is num && curveNow is List && curveNow.isNotEmpty) {
+        final seriesMap = Map<String, dynamic>.from(seriesNow as Map);
+        seriesMap['strain_curve'] = DerivationEngine.strainCurveFlooredAtSessions(
+          curveNow, savedSessions,
+          capSec: localNextMidnightSecForDayLabel(day.date) - 1,
+        );
+        bundle['series'] = seriesMap;
+      }
       // Method, family and class on each envelope of a wearable's day
       // (inputs/canonical.dart). A band's day is untouched.
       tagEnvelopes(bundle['clinical'] as Map?, daySub.deviceFamily);
@@ -823,6 +908,18 @@ extension _EngineDayCompute on DerivationEngine {
         if (!batchReference)
           ...await activityStore.reconcile(ActivityKind.meal, blocks.mealSuggestions),
       ];
+      if (!forceFinalize && !batchReference) {
+        try {
+          final since = (await SharedPreferences.getInstance()).getInt(Prefs.napAutoLogSinceSec);
+          DerivationEngine._autoLoggedNaps += await activityStore.autoLogNaps(
+            sinceSec: (since ?? 0) > 0 ? since : null,
+            dataEdgeSec: dataNowSec, settleSec: ana.napBridgeSec,
+            current: blocks.napSuggestions,
+          );
+        } catch (e) {
+          _log('nap auto-log failed for ${day.date}: $e');
+        }
+      }
       for (final suggestion in newSuggestions) {
         // The rows are already banked; a failed prompt must not mark the day partial.
         try {
@@ -872,7 +969,7 @@ extension _EngineDayCompute on DerivationEngine {
     // re-analyze permanent; leaving it unlocked means a later pass (or a
     // restored/backfilled substrate) can still fill the day in.
     final finalized =
-        !producedNothing && (forceFinalize || (ageFinalized && secondHalfOk));
+        !producedNothing && (forceFinalize || (ageFinalized && secondHalfOk && !day.tonightPending));
 
     // A failed/timed-out second half yields a headline-only bundle, and
     // putDayResult replaces the row wholesale — so re-deriving an already
@@ -888,10 +985,9 @@ extension _EngineDayCompute on DerivationEngine {
       if (DerivationEngine._isRealDayResult(existing)) {
         final prev = DerivationEngine._decodeBundle(existing!['payload_json']);
         if (prev != null) {
+          final sleepMoved = DerivationEngine.sleepWindowChanged(prev, bundle);
           final recovered = DerivationEngine.carryForwardDetail(
-            prev,
-            bundle,
-            blankSource: blankSource,
+            prev, bundle, blankSource: blankSource, carrySleep: !sleepMoved,
           );
           final prevVersion = (existing['algo_version'] as num?)?.toInt();
           final outcome = DerivationEngine.recoveryOutcome(
@@ -902,7 +998,7 @@ extension _EngineDayCompute on DerivationEngine {
             finalizedByAge: finalized,
           );
           effectivePartial = outcome.partial;
-          effectiveFinalized = outcome.finalized;
+          effectiveFinalized = outcome.finalized && (forceFinalize || !day.tonightPending);
           _log('derive ${day.date}: second half failed — carried the previous '
               "result's detail blocks forward (v$prevVersion -> v$kAlgoVersion, "
               'partial=$effectivePartial)');
@@ -981,7 +1077,7 @@ extension _EngineDayCompute on DerivationEngine {
                 await _nextDayWindowSpan(day.date) !=
                     _tonightSpanAtPrep[day.date]))) {
       effectiveFinalized = false;
-      onStaleTonight(day.date);
+      onStaleTonight.add(day.date);
     }
 
     // The finalization audit sits between the decision and the write: only a
@@ -991,6 +1087,32 @@ extension _EngineDayCompute on DerivationEngine {
       bundle = await _auditAtFinalization(
           day, profile, dataNowSec, history, bundle);
     }
+    // RE-DERIVING KEEPS THE NIGHT'S OWN CLOCK. The pipeline freezes
+    // `sleep_onset_sec`/`midsleep_sec` with the phone's zone NOW, so re-deriving
+    // a night lived before a trip (re-analyze, a rescan, a version bump) would
+    // overwrite the only record of the zone it was lived in, and the cross-day
+    // rollup would read it on the new clock. Carry the stored row's shift.
+    //
+    // Two numbers off the stored row, extracted in SQLite: decoding the whole
+    // previous bundle here cost a full payload read and curve expansion on
+    // this isolate for every derived day, to learn nothing for anyone who has
+    // not changed zone.
+    final prevClock = await LocalDb.storedNightClock(day.date);
+    if (prevClock != null) {
+      final onsetMs = prevClock.onsetMs;
+      final shift = recordedClockShiftSec(
+        onsetSec: onsetMs == null ? null : (onsetMs / 1000).round(),
+        onsetClockSec: prevClock.onsetClockSec,
+      );
+      final s = bundle['scalars'];
+      if (shift != 0 && s is Map) {
+        for (final k in const ['sleep_onset_sec', 'midsleep_sec']) {
+          final v = shiftRecordedClockSec(s[k] as num?, shift);
+          if (v != null) s[k] = v;
+        }
+      }
+    }
+
     final scalars =
         (bundle['scalars'] as Map?)?.cast<String, dynamic>() ?? const {};
     double? sc(String k) => (scalars[k] as num?)?.toDouble();
@@ -1190,6 +1312,40 @@ extension _EngineDayCompute on DerivationEngine {
         ],
       );
     }
+    if (!debugCheckpoints.disabled && !suppliedSubstrate && !batchReference) {
+      try {
+        final db = await LocalDb.instance;
+        if (effectiveFinalized || effectivePartial) {
+          await db.delete('night_checkpoint', where: 'day_id = ?', whereArgs: [day.date]);
+        } else if (checkpointEnabled && workerResult.checkpoint != null &&
+            _canRetainSubstrate && nightEpoch == _retentionEpoch &&
+            LocalDb.cacheGeneration == checkpointPlan.generation) {
+          final checkpoint = workerResult.checkpoint!;
+          await db.transaction((txn) async {
+            if (LocalDb.cacheGeneration != checkpointPlan.generation ||
+                await LocalDb.storeIdentity(executor: txn) != checkpointPlan.storeId) {
+              return;
+            }
+            await txn.insert('night_checkpoint', {
+              'day_id': day.date, 'algo_version': kAlgoVersion,
+              'fmt': nightCheckpointFormat, 'ctx_sig': checkpointContext,
+              'cp_rec_ts': checkpointBoundary, 'rev_vec': checkpointVector,
+              'state': checkpoint.bytes, 'night_ref': null,
+              'computed_at': DateTime.now().millisecondsSinceEpoch,
+            }, conflictAlgorithm: ConflictAlgorithm.replace);
+            await txn.rawDelete('DELETE FROM night_checkpoint WHERE day_id NOT IN '
+              '(SELECT day_id FROM night_checkpoint GROUP BY day_id '
+              'ORDER BY day_id DESC LIMIT 3) OR algo_version != ?', [kAlgoVersion]);
+          });
+          debugCheckpoints.writes++;
+          debugCheckpoints.lastEncodedPayload = checkpoint.bytes;
+          debugCheckpoints.lastDecodedPayload = checkpoint.payload;
+        }
+      } catch (_) {
+        // Disposable scratch is never required to commit a day result.
+      }
+    }
+
     // A partial, carried-forward result or any failed write must not advance
     // the reusable checkpoint. Both workers only mutate isolate-owned copies.
     if (secondHalfOk) {
@@ -1203,6 +1359,7 @@ extension _EngineDayCompute on DerivationEngine {
       // into the next worker) with the retained state.
       candidateState.exportedNightJson = null;
     }
+    if (!secondHalfOk || day.tonightPending) _incompleteFingerprints.add(day.date);
     return DayDerive.committed;
   }
 
@@ -1227,7 +1384,7 @@ extension _EngineDayCompute on DerivationEngine {
       // a phone that has not synced in a week resumes the day it last heard of.
       final newest = DateTime.fromMillisecondsSinceEpoch(dataNowSec * 1000);
       final keep = {
-        for (var i = 0; i < DerivationEngine._retainedCalculationDays; i++)
+        for (var i = 0; i < _retainedCalculationDays; i++)
           dayLabelOf(DateTime(newest.year, newest.month, newest.day - i)),
       };
       await LocalDb.pruneDayCheckpoints(keepDays: keep);

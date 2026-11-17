@@ -1,3 +1,4 @@
+import 'package:openstrap_edge/data/backup_extras.dart';
 // Shared setup for the full-export tests: a throwaway live DB, fake
 // path_provider dirs, and helpers to read what an export carries.
 import 'dart:io';
@@ -153,3 +154,12 @@ void expectNoSecretIn(String path, Iterable<String> secrets) {
     expect(text.contains(s), isFalse, reason: 'secret "$s" leaked into export');
   }
 }
+
+// Main #671 expectations remain independent of the production exclusion list.
+Map<String, String> policyMap(String name) => switch (name) {
+  'kPrefsNotBackedUp' => kPrefsNotBackedUp,
+  'kSecretsNotBackedUp' => kSecretsNotBackedUp,
+  _ => throw ArgumentError.value(name),
+};
+Matcher needsReentry(List<String> expected) => isA<ImportSummary>()
+    .having((r) => r.needsReentry, 'needsReentry', expected);

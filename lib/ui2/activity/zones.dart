@@ -1,5 +1,19 @@
 import '../../l10n/date_text.dart';
 import '../../l10n/display_text.dart';
+import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:provider/provider.dart';
+import '../../compute/hr_max.dart';
+import '../../data/local_repository.dart';
+import '../../l10n/app_localizations.dart';
+import '../../models/metric.dart' show whyFromNote;
+import '../../state/app_state.dart';
+import '../screens/home_screen.dart' show repoOf;
+import '../screens/journal_compose.dart' show OsTextField;
+import '../screens/metric_detail.dart' show detailScaffold;
+import '../ui2.dart';
+
+
 // HEART-RATE ZONES — the ceiling, the two anchors, and (only sometimes) the
 // 28-day distribution. TS-03 / TS-04 / TS-05.
 //
@@ -23,19 +37,7 @@ import '../../l10n/display_text.dart';
 // arithmetic working exactly as intended and it will be reported as a bug, so
 // the copy names it before the user does.
 
-import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:provider/provider.dart';
 
-import '../../compute/hr_max.dart' show validManualZoneBounds, manualZoneBoundsFromProfile;
-import '../../data/local_repository.dart';
-import '../../l10n/app_localizations.dart';
-import '../../models/metric.dart' show whyFromNote;
-import '../../state/app_state.dart';
-import '../screens/home_screen.dart' show repoOf;
-import '../screens/journal_compose.dart' show OsTextField;
-import '../screens/metric_detail.dart' show detailScaffold;
-import '../ui2.dart';
 
 /// 'YYYY-MM-DD' → '3 Aug'. Returns the raw label if it does not parse — a date
 /// we cannot format is still better than dropping the attribution.
@@ -190,9 +192,9 @@ class _ZonesDetailState extends State<ZonesDetail> {
     }
     try {
       final d = await ZonesData.load(repo);
-      if (mounted) setState(() => (_d = d, _loading = false));
+      if (mounted) setState(() => (_d = d, _loading = false, _failed = false));
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => (_loading = false, _failed = true));
     }
   }
 
@@ -231,7 +233,10 @@ class _ZonesDetailState extends State<ZonesDetail> {
             right: S.x5,
             top: S.x5,
             bottom: MediaQuery.of(s).viewInsets.bottom + S.x5),
-        child: Column(
+        // Five fields plus the number pad outgrow a phone screen, which hid
+        // Save under the keyboard.
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -259,6 +264,7 @@ class _ZonesDetailState extends State<ZonesDetail> {
             BigButton(l?.actionSave ?? 'Save',
                 color: C.red, onTap: () => Navigator.of(s).pop(true)),
           ],
+        ),
         ),
       ),
     );
@@ -307,6 +313,11 @@ class _ZonesDetailState extends State<ZonesDetail> {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
+    if (_failed) { return detailScaffold(c, l?.activityZonesTitle ?? 'Heart-rate zones', [
+      StatusCard('Heart-rate zones could not be read',
+        'Reading your stored data failed. Your data has not changed.',
+        fix: 'Try again', onFix: _load, icon: LucideIcons.triangleAlert),
+    ]); }
     Map<String,dynamic>? profile;
     if (_d == null) {
       try { profile = context.read<AppState>().user; }
@@ -486,19 +497,11 @@ _zones(p, l, d)),
                         ],
                       ),
                     ),
-                    SizedBox(
-                      width: MediaQuery.textScalerOf(context).scale(76),
-                      child: Text(
-                        textAlign: TextAlign.right,
-                        // One beat below the next edge, as [ZoneRows.range] prints
-                  // it, so no bpm sits in two zones.
-                  z.zone == 5 ? '${z.lo}+' : '${z.lo}–${z.hi > z.lo ? z.hi - 1 : z.hi}',
-                  style: F.n17.copyWith(color: p.ink2),
-                      ),
-                ),
-                const SizedBox(width: S.x2),
-                Text(l?.activityZonesBpmUnit ?? 'bpm',
-                    style: F.cap.copyWith(color: p.ink3)),
+                if (bigText(context))
+                  Flexible(child: _range(z, p, l))
+                else
+                  SizedBox(width: MediaQuery.textScalerOf(context).scale(112),
+                      child: _range(z, p, l)),
               ],
             ),
           ],
@@ -612,4 +615,31 @@ _zones(p, l, d)),
         '${d.distHard} hard, over ${d.distSessions} recorded sessions.';
     return '$shape $summary';
   }
+
+
+  /// The last read threw. A failed read is NOT "No zones yet": rendering it as
+  /// the empty state also invented an age (`d.age` null from the placeholder)
+  /// and told a user who HAD set one to go and set it.
+  bool _failed = false;
+
+  /// One zone's bpm range with its unit, as one run of text.
+  Widget _range(ZoneRow z, P p, AppLocalizations? l) => Text.rich(
+        TextSpan(children: [
+          TextSpan(
+            // One beat below the next edge, as [ZoneRows.range] prints it, so
+            // no bpm sits in two zones.
+            text: z.zone == 5
+                ? '${z.lo}+'
+                : '${z.lo}–${z.hi > z.lo ? z.hi - 1 : z.hi}',
+            style: F.n17.copyWith(color: p.ink2),
+          ),
+          TextSpan(
+            // A no-break space, so the unit never lands on a line of its own.
+            text: ' ${l?.activityZonesBpmUnit ?? 'bpm'}',
+            style: F.cap.copyWith(color: p.ink3),
+          ),
+        ]),
+        textAlign: TextAlign.end,
+      );
 }
+

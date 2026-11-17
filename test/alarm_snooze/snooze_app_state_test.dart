@@ -53,7 +53,7 @@ class _NoArmEngine extends FakeAlarmEngine {
   }
 
   @override
-  Future<void> disableAlarm({int? id}) async {
+  Future<bool> disableAlarm({int? id}) async {
     armCalls.add('disableAlarm');
     throw StateError('a snooze must never disable the native alarm');
   }

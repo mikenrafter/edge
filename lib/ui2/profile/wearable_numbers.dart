@@ -1,20 +1,6 @@
-// A non-WHOOP wearable's numbers, served cell by cell off its column of the
-// metric x device table (lib/compute/inputs/canonical.dart, PLAN §7).
-//
-// TWO PRESENTATIONS, one setting, so the UX call can be made on real screens:
-// "one number" draws the primary value by Ours > Device > Estimated > Not
-// available with a quiet source line, and a tap opens the device's own value;
-// "side by side" draws ours and the device's together. Nothing here decides a
-// class: the cell arrives with it, and this file only words it.
-//
-// The device's proprietary scores never get one of our cards. They have no
-// slot of ours ([kDeviceValueSlot]) and are drawn only in [WearableDayView]'s
-// own-scores section, which is that device's page.
-
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
-
 import '../../ble/adapters/_registry.dart'
     show DeviceCategory, categoryOf, kBandRegistry, kThermometer;
 import '../../ble/session_link.dart' show SessionLink;
@@ -28,6 +14,22 @@ import '../../state/prefs.dart';
 import '../../sync/import_focus.dart';
 import '../ui2.dart';
 import 'profile.dart';
+import '../../l10n/decimal_text.dart';
+
+// A non-WHOOP wearable's numbers, served cell by cell off its column of the
+// metric x device table (lib/compute/inputs/canonical.dart, PLAN §7).
+//
+// TWO PRESENTATIONS, one setting, so the UX call can be made on real screens:
+// "one number" draws the primary value by Ours > Device > Estimated > Not
+// available with a quiet source line, and a tap opens the device's own value;
+// "side by side" draws ours and the device's together. Nothing here decides a
+// class: the cell arrives with it, and this file only words it.
+//
+// The device's proprietary scores never get one of our cards. They have no
+// slot of ours ([kDeviceValueSlot]) and are drawn only in [WearableDayView]'s
+// own-scores section, which is that device's page.
+
+
 
 /// The two presentation settings, read synchronously off [Prefs] and
 /// broadcast so an open screen redraws when Settings flips one.
@@ -270,7 +272,7 @@ String whyText(AppLocalizations l, String? reason, String device) =>
     'skin_temp' => device
         ? (fixed1(v), l.wearableUnitCelsius)
         : ('${v > 0 ? '+' : ''}${fixed1(v)}', l.wearableUnitSd),
-    'strain' => (fixed1(v), ''),
+    'strain' => (displayFixed(v, 1), ''),
     'calories' => (int0(v), l.wearableUnitKcal),
     // A ring's movement is the share of the night's records with steps in
     // them; a watch's is minutes in a heart-rate zone.
@@ -1157,3 +1159,4 @@ class WearableDayView extends StatelessWidget {
     );
   }
 }
+

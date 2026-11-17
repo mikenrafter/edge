@@ -1,5 +1,5 @@
 // Validating a review range (pure). A nap range is exactly the two marked
-// minutes; the same rules as the Naps screen (5 min..6 h, no overlap) plus never
+// minutes; the same rules as the Naps screen (5 min..3 h, no overlap) plus never
 // in the future. A workout range reuses validateManualWindow. Local wall-clock
 // DateTimes only; midnight is calendar arithmetic. RED: throwing stub.
 
@@ -39,12 +39,12 @@ void main() {
           ManualWindowError.endNotAfterStart);
     });
 
-    test('5 minutes is the floor, 6 hours the ceiling (inclusive)', () {
+    test('5 minutes is the floor, 3 hours the ceiling (inclusive)', () {
       expect(_v(MomentChoice.nap, s, DateTime(2026, 10, 6, 13, 4)),
           ManualWindowError.tooShort);
       expect(_v(MomentChoice.nap, s, DateTime(2026, 10, 6, 13, 5)), isNull);
-      expect(_v(MomentChoice.nap, s, DateTime(2026, 10, 6, 19, 0)), isNull);
-      expect(_v(MomentChoice.nap, s, DateTime(2026, 10, 6, 19, 1)),
+      expect(_v(MomentChoice.nap, s, DateTime(2026, 10, 6, 16, 0)), isNull);
+      expect(_v(MomentChoice.nap, s, DateTime(2026, 10, 6, 16, 1)),
           ManualWindowError.tooLong);
     });
 

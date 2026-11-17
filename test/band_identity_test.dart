@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/adapters/_registry.dart';
 import 'package:openstrap_edge/ble/band_identity.dart';
 import 'package:openstrap_edge/ble/hrs_link.dart';
+import 'package:openstrap_edge/ui2/pairing/pair_outcome_text.dart';
 import 'package:openstrap_edge/sync/paired_device.dart' show kBandSourceTier;
 import 'package:openstrap_edge/ui2/pairing/add_device_flow.dart' show addDeviceScanEntries;
 import 'package:openstrap_protocol/openstrap_protocol.dart';
@@ -17,6 +18,15 @@ BandIdentity? _full(List<String> svc, [String? name]) =>
     bandIdentityOf(advertisedServiceUuids: svc, name: name);
 
 void main() {
+  test('a refusal keeps a name-only WHOOP model unknown', () {
+    // WHY: detecting WHOOP by name must not label it as a confirmed WHOOP 4.
+    expect(pairOutcomeText(null, const PairOutcome.band(kWhoopGen4, modelCertain: false)),
+        'That device is a WHOOP, a band, not a plain sensor. Nothing was saved.');
+    expect(pairOutcomeText(null, const PairOutcome.band(kWhoopGen5)),
+        'That device is a WHOOP 5, a band, not a plain sensor. Nothing was saved.');
+  });
+
+  _reviewEvidence();
   _gatt();
   _matching();
   _pairing();
@@ -126,7 +136,7 @@ void main() {
           rssi: -55,
         );
 
-    test('(G3 r1 S4) the Add a device scan covers the framed WHOOP entries: a WHOOP-only advertisement is a candidate', () {
+    test('the Add a device scan covers the framed WHOOP entries: a WHOOP-only advertisement is a candidate', () {
       // WHY: a WHOOP that advertises only its own band service matched no
       // sensor entry and was dropped, so the band could never be discovered
       // from "Add a device".
@@ -305,7 +315,7 @@ void main() {
       // The candidate must still say "band", and pairing with standard-only
       // discovery must refuse with zero writes (DT9).
       final dev = BluetoothDevice.fromId('AA:BB:CC:DD:EE:21');
-      final seen = <String, BandIdentity>{};
+      final seen = BandEvidenceLedger();
       BandCandidate? ad(List<String> svc, String name) =>
           HrsLink.candidateFromAd(
             entries: sensors,
@@ -348,7 +358,7 @@ void main() {
       // matches no sensor entry and yields no row, but its evidence must stay
       // for the later HR-only packet, or standard-only discovery saves it.
       final dev = BluetoothDevice.fromId('AA:BB:CC:DD:EE:24');
-      final seen = <String, BandIdentity>{};
+      final seen = BandEvidenceLedger();
       BandCandidate? ad(List<String> svc) => HrsLink.candidateFromAd(
             entries: sensors,
             device: dev,
@@ -524,9 +534,10 @@ List<DiscoveredService> _strap() => [
 /// The pairing seam's fake: scripted discovery, recorded writes.
 class _FakeIo implements PairingIo {
   _FakeIo(this._discover,
-      {this.bondOk = true, this.persistError});
+      {this.bondOk = true, this.persistError, this.onBond});
   final Future<List<DiscoveredService>> Function() _discover;
   final bool bondOk;
+  final void Function()? onBond;
   final Object? persistError;
   final writes = <PairedDevice>[];
   var bondCalls = 0;
@@ -543,6 +554,7 @@ class _FakeIo implements PairingIo {
   @override
   Future<bool> triggerBond() async {
     bondCalls++;
+    onBond?.call();
     return bondOk;
   }
 
@@ -859,5 +871,127 @@ void _pairing() {
       expect(RegExp(r'pairNotifyDevice\s*\(').hasMatch('x = pairNotifyDevice(a);'), isTrue,
           reason: 'matcher control');
     });
+  });
+}
+
+void _reviewEvidence() {
+  group('review regressions: evidence provenance', () {
+    test('later PMD query retains HRS claim while later band query records evidence', () async {
+      // WHY: an H10 can answer both queries but cannot provide PMD PPI.
+      final ledger = BandEvidenceLedger();
+      final confirmed = <String, String>{};
+      final device = BluetoothDevice.fromId('multi-query');
+      final first = HrsLink.candidateFromSystemDevice(entries: [kBleHrs, kPolarPmd],
+          device: device, queriedEntry: kBleHrs, platformName: 'Polar H10',
+          bandSeen: ledger, confirmed: confirmed);
+      final second = HrsLink.candidateFromSystemDevice(entries: [kBleHrs, kPolarPmd],
+          device: device, queriedEntry: kPolarPmd, platformName: 'Polar H10',
+          bandSeen: ledger, confirmed: confirmed, previous: first);
+      expect(second.entryId, kBleHrs.id);
+      expect(confirmed[device.remoteId.str], kBleHrs.id);
+      final io = _FakeIo(() async => _strap());
+      final outcome = await pairNotifyDevice(entry: kBandRegistry.firstWhere((e) => e.id == second.entryId),
+          remoteId: device.remoteId.str, io: io,
+          latestBand: () => ledger.identityFor(device.remoteId.str));
+      expect(outcome.saved, isTrue);
+      expect(io.pmdReads, 0);
+      expect(io.writes.single.adapterId, kBleHrs.id);
+
+      // Keeping the chosen adapter must not discard later safety evidence.
+      final third = HrsLink.candidateFromSystemDevice(entries: [kBleHrs, kWhoopGen5],
+          device: device, queriedEntry: kWhoopGen5, platformName: 'Polar H10',
+          bandSeen: ledger, confirmed: confirmed, previous: second);
+      expect(third.entryId, kBleHrs.id);
+      expect(third.alsoBand?.entry.id, kWhoopGen5.id);
+      final bandIo = _FakeIo(() async => _strap());
+      final refusal = await pairNotifyDevice(entry: kBleHrs,
+          remoteId: device.remoteId.str, io: bandIo,
+          latestBand: () => ledger.identityFor(device.remoteId.str));
+      expect(refusal.isBand?.id, kWhoopGen5.id);
+      expect(bandIo.writes, isEmpty);
+    });
+
+    test('system-device cached WHOOP name refuses a standard-only sensor save', () async {
+      // WHY: iOS may return a connected WHOOP with only HRS discovery.
+      final ledger = BandEvidenceLedger();
+      final device = BluetoothDevice.fromId('system-whoop');
+      final candidate = HrsLink.candidateFromSystemDevice(entries: [kBleHrs],
+          device: device, queriedEntry: kBleHrs, platformName: 'WHOOP 5',
+          bandSeen: ledger);
+      expect(candidate.rssi, isNull);
+      expect(candidate.alsoBand?.entry.id, kWhoopGen4.id);
+      final io = _FakeIo(() async => _strap());
+      final out = await pairNotifyDevice(entry: kBleHrs, remoteId: device.remoteId.str,
+          io: io, latestBand: () => ledger.identityFor(device.remoteId.str));
+      expect(out.isBand, isNotNull);
+      expect(out.modelCertain, isFalse);
+      expect(io.writes, isEmpty);
+    });
+
+    test('evidence arriving during discovery refuses persistence', () async {
+      // WHY: the tapped row predates the final scan packet.
+      final ledger = BandEvidenceLedger();
+      final io = _FakeIo(() async {
+        ledger.observe('late', advertisedServiceUuids: [kWhoopGen5.service]);
+        return _strap();
+      });
+      final out = await pairNotifyDevice(entry: kBleHrs, remoteId: 'late', io: io,
+          latestBand: () => ledger.identityFor('late'));
+      expect(out.isBand?.id, kWhoopGen5.id);
+      expect(io.writes, isEmpty);
+    });
+
+    test('evidence arriving during bonding is checked before saving', () async {
+      // WHY: shutdown can time out while a platform lookup is still pending.
+      final ledger = BandEvidenceLedger();
+      const entry = BandEntry.notify(id: 'bonded_hr', label: 'Bonded sensor',
+          service: kHeartRateServiceUuid, characteristics: [kHeartRateMeasurementUuid],
+          timeAnchor: TimeAnchor.arrival, category: DeviceCategory.workoutSensor,
+          role: DeviceRole.sensor, bondTriggerCharacteristic: kHeartRateMeasurementUuid);
+      final io = _FakeIo(() async => _strap(), onBond: () {
+        ledger.observe('bond', advertisedServiceUuids: [kWhoopGen5.service]);
+      });
+      final out = await pairNotifyDevice(entry: entry, remoteId: 'bond', io: io,
+          latestBand: () => ledger.identityFor('bond'));
+      expect(io.bondCalls, 1);
+      expect(out.isBand?.id, kWhoopGen5.id);
+      expect(io.writes, isEmpty);
+    });
+
+    test('an advertised strap name invalidates a cached WHOOP guess permanently', () async {
+      // WHY: empty later packets and OS lookups must not revive stale names.
+      final ledger = BandEvidenceLedger();
+      final device = BluetoothDevice.fromId('renamed');
+      final first = HrsLink.candidateFromSystemDevice(entries: [kBleHrs], device: device,
+          queriedEntry: kBleHrs, platformName: 'WHOOP', bandSeen: ledger);
+      expect(first.alsoBand, isNotNull);
+      final real = HrsLink.candidateFromAd(entries: [kBleHrs], device: device,
+          serviceUuids: [Guid(kHeartRateServiceUuid)], advName: 'Polar H10',
+          platformName: 'WHOOP', rssi: -50, bandSeen: ledger);
+      expect(real?.alsoBand, isNull);
+      final last = HrsLink.candidateFromSystemDevice(entries: [kBleHrs], device: device,
+          queriedEntry: kBleHrs, platformName: 'WHOOP', bandSeen: ledger, previous: real);
+      expect(last.alsoBand, isNull);
+      expect(last.label, 'Polar H10');
+      final io = _FakeIo(() async => _strap());
+      final out = await pairNotifyDevice(entry: kBleHrs, remoteId: device.remoteId.str,
+          io: io, earlierBand: first.alsoBand,
+          latestBand: () => ledger.identityFor(device.remoteId.str, fallback: first.alsoBand));
+      expect(out.saved, isTrue);
+      expect(io.writes.single.remoteId, device.remoteId.str);
+    });
+
+    for (final serviceData in [false, true]) {
+      test('a model-certain name cannot replace stronger ${serviceData ? "data" : "service"} evidence', () {
+        // WHY: model certainty and evidence provenance are separate dimensions.
+        expect(_full([], 'COROS')?.entry.id, kCoros.id,
+            reason: 'positive control: the conflicting name is recognised');
+        final ledger = BandEvidenceLedger();
+        ledger.observe('band', advertisedServiceUuids: serviceData ? [] : [kGarmin.service],
+            serviceDataUuids: serviceData ? [kGarmin.scanServiceData.first] : []);
+        final identity = ledger.observe('band', advertisedServiceUuids: [], advertisedName: 'COROS');
+        expect(identity?.entry.id, kGarmin.id);
+      });
+    }
   });
 }

@@ -33,9 +33,9 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../l10n/app_localizations.dart';
 import '../compute/findings.dart';
-import '../data/day_label.dart' show localDayStartSec;
+import '../data/day_label.dart';
 import '../wake/wake_timeline.dart';
-import '../data/day_label.dart' show dayLabelOf;
+
 import '../models/chart_point.dart' show ChartOlder;
 import 'grammar.dart' show Pressable;
 import 'finding_presentation.dart';

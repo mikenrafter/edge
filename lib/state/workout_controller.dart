@@ -1,3 +1,36 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:math' as math;
+import 'package:openstrap_analytics/onehz.dart' as ana;
+import '../ble/hrs_link.dart';
+import '../ble/live_cadence.dart';
+import '../ble/polar_pmd_link.dart';
+import '../compute/hr_max.dart';
+import '../compute/inputs/canonical.dart' show kStrapTailSec;
+import '../compute/manual_session.dart' show strainFromPerMinuteHr;
+import '../compute/profile.dart';
+import '../compute/quiet_level.dart';
+import '../data/day_label.dart';
+import '../data/db.dart';
+import '../data/local_repository.dart';
+import '../gps/gps_source.dart';
+import '../gps/route_tracker.dart';
+import '../gps/route_types.dart';
+import '../gps/screen_wake.dart';
+import '../health/health_export.dart';
+import '../live/live_activity.dart';
+import '../notify/alert_dispatcher.dart';
+import '../notify/notification_center.dart';
+import '../notify/notification_event.dart';
+import '../notify/tap_router.dart';
+import '../ui2/activity/live.dart' show LiveDraft;
+import '../sync/edge_tracking.dart';
+import '../widget/widget_service.dart';
+import 'prefs.dart';
+import 'workout_idle.dart';
+import 'zone_alert.dart';
+import '../sync/reset_gate.dart';
+
 // The live-workout seam, moved out of AppState with no behaviour
 // change. It owns the active workout and its lifecycle: start / stop / delete,
 // the 1 Hz tick that bills heart rate into the session's tallies, the 30 s
@@ -27,39 +60,8 @@
 // it does not finalize a live workout, release the display hold, end the Live
 // Activity or stop the route recorder. That is today's behaviour, pinned by the
 // workout controller tests, and is tracked as a follow-up rather than changed in a move.
-import 'dart:async';
-import 'dart:convert';
-import 'dart:math' as math;
 
-import 'package:openstrap_analytics/onehz.dart' as ana;
 
-import '../ble/hrs_link.dart';
-import '../ble/live_cadence.dart';
-import '../ble/polar_pmd_link.dart';
-import '../compute/hr_max.dart';
-import '../compute/inputs/canonical.dart' show kStrapTailSec;
-import '../compute/manual_session.dart' show strainFromPerMinuteHr;
-import '../compute/profile.dart';
-import '../compute/quiet_level.dart';
-import '../data/day_label.dart';
-import '../data/db.dart';
-import '../data/local_repository.dart';
-import '../gps/gps_source.dart';
-import '../gps/route_tracker.dart';
-import '../gps/route_types.dart';
-import '../gps/screen_wake.dart';
-import '../health/health_export.dart';
-import '../live/live_activity.dart';
-import '../notify/alert_dispatcher.dart';
-import '../notify/notification_center.dart';
-import '../notify/notification_event.dart';
-import '../notify/tap_router.dart';
-import '../ui2/activity/live.dart' show LiveDraft;
-import '../sync/edge_tracking.dart';
-import '../widget/widget_service.dart';
-import 'prefs.dart';
-import 'workout_idle.dart';
-import 'zone_alert.dart';
 
 enum _HeldStopBankOutcome { none, banked, failed }
 
@@ -630,11 +632,20 @@ class WorkoutController {
       _notify();
       return;
     }
+    // A route recorded before a "delete everything" is never written after
+    // it: the tracker's last flush can run inside a stop the reset raced, and
+    // GPS points with no session row are the worst thing to leave behind.
+    final resetGen = ResetGate.generation;
     final tracker = RouteTracker(
-      sink: (batch) => LocalDb.appendRoutePoints(
-        id,
-        [for (final p in batch) p.toRow(id)],
-      ),
+      sink: (batch) async {
+        if (ResetGate.changedSince(resetGen)) {
+          throw StateError('data reset in progress');
+        }
+        await LocalDb.appendRoutePoints(
+          id,
+          [for (final p in batch) p.toRow(id)],
+        );
+      },
       zoneNow: () => _zoneFor(activeWorkout?.currentHr ?? 0),
     );
     _routeTracker = tracker;
@@ -662,14 +673,31 @@ class WorkoutController {
   }
 
   /// If the Live Activity's Finish button was tapped (App Intent set the flag),
-  /// stop the workout here too. Call on app resume.
+  /// stop the workout here too. Called on app resume and polled from the 1 Hz
+  /// workout tick.
   Future<void> maybeFinishFromLiveActivity() async {
+    // On a cold relaunch the first resume lands while the reconcile is still
+    // reading the live row back. Consuming then saw no workout, spent the tap,
+    // and the rehydrated session ran on with nothing left to end it.
+    final reconciling = _reconciling;
+    if (reconciling != null) await reconciling;
+    // Not reconciled yet: leave the flag latched. The rehydrated session's own
+    // tick, or the next resume, consumes it.
+    if (reconcilePending) return;
     // Consume FIRST. `&&` short-circuited the consume away whenever no session
     // was live, so a Finish tapped on a Live Activity that outlived the app
     // stayed latched on disk — and then ended the NEXT workout, days later, on
     // the first resume that happened to have one running.
     final asked = await WidgetService.consumeEndSessionFlag();
-    if (asked && activeWorkout != null) await stopWorkout();
+    if (!asked || activeWorkout == null) return;
+    try {
+      await stopWorkout();
+    } catch (_) {
+      // The consume already cleared the tap. A stop that failed keeps the
+      // session live, so put the tap back for the next resume to retry.
+      if (activeWorkout != null) await WidgetService.relatchEndSessionFlag();
+      rethrow;
+    }
   }
 
   /// Reconcile any session row still `status='live'` left over from a
@@ -693,7 +721,16 @@ class WorkoutController {
   ///   live" banner. duration_min/calories are left unset rather than guessed
   ///   (we don't know the real end time or effort).
   static const int _kMaxLiveWorkoutAgeMs = 6 * 60 * 60 * 1000; // 6h
-  Future<void> reconcileOrphanedLiveWorkout() async {
+  Future<void> reconcileOrphanedLiveWorkout() {
+    final f = _reconcileOrphanedLiveWorkout();
+    _reconciling = f;
+    return f.whenComplete(() {
+      if (identical(_reconciling, f)) _reconciling = null;
+      reconcilePending = false;
+    });
+  }
+
+  Future<void> _reconcileOrphanedLiveWorkout() async {
     try {
       // Called unawaited from _init(); a concurrent startWorkout() could in
       // principle already be running by the time this DB round-trip resolves
@@ -930,169 +967,17 @@ class WorkoutController {
     _notify();
   }
 
-  Future<void> stopWorkout() async {
-    if (activeWorkout == null) return;
-    // Step coverage is judged at the moment of stop: the teardown awaited
-    // below can take long enough to look like an accel gap that never happened.
-    final stopMs = DateTime.now().millisecondsSinceEpoch;
-    _workoutTimer?.cancel();
-    _workoutTimer = null;
-    // Stop GPS route recording and AWAIT the buffered-tail flush before the
-    // finish screen loads the route — an unawaited stop raced the navigation
-    // and the finish/detail map missed the last batch of fixes.
-    final rt = _routeTracker;
-    _routeTracker = null;
-    routeLocationIssue = null;
-    if (rt != null) {
-      try {
-        await rt.stop();
-      } catch (_) {}
-      // Android: drop the FGS back to connectedDevice-only now the route ended.
-      EdgeTracking.start(location: false);
-    }
-    // Release the display unconditionally — not inside the `rt != null` branch.
-    // A session that never got a tracker (permission denied) still armed
-    // nothing, but a session whose tracker was already cleared by another path
-    // would otherwise leave the screen pinned awake until the app is killed.
-    // AWAITED, like the route tail: an unflushed sensor races the finish screen
-    // and the last buffered batch of sensor beats never reaches the database.
-    // The sensors stay armed for the recovery tail ([_startStrapTail]).
-    await _startStrapTail(activeWorkout?.workoutId);
-    ScreenWake.releaseOwner('workout');
-    _setWorkoutActive(false);
-    final w = activeWorkout!;
-    // Off the clock, not the last tick: a session finished while still paused
-    // after a relaunch has never ticked, and its elapsed is still zero.
-    w.elapsed =
-        _sessionClock(w, DateTime.fromMillisecondsSinceEpoch(stopMs));
-    // Nullable for the same reason `steps` below is: an unanchored profile
-    // means this session was never costed, and a 0 in the column reads as
-    // "burned nothing" rather than "not measured".
-    final finalKcal = w.caloriesOrNull;
-    // Nullable: an unmeasured workout must leave the column unset rather than
-    // bank a zero that reads as "you took no steps".
-    final wSteps = _workoutStepsMeasuredAt(stopMs);
-    // Measured walking cadence, or null when this session had too few gait-like
-    // minutes to have one — most indoor sessions. Never 0.
-    final wCadence =
-        _workoutSawSamples ? sessionCadenceSpm(_workoutMinuteSteps) : null;
-    // Persist the finalized session before clearing the live state. zone_min =
-    // the per-zone seconds the 1 Hz tick accumulated (Z1..Z5, minutes).
-    final id = w.workoutId ?? 'w${w.startTime.millisecondsSinceEpoch}';
-    final zoneMin = w.zoneMinutes();
-    // The user's stop, not after the awaited flushes above: the minutes
-    // after it are the recovery tail, not the workout.
-    final endTs = stopMs ~/ 1000;
-    // Built once. A retry after a failed save banks this same row, so the stop
-    // time and tallies are those of the stop, not of the retry.
-    final retry = _stopPending;
-    final sessionRow = _stopRow ??= {
-      'id': id,
-      'start_ts': w.startTime.millisecondsSinceEpoch ~/ 1000,
-      'end_ts': endTs,
-      'type': w.type,
-      'status': 'done',
-      'calories': finalKcal,
-      'strain': w.strain,
-      'max_hr': w.maxHrSeen > 0 ? w.maxHrSeen : null,
-      'duration_min': w.elapsed.inMinutes,
-      'zone_min_json': jsonEncode(
-        zoneMin.any((v) => v > 0) ? zoneMin : const <num>[],
-      ),
-      if (wSteps != null && wSteps > 0) 'steps': wSteps,
-      'cadence_spm': ?wCadence,
-      'source': 'manual',
-      'created_at': w.startTime.millisecondsSinceEpoch,
-    };
-    // AWAITED, and the live state is not cleared until it lands. This was
-    // fire-and-forget with `activeWorkout = null` on the next line: the
-    // in-memory session is the ONLY other copy, so a failed write silently
-    // destroyed the whole workout while the summary screen rendered it in full.
-    // On a throw the session is "stop pending": every teardown above is
-    // idempotent, so calling stopWorkout() again is a clean retry, and the
-    // exception propagates instead of being reported as a finished, saved
-    // session.
-    try {
-      // Which strap measured this workout. `putSession` is INSERT OR REPLACE,
-      // so an omitted key would blank the stamp startWorkout banked — keep
-      // that one when the link has since dropped rather than downgrading a
-      // real answer to "unknown". INSIDE the try, with the write: its failure
-      // is a failed save like any other (log, notify, stop pending), whichever
-      // strap family is linked.
-      if (!sessionRow.containsKey('device_family')) {
-        sessionRow['device_family'] = _linkDeviceFamily() ??
-            ((await LocalDb.session(id))?['device_family'] as String?);
-      }
-      await LocalDb.putSession(sessionRow);
-      final sensor = _workoutSensor;
-      if (sensor != null) await LocalDb.stampSessionSensor(id, sensor);
-      // The session is durable — tell the screens that read sessions. Without
-      // this the Workout tab, which loads once and caches, showed no trace of
-      // the workout you had just finished in History, "This week", "Tracked"
-      // or the weekly load until the app was restarted.
-      _bumpInsights();
-      // The session is durable now; its scratch tally snapshot (if any) is
-      // no longer needed and would otherwise be restored onto a FUTURE
-      // workout that happens to reuse this id. AWAIT any save the last tick
-      // already dispatched before deleting — otherwise that save can land
-      // AFTER this delete and resurrect the row (Sourcery-flagged race).
-      await _awaitPendingTallyPersist();
-      unawaited(LocalDb.deleteLiveWorkoutTally(id));
-      // Retire any auto-detected suggestion this live session covers, so it
-      // doesn't keep asking "did you work out?" about a workout already saved.
-      await _dismissSupersededSuggestions(
-        startSec: sessionRow['start_ts'] as int,
-        endSec: sessionRow['end_ts'] as int,
-      );
-    } catch (e) {
-      _log('[workout] could not save session $id: $e — held for retry');
-      _stopPending = true;
-      // The retry handle stays in memory, but the finished workout must stop
-      // owning high-rate streams immediately.
-      _nudgeLive();
-      // Written ahead for a relaunch (see [reconcileOrphanedLiveWorkout]);
-      // best effort, the in-memory copy serves a retry in this process.
-      try {
-        Prefs.setString(Prefs.workoutStopPending, jsonEncode(sessionRow));
-      } catch (_) {}
-      // The session is stopped, so the lock screen stops counting it. Once:
-      // a retry that fails again must not end it a second time.
-      if (!retry) LiveActivity.end();
-      _notify();
-      rethrow;
-    }
-    _stopPending = false;
-    _stopRow = null;
-    _clearStopMarker();
-    // Session-triggered Health export (issue #130) — don't wait for the next
-    // day_result/derive pass (which may not run at all if the band isn't
-    // connected right now); write this workout to Apple Health/Health Connect
-    // immediately. Best-effort, never throws, no-ops if sync is off.
-    if (_healthSyncEnabled()) {
-      unawaited(_exportToHealth(sessionRow));
-    }
-    activeWorkout = null;
-    // The draft (and its pause) belongs to this session. Ended from the Live
-    // Activity or a double-tap, a paused draft used to outlive it and freeze
-    // the next session's tick.
-    LiveDraft.clear();
-    _resetWorkoutStepState();
-    _zoneAlert = null;
-    _notify();
-    _log(
-      finalKcal == null
-          ? 'Live session ended. No calorie anchors in the profile.'
-          : 'Live session ended. Burned $finalKcal kcal.',
-    );
-    if (!retry) LiveActivity.end();
-    // The workout's ownership ends: a workout stopped while backgrounded used
-    // to leave FULL live armed with no consumer, and the keep-alive then
-    // re-armed the 100 Hz flood every 30 s until the next lifecycle transition.
-    _nudgeLive();
-    // A workout often rides the live feed; if the connection blipped during it, the
-    // band may hold that window in flash. Pull it now over the live connection so the
-    // just-finished session isn't left with a gap.
-    unawaited(_forceResync());
+  Future<void> stopWorkout() {
+    final inFlight = _stopping;
+    if (inFlight != null) return inFlight;
+    if (activeWorkout == null) return Future<void>.value();
+    final stop = _stopWorkoutOnce();
+    _stopping = stop;
+    // Cleared on failure too: a failed write keeps the session live, and the
+    // retry has to run a fresh stop rather than replay the error.
+    return stop.whenComplete(() {
+      if (identical(_stopping, stop)) _stopping = null;
+    });
   }
 
   /// Tears down the in-memory live-workout state (timer, GPS route tracker,
@@ -1195,9 +1080,7 @@ class WorkoutController {
           // movement and detected-workout prompts.
           priority: NotifPriority.normal,
           title: 'Still working out?',
-          body: 'Nothing above resting effort has been recorded for '
-              '${w.idleWatch.nudgeAfter.inMinutes} minutes. If the session '
-              'is over, finish it from the Workout tab.',
+          body: idleNudgeBody(w.idleWatch.nudgeAfter.inMinutes),
           date: todayLabel(),
           route: kRouteWorkoutIdle,
         ),
@@ -1225,6 +1108,40 @@ class WorkoutController {
     final w = activeWorkout;
     // A stop-pending session is stopped: nothing bills into it any more.
     if (w == null || _stopPending) return;
+
+    // The lock-screen Finish button runs in the widget extension and does not
+    // bring the app forward. Checked only on resume, the session kept its
+    // timer, streams and GPS running until the app was next opened, and
+    // stopWorkout then stamped that later moment as the end: a run finished at
+    // 18:30 and opened at 22:00 banked three and a half hours. Checked before
+    // the pause return, since a paused session can be finished there too.
+    if (!_finishFlagPollInFlight) {
+      _finishFlagPollInFlight = true;
+      unawaited(
+        maybeFinishFromLiveActivity()
+            .catchError(
+              (Object e) => _log('[workout] lock-screen finish failed: $e'),
+            )
+            .whenComplete(() => _finishFlagPollInFlight = false),
+      );
+    }
+
+    // The lock-screen Finish button runs in the widget extension and does not
+    // bring the app forward. Checked only on resume, the session kept its
+    // timer, streams and GPS running until the app was next opened, and
+    // stopWorkout then stamped that later moment as the end: a run finished at
+    // 18:30 and opened at 22:00 banked three and a half hours. Checked before
+    // the pause return, since a paused session can be finished there too.
+    if (!_finishFlagPollInFlight) {
+      _finishFlagPollInFlight = true;
+      unawaited(
+        maybeFinishFromLiveActivity()
+            .catchError(
+              (Object e) => _log('[workout] lock-screen finish failed: $e'),
+            )
+            .whenComplete(() => _finishFlagPollInFlight = false),
+      );
+    }
 
     // Pause is held by the live screen's draft. While paused the clock and
     // every tally (zones, strain, calories, the idle watch) hold too, so the
@@ -1319,8 +1236,9 @@ class WorkoutController {
     // Push to the Live Activity at most ~every 4s (ActivityKit throttles; saves battery).
     // Skipped entirely while HR is absent: the widget's channel takes a
     // non-null int, so the only way to push "no reading" today would be to send
-    // 0 bpm, which is a fabricated measurement on the lock screen. Holding the
-    // last frame is the lesser wrong until `LiveActivity.update` takes `int?`.
+    // 0 bpm, which is a fabricated measurement on the lock screen. The last
+    // frame is held instead; the native bridge stamps each push with a stale
+    // date about a minute out, and the widget blanks HR and zone once it passes.
     if (hr != null && DateTime.now().difference(_lastLaPush).inSeconds >= 4) {
       _lastLaPush = DateTime.now();
       LiveActivity.update(
@@ -1409,6 +1327,223 @@ class WorkoutController {
     _disposed = true;
     if (strapTailRunning) unawaited(_disarmSensors());
   }
+
+
+  // One App-Group read of the Live Activity's Finish flag at a time; the tick
+  // runs at 1 Hz and a read can outlast a second.
+  bool _finishFlagPollInFlight = false;
+
+  // The relaunch reconcile, while it runs. See [maybeFinishFromLiveActivity].
+  Future<void>? _reconciling;
+
+  /// Set by the app before start-up kicks the reconcile, cleared once it has
+  /// run. A resume can land before start-up reaches the reconcile at all, when
+  /// [_reconciling] is still null and there is nothing to wait for.
+  bool reconcilePending = false;
+
+  /// The stop in progress, handed to every caller that arrives before it
+  /// settles. A stop can be started from the Live Activity on resume, the live
+  /// screen's Finish, the mini-bar and the band double-tap, and it spends
+  /// seconds in sensor and GPS flushes before it clears [activeWorkout]. A
+  /// second stop that got past the entry check while the first was parked in
+  /// those flushes wrote the session twice, cancelled the first stop's
+  /// recovery tail, and, when the first finished under it, hit a null
+  /// `activeWorkout` — so a workout that was saved was reported as unsaved.
+  Future<void>? _stopping;
+
+  Future<void> _stopWorkoutOnce() async {
+    final w = activeWorkout;
+    if (w == null) return;
+    final resetGen = ResetGate.generation;
+    bool discarded() => !identical(activeWorkout, w) ||
+        ResetGate.changedSince(resetGen);
+    // Step coverage is judged at the moment of stop: the teardown awaited
+    // below can take long enough to look like an accel gap that never happened.
+    final stopMs = DateTime.now().millisecondsSinceEpoch;
+    _workoutTimer?.cancel();
+    _workoutTimer = null;
+    // Stop GPS route recording and AWAIT the buffered-tail flush before the
+    // finish screen loads the route — an unawaited stop raced the navigation
+    // and the finish/detail map missed the last batch of fixes.
+    final rt = _routeTracker;
+    _routeTracker = null;
+    routeLocationIssue = null;
+    if (rt != null) {
+      try {
+        await rt.stop();
+      } catch (_) {}
+      // Android: drop the FGS back to connectedDevice-only now the route ended.
+      EdgeTracking.start(location: false);
+    }
+    if (discarded()) return;
+    // Release the display unconditionally — not inside the `rt != null` branch.
+    // A session that never got a tracker (permission denied) still armed
+    // nothing, but a session whose tracker was already cleared by another path
+    // would otherwise leave the screen pinned awake until the app is killed.
+    // AWAITED, like the route tail: an unflushed sensor races the finish screen
+    // and the last buffered batch of sensor beats never reaches the database.
+    // The sensors stay armed for the recovery tail ([_startStrapTail]).
+    await _startStrapTail(w.workoutId);
+    if (discarded()) {
+      if (ResetGate.changedSince(resetGen)) await _disarmSensors();
+      return;
+    }
+    ScreenWake.releaseOwner('workout');
+    _setWorkoutActive(false);
+    // Off the clock, not the last tick: a session finished while still paused
+    // after a relaunch has never ticked, and its elapsed is still zero.
+    w.elapsed =
+        _sessionClock(w, DateTime.fromMillisecondsSinceEpoch(stopMs));
+    // Nullable for the same reason `steps` below is: an unanchored profile
+    // means this session was never costed, and a 0 in the column reads as
+    // "burned nothing" rather than "not measured".
+    final finalKcal = w.caloriesOrNull;
+    // Nullable: an unmeasured workout must leave the column unset rather than
+    // bank a zero that reads as "you took no steps".
+    final wSteps = _workoutStepsMeasuredAt(stopMs);
+    // Measured walking cadence, or null when this session had too few gait-like
+    // minutes to have one — most indoor sessions. Never 0.
+    final wCadence =
+        _workoutSawSamples ? sessionCadenceSpm(_workoutMinuteSteps) : null;
+    // Persist the finalized session before clearing the live state. zone_min =
+    // the per-zone seconds the 1 Hz tick accumulated (Z1..Z5, minutes).
+    final id = w.workoutId ?? 'w${w.startTime.millisecondsSinceEpoch}';
+    final zoneMin = w.zoneMinutes();
+    // The user's stop, not after the awaited flushes above: the minutes
+    // after it are the recovery tail, not the workout.
+    final endTs = stopMs ~/ 1000;
+    // Built once. A retry after a failed save banks this same row, so the stop
+    // time and tallies are those of the stop, not of the retry.
+    final retry = _stopPending;
+    final sessionRow = _stopRow ??= {
+      'id': id,
+      'start_ts': w.startTime.millisecondsSinceEpoch ~/ 1000,
+      'end_ts': endTs,
+      'type': w.type,
+      'status': 'done',
+      'calories': finalKcal,
+      'strain': w.strain,
+      'max_hr': w.maxHrSeen > 0 ? w.maxHrSeen : null,
+      'duration_min': w.elapsed.inMinutes,
+      'zone_min_json': jsonEncode(
+        zoneMin.any((v) => v > 0) ? zoneMin : const <num>[],
+      ),
+      if (wSteps != null && wSteps > 0) 'steps': wSteps,
+      'cadence_spm': ?wCadence,
+      'source': 'manual',
+      'created_at': w.startTime.millisecondsSinceEpoch,
+    };
+    // AWAITED, and the live state is not cleared until it lands. This was
+    // fire-and-forget with `activeWorkout = null` on the next line: the
+    // in-memory session is the ONLY other copy, so a failed write silently
+    // destroyed the whole workout while the summary screen rendered it in full.
+    // On a throw the session is "stop pending": every teardown above is
+    // idempotent, so calling stopWorkout() again is a clean retry, and the
+    // exception propagates instead of being reported as a finished, saved
+    // session.
+    try {
+      // Which strap measured this workout. `putSession` is INSERT OR REPLACE,
+      // so an omitted key would blank the stamp startWorkout banked — keep
+      // that one when the link has since dropped rather than downgrading a
+      // real answer to "unknown". INSIDE the try, with the write: its failure
+      // is a failed save like any other (log, notify, stop pending), whichever
+      // strap family is linked.
+      if (!sessionRow.containsKey('device_family')) {
+        sessionRow['device_family'] = _linkDeviceFamily() ??
+            ((await LocalDb.session(id))?['device_family'] as String?);
+      }
+      if (discarded()) return;
+      await LocalDb.putSession(sessionRow);
+      final sensor = _workoutSensor;
+      if (sensor != null) await LocalDb.stampSessionSensor(id, sensor);
+      // The session is durable — tell the screens that read sessions. Without
+      // this the Workout tab, which loads once and caches, showed no trace of
+      // the workout you had just finished in History, "This week", "Tracked"
+      // or the weekly load until the app was restarted.
+      _bumpInsights();
+      // The session is durable now; its scratch tally snapshot (if any) is
+      // no longer needed and would otherwise be restored onto a FUTURE
+      // workout that happens to reuse this id. AWAIT any save the last tick
+      // already dispatched before deleting — otherwise that save can land
+      // AFTER this delete and resurrect the row (Sourcery-flagged race).
+      await _awaitPendingTallyPersist();
+      unawaited(LocalDb.deleteLiveWorkoutTally(id));
+      // Retire any auto-detected suggestion this live session covers, so it
+      // doesn't keep asking "did you work out?" about a workout already saved.
+      await _dismissSupersededSuggestions(
+        startSec: sessionRow['start_ts'] as int,
+        endSec: sessionRow['end_ts'] as int,
+      );
+    } catch (e) {
+      if (discarded()) return;
+      _log('[workout] could not save session $id: $e — held for retry');
+      _stopPending = true;
+      // The retry handle stays in memory, but the finished workout must stop
+      // owning high-rate streams immediately.
+      _nudgeLive();
+      // Written ahead for a relaunch (see [reconcileOrphanedLiveWorkout]);
+      // best effort, the in-memory copy serves a retry in this process.
+      try {
+        Prefs.setString(Prefs.workoutStopPending, jsonEncode(sessionRow));
+      } catch (_) {}
+      // The session is stopped, so the lock screen stops counting it. Once:
+      // a retry that fails again must not end it a second time.
+      if (!retry) LiveActivity.end();
+      _notify();
+      rethrow;
+    }
+    if (ResetGate.changedSince(resetGen)) return;
+    _stopPending = false;
+    _stopRow = null;
+    _clearStopMarker();
+    // Session-triggered Health export (issue #130) — don't wait for the next
+    // day_result/derive pass (which may not run at all if the band isn't
+    // connected right now); write this workout to Apple Health/Health Connect
+    // immediately. Best-effort, never throws, no-ops if sync is off.
+    if (_healthSyncEnabled()) {
+      unawaited(_exportToHealth(sessionRow));
+    }
+    activeWorkout = null;
+    // The draft (and its pause) belongs to this session. Ended from the Live
+    // Activity or a double-tap, a paused draft used to outlive it and freeze
+    // the next session's tick.
+    LiveDraft.clear();
+    _resetWorkoutStepState();
+    _zoneAlert = null;
+    _notify();
+    _log(
+      finalKcal == null
+          ? 'Live session ended. No calorie anchors in the profile.'
+          : 'Live session ended. Burned $finalKcal kcal.',
+    );
+    if (!retry) LiveActivity.end();
+    // The workout's ownership ends: a workout stopped while backgrounded used
+    // to leave FULL live armed with no consumer, and the keep-alive then
+    // re-armed the 100 Hz flood every 30 s until the next lifecycle transition.
+    _nudgeLive();
+    // A workout often rides the live feed; if the connection blipped during it, the
+    // band may hold that window in flash. Pull it now over the live connection so the
+    // just-finished session isn't left with a gap.
+    unawaited(_forceResync());
+  }
+
+  /// "Delete everything": end a live workout without saving it and disarm
+  /// the workout sensors, including a stopped workout's recovery tail. An
+  /// armed strap otherwise keeps banking beats into the database the reset
+  /// is emptying, and the primary band's unpair does not reach it.
+  Future<void> discardForReset() async {
+    if (activeWorkout != null) {
+      await _cancelActiveWorkoutTeardown();
+    } else {
+      await _disarmSensors();
+    }
+  }
+
+  /// The idle nudge's body. localizedNotificationText parses this exact
+  /// wording back to translate it, so the two change together.
+  static String idleNudgeBody(int minutes) =>
+      'Nothing above resting effort has been recorded for $minutes minutes. '
+      'If the session is over, finish it from the Workout tab.';
 }
 
 /// Active workout tracking (in-memory only).
@@ -1815,3 +1950,4 @@ class LiveWorkoutState {
     _scoreCalories();
   }
 }
+

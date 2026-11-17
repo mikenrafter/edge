@@ -13,6 +13,8 @@ import 'package:openstrap_edge/util/worker_entries.dart';
 
 /// Substring of `Symbol.toString()` -> expected dispatcher.
 const kExpected = <String, Dispatcher>{
+  'segmentCalendarDaysHeavy': Dispatcher.run,
+  'buildCrossDayArtifactHeavy': Dispatcher.cancellable,
   'trackLearningHeavy': Dispatcher.run,
   'typicalCaffeineHeavy': Dispatcher.run,
   'legacyWakeHeavy': Dispatcher.run,
@@ -20,6 +22,8 @@ const kExpected = <String, Dispatcher>{
   'deriveDayBundle': Dispatcher.cancellable,
   'buildCrossDayBundle': Dispatcher.cancellable,
   'auditBatchDay': Dispatcher.cancellable,
+  'deriveNightDayHeavy': Dispatcher.cancellable,
+  'restoreNightCheckpointHeavy': Dispatcher.cancellable,
   'stageSleepCandidateHeavy': Dispatcher.cancellable,
   'foldDayCheckpoint': Dispatcher.cancellable,
   'foldDayTailHeavy': Dispatcher.cancellable,

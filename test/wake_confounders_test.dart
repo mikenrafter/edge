@@ -58,12 +58,12 @@ void main() {
       .5,
     );
     expect(p({'late meal'}).hrArousalBpm, 5);
-    expect(p({'late meal'}).trendThresholdFactor, 1.5);
+    expect(p({'late meal'}).trendThresholdFactor, 1);
     expect(p({'sick'}).hrArousalBpm, 5);
     expect(p({'workout'}).protectionMinutes, 10);
     expect(p({'workout'}).trendWindowMinutes, 5);
     expect(p({'workout', 'rest day'}).protectionMinutes, 5);
-    expect(p({'stress', 'sick', 'late meal'}).trendThresholdFactor, .75);
+    expect(p({'stress', 'sick', 'late meal'}).trendThresholdFactor, .5);
     expect(
       p(
         {'stress'},

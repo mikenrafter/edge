@@ -396,6 +396,8 @@ void main() {
       expect(rig.engine.count('connect'), 1);
       expect(rig.engine.count('setBackground'), 0, reason: 'a reconnect does not change the tier');
       expect(rig.app.debugLiveOwners.foreground, isFalse);
+      // Same as above: wait for the reconnect's own derive write.
+      await rig.jobQueued('derive_heavy');
     }));
 
     test('heavy derive after a background reconnect is throttled to one per '

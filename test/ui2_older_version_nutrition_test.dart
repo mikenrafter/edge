@@ -137,6 +137,10 @@ void main() {
               label: 'Dinner',
               atTs: DateTime(y.year, y.month, y.day, 20).millisecondsSinceEpoch ~/ 1000,
               kcal: 2000)));
+      await t.runAsync(() async {
+        await LocalDb.putMetricSeriesValue(dayLabelOf(y), 'calories_total', 2300);
+        await LocalDb.putMetricSeriesValue(dayLabelOf(y), 'worn_min', 1440);
+      });
       final app = AppState.forTesting()
         ..repo = _NutritionRepo({
           'daily': {'calories_total': burned},
@@ -161,12 +165,12 @@ void main() {
     };
     final current = {'value': 2300, 'confidence': .8};
 
-    testWidgets('Week: burned and the balance it drives are starred',
+    testWidgets('Week: today’s older version never labels a different day’s balance',
         (t) async {
       await open(t, older, 'Week');
       expect(find.text('Energy balance'), findsOneWidget);
-      expect(olderMark('calories_total'), findsOneWidget);
-      expect(olderMark('balance'), findsOneWidget);
+      expect(anyOlderMarker(), findsNothing,
+          reason: 'the mean uses historical series, not today’s envelope');
     });
 
     testWidgets('Week: current burned is plain', (t) async {

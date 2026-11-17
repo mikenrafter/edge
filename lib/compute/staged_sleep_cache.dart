@@ -1,3 +1,15 @@
+import 'dart:collection';
+import 'dart:convert';
+import '../ble/adapters/signals.dart';
+import '../data/coverage_resolver.dart';
+import 'sleep_profile_policy.dart';
+import 'sleep_staging_worker.dart';
+import 'state_fingerprint.dart';
+import '../util/worker_init.dart';
+
+import 'substrate.dart';
+import 'vendor_sleep.dart';
+
 // staged_sleep_cache.dart — a bounded RAM cache of staged sleep candidates.
 //
 // OWNER: exactly one `DerivationEngine` instance holds one of these, on the UI
@@ -15,15 +27,7 @@
 // a stale night (AGENTS §3.3), so the digest covers everything the worker
 // reads and leaves out only what provably cannot reach its output (see there).
 
-import 'dart:collection';
-import 'dart:convert';
 
-import '../ble/adapters/signals.dart';
-import '../data/coverage_resolver.dart' show OwnedSpan;
-import 'sleep_profile_policy.dart';
-import 'sleep_staging_worker.dart';
-import 'state_fingerprint.dart';
-import '../util/worker_init.dart';
 
 /// One staged night as the worker returned it.
 class StagedSleepEntry {
@@ -45,6 +49,8 @@ class StagedSleepEntry {
   final bool stagedWithFold;
   final String candidateJson;
   final String? observationJson;
+
+
 }
 
 class StagedSleepCache {
@@ -94,6 +100,15 @@ class StagedSleepCache {
       e.algoVersion = algoVersion;
     }
   }
+
+  int _maxDays = 14;
+  int get maxDays => _maxDays;
+  set maxDays(int value) {
+    _maxDays = value < 0 ? 0 : value;
+    while (_byDay.length > _maxDays) {
+      _byDay.remove(_byDay.keys.first);
+    }
+  }
 }
 
 /// What the search substrate was read from, as tracked provenance instead of
@@ -124,6 +139,7 @@ class StagingProvenance {
     required this.ownership,
     required this.wipeEpoch,
     required this.openCount,
+    this.priority = const {},
   });
 
   final int fromSec, toSec;
@@ -133,6 +149,7 @@ class StagingProvenance {
   final Map<int, int> revs;
   final Map<InputSignal, List<OwnedSpan>> ownership;
   final int wipeEpoch, openCount;
+  final Map<InputSignal, List<String>> priority;
 }
 
 /// The UTC offset in force at an instant. The process zone by default; tests
@@ -228,6 +245,7 @@ List<List<int>> nightZoneOffsets(
       for (final sig in InputSignal.values)
         [
           sig.name,
+          p.priority[sig],
           for (final o in p.ownership[sig] ?? const <OwnedSpan>[])
             [o.start, o.end, o.deviceId],
         ],
@@ -272,11 +290,11 @@ List<List<int>> nightZoneOffsets(
 }
 
 /// Distinct days of history `habitualMidsleepSecFromHistory` needs before it
-/// answers (its `minDays` default, which `calendarDays` uses). Pinned against
+/// answers (its `minDays` default, which `calendarDaysHeavy` uses). Pinned against
 /// analytics in test/staged_sleep_cache_test.dart.
 const int kHabitualMidsleepMinDays = 14;
 
-/// The stored sleep history the stager can act on. `calendarDays` adds the
+/// The stored sleep history the stager can act on. `calendarDaysHeavy` adds the
 /// days it walks itself to [SleepStagingInput.priorSleep] and consults the sum
 /// only once it holds [kHabitualMidsleepMinDays] distinct days. When the
 /// stored days plus every day the window can walk stay short of that, the
@@ -317,4 +335,76 @@ Map<String, dynamic>? _blendedProfile(String? profileJson) {
   } catch (_) {
     return null;
   }
+}
+
+
+/// Revisions are captured before loading rows. A concurrent write then makes
+/// the next request miss. No sample columns are walked on the UI isolate.
+String stagingInputKey({
+  required int fromSec,
+  required int toSec,
+  required List<List<Object>> revisions,
+  required Substrate sub,
+  required Map<InputSignal, List<OwnedSpan>> ownership,
+  required Map<InputSignal, List<String>> priority,
+  required SleepWindowOverride? override,
+  required String? profileJson,
+  required List<({int startSec, int endSec, String dayKey})> priorSleep,
+  required List<VendorNight> vendorNights,
+  required (String, String)? activeWearable,
+  bool prefixContext = false,
+}) {
+  // Count local midnights, including DST days, rather than dividing by 86400.
+  var walked = 0;
+  if (sub.tsSec.isNotEmpty) {
+    final first = DateTime.fromMillisecondsSinceEpoch(sub.tsSec.first * 1000);
+    for (var d = DateTime(first.year, first.month, first.day);
+        d.millisecondsSinceEpoch ~/ 1000 <= sub.tsSec.last;
+        d = DateTime(d.year, d.month, d.day + 1)) {
+      walked++;
+    }
+  }
+  final effectiveHistory =
+      {for (final h in priorSleep) h.dayKey}.length + walked < 14
+          ? const <({int startSec, int endSec, String dayKey})>[]
+          : priorSleep;
+
+  // Fold bookkeeping is re-read by the caller. Only a warmed-up profile can
+  // reach staging, but all of its fields (including updated_at_ms) are keyed.
+  Map<String, dynamic>? blendedProfile;
+  if (profileJson != null) {
+    final p = (jsonDecode(profileJson) as Map).cast<String, dynamic>();
+    if (SleepProfilePolicy.shouldBlend((p['nights'] as num?)?.toInt())) {
+      blendedProfile = {...p}..remove(SleepProfilePolicy.foldedDaysKey);
+    }
+  }
+
+  // Local day boundaries and historical midsleeps read offsets at their own
+  // instants. Key those too: equal current zone names/offsets are insufficient.
+  final zoneOffsets = <List<int>>[];
+  for (var t = fromSec - 86400; t <= toSec + 86400; t += 900) {
+    zoneOffsets.add([t, tzOffsetSecondsAt(t)]);
+  }
+  for (final h in effectiveHistory) {
+    final mid = (h.startSec + h.endSec) ~/ 2;
+    zoneOffsets.add([mid, tzOffsetSecondsAt(mid)]);
+  }
+  final now = DateTime.now();
+  return jsonEncode([
+    fromSec, toSec, prefixContext ? const [] : revisions,
+    [for (final sig in InputSignal.values) [sig.name,
+      [for (final o in ownership[sig] ?? const <OwnedSpan>[])
+        [o.start, o.end, o.deviceId]], priority[sig]]],
+    sub.deviceFamily, (sub.deviceIds.toList()..sort()),
+    if (prefixContext) ...[null, null, null, null]
+    else ...[sub.length, sub.firstTs, sub.lastTs, sub.rrMs.length],
+    now.timeZoneName, now.timeZoneOffset.inSeconds, zoneOffsets,
+    override == null ? null :
+        [override.dayId, override.onsetSec, override.offsetSec, override.source],
+    blendedProfile,
+    [for (final h in effectiveHistory) [h.startSec, h.endSec, h.dayKey]],
+    activeWearable == null ? null : [activeWearable.$1, activeWearable.$2],
+    [for (final n in vendorNights) [n.deviceId, n.source, n.decodedAtSec,
+      [for (final e in n.epochs) [e.startSec, e.endSec, e.stage]]]],
+  ]);
 }

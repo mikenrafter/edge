@@ -46,6 +46,7 @@ void main() {
     'hi': 'गुरु, 12 नव॰ 2026',
     'ru': 'чт, 12 нояб. 2026 г.',
     'zh': '2026年11月12日周四',
+    'th': 'พฤ. 12 พ.ย. 2026',
   };
 
   // The Material delegates register their own date symbols, so a no-break space
@@ -114,7 +115,7 @@ void main() {
   });
 
   // why: generated localizations must retain the day argument and honest quality labels.
-  test('all seven locales carry dates and translated limits', () {
+  test('all eight locales carry dates and translated limits', () {
     const todayWords = [
       'today',
       'heute',
@@ -123,8 +124,9 @@ void main() {
       'сегодня',
       'आज',
       '今天',
+      'วันนี้',
     ];
-    expect(AppLocalizations.supportedLocales, hasLength(7));
+    expect(AppLocalizations.supportedLocales, hasLength(8));
     for (final locale in AppLocalizations.supportedLocales) {
       final l = lookupAppLocalizations(locale);
       const f = Finding(FindingKind.irregularRhythm, '2026-11-12');

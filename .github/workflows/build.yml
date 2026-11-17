@@ -7,6 +7,12 @@ on:
 permissions:
   contents: write       # needed to create the GitHub Release
 
+# One release run per tag: a re-pushed tag waits for the earlier run instead of
+# uploading into the same release at the same time.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   # PREFLIGHT. Every version guard lives here, in its own job, and BOTH
   # release jobs depend on it. It used to sit inside `android`, which meant
@@ -158,16 +164,31 @@ jobs:
                 'configurations.' % (name, build, checked))
           PY
 
-  # Create the release once, before any upload. Five upload legs (four APKs and
-  # the iOS job) run in parallel; letting each of them create the release on
-  # first upload races, and can leave duplicate releases or a lost body.
+  # Create the release once, as a DRAFT, before any upload. Five upload legs (four
+  # APKs and the iOS job) run in parallel; letting each of them create the release
+  # on first upload races. Every upload keeps it a draft, and `publish` makes it
+  # public only after all of them succeed, so a failed build never leaves a public
+  # release with files missing (`/releases/latest/download/...` and the AltStore
+  # source both resolve against the latest public release).
   release:
     needs: preflight
     runs-on: ubuntu-latest
     steps:
-      - name: Create the release with notes and an APK selection guide
-        uses: softprops/action-gh-release@v2
+      - uses: actions/checkout@v4
         with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false   # nothing here writes to the repo
+
+      - name: Guard — never write into a release that is already public
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: bash .github/scripts/assert_release_unpublished.sh "$TAG"
+
+      - name: Create the draft release with notes and an APK selection guide
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          draft: true
           generate_release_notes: true
           body: |
             ## Which file?
@@ -175,7 +196,7 @@ jobs:
             - Most phones: `openstrap-edge-${{ github.ref_name }}-arm64-v8a.apk`.
             - Older 32-bit phones: `openstrap-edge-${{ github.ref_name }}-armeabi-v7a.apk`.
             - Emulators and Chromebooks: `openstrap-edge-${{ github.ref_name }}-x86_64.apk`.
-            - Portable: `openstrap-edge-${{ github.ref_name }}.apk` works on all three CPU types and is what in-app updates install.
+            - Portable: `openstrap-edge-${{ github.ref_name }}.apk` works on all three CPU types.
             - The unsigned `.ipa` is for iOS sideloading.
 
   android:
@@ -206,6 +227,12 @@ jobs:
         with:
           persist-credentials: false   # nothing here writes to the repo
 
+      - name: Guard — never write into a release that is already public
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: bash .github/scripts/assert_release_unpublished.sh "$TAG"
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -218,6 +245,9 @@ jobs:
 
       - name: Test APK verification rules
         run: python3 -m unittest discover -s .github/scripts -p 'test_verify_apk.py'
+
+      - name: Test the published-release guard
+        run: bash .github/scripts/test_assert_release_unpublished.sh
 
       # The single companion URL (announcements, OTA, telemetry, import) comes
       # from a repo secret, written into .env and baked in via --dart-define.
@@ -295,8 +325,9 @@ jobs:
       # Publish a Release with the signed APK attached so people download a real
       # .apk, not a zipped CI artifact.
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
+          draft: true
           files: ${{ steps.rename.outputs.apk }}
 
   # Unsigned iOS .ipa for sideloading (AltStore / Sideloadly / TrollStore). It is
@@ -330,6 +361,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false   # nothing here writes to the repo
+
+      - name: Guard — never write into a release that is already public
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: bash .github/scripts/assert_release_unpublished.sh "$TAG"
 
       - uses: subosito/flutter-action@v2
         with:
@@ -416,9 +453,19 @@ jobs:
 
       # Attach to the same Release the android job created/updates (upsert by tag).
       - name: Attach IPA + AltStore source to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
+          draft: true
           files: |
             ${{ steps.ipa.outputs.ipa }}
             apps.json
 
+  # Publish the draft once every Android and iOS upload has succeeded.
+  publish:
+    needs: [android, ios]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          draft: false

@@ -12,7 +12,7 @@ void main(List<String> args) {
   final lines =
       File(path).readAsLinesSync().where((l) => l.trim().isNotEmpty).toList();
   final sub = decodeSubstrate(lines);
-  final days = calendarDays(sub);
+  final days = calendarDaysHeavy(sub);
   stderr.writeln('days: ${days.length}');
 
   // Trailing histories (as metric_series would supply). Use WHOLE numbers to

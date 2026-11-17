@@ -37,7 +37,8 @@ import '../../util/worker_entries.dart';
 import '../../util/worker_init.dart';
 import '../substrate.dart';
 import 'canonical.dart'
-    show columnFor, kBeatSourceBucketMs, kStrapTailSec, ownerBy;
+    show columnFor, kBeatSourceBucketMs, kStrapTailSec, ownerBy,
+        debugRecordWearableConstruction;
 import 'colmi_inputs.dart' show kColmiFamily;
 import 'garmin_inputs.dart' show kHrCadenceSec;
 import 'oura_inputs.dart' show kOuraFamily, ouraTempRows;
@@ -206,7 +207,7 @@ Future<List<Map<String, Object?>>> _colmiTempRows(
   // ring's history (kColmiHistoryDays) later: scan only those captures.
   return db.rawQuery(
     'SELECT hex, COALESCE(rec_ts * 1000, captured_at) AS anchor_ms '
-    'FROM raw_archive WHERE device_id = ? '
+    'FROM ${LocalDb.rawArchiveView} WHERE device_id = ? '
     "AND reason = 'colmi_big_0x${kColmiBigTemperature.toRadixString(16)}' "
     'AND captured_at >= ? AND captured_at <= ?',
     [
@@ -222,7 +223,7 @@ Future<List<Map<String, Object?>>> _ultrahumanRecordRows(
   InputReads.note('wearable_records', '');
   final db = await LocalDb.instance;
   return db.rawQuery(
-    "SELECT hex FROM raw_archive WHERE device_id = ? "
+    "SELECT hex FROM ${LocalDb.rawArchiveView} WHERE device_id = ? "
     "AND reason = 'ultrahuman_record' AND rec_ts >= ? AND rec_ts <= ? "
     'ORDER BY rec_ts',
     [deviceId, from, to],
@@ -337,7 +338,11 @@ Future<WearableSubstrateResult> _dispatchWearable(
   final auditPort = WorkerAudit.auditPort; // null in production
   return Isolate.run(() {
     WorkerAudit.adopt(auditPort, dispatchId);
-    return wearableSubstrateHeavy(wearableWorkerInputs, input);
+    final result = wearableSubstrateHeavy(wearableWorkerInputs, input);
+    return (result, Isolate.current.debugName ?? 'unnamed');
+  }).then((result) {
+    debugRecordWearableConstruction(result.$2);
+    return result.$1;
   });
 }
 

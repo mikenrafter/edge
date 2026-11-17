@@ -121,6 +121,7 @@ void main() {
       var firing = at(9);
       await bandPrefs(quiet: true).save();
       final buzzer = WaterBuzzer(
+        now: () => firing,
         isConnected: () => true,
         buzz: () async {
           buzzed.add(firing);
@@ -180,6 +181,7 @@ void main() {
       final suppressed = <SuppressedReminderSlot>[];
       var firing = at(2);
       final buzzer = WaterBuzzer(
+        now: () => firing,
         isConnected: () => true,
         dispatcher: AlertDispatcher(
           phone: () async => false,
@@ -272,6 +274,7 @@ void main() {
       var buzzes = 0;
       final logged = <DateTime>[];
       final buzzer = WaterBuzzer(
+        now: () => at(9),
         isConnected: () => true,
         buzz: () async {},
         onSlot: (s) async {

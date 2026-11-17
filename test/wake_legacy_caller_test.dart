@@ -13,8 +13,9 @@ import 'support/fake_alarm_engine.dart';
 class Band extends FakeAlarmEngine {
   int buzzes = 0;
   @override
-  Future<void> runAlarm() async {
+  Future<bool> runAlarm() async {
     buzzes++;
+    return true;
   }
 }
 
@@ -39,6 +40,7 @@ void main() {
     band = Band()
       ..debugInstallFakeLink(onWrite: (_) async => true, listening: true);
     band.state.generation = 'gen4';
+    band.state.alarmEpoch = wake.millisecondsSinceEpoch ~/ 1000;
     app = AppState.forTesting(engine: band)..debugWakeClock = () => now;
     await app.sleepOperations.saveSchedule(
       const ExpectedSleepSchedule(
@@ -109,6 +111,19 @@ void main() {
       expect(band.disables, 0);
     },
   );
+  // WHY/CLAIM WAKE-MAIN-630-STALE: main 8376b49ed rejects a decision
+  // whose arm changed during its asynchronous evidence reads.
+  // catches: a completed old detector still buzzing after a new arm lands.
+  test('a newer arm during evidence reads prevents the old early buzz', () async {
+    final checking = app.debugCheckLegacySmartWake(wake);
+    final replacement = wake.add(const Duration(hours: 1));
+    await app.debugOnArmed(replacement,
+        replacement.millisecondsSinceEpoch ~/ 1000);
+    await checking;
+    expect(band.buzzes, 0);
+    expect(band.state.alarmEpoch, replacement.millisecondsSinceEpoch ~/ 1000);
+  });
+
   test(
     'actual caller loads journal, invalidates on edit and retains native arm',
     () async {
@@ -149,14 +164,17 @@ void main() {
       await LocalDb.putJournalMetrics('2026-10-26', {
         'alcohol_units': const JournalMetricValue(1, atMinuteOfDay: 6 * 60),
       });
+      band.state.alarmEpoch = morningWake.millisecondsSinceEpoch ~/ 1000;
       await app.debugCheckLegacySmartWake(morningWake);
       expect(band.buzzes, 0);
       await LocalDb.putJournalMetrics('2026-10-26', {
         'caffeine_mg': const JournalMetricValue(200, atMinuteOfDay: 2 * 60),
       });
+      band.state.alarmEpoch = morningWake.millisecondsSinceEpoch ~/ 1000;
       await app.debugCheckLegacySmartWake(morningWake);
       expect(band.buzzes, 0, reason: 'morning caffeine uses the six-hour lead');
       await LocalDb.putJournalMetrics('2026-10-26', {});
+      band.state.alarmEpoch = morningWake.millisecondsSinceEpoch ~/ 1000;
       await app.debugCheckLegacySmartWake(morningWake);
       expect(band.buzzes, 1);
     },

@@ -1,0 +1,5 @@
+// WHY: an observed omission executes this known project default.
+// CLAIM(resolved-effects): defaults are sources, not a callback exemption.
+void logValue() {}
+void invoke([void Function() cb = logValue]) { cb(); }
+void run() { invoke(); }

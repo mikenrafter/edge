@@ -1,21 +1,8 @@
-// The derive orchestration seam, moved out of AppState with no
-// behaviour change. It owns: the scheduler that decides WHEN a pass runs, the
-// pass itself (`afterDrain`) and the post-derive work around it, the RecalcState
-// notifier and its owner bookkeeping, the per-day publish coalescer, the
-// artifact warmer hand-off, the calculation policy, the revision notifier that
-// screens re-read on, and the perf readouts.
-//
-// It does not own the DerivationEngine (AppState also uses it for imports,
-// re-analysis and sleep edits) nor the work a pass triggers that belongs to
-// other concerns (steps, health export, recovery-ready push, disk reclaim);
-// those arrive as callbacks. It holds no reference to AppState.
 import 'dart:async';
 import 'dart:developer' as developer;
-
 import 'package:battery_plus/battery_plus.dart';
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
-
 import '../compute/calc_power_policy.dart';
 import '../compute/derivation_engine.dart';
 import '../compute/derive_outcome.dart';
@@ -36,6 +23,20 @@ import 'power_source.dart';
 import 'publish_gate.dart';
 import 'recalc_state.dart';
 import 'revision_coalescer.dart';
+
+// The derive orchestration seam, moved out of AppState with no
+// behaviour change. It owns: the scheduler that decides WHEN a pass runs, the
+// pass itself (`afterDrain`) and the post-derive work around it, the RecalcState
+// notifier and its owner bookkeeping, the per-day publish coalescer, the
+// artifact warmer hand-off, the calculation policy, the revision notifier that
+// screens re-read on, and the perf readouts.
+//
+// It does not own the DerivationEngine (AppState also uses it for imports,
+// re-analysis and sleep edits) nor the work a pass triggers that belongs to
+// other concerns (steps, health export, recovery-ready push, disk reclaim);
+// those arrive as callbacks. It holds no reference to AppState.
+
+
 
 /// The two engine calls [DeriveCoordinator.afterDrain] makes, as test seams (see
 /// `AppState.debugDeriveRun` / `debugRescanRecent`).
@@ -149,6 +150,12 @@ class DeriveCoordinator {
   Future<void> publishNow() async {
     await publishGate.publishAndWait();
     await reminderSleep?.refreshReminderSleep();
+    if (DerivationEngine.takeAutoLoggedNaps() > 0) {
+      final repository = _repo();
+      if (repository is LocalRepositoryImpl) {
+        await repository.activitiesListener?.activitiesChanged();
+      }
+    }
   }
 
   // The host is gone, or this coordinator has been disposed (which, under
@@ -811,7 +818,10 @@ class DeriveCoordinator {
       if (heavy && _healthShareConsent()) {
         unawaited(HealthUploader.instance.maybeUpload(consented: true));
       }
-      if (heavy) unawaited(_maybeReclaimDiskSpace());
+      // Awaited, so the scheduler's next job starts only once it is done:
+      // the vacuum holds the derive latch, and a job whose run() found it
+      // held would come back 0 and be marked complete without deriving.
+      if (heavy) await _maybeReclaimDiskSpace();
     } catch (e, st) {
       _log('[derive] post-drain failed: $e');
       // Was silently swallowed before — this is a real pipeline failure
@@ -877,3 +887,4 @@ class DeriveCoordinator {
     return _derive.rescanRecent(_profile,
         onScopeDays: onScopeDays, onDayDone: onDayDone);
   }}
+

@@ -151,7 +151,8 @@ void main() {
       }
       final plot = t.widget<Scrubber>(_plot('Hypnogram'));
       final spoken = stage == 'Not measured' ? 'not measured' : stage;
-      expect(plot.describe(seconds / 28800), '$time, $spoken');
+      // Main adds the signal readings after the exact boundary stage.
+      expect(plot.describe(seconds / 28800), startsWith('$time, $spoken, '));
     }
   });
 
@@ -244,8 +245,12 @@ void main() {
       expect(_in(panel, '58 bpm'), findsOneWidget);
       expect(_in(panel, '17.5 br/min'), findsOneWidget);
       expect(_in(panel, '—'), findsOneWidget);
-      expect(find.bySemanticsLabel(RegExp('SELECTED.*03:00.*Not measured.*58 bpm')),
-          findsWidgets);
+      // The selected slider owns the sentence; the resting panel stays
+      // silent during a scrub so VoiceOver does not announce it twice.
+      final said = t.getSemantics(_plot('Hypnogram')).getSemanticsData();
+      expect(said.label, 'Hypnogram');
+      expect(said.value, '03:00, not measured, Heart rate 58 bpm, '
+          'HRV No record, Breathing 17.5 br/min');
       await _scrub(t, 'Hypnogram', .75);
       expect(_in(panel, '—'), findsNWidgets(3));
     } finally {

@@ -15,7 +15,7 @@
 //  2. `WakeConfirmationRecorder` (lib/wake/wake_confirmation.dart): evidence
 //     from every call site (foreground, movement check, alarm fired / ack /
 //     Natural Wake, foreground or headless) to one persisted confirmation;
-//  3. `prepareSleepSessionCandidate(confirmedWakeSec:)`: staging stops at the
+//  3. `prepareSleepSessionCandidateHeavy(confirmedWakeSec:)`: staging stops at the
 //     confirmation (so it cannot stretch or bridge past it) and so the night is
 //     a function of the data before it only;
 //  4. the engine and the DB (`LocalDb.putWakeConfirmation` ...): the night the
@@ -256,7 +256,7 @@ void main() {
 
   // ── 3. staging stops at the confirmation ─────────────────────────────────
 
-  group('prepareSleepSessionCandidate with a confirmed wake', () {
+  group('prepareSleepSessionCandidateHeavy with a confirmed wake', () {
     late DateTime mid;
     late String day;
     int h(double hours) =>
@@ -308,11 +308,11 @@ void main() {
       // Still asleep (as far as the band can tell) at 03:50; confirmed awake at
       // 03:33, say the app was opened with the wrist moving.
       final sub = build(-2, 3.83, oneNight);
-      final control = prepareSleepSessionCandidate(sub, targetDay: day);
+      final control = prepareSleepSessionCandidateHeavy(sub, targetDay: day);
       expect(control.sleepOffsetSec, h(3.83),
           reason: 'guard: unconfirmed, the detector follows the data');
       final c = h(3.55);
-      final got = prepareSleepSessionCandidate(sub,
+      final got = prepareSleepSessionCandidateHeavy(sub,
           targetDay: day, confirmedWakeSec: c);
       expect(got.present, isTrue);
       expect(got.sleepOffsetSec, c);
@@ -322,9 +322,9 @@ void main() {
 
     test('data after the confirmation changes nothing about the night', () {
       final c = h(3.75);
-      final short = prepareSleepSessionCandidate(build(-2, 3.8, nightThenBackToBed),
+      final short = prepareSleepSessionCandidateHeavy(build(-2, 3.8, nightThenBackToBed),
           targetDay: day, confirmedWakeSec: c);
-      final long = prepareSleepSessionCandidate(build(-2, 8, nightThenBackToBed),
+      final long = prepareSleepSessionCandidateHeavy(build(-2, 8, nightThenBackToBed),
           targetDay: day, confirmedWakeSec: c);
       expect(short.present, isTrue);
       expect(jsonEncode(long.toJson()), jsonEncode(short.toJson()),
@@ -333,11 +333,11 @@ void main() {
 
     test('going back to bed is a new block, not an extension of the night', () {
       final sub = build(-2, 8, nightThenBackToBed);
-      final control = prepareSleepSessionCandidate(sub, targetDay: day);
+      final control = prepareSleepSessionCandidateHeavy(sub, targetDay: day);
       expect(control.sleepOffsetSec, greaterThan(h(6.0)),
           reason: 'guard: unconfirmed, the 18 minute gap is bridged');
       final c = h(3.75);
-      final got = prepareSleepSessionCandidate(sub,
+      final got = prepareSleepSessionCandidateHeavy(sub,
           targetDay: day, confirmedWakeSec: c);
       expect(got.sleepOffsetSec, lessThanOrEqualTo(c),
           reason: 'the night ends where the wake was confirmed');
@@ -350,13 +350,13 @@ void main() {
       // observed 03:42, not the later confirmation (that would count awake
       // minutes as sleep).
       final sub = build(-2, 4.5, oneNight);
-      final control = prepareSleepSessionCandidate(sub, targetDay: day);
-      final got = prepareSleepSessionCandidate(sub,
+      final control = prepareSleepSessionCandidateHeavy(sub, targetDay: day);
+      final got = prepareSleepSessionCandidateHeavy(sub,
           targetDay: day, confirmedWakeSec: h(4.33));
       expect(got.sleepOffsetSec, control.sleepOffsetSec);
       expect(got.sleepOffsetSec, lessThan(h(4.0)));
       // Guard against the stub: the parameter must be what made it so.
-      final early = prepareSleepSessionCandidate(build(-2, 3.83, oneNight),
+      final early = prepareSleepSessionCandidateHeavy(build(-2, 3.83, oneNight),
           targetDay: day, confirmedWakeSec: h(3.55));
       expect(early.sleepOffsetSec, h(3.55));
     });
@@ -364,7 +364,7 @@ void main() {
     test('a confirmation from before the block began leaves no night, not a zero-length one',
         () {
       final sub = build(-2, 6.5, nightThenBackToBed);
-      final got = prepareSleepSessionCandidate(sub,
+      final got = prepareSleepSessionCandidateHeavy(sub,
           targetDay: day, confirmedWakeSec: h(-1.5));
       expect(got.present, isFalse);
       expect(got.sleepOffsetSec, 0);

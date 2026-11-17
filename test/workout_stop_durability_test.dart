@@ -108,4 +108,35 @@ void main() {
         reason: 'the just-logged workout should retire the overlapping '
             'suggestion instead of leaving a stale "did you work out?" prompt');
   });
+  // WHY: Finish and the lock-screen callback can overlap during the sensor
+  // flush. Only one stop may write, clear the live state or start its tail.
+  // # catches: public stopWorkout bypassing main's single-flight wrapper.
+  // proves: CLAIM(workout-stop-once).
+  test('two concurrent finishes share one durable stop', () async {
+    final app = AppState.forTesting();
+    addTearDown(app.dispose);
+    app.activeWorkout = LiveWorkoutState(
+      startTime: DateTime.now().subtract(const Duration(minutes: 42)),
+      targetKcal: 400,
+      workoutId: 'w-concurrent-stop',
+      type: 'run',
+    );
+    final db = await LocalDb.instance;
+    await db.execute('CREATE TEMP TABLE stop_writes (n INTEGER NOT NULL)');
+    await db.execute('INSERT INTO stop_writes VALUES (0)');
+    await db.execute("CREATE TEMP TRIGGER count_stop_writes AFTER INSERT ON sessions "
+        "WHEN NEW.id = 'w-concurrent-stop' BEGIN "
+        "UPDATE stop_writes SET n = n + 1; END");
+    try {
+      await Future.wait([app.stopWorkout(), app.stopWorkout()]);
+      expect(app.activeWorkout, isNull);
+      expect((await db.query('stop_writes')).single['n'], 1);
+      expect((await db.query('sessions', where: 'id = ?',
+          whereArgs: ['w-concurrent-stop'])).single['status'], 'done');
+    } finally {
+      await db.execute('DROP TRIGGER count_stop_writes');
+      await db.execute('DROP TABLE stop_writes');
+    }
+  });
+
 }

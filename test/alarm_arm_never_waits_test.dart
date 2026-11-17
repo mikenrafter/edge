@@ -266,10 +266,10 @@ void main() {
       final src = File('lib/sync/background_sync.dart').readAsStringSync();
       final at = src.indexOf('Future<bool> runHeadlessSync(');
       final run = src.substring(at);
-      final before = run.indexOf("_headlessArm(engine, 'before the drain')");
+      final before = run.indexOf("rearmHeadlessAlarm(engine, paired, phase: 'before the drain')");
       final drain = run.indexOf('await engine.runSync();');
       final finallyAt = run.indexOf('finally {', drain);
-      final after = run.indexOf("_headlessArm(engine, 'after the drain')");
+      final after = run.indexOf("rearmHeadlessAlarm(engine, paired, phase: 'after the drain')");
       expect(before, greaterThan(0));
       expect(drain, greaterThan(before));
       expect(finallyAt, greaterThan(drain));
@@ -280,8 +280,7 @@ void main() {
     test('headless arming leaves lines in the persistent dev log', () {
       final src = File('lib/sync/background_sync.dart').readAsStringSync();
       final arm = codeOnly(src.substring(
-          src.indexOf('Future<void> _headlessArm('),
-          src.indexOf('Future<bool> runHeadlessSync(')));
+          src.indexOf('Future<void> rearmHeadlessAlarm(')));
       expect(arm, contains('_bgLog('));
       final helper = codeOnly(src.substring(src.indexOf('void _bgLog('),
           src.indexOf('bool _mentionsAlarm(')));

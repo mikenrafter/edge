@@ -14,6 +14,7 @@ final _onset = DateTime(2026, 5, 19, 23, 7).millisecondsSinceEpoch ~/ 1000;
 
 SleepData _data() => SleepData(
       day: '2026-05-20',
+      latestDay: '2026-05-20', // this fixture exercises the landing night
       night: {
         'duration_min': 443,
         'in_bed_min': 486,

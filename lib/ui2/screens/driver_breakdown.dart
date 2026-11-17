@@ -528,3 +528,35 @@ List<double?> _window(List<double?> s) {
   final first = s.indexWhere((v) => v != null);
   return first <= 0 ? s : s.sublist(first);
 }
+
+StatusCard driverAbsenceCard(
+  BuildContext c, {
+  Map<String, dynamic>? stale,
+  String? note,
+  VoidCallback? onSync,
+}) {
+  final l = AppLocalizations.of(c);
+  if (stale != null) {
+    return StatusCard(
+      l?.driverBreakdownAbsenceTitle ?? 'No breakdown to show',
+      switch (stale['kind']) {
+        'algo_version' => l?.driverBreakdownAbsenceAlgoVersion ??
+            'The way recovery is worked out changed in the last update. Your days are being recalculated.',
+        'stale' => l?.driverBreakdownAbsenceStale ??
+            'Your trends are out of date. Sync the band to update them.',
+        _ => l?.driverBreakdownAbsenceNoVersion ??
+            'Your trends are being updated. This takes a minute after a sync.',
+      },
+      fix: onSync == null ? '' : (l?.driverBreakdownSyncTheBand ?? 'Sync the band'),
+      onFix: onSync,
+      icon: LucideIcons.refreshCw,
+    );
+  }
+  return StatusCard(
+    l?.driverBreakdownAbsenceTitle ?? 'No breakdown to show',
+    whyFromNote(note) ??
+        (l?.driverBreakdownAbsenceNoReason ??
+            'Nothing recorded says why last night has no breakdown.'),
+    icon: LucideIcons.listTree,
+  );
+}

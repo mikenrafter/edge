@@ -43,7 +43,10 @@ void main() {
   // catches: restoring the inherited bottom/overlap prohibition or omitting Save.
   test('reviewed guide copy in all seven locales', () {
     final expected = jsonDecode(File('test/fixtures/help_review_copy.json').readAsStringSync()) as Map<String, dynamic>;
-    for (final locale in AppLocalizations.supportedLocales) {
+    expect(expected.keys.toSet(), {'en', 'de', 'es', 'fr', 'hi', 'ru', 'zh'},
+        reason: 'all seven reviewed fork translations stay covered; Thai was added by main');
+    for (final locale in AppLocalizations.supportedLocales.where(
+        (locale) => expected.containsKey(locale.languageCode))) {
       final arb = jsonDecode(File('lib/l10n/app_${locale.languageCode}.arb').readAsStringSync()) as Map<String, dynamic>;
       for (final entry in (expected[locale.languageCode] as Map<String, dynamic>).entries) {
         expect(arb[entry.key], entry.value, reason: '${locale.languageCode}: ${entry.key}');

@@ -2,15 +2,17 @@
 // One scan covers sensors and bands; which it is gets decided here, after the
 // scan, and the user confirms before anything is saved. The pairing operation
 // and the main-band flow are injected, so this runs without a radio.
-import 'dart:developer' as developer;
-
 import 'package:flutter/widgets.dart';
 
 import '../../ble/adapters/_registry.dart';
 import '../../ble/band_identity.dart';
 import '../../ble/hrs_link.dart' show BandCandidate;
+import '../../l10n/app_localizations.dart';
 import 'pair_sheets.dart';
 import 'pair_text.dart' show pairL10n;
+
+/// Closing a route alone never proves that an authenticated wearable paired.
+enum BandFlowResult { closed, pairedWearable }
 
 enum AddDeviceOutcome {
   /// The user backed out; nothing was saved.
@@ -55,14 +57,12 @@ abstract interface class AddDeviceIo {
   /// Whether a main band is paired right now (read at tap time).
   bool get hasMainBand;
 
-  /// The paired band's name, for "Unpair (your band) and pair this one"; null
+  /// The primary peripheral must never also acquire a secondary connection.
+  String? get mainBandRemoteId;
+
+  /// The paired band's name, shown when choosing its replacement; null
   /// when it has none (the sheet then says "your band").
   String? get mainBandName;
-
-  /// Unpairs the main band through the app's own unpair (the one Settings'
-  /// "Unpair band" runs): the link and the pairing record go, every saved
-  /// reading stays.
-  Future<void> unpairMainBand();
 
   /// The pairing operation for [cand] under registry [entry]; the real one is
   /// `HrsLink.pairNotifySensor`, tests pass a fake.
@@ -78,10 +78,11 @@ abstract interface class AddDeviceIo {
   Future<String?> mainBandBlockedReason();
 
   /// Opens the main-band pairing for [band], bound to the tapped device
-  /// [remoteId]. [modelKnown] false: only the name said WHOOP, so the
-  /// pairing must not assume [band]'s generation.
-  Future<void> openBandFlow(BandEntry band,
-      {required String remoteId, bool modelKnown = true});
+  /// [remoteId], or selected by the system picker when null. [modelKnown]
+  /// false forbids assuming [band]'s generation. Authenticated wearable screens
+  /// return [BandFlowResult.pairedWearable] only after a successful pair.
+  Future<BandFlowResult> openBandFlow(BandEntry band,
+      {required String? remoteId, bool modelKnown = true, bool replacing = false});
 }
 
 class AddDeviceFlow {
@@ -102,14 +103,36 @@ class AddDeviceFlow {
   Future<AddDeviceResult> onTap(BuildContext c, BandCandidate cand) async {
     if (_running) return _r(AddDeviceOutcome.cancelled);
     _running = true;
+    final l = AppLocalizations.of(c);
     try {
       return await _onTap(c, cand);
+    } catch (e) {
+      return _r(AddDeviceOutcome.failed,
+          l?.pairSensorCouldNotPair(e.toString()) ?? 'Could not pair that device: $e');
+    } finally {
+      _running = false;
+    }
+  }
+
+  /// An unapproved iOS replacement cannot appear in a CoreBluetooth scan.
+  /// The platform picker (or Android's band scan) selects it after confirmation.
+  Future<AddDeviceResult> replaceMainBand(BuildContext c) async {
+    if (_running || !io.hasMainBand) return _r(AddDeviceOutcome.cancelled);
+    _running = true;
+    final l = AppLocalizations.of(c);
+    try {
+      return await _replace(c, kWhoopGen4, null, modelKnown: false);
+    } catch (e) {
+      return _r(AddDeviceOutcome.failed,
+          l?.pairSensorCouldNotPair(e.toString()) ?? 'Could not pair that device: $e');
     } finally {
       _running = false;
     }
   }
 
   Future<AddDeviceResult> _onTap(BuildContext c, BandCandidate cand) async {
+    final refusal = _primaryRefusal(c, cand);
+    if (refusal != null) return refusal;
     final entry = _entry(cand.entryId);
     if (entry == null) return _r(AddDeviceOutcome.cancelled);
     // A band in its own right, or a sensor-looking device that is also a band.
@@ -135,11 +158,7 @@ class AddDeviceFlow {
       }
       // A WHOOP kept as a secondary sensor is paired as a heart-rate sensor;
       // a ring or a watch pairs under its own entry.
-      final pairAs = !band.canBeMainDevice
-          ? band
-          : entry.isFramed
-              ? kBleHrs
-              : entry;
+      final pairAs = band.canBeMainDevice ? kBleHrs : band;
       return _pair(c, cand, pairAs,
           confirmation: PairConfirmation(
               remoteId: cand.device.remoteId.str, bandEntryId: band.id));
@@ -161,48 +180,49 @@ class AddDeviceFlow {
     return showStrapSheet(c, sensor: entry, deviceName: deviceName);
   }
 
-  /// "Unpair (your band) and pair this one": one confirm, then the app's own
-  /// unpair (every saved reading stays), then straight into the main-band
-  /// pairing for the tapped device. Cancel changes nothing.
+  /// Confirm replacement, then verify the new band while the current one
+  /// remains paired. The pairing owner commits the switch only after READY.
   Future<AddDeviceResult> _replace(
-      BuildContext c, BandEntry band, BandCandidate cand,
+      BuildContext c, BandEntry band, BandCandidate? cand,
       {bool modelKnown = true}) async {
-    final l = pairL10n(c);
     if (!await showReplaceBandConfirm(c, mainBandName: io.mainBandName)) {
       return _r(AddDeviceOutcome.cancelled);
     }
-    try {
-      await io.unpairMainBand();
-    } catch (e) {
-      // Nothing else runs: the new band is not paired over a half-done
-      // unpair, and the user is told so.
-      // developer.log, not debugPrint: the heavy-calc baseline does not grow.
-      developer.log('replace: unpair failed: $e', name: 'pairing');
-      return _r(AddDeviceOutcome.failed, l.pairReplaceUnpairFailed);
-    }
-    return _handoff(band, cand, modelKnown: modelKnown);
+    if (!c.mounted) return _r(AddDeviceOutcome.cancelled);
+    return _handoff(band, cand, modelKnown: modelKnown, replacing: true);
   }
 
   /// Hands over to the main-band flow: the scan ends first, and where the
   /// system pairing sheet cannot open the user gets restart guidance instead.
-  Future<AddDeviceResult> _handoff(BandEntry band, BandCandidate cand,
-      {bool modelKnown = true}) async {
+  Future<AddDeviceResult> _handoff(BandEntry band, BandCandidate? cand,
+      {bool modelKnown = true, bool replacing = false}) async {
     await io.stopScan();
     if (band.isFramed) {
       final held = await io.mainBandBlockedReason();
       if (held != null) return _r(AddDeviceOutcome.bandFlowHeldBack, held);
     }
-    await io.openBandFlow(band,
-        remoteId: cand.device.remoteId.str, modelKnown: modelKnown);
+    final result = await io.openBandFlow(band,
+        remoteId: cand?.device.remoteId.str, modelKnown: modelKnown, replacing: replacing);
+    if (!band.isFramed) {
+      return _r(result == BandFlowResult.pairedWearable
+          ? AddDeviceOutcome.pairedOther : AddDeviceOutcome.cancelled);
+    }
     return _r(AddDeviceOutcome.openedBandFlow);
   }
 
   static bool _isSecondarySensor(BandEntry e) =>
       e.role == DeviceRole.sensor && e.category == DeviceCategory.workoutSensor;
 
+  AddDeviceResult? _primaryRefusal(BuildContext c, BandCandidate cand) =>
+      cand.device.remoteId.str == io.mainBandRemoteId
+          ? _r(AddDeviceOutcome.failed, pairL10n(c).pairPrimaryCannotBeSensor)
+          : null;
+
   Future<AddDeviceResult> _pair(BuildContext c, BandCandidate cand,
       BandEntry entry,
       {PairConfirmation? confirmation}) async {
+    final refusal = _primaryRefusal(c, cand);
+    if (refusal != null) return refusal;
     final outcome = await io.pair(cand, entry, confirmation);
     // afterConnect checks `c.mounted` before it touches the context.
     // ignore: use_build_context_synchronously
@@ -239,13 +259,13 @@ class AddDeviceFlow {
       }
       if (!c.mounted) return _r(AddDeviceOutcome.cancelled);
       // A ring or a watch pairs under its own entry, never as a plain sensor.
-      return _pair(c, cand, found.canBeMainDevice ? entry : found,
+      return _pair(c, cand, found.canBeMainDevice ? kBleHrs : found,
           confirmation: PairConfirmation(
               remoteId: cand.device.remoteId.str, bandEntryId: found.id));
     }
     final error = outcome.error;
     if (error != null) return _r(AddDeviceOutcome.failed, error);
-    return _r(confirmation != null || _isSecondarySensor(entry)
+    return _r(_isSecondarySensor(entry)
         ? AddDeviceOutcome.pairedSecondary
         : AddDeviceOutcome.pairedOther);
   }

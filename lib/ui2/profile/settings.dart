@@ -1,3 +1,6 @@
+import 'step_calibration.dart' show StepCalibrationScreen;
+import '../../compute/profile.dart' show plausibleAgeYears, plausibleHeightCm, plausibleWeightKg;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import '../../l10n/display_text.dart';
 // Settings, and editing the profile.
 //
@@ -97,7 +100,9 @@ class MoreSettings extends StatefulWidget {
   State<MoreSettings> createState() => _MoreSettingsState();
 }
 
-class _MoreSettingsState extends State<MoreSettings> {
+class _MoreSettingsState extends State<MoreSettings> with WidgetsBindingObserver {
+  bool? _bgExempt;
+  bool _oemAutostart = false;
   /// Whether a food barcode may be looked up online. Not on AppState: it is a
   /// screen-local preference like the map basemap's, read straight off Prefs.
   bool _barcode = offLookupAllowed;
@@ -124,6 +129,10 @@ class _MoreSettingsState extends State<MoreSettings> {
     _readVersion();
     _readIcon();
     _readStorage();
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      WidgetsBinding.instance.addObserver(this);
+      _readBackground();
+    }
     // The developer wearable toggles list the paired devices; best-effort.
     if (context.read<AppState>().devMode) {
       WearableDisplay.instance.loadDevices().catchError((Object _) {});
@@ -136,6 +145,7 @@ class _MoreSettingsState extends State<MoreSettings> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     Prefs.settingsAsTabRevision.removeListener(_settingsChanged);
     super.dispose();
   }
@@ -251,6 +261,10 @@ class _MoreSettingsState extends State<MoreSettings> {
       }),
       clockFormat: clock.format,
       cycleTracking: app.cycleTrackingEnabled,
+      backgroundExempt: _bgExempt,
+      showOemAutostart: _oemAutostart,
+      onRequestBackgroundExempt: app.requestIgnoreBatteryOptimizations,
+      onOpenOemAutostart: app.openOemAutostartSettings,
       appIcon: _icon,
       onPickIcon: _pickIcon,
       telemetry: app.telemetryConsent,
@@ -326,7 +340,27 @@ class _MoreSettingsState extends State<MoreSettings> {
           app.setUpdateChecksEnabled(!app.updateChecksEnabled),
     );
   }
-}
+
+
+  Future<void> _readBackground() async {
+    final app = context.read<AppState>();
+    final exempt = await app.isIgnoringBatteryOptimizations();
+    final oem = await app.hasOemAutostartSettings();
+    if (mounted) {
+      setState(() {
+        _bgExempt = exempt;
+        _oemAutostart = oem;
+      });
+    }
+  }
+
+  /// The exemption dialog and the OEM screen both answer out of band, by the
+  /// user coming back to the app, so the rows re-read the OS on resume rather
+  /// than guessing from the tap.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _readBackground();
+  }}
 
 /// The language row's sub-line. Without a [LocaleController] above (a view
 /// pumped on its own) it reads as the system default, like coachSubtitle does
@@ -585,6 +619,9 @@ Future<void> editExpectedSleepSchedule(BuildContext context, AppState app) async
 }
 
 class MoreSettingsView extends StatelessWidget {
+  final bool? backgroundExempt;
+  final bool showOemAutostart;
+  final VoidCallback? onRequestBackgroundExempt, onOpenOemAutostart;
   final bool embedded, settingsAsTab;
   final bool sleepWakeZoom;
   final bool experimentalSleepHmm;
@@ -690,6 +727,10 @@ class MoreSettingsView extends StatelessWidget {
       onToggleUpdateChecks;
 
   const MoreSettingsView({
+    this.backgroundExempt,
+    this.showOemAutostart = false,
+    this.onRequestBackgroundExempt,
+    this.onOpenOemAutostart,
     super.key,
     this.embedded = false,
     this.settingsAsTab = false,
@@ -757,6 +798,10 @@ class MoreSettingsView extends StatelessWidget {
     this.onToggleHealthSync,
     this.onToggleUpdateChecks,
   });
+
+  // These gates describe OS/device capability, never a parent's on/off choice.
+  bool get backgroundSettingsSupported => backgroundExempt != null;
+  bool get oemAutostartSupported => showOemAutostart;
 
   @override
   Widget build(BuildContext c) {
@@ -834,6 +879,11 @@ class MoreSettingsView extends StatelessWidget {
                       sub: 'Pull Home down to sync with the band',
                       value: pullToSync ? on : off,
                       onTap: onTogglePullToSync),
+                  SetRow(LucideIcons.footprints, C.green,
+                      l?.settingsStepCalibration ?? 'Step calibration',
+                      sub: l?.settingsStepCalibrationSub ??
+                          'Teaches the strap your own walking, so its step count fits you. Nothing leaves the device',
+                      onTap: () => go(c, const StepCalibrationScreen())),
                   // Intentionally also in Alarm > Wake, where it is the alarm's
                   // input in context. Both rows edit the same preference.
                   SetRow(LucideIcons.moon, C.indigo, 'Expected sleep schedule',
@@ -907,6 +957,28 @@ class MoreSettingsView extends StatelessWidget {
                         'App notifications on the band',
                         sub: 'Which apps, alarms and calls make the band buzz',
                         onTap: onBandNotifications),
+                  if (backgroundSettingsSupported)
+                    SetRow(LucideIcons.batteryCharging, C.green,
+                        l?.settingsKeepAliveRowTitle ??
+                            'Keep syncing in the background',
+                        sub: l?.settingsKeepAliveRowSub ??
+                            'So battery saving doesn’t stop the overnight sync',
+                        value: backgroundExempt!
+                            ? on
+                            : (l?.settingsKeepAliveAllow ?? 'Allow'),
+                        // Once granted it can only be revoked in the OS
+                        // battery settings, so the row stops being a button.
+                        chevron: !backgroundExempt!,
+                        onTap: backgroundExempt!
+                            ? null
+                            : onRequestBackgroundExempt),
+                  if (oemAutostartSupported)
+                    SetRow(LucideIcons.power, C.green,
+                        l?.settingsAutostartRowTitle ?? 'Allow auto-start',
+                        sub: l?.settingsAutostartRowSub ??
+                            'This phone’s maker needs one more setting before '
+                                'the app can keep syncing overnight',
+                        onTap: onOpenOemAutostart),
                 ]),
                 SettingsAccordion('Data & privacy',
                     id: 'settings_data_privacy',
@@ -1147,7 +1219,7 @@ class NotificationSettings extends StatefulWidget {
   State<NotificationSettings> createState() => _NotificationSettingsState();
 }
 
-class _NotificationSettingsState extends State<NotificationSettings> {
+class _NotificationSettingsState extends State<NotificationSettings> with WidgetsBindingObserver {
   NotificationPrefs? _prefs;
   bool _granted = false;
 
@@ -1157,7 +1229,26 @@ class _NotificationSettingsState extends State<NotificationSettings> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Back from OS Settings: re-read the real grant, or the "off at the system
+    // level" card stays up after the user has already fixed it.
+    if (state == AppLifecycleState.resumed) _recheck();
+  }
+
+  Future<void> _recheck() async {
+    final granted = await NotificationService.instance.hasPermission();
+    if (mounted && granted != _granted) setState(() => _granted = granted);
   }
 
   Future<void> _load() async {
@@ -1205,9 +1296,16 @@ class _NotificationSettingsState extends State<NotificationSettings> {
 
   /// The one contextual moment left where prompting is honest: the user is
   /// standing in the notifications screen, having just asked for one.
+  ///
+  /// Once the OS holds a denial the request is a silent no — the dialog never
+  /// shows again — so a refusal sends the user to the system page instead of
+  /// leaving the button doing nothing. The OS gives no way to tell a denial
+  /// from just now apart from one made at pairing, so both land there.
   Future<void> _requestPermission() async {
-    final ok = await NotificationService.instance.ensurePermission();
+    final svc = NotificationService.instance;
+    final ok = await svc.ensurePermission();
     if (mounted) setState(() => _granted = ok);
+    if (!ok && mounted) await svc.openSystemSettings();
   }
 
   @override
@@ -1946,6 +2044,9 @@ class _EditProfileViewState extends State<EditProfileView> {
       TextEditingController(text: _u.weightField(widget.initial['weight_kg'] as num?));
   late String? _sex = (widget.initial['sex'] as String?)?.toLowerCase();
 
+  late num? _shownHeightCm = widget.initial['height_cm'] as num?;
+  late num? _shownWeightKg = widget.initial['weight_kg'] as num?;
+
   /// When the store last gave us something. Null is "never", which is also
   /// what an unreadable preference reads as — the first-run word on the button
   /// is the safe one either way.
@@ -1983,8 +2084,10 @@ class _EditProfileViewState extends State<EditProfileView> {
       if (!mounted) return;
       if (fields != null) {
         _age.text = _s(fields['age']);
-        _height.text = _u.heightField(fields['height_cm'] as num?);
-        _weight.text = _u.weightField(fields['weight_kg'] as num?);
+        _shownHeightCm = fields['height_cm'] as num?;
+        _shownWeightKg = fields['weight_kg'] as num?;
+        _height.text = _u.heightField(_shownHeightCm);
+        _weight.text = _u.weightField(_shownWeightKg);
         _sex = (fields['sex'] as String?)?.toLowerCase() ?? _sex;
       }
       setState(() {
@@ -2034,13 +2137,37 @@ class _EditProfileViewState extends State<EditProfileView> {
       sayUnreadable(context, bad);
       return;
     }
+    // An untouched field keeps the stored number. Imperial pre-fills are
+    // rounded to whole inches and pounds, so converting them back rewrote
+    // 72.5 kg as 72.57 and 178 cm as 177.8 on every save and a rename alone
+    // moved the stored body.
+    final heightCm =
+        height.value == null
+            ? null
+            : _u.heightToCmKeeping(_height.text, _shownHeightCm);
+    final weightKg =
+        weight.value == null
+            ? null
+            : _u.weightToKgKeeping(_weight.text, _shownWeightKg);
+    final off = [
+      if (age.value case final a? when !plausibleAgeYears(a))
+        (l?.settingsAgeFieldLabel ?? 'Age'),
+      if (heightCm != null && !plausibleHeightCm(heightCm))
+        uiText(context, _u.heightLabel),
+      if (weightKg != null && !plausibleWeightKg(weightKg))
+        uiText(context, _u.weightLabel),
+    ];
+    if (off.isNotEmpty) {
+      sayImplausible(context, off);
+      return;
+    }
     widget.onSave({
       'name': _name.text.trim().isEmpty ? null : _name.text.trim(),
       'sex': _sex,
       'age': age.value?.round(),
       // Typed in the units on the label, stored in metric.
-      'height_cm': height.value == null ? null : _u.heightToCm(_height.text),
-      'weight_kg': weight.value == null ? null : _u.weightToKg(_weight.text),
+      'height_cm': heightCm,
+      'weight_kg': weightKg,
     });
   }
 
@@ -2122,7 +2249,9 @@ class _EditProfileViewState extends State<EditProfileView> {
                     l?.localeName.startsWith('ru') == true
                         ? uiText(c, _u.heightLabel)
                         : uiText(c, _u.heightLabel).toUpperCase(),
-                    TextInputType.number,
+                    // A plain number keyboard on iOS is digits only, so a weight
+                    // pre-filled as 72.5 could not be retyped as 73.4.
+                    const TextInputType.numberWithOptions(decimal: true),
                   ),
                   _text(
                     c,
@@ -2130,7 +2259,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                     l?.localeName.startsWith('ru') == true
                         ? uiText(c, _u.weightLabel)
                         : uiText(c, _u.weightLabel).toUpperCase(),
-                    TextInputType.number,
+                    const TextInputType.numberWithOptions(decimal: true),
                   ),
                 ]),
                 ..._importBlock(p, c),

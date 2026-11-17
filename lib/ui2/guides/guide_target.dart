@@ -121,6 +121,10 @@ sealed class GuideTarget {
   factory GuideTarget.firstLabel(GuideText label, {GuideTarget? within}) =>
       _LabelTarget([label], within, firstOfMany: true);
 
+  /// The first control matching any of the offered labels, in document order.
+  factory GuideTarget.firstAnyLabel(List<GuideText> alternatives, {GuideTarget? within}) =>
+      _LabelTarget(alternatives, within, firstOfMany: true);
+
   /// By Key: the keyed widget's own render box; no growing.
   factory GuideTarget.key(Key key) => _KeyTarget(key);
 
@@ -555,7 +559,10 @@ class _Search {
         for (final inner in _scrollablesUnder(root)) {
           if (inner.mounted && !_visited.contains(inner) && _isUnder(inner, s) && await _explore(inner)) return true;
         }
-        if ((offset - limit).abs() < 0.5) ended[direction] = true;
+        // The end is where the extent is NOW: a lazy list revises its estimate
+        // while it lays out, so the limit read before the jump can be stale.
+        final settled = direction > 0 ? position.maxScrollExtent : position.minScrollExtent;
+        if ((offset - settled).abs() < 0.5) ended[direction] = true;
       }
     }
     if (!(ended[1]! && ended[-1]!)) budgetSpent = true;
@@ -594,6 +601,10 @@ Future<void> _scrollIntoView(Element root, GuideTarget target, AppLocalizations 
   };
   if (element == null) return Future<void>.value();
   var object = element.renderObject;
+  // Outer viewports reveal THIS, not the inner viewport it sits in: an inner
+  // viewport taller than the outer one would otherwise be centred whole and
+  // leave the target outside.
+  final targetObject = object;
   BuildContext cursor = element;
   final moves = <Future<void>>[];
   var glided = false;
@@ -614,7 +625,7 @@ Future<void> _scrollIntoView(Element root, GuideTarget target, AppLocalizations 
       }
     } else if (!inside) {
       // Zero duration = an immediate jump; the returned future is already done.
-      unawaited(scrollable.position.ensureVisible(object, alignment: 0.5, duration: Duration.zero));
+      unawaited(scrollable.position.ensureVisible(object, alignment: 0.5, duration: Duration.zero, targetRenderObject: targetObject));
     }
     cursor = scrollable.context;
     object = viewportBox;

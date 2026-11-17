@@ -9,7 +9,6 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/tracks_store.dart';
-import 'package:openstrap_edge/data/track_model.dart';
 import 'package:openstrap_edge/tracks/learning.dart';
 import 'package:openstrap_edge/tracks/range_exposure.dart';
 import 'package:openstrap_edge/tracks/learning_worker.dart';

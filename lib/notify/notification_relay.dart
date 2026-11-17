@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrintSynchronously;
 // notification_relay.dart — relay selected phone notifications to the strap as a
 // haptic buzz. ANDROID ONLY: it rides an app-owned NotificationListenerService
 // (OpenStrapNotificationListener.kt). iOS has no API to observe other apps'
@@ -348,6 +349,66 @@ class RelayController {
     onChanged?.call(name, before, cfg);
   }
 
+  // One decision owner, evaluated before the claim and again immediately
+  // before transport. Settings and listener ownership can change across await.
+  int _deliveryGeneration = 0;
+  String? _deliverySuppression(String channel, Map<String, Object?> m, int generation, int atMs) {
+    if (!_listening || generation != _deliveryGeneration) return 'notListening';
+    final cfg = channels[channel]!;
+    final env = {...cfg.policy, ...policy(m)};
+    if (env['enabled'] != true || !cfg.enabled) {
+      return 'disabled';
+    }
+    if (m['groupSummary'] == true) {
+      return 'groupSummary';
+    }
+    // Only app posts are filtered by ongoing flag and the per-app allow-list.
+    // Alarms and calls are chosen by category, not by package.
+    if (channel == 'apps' &&
+        (m['ongoing'] == true ||
+            !((env['packages'] as List?)?.contains(m['package']) ?? false))) {
+      return 'notSelected';
+    }
+      if (env['dnd'] == true &&
+          env['respectDnd'] != false &&
+          env['allowDuringDnd'] != true) {
+        return 'dnd';
+      }
+      final ringer = env['ringer'];
+      if ((ringer == 'vibrate' && env['includeVibrate'] != true) ||
+          (ringer == 'silent' && env['includeSilent'] != true)) {
+        return 'ringer';
+      }
+      // Unknown wear abstains: only an explicit "worn" lets a buzz through.
+      if (env['onlyWhileWorn'] == true && env['worn'] != 'worn') {
+        return 'notWorn';
+      }
+      // The channel's own window when it overrides, else the global one.
+      final bool quiet;
+      final int? start, end;
+      if (cfg.overrideQuietHours) {
+        start = cfg.quietStartMinute;
+        end = cfg.quietEndMinute;
+        quiet = true;
+      } else {
+        start = env['quietStartMin'] as int?;
+        end = env['quietEndMin'] as int?;
+        quiet = env['quietEnabled'] == true;
+      }
+      if (quiet && start != null && end != null) {
+        final now = DateTime.fromMillisecondsSinceEpoch(atMs);
+        final minute = env['minuteOfDay'] as int? ?? now.hour * 60 + now.minute;
+        if (NotificationPrefs(
+          quietEnabled: true,
+          quietStartMin: start,
+          quietEndMin: end,
+        ).inQuietHours(minute)) {
+          return 'quietHours';
+        }
+      }
+    return null;
+  }
+
   Future<RelayResult> handleMetadata(Map<String, Object?> m) async {
     if (!_listening) return const RelayResult(suppression: 'notListening');
     final key = '${m['keyHash']}';
@@ -363,61 +424,16 @@ class RelayController {
     final channel = relayChannelOf(m['category']);
     final cfg = channels[channel]!;
     final env = {...cfg.policy, ...policy(m)};
-    if (env['enabled'] != true || !cfg.enabled) {
-      return const RelayResult(suppression: 'disabled');
-    }
-    if (m['groupSummary'] == true) {
-      return const RelayResult(suppression: 'groupSummary');
-    }
-    // Only app posts are filtered by ongoing flag and the per-app allow-list.
-    // Alarms and calls are chosen by category, not by package.
-    if (channel == 'apps' &&
-        (m['ongoing'] == true ||
-            !((env['packages'] as List?)?.contains(m['package']) ?? false))) {
-      return const RelayResult(suppression: 'notSelected');
-    }
+    final generation = _deliveryGeneration;
+    String? currentSuppression() =>
+        _deliverySuppression(channel, m, generation, nowMs());
+    final suppression = currentSuppression();
+    if (suppression != null) return RelayResult(suppression: suppression);
     // Claimed synchronously, before any await: concurrent posts of one key
     // reach here one at a time.
     if (!_live.add(key)) return const RelayResult(suppression: 'duplicate');
     _inFlight.add(key);
     try {
-      if (env['dnd'] == true &&
-          env['respectDnd'] != false &&
-          env['allowDuringDnd'] != true) {
-        return const RelayResult(suppression: 'dnd');
-      }
-      final ringer = env['ringer'];
-      if ((ringer == 'vibrate' && env['includeVibrate'] != true) ||
-          (ringer == 'silent' && env['includeSilent'] != true)) {
-        return const RelayResult(suppression: 'ringer');
-      }
-      // Unknown wear abstains: only an explicit "worn" lets a buzz through.
-      if (env['onlyWhileWorn'] == true && env['worn'] != 'worn') {
-        return const RelayResult(suppression: 'notWorn');
-      }
-      // The channel's own window when it overrides, else the global one.
-      final bool quiet;
-      final int? start, end;
-      if (cfg.overrideQuietHours) {
-        start = cfg.quietStartMinute;
-        end = cfg.quietEndMinute;
-        quiet = true;
-      } else {
-        start = env['quietStartMin'] as int?;
-        end = env['quietEndMin'] as int?;
-        quiet = env['quietEnabled'] == true;
-      }
-      if (quiet && start != null && end != null) {
-        final now = DateTime.fromMillisecondsSinceEpoch(nowMs());
-        final minute = env['minuteOfDay'] as int? ?? now.hour * 60 + now.minute;
-        if (NotificationPrefs(
-          quietEnabled: true,
-          quietStartMin: start,
-          quietEndMin: end,
-        ).inQuietHours(minute)) {
-          return const RelayResult(suppression: 'quietHours');
-        }
-      }
       final readable = _readable(m['hapticPattern']);
       final usedFallback = cfg.matchHaptics && readable == null;
       final pattern = !cfg.matchHaptics
@@ -459,16 +475,19 @@ class RelayController {
         eventId: '$channel:$key:$postMs:${_removals[key] ?? 0}',
         sourceTime: DateTime.fromMillisecondsSinceEpoch(postMs),
         historical: false,
+        targetAllowed: (_) => currentSuppression() == null,
         phoneTransport: phone,
         bandTimeout: chosen == null
             ? null
             : sequenceTimeout?.call(chosen) ?? chosen.transportTimeout,
-        bandTransport: chosen == null
-            ? () => buzz(pattern)
-            : () => play!(chosen),
+        bandTransport: () async {
+          if (currentSuppression() != null) return false;
+          return chosen == null ? await buzz(pattern) : await play!(chosen);
+        },
         bandDelivery: chosen == null || deliverSequence == null
             ? null
-            : () => deliverSequence!(chosen),
+            : () async => currentSuppression() == null
+                ? await deliverSequence!(chosen) : BuzzDelivery.rejected,
       );
       return RelayResult(
         targets: outcome.targets,
@@ -488,6 +507,7 @@ class RelayController {
   /// The system unbound the listener. Live keys are kept so a reconnect does
   /// not replay notifications that already alerted.
   Future<void> listenerDisconnected() async {
+    _deliveryGeneration++;
     _listening = false;
     _inFlight.clear();
   }
@@ -509,12 +529,14 @@ class RelayController {
   /// Service destroyed or access revoked: drop every latch. Channel policy is
   /// kept, so the next [listenerConnected] restores it.
   Future<void> stop(String reason) async {
+    _deliveryGeneration++;
     _listening = false;
     _live.clear();
     _inFlight.clear();
   }
 
   void dispose() {
+    _deliveryGeneration++;
     _listening = false;
     _live.clear();
     _inFlight.clear();
@@ -548,6 +570,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     // edit made in the haptics hub reaches the live channels either way, and
     // the global quiet hours cache follows every save from every screen.
     _settingsSub = SettingsRepository.instance.changes.listen(_onSettingsChanged);
+    settingsRestoredSignal.addListener(_settingsRestored);
   }
   final AlertDispatcher dispatcher;
 
@@ -903,9 +926,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     }
     _native.setMethodCallHandler(_onNative);
     WidgetsBinding.instance.addObserver(this);
-    await refreshPermission();
-    _resync();
-    notifyListeners();
+    await reloadFromPrefs();
   }
 
   Future<void> _disarmNative() async {
@@ -1054,13 +1075,13 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   // The heal timer only runs while armed.
   int _resyncGen = 0;
 
-  void _resync() {
+  Future<void> _resync() async {
     final shouldListen = active;
     final gen = ++_resyncGen;
     // Our own latches clear whether or not the bridge ever answers: a platform
     // that times out must not leave a disarmed relay believing it is listening.
     if (!shouldListen) unawaited(controller.stop('disarmed'));
-    _native
+    final resync = _native
         .invokeMethod('setArmed', shouldListen)
         .timeout(_nativeTimeout)
         .then((_) async {
@@ -1080,6 +1101,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
       _healTimer?.cancel();
       _healTimer = null;
     }
+    await resync;
   }
 
   // Ask the native side whether the listener is still bound; if not, request a
@@ -1135,11 +1157,49 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _disposed = true;
     WidgetsBinding.instance.removeObserver(this);
+    settingsRestoredSignal.removeListener(_settingsRestored);
     _settingsSub?.cancel();
     _healTimer?.cancel();
     controller.dispose();
     super.dispose();
+  }
+
+  bool _disposed = false;
+  Future<void>? _reloadPending;
+  void _settingsRestored() {
+    unawaited(reloadFromPrefs().catchError((Object error) {
+      debugPrintSynchronously('[relay] restored settings reload failed: $error');
+    }));
+  }
+
+  /// Adopt imported choices without registering a second native listener.
+  Future<void> reloadFromPrefs() => _reloadPending ??= _reloadImported()
+      .whenComplete(() => _reloadPending = null);
+
+  Future<void> _reloadImported() async {
+    if (_disposed) return;
+    // Stop first: an alert waiting on transport must be re-evaluated under
+    // the imported policy, never finish against the old allow-list.
+    await controller.stop('settingsRestored');
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    if (_disposed) return;
+    _enabled = prefs.getBool(_kEnabled) ?? false;
+    _onlyWhileWorn = prefs.getBool(_kOnlyWorn) ?? false;
+    _packages..clear()..addAll(prefs.getStringList(_kPackages) ?? const []);
+    _seen..clear()..addAll(prefs.getStringList(_kSeen) ?? const []);
+    for (final pkg in _packages) { if (!_seen.contains(pkg)) _seen.add(pkg); }
+    await _loadGlobalQuiet();
+    final channels = await SettingsRepository.instance.channels();
+    if (_disposed) return;
+    controller.channels.addAll(channels);
+    if (supported) {
+      await refreshPermission();
+      await _resync();
+    }
+    notifyListeners();
   }
 }
 

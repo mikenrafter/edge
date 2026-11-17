@@ -1,3 +1,14 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:battery_plus/battery_plus.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:crypto/crypto.dart' show sha256;
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../cloud/companion_client.dart';
+import '../data/backup_extras.dart' show BackupExtras;
+import '../data/db.dart';
+
 // health_uploader.dart — OPT-IN contribution of the FULL local .db (raw + derived)
 // to the companion backend. Heavy, so it runs at most once/day and only under good
 // conditions (the cadence design): consent ON + Wi-Fi + charging + >24h since the
@@ -5,18 +16,8 @@
 // per device, so storage stays bounded. Entirely best-effort — never throws into
 // the caller (the derive/BLE path).
 
-import 'dart:async';
-import 'dart:io';
 
-import 'package:battery_plus/battery_plus.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:crypto/crypto.dart' show sha256;
-import 'package:package_info_plus/package_info_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../cloud/companion_client.dart';
-import '../data/backup_extras.dart' show BackupExtras;
-import '../data/db.dart';
 
 /// Compile-time gate for the whole health-data-contribution feature (this
 /// upload path + the "Contribute my health data" toggle in Settings and
@@ -163,3 +164,4 @@ class HealthUploader {
     }
   }
 }
+

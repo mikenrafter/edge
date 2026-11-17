@@ -92,6 +92,80 @@ void main() {
       expect(find.byType(BigButton), findsOneWidget);
     });
 
+    testWidgets('no band: the same card says what that costs, once', (t) async {
+      // WHY: one card, but it must still say that every metric abstains; the
+      // WHOOP-only line alone never told a person their data was empty.
+      const phone = HealthSource(
+        name: 'This phone',
+        kind: 'Motion coprocessor',
+        tier: SourceTier.phone,
+        icon: Icons.smartphone,
+        connected: false,
+      );
+      await pumpPair(t, view(const [phone], onPair: () {}, onAdd: () {}),
+          size: const Size(412, 1400));
+      expect(
+          inCard('pair-band-card', find.byKey(const ValueKey('no-band-consequence'))),
+          findsOneWidget);
+      expect(find.textContaining('every metric in the app will abstain'), findsOneWidget);
+      expect(find.textContaining('The phone counts steps and nothing else'), findsNothing);
+    });
+
+    testWidgets('no band, phone steps arriving: says only the phone counts steps', (t) async {
+      const phone = HealthSource(
+        name: 'This phone',
+        kind: 'Motion coprocessor',
+        tier: SourceTier.phone,
+        icon: Icons.smartphone,
+        connected: true,
+      );
+      await pumpPair(t, view(const [phone], onPair: () {}, onAdd: () {}),
+          size: const Size(412, 1400));
+      expect(find.textContaining('The phone counts steps and nothing else'), findsOneWidget);
+      expect(find.textContaining('every metric in the app will abstain'), findsNothing);
+    });
+
+    testWidgets('no band, a connected ring: does not say every metric abstains', (t) async {
+      // WHY: an active ring fills the everyday columns; telling the user that
+      // heart rate, sleep and recovery abstain would contradict their own data.
+      const ring = HealthSource(
+        name: 'Oura Ring',
+        kind: 'Ring',
+        tier: SourceTier.wristOptical,
+        icon: Icons.circle,
+        connected: true,
+        deviceId: 'oura-1',
+        family: 'oura',
+      );
+      await pumpPair(t, view(const [ring], onPair: () {}, onAdd: () {}),
+          size: const Size(412, 1400));
+      expect(find.byKey(const ValueKey('no-band-consequence')), findsNothing);
+      expect(find.textContaining('every metric in the app will abstain'), findsNothing);
+      expect(find.textContaining('The phone counts steps and nothing else'), findsNothing);
+    });
+
+    testWidgets('no band, a connected chest strap: is not mistaken for phone steps', (t) async {
+      // WHY: phoneCounting used to be true for ANY connected non-band source.
+      const strap = HealthSource(
+        name: 'Chest strap',
+        kind: 'Heart-rate strap',
+        tier: SourceTier.beatToBeat,
+        icon: Icons.favorite,
+        connected: true,
+        deviceId: 'hrs-1',
+        family: 'ble_hrs',
+      );
+      await pumpPair(t, view(const [strap], onPair: () {}, onAdd: () {}),
+          size: const Size(412, 1400));
+      expect(find.textContaining('The phone counts steps and nothing else'), findsNothing);
+      expect(find.textContaining('every metric in the app will abstain'), findsOneWidget);
+    });
+
+    testWidgets('a paired band: no consequence line', (t) async {
+      await pumpPair(t, view([_band()], onUnpair: () {}), size: const Size(412, 1400));
+      expect(find.byKey(const ValueKey('no-band-consequence')), findsNothing);
+    });
+
     testWidgets('“Add a device” is its own row, below the band card', (t) async {
       var add = 0;
       await pumpPair(t, view(const [], onPair: () {}, onAdd: () => add++), size: const Size(412, 1400));
@@ -271,10 +345,12 @@ void main() {
               found: [
                 _cand('oura', label: 'Oura Ring', id: 'AA:01'),
                 _cand('ble_hrs', label: 'Polar H10', id: 'AA:02'),
+                _cand('polar_pmd', label: 'Polar Verity Sense', id: 'AA:03'),
               ],
               categories: [
                 (entry: kOura, blurb: 'ring blurb', icon: Icons.circle),
                 (entry: kBleHrs, blurb: 'strap blurb', icon: Icons.favorite),
+                (entry: kPolarPmd, blurb: 'armband blurb', icon: Icons.favorite),
               ]));
       await pumpPair(t, harness(), size: const Size(412, 1400));
       expect(find.text('Rings'), findsOneWidget);
@@ -283,6 +359,8 @@ void main() {
       await t.pumpAndSettle();
       expect(kind.value, PairFilter.rings);
       expect(find.text('Polar H10'), findsNothing);
+      expect(find.text('Polar Verity Sense'), findsNothing);
+      expect(find.text('armband blurb'), findsNothing);
       expect(find.text('Oura Ring'), findsWidgets);
       expect(find.text('strap blurb'), findsNothing);
       expect(find.text('ring blurb'), findsOneWidget);

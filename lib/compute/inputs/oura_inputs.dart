@@ -1,3 +1,12 @@
+import '../../data/day_label.dart';
+import '../../data/db.dart';
+import '../substrate.dart';
+import 'canonical.dart';
+import '../vendor_sleep.dart';
+import 'garmin_inputs.dart';
+import 'wearable_substrate_heavy.dart';
+import 'pebble_inputs.dart' show rhrOnlyReadiness;
+
 // An Oura ring as the day's wearable: its stored rows mapped onto the
 // canonical signals at the resolution the ring actually stores them.
 //
@@ -23,14 +32,6 @@
 // decoded, so the rows resting on them are unavailable with [Why.notDecoded].
 // None of it has met a real ring (rule R6): the flag stays off by default.
 
-import '../../data/day_label.dart';
-import '../../data/db.dart';
-import '../substrate.dart';
-import 'canonical.dart';
-import '../vendor_sleep.dart';
-import 'garmin_inputs.dart';
-import 'wearable_substrate_heavy.dart';
-import 'pebble_inputs.dart' show rhrOnlyReadiness;
 
 const String kOuraFamily = 'oura';
 

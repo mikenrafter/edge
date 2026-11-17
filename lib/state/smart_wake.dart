@@ -113,13 +113,13 @@ bool evaluateLegacyWakeHeavy(
   final baselineMotion = ana.wakeBaselineEnmo(accel, nowMs);
   final threshold =
       math.max(.02, .5 * (baselineMotion ?? 0)) * profile.trendThresholdFactor;
-  return ana.wakeEnmoTrend(
-        accel,
-        nowMs,
-        windowMinutes: profile.trendWindowMinutes,
-        threshold: threshold,
-      ) ==
-      false;
+  // PR #630 discussion_r4564190134: the longer window can average away
+  // a recent rise. It adds a veto; it never replaces the three-minute one.
+  for (final minutes in {3, profile.trendWindowMinutes}) {
+    if (ana.wakeEnmoTrend(accel, nowMs,
+        windowMinutes: minutes, threshold: threshold) != false) { return false; }
+  }
+  return true;
 }
 
 /// Select by completed main-sleep time, not a calendar label. Engineering

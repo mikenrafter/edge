@@ -1,11 +1,10 @@
+import 'package:flutter/foundation.dart' show debugPrintSynchronously;
 import 'dart:async';
 import 'dart:io';
-
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 import '../ble/ble_engine.dart';
 import '../ble/ble_state.dart';
 import '../data/db.dart';
@@ -19,6 +18,9 @@ import 'paired_device.dart';
 import 'reset_gate.dart';
 import 'shortcut_sync_task.dart';
 
+
+
+
 class IosShortcutSync {
   static const channel = MethodChannel('openstrap/shortcut_sync');
   static ShortcutSyncTask? _active;
@@ -31,7 +33,7 @@ class IosShortcutSync {
       _onForegroundCommitted?.call(records);
 
   static Future<SyncReport> Function(ShortcutSyncTask)? foregroundSync;
-  static BleEngine? Function()? foregroundEngine;
+  static BleEngine? foregroundEngine;
   static bool _listening = false;
 
   /// Native holds Shortcut runs until 'ready'. Sending it only once AppState has
@@ -39,7 +41,7 @@ class IosShortcutSync {
   /// hold the band lease while the app's own session waits on it.
   static void attachForeground(
     Future<SyncReport> Function(ShortcutSyncTask) sync,
-    BleEngine? Function() engine,
+    BleEngine engine,
   ) {
     foregroundSync = sync;
     foregroundEngine = engine;
@@ -65,6 +67,8 @@ class IosShortcutSync {
         case 'cancel':
           if (_active?.id == args['id']) _active?.stop('cancelled');
           return null;
+        case 'buzz':
+          return buzz();
         default:
           throw MissingPluginException();
       }
@@ -114,6 +118,10 @@ class IosShortcutSync {
   }
 
   static Future<ShortcutSyncResult> _sync(ShortcutSyncTask task) async {
+    // Every check below is against the generation this run started under: a
+    // reset that starts and finishes while the drain is running still ends
+    // the run before its derive writes into the emptied store.
+    final resetGen = ResetGate.generation;
     if (ResetGate.active) throw StateError('data reset in progress');
     final paired = await PairedDevice.load();
     if (paired == null) return const ShortcutSyncResult('notPaired');
@@ -143,10 +151,12 @@ class IosShortcutSync {
     );
     if (blocked != null) return blocked;
     if (task.stopped) return task.expired;
-    if (ResetGate.active) throw StateError('data reset in progress');
+    if (ResetGate.changedSince(resetGen)) {
+      throw StateError('data reset in progress');
+    }
 
     final liveSync = foregroundSync;
-    final liveEngine = foregroundEngine?.call();
+    final liveEngine = foregroundEngine;
     if (liveSync != null && liveEngine != null) {
       _onForegroundCommitFailure = () => task.stop('failed');
       // Counted as each batch commits, so a Shortcut stopped mid-burst still
@@ -203,7 +213,7 @@ class IosShortcutSync {
             AppLifecycleState.resumed) {
           return ShortcutSyncResult('complete', records: task.records);
         }
-        return await _derive(task);
+        return await _derive(task, resetGen);
       } finally {
         _onForegroundCommitFailure = null;
         _onForegroundCommitted = null;
@@ -216,7 +226,7 @@ class IosShortcutSync {
     final lease = BandOwnership.tryAcquireHeadless();
     if (lease == null) return const ShortcutSyncResult('alreadyRunning');
     try {
-      return await _headless(task, paired);
+      return await _headless(task, paired, resetGen);
     } finally {
       BandOwnership.release(lease);
     }
@@ -225,6 +235,7 @@ class IosShortcutSync {
   static Future<ShortcutSyncResult> _headless(
     ShortcutSyncTask task,
     PairedDevice paired,
+    int resetGen,
   ) async {
     final engine = createHeadlessSyncEngine(
       paired: paired,
@@ -269,7 +280,7 @@ class IosShortcutSync {
       task.update('syncing');
       await prepareHeadlessLink(engine, paired);
       // The band holds one armed epoch; this may be the only connect it gets.
-      await rearmHeadlessAlarm(engine);
+      await rearmHeadlessAlarm(engine, paired);
       if (task.stopped) return task.expired;
       for (var session = 0; session < 20 && !task.stopped; session++) {
         final report = await engine.runSync(timeout: task.remaining);
@@ -278,7 +289,7 @@ class IosShortcutSync {
         if (report.complete && !backlogRemains) {
           await disconnectHeadless(engine, bound: _shutdownBankBound(task));
           task.onStop = null;
-          return await _derive(task);
+          return await _derive(task, resetGen);
         }
         if (!report.complete ||
             report.batches == 0 ||
@@ -308,19 +319,19 @@ class IosShortcutSync {
     return left < cap ? left : cap;
   }
 
-  static Future<ShortcutSyncResult> _derive(ShortcutSyncTask task) async {
+  static Future<ShortcutSyncResult> _derive(ShortcutSyncTask task, [int? resetGeneration]) async {
     if (task.stopped) return task.expired;
     task.update('processing');
     final profile = await loadHeadlessProfile();
     if (task.stopped) return task.expired;
-    if (ResetGate.active) throw StateError('data reset in progress');
+    if (ResetGate.active || (resetGeneration != null && ResetGate.changedSince(resetGeneration))) throw StateError('data reset in progress');
     // The one headless engine builder, so a Shortcut-driven derive carries the
     // finalization audit like every other. No power gate: the user ran it.
     await (await newHeadlessDerivationEngine(
             (line) => debugPrint('[shortcut-derive] $line')))
         .run(profile, heavy: false);
     if (task.stopped) return task.expired;
-    if (ResetGate.active) throw StateError('data reset in progress');
+    if (ResetGate.active || (resetGeneration != null && ResetGate.changedSince(resetGeneration))) throw StateError('data reset in progress');
     await WidgetService.refresh(
       LocalRepositoryImpl(getProfileMap: () => profile.toMap()),
     );
@@ -332,4 +343,24 @@ class IosShortcutSync {
     final newest = engine.strapHistoryNewestTs;
     return frontier != null && newest != null && newest - frontier > 300;
   }
+
+
+  /// Buzzes the strap over the link the app already holds. A buzz is only
+  /// worth anything right now (a rest timer ending), so this never starts a
+  /// connect or a headless session to deliver one late.
+  static Future<String> buzz() async {
+    final engine = foregroundEngine;
+    if (engine == null || !engine.isConnected) return 'notConnected';
+    try {
+      // A failed write doesn't throw; it comes back false. Reporting that as
+      // "buzzed" would tell the user the band buzzed when it never got the
+      // command (a marginal or half-dead link before the liveness fuse trips).
+      final delivered = await engine.buzzDelivered();
+      return delivered ? 'buzzed' : 'failed';
+    } catch (e) {
+      debugPrintSynchronously('[shortcut-sync] buzz: $e');
+      return 'failed';
+    }
+  }
 }
+

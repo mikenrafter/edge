@@ -17,7 +17,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/state/prefs.dart';
-import 'package:openstrap_edge/ui2/haptic_score.dart';
 import 'package:openstrap_edge/ui2/profile/haptics_settings.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart' show SettingsAccordion;
 import 'package:openstrap_edge/ui2/ui2.dart';

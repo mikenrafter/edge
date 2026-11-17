@@ -208,6 +208,26 @@ final List<InputSpec> kInputCatalogue = <InputSpec>[
             lookbackWhen: "{r}.reason = 'colmi_big_0x25'",
             when: "{r}.reason = 'ultrahuman_record' OR "
                 "{r}.reason LIKE 'colmi_big_0x%'",
+            readMarkers: ['ultrahuman_record', 'colmi_big_0x']),        InputTable('raw_archive_frames',
+            dayExpr: "strftime('%Y-%m-%d', COALESCE({r}.rec_ts, "
+                "{r}.captured_at / 1000), 'unixepoch', 'localtime')",
+            lookbackExpr: "strftime('%Y-%m-%d', COALESCE({r}.rec_ts, "
+                "{r}.captured_at / 1000), 'unixepoch', 'localtime', "
+                "'-{k} days')",
+            lookbackDays: 7,
+            lookbackWhen: "{r}.reason = 'colmi_big_0x25'",
+            when: "{r}.reason = 'ultrahuman_record' OR "
+                "{r}.reason LIKE 'colmi_big_0x%'",
+            readMarkers: ['ultrahuman_record', 'colmi_big_0x']),        InputTable('raw_archive_legacy',
+            dayExpr: "strftime('%Y-%m-%d', COALESCE({r}.rec_ts, "
+                "{r}.captured_at / 1000), 'unixepoch', 'localtime')",
+            lookbackExpr: "strftime('%Y-%m-%d', COALESCE({r}.rec_ts, "
+                "{r}.captured_at / 1000), 'unixepoch', 'localtime', "
+                "'-{k} days')",
+            lookbackDays: 7,
+            lookbackWhen: "{r}.reason = 'colmi_big_0x25'",
+            when: "{r}.reason = 'ultrahuman_record' OR "
+                "{r}.reason LIKE 'colmi_big_0x%'",
             readMarkers: ['ultrahuman_record', 'colmi_big_0x']),
       ],
       inventoryRow: 'wearable raw records'),
@@ -251,6 +271,8 @@ const Map<String, List<InputDecl>> kGroupInputs = <String, List<InputDecl>>{
     InputDecl('wearable_source', InputScope.global),
     InputDecl('events', InputScope.dayAndNext),
     InputDecl('sleep_override', InputScope.day),
+    // Nap edits also invalidate the settled sleep-window signature.
+    InputDecl('sleep_nap', InputScope.day),
     InputDecl('wake_confirmation', InputScope.day),
     InputDecl('vendor_sleep_epoch', InputScope.dayAndNext),
     InputDecl('wearing', InputScope.global),

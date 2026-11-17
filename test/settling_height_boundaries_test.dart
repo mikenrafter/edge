@@ -1,3 +1,4 @@
+import 'support/test_callable.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -65,7 +66,7 @@ void main() {
   // catches: walking all descendants on each animation tick.
   testWidgets('flow does not visit unrelated static branches', (t) async {
     var visits = 0;
-    RenderSettlingHeight.debugOnFlow = (nodes, _) => visits += nodes;
+    RenderSettlingHeight.debugOnFlow = TestCall2((nodes, _) => visits += nodes);
     addTearDown(() => RenderSettlingHeight.debugOnFlow = null);
     Widget page(double height) => _page(Column(mainAxisSize: MainAxisSize.min, children: [
       SettlingHeight(child: SizedBox(height: height)),
@@ -125,7 +126,7 @@ void main() {
     await settle(t);
     final samples = <String>[];
     var layouts = 0, nodes = 0, reads = 0;
-    RenderSettlingHeight.debugOnFlow = (n, r) { layouts++; nodes += n; reads += r; };
+    RenderSettlingHeight.debugOnFlow = TestCall2((n, r) { layouts++; nodes += n; reads += r; });
     addTearDown(() => RenderSettlingHeight.debugOnFlow = null);
     await t.pumpWidget(page(false));
     var totalLayouts = 0;

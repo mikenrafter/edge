@@ -1,3 +1,4 @@
+import 'support/test_callable.dart';
 import 'support/sleep_edit_effects.dart';
 // WHY: review round 1 of responsiveness stages 1-2. The recalculation intent
 // must survive routine paths (an edit on another night, a skipped or blank
@@ -115,13 +116,13 @@ void main() {
     final app = AppState.forTesting();
     var fired = false;
     var derivedX = 0;
-    DerivationEngine.debugSecondHalfHook = (day) async {
+    DerivationEngine.debugSecondHalfHook = TestCall1((day) async {
       if (day == x) derivedX++;
       if (day == x && !fired) {
         fired = true;
         await editDay(y);
       }
-    };
+    });
     try {
       await app.sleepEditRunner.start().timeout(const Duration(seconds: 90));
       for (var i = 0; i < 100 && (await SleepEditStore.pending()).isNotEmpty; i++) {
@@ -280,7 +281,7 @@ void main() {
     await editDay(x);
     final app = AppState.forTesting();
     final derived = <String>[];
-    DerivationEngine.debugSecondHalfHook = (d) async => derived.add(d);
+    DerivationEngine.debugSecondHalfHook = TestCall1((d) async => derived.add(d));
     try {
       DerivationEngine.debugRunning = true; // a pass is running: the worker waits
       final run = app.sleepEditRunner.start();

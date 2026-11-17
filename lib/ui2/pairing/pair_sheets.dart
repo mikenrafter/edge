@@ -16,14 +16,13 @@ import 'pair_choice_sheet.dart';
 import 'pair_text.dart';
 import 'pair_widgets.dart';
 import 'reset_steps_view.dart' show PairingModeSection;
-import 'slot_comparison_view.dart';
 
 /// What the user picked on the band-found sheet. Going back is null.
 enum BandSheetChoice {
   /// Pair it as the main band (no band paired yet).
   asBand,
 
-  /// Unpair the band paired now, then pair this one as the main band. Only
+  /// Pair the replacement before retiring the current main band. Only
   /// offered with a band paired; the caller confirms once before acting.
   replaceBand,
 
@@ -48,7 +47,7 @@ Future<BandSheetChoice?> showBandFoundSheet(
 }) async {
   final l = pairL10n(c);
   final label = modelKnown ? uiText(c, band.label) : 'WHOOP';
-  final cmp = slotComparisonFor(band);
+  final cmp = slotComparisonFor(band, modelKnown: modelKnown);
   final icon = deviceKindIcon(band.kind);
   final name = deviceName ?? label;
   if (!band.canBeMainDevice) {
@@ -119,8 +118,8 @@ Future<BandSheetChoice?> showBandFoundSheet(
   };
 }
 
-/// The one confirm before replacing the band: "Unpair (your band) and pair this
-/// band instead? Your data stays." True only on the explicit yes.
+/// Confirm replacement while preserving the old pairing on failed setup.
+/// True only on the explicit yes.
 Future<bool> showReplaceBandConfirm(BuildContext c, {String? mainBandName}) async {
   final l = pairL10n(c);
   final name = mainBandName ?? l.pairCurrentBandFallback;

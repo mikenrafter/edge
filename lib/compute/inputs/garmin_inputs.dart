@@ -1,3 +1,15 @@
+import 'package:openstrap_analytics/onehz.dart' as ana;
+import '../../data/day_label.dart';
+import '../../data/db.dart';
+import '../substrate.dart';
+import 'canonical.dart';
+import 'colmi_inputs.dart';
+import 'miband_inputs.dart';
+import 'oura_inputs.dart';
+import 'pebble_inputs.dart';
+import 'ultrahuman_inputs.dart';
+import 'wearable_substrate_heavy.dart';
+
 // Garmin as the day's wearable: its stored rows mapped onto the canonical
 // signals at the resolution the watch actually stores them.
 //
@@ -15,18 +27,7 @@
 // No accelerometer, no beats, no skin temperature are decoded: every metric
 // that needs one is unavailable, with the reason in [kGarminColumn].
 
-import 'package:openstrap_analytics/onehz.dart' as ana;
 
-import '../../data/day_label.dart';
-import '../../data/db.dart';
-import '../substrate.dart';
-import 'canonical.dart';
-import 'colmi_inputs.dart';
-import 'miband_inputs.dart';
-import 'oura_inputs.dart';
-import 'pebble_inputs.dart';
-import 'ultrahuman_inputs.dart';
-import 'wearable_substrate_heavy.dart';
 
 const String kGarminFamily = 'garmin';
 

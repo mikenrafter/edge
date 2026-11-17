@@ -1,4 +1,25 @@
 import '../../l10n/date_text.dart';
+import '../../l10n/display_text.dart';
+import 'dart:math' show sqrt;
+import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:openstrap_analytics/onehz.dart' as ana;
+import 'package:package_info_plus/package_info_plus.dart';
+import '../../data/day_label.dart';
+import '../../data/db.dart';
+import '../../data/local_repository.dart';
+import '../../compute/derivation_engine.dart'
+    show kAlgoVersion, kAnalyticsPin, kProtocolPin;
+import '../../compute/prv_export.dart';
+import '../../l10n/app_localizations.dart';
+import '../../util/log_file.dart' show LogSaveFailed;
+import '../ui2.dart';
+import 'day_timeline.dart';
+import 'home_screen.dart';
+import 'metric_detail.dart';
+import '../../l10n/decimal_text.dart';
+import 'wellness_screen.dart' show stressLevelLabel;
+
 // NERD STATS — density 3 of 3. (File and classes keep the old `Investigate`
 // name on purpose: renaming them churns every import, the gallery keys and
 // twelve golden files for zero user benefit. The user-facing string is the
@@ -21,26 +42,8 @@ import '../../l10n/date_text.dart';
 // "locked" — Beats, Vitals, Sleep, Readiness and every metric drill-down each
 // carry a plain row down to it.
 
-import '../../l10n/display_text.dart';
-import 'dart:math' show sqrt;
 
-import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:openstrap_analytics/onehz.dart' as ana;
-import 'package:package_info_plus/package_info_plus.dart';
 
-import '../../data/day_label.dart';
-import '../../data/db.dart';
-import '../../data/local_repository.dart';
-import '../../compute/derivation_engine.dart'
-    show kAlgoVersion, kAnalyticsPin, kProtocolPin;
-import '../../compute/prv_export.dart';
-import '../../l10n/app_localizations.dart';
-import '../../util/log_file.dart' show LogSaveFailed;
-import '../ui2.dart';
-import 'day_timeline.dart';
-import 'home_screen.dart';
-import 'metric_detail.dart';
 
 class InvestigateData {
   final String? day;
@@ -100,7 +103,7 @@ class InvestigateData {
   /// (same indices), when the payload says.
   final List<String?> seriesOlderReasons;
 
-  const InvestigateData({
+  const InvestigateData({this.stress = const {}, 
     this.day,
     this.days = const [],
     this.algoVersion,
@@ -136,7 +139,9 @@ class InvestigateData {
     final wear = await repo.getDayWear(day);
     final lungs = await repo.getDayLungs(day);
     final row = await LocalDb.dayResultMeta(day);
-    final block = await repo.getDayBlock(day, const ['imported', 'source', 'steps']);
+    final block = await repo.getDayBlock(day, [
+      'imported', 'source', 'steps', if (key == 'stress') 'stress',
+    ]);
     final win = lungs['sleep_window'];
     // Points, not bare doubles: each value keeps the older-calculation flag it
     // was stored with, so the statistics below can say when they lean on one.
@@ -162,6 +167,7 @@ class InvestigateData {
     if (block['steps'] is Map) steps = (block['steps'] as Map).cast<String, dynamic>();
 
     return InvestigateData(
+      stress: key == 'stress' ? stressBlockOf(block) : const {},
       day: day,
       days: days,
       algoVersion: (row?['algo_version'] as num?)?.toInt(),
@@ -219,6 +225,12 @@ class InvestigateData {
     }
     return ana.cvhrPersonalDistribution(nights);
   }
+
+  /// The viewed day's own stress block: `si`, `level`, `score`. Read
+  /// from that day's payload, never `getDayStress`, which serves the latest
+  /// complete day for a today with no bundle yet and substitutes the nightly
+  /// RMSSD for a missing one. Only loaded for the stress key.
+  final Map<String, dynamic> stress;
 }
 
 class Investigate extends StatefulWidget {
@@ -305,6 +317,7 @@ class _InvestigateState extends State<Investigate> {
         ...dayNavRow(_day ?? d.day, d.days, _goDay),
         ...[
           if (hrvish) ..._hrvPanels(c, d) else ..._genericPanels(c, spec, d),
+          if (widget.metricKey == 'stress') ..._stressPanels(c, d),
           if (widget.metricKey == 'resp_rate') ..._restingBreathPanels(d),
           if (widget.metricKey == 'resp_rate') ..._cvhrPanels(d),
           if (widget.metricKey == 'sleep') ..._stagePanels(d),
@@ -1167,6 +1180,8 @@ class _InvestigateState extends State<Investigate> {
               style: F.over.copyWith(color: p.ink3)),
           const SizedBox(height: S.x3),
           Text(
+            // Analytics d876 exposes a non-null comparison. Nullable older-
+            // night refusal belongs to the separate analytics merge round.
             v.aboveOwnUsual
                 ? (l?.investigateCvhrAboveUsual(n) ??
                     'Over your most recent nights, the heart-rate cycling '
@@ -1267,10 +1282,12 @@ class _InvestigateState extends State<Investigate> {
       return [
         StatusCard(
           l?.investigateNoStoredSeries ?? 'No stored series',
+          // nounInSentence, not toLowerCase(): that read "hrv" in English
+          // and "Für ruhepuls" in German.
           l?.investigateNothingStoredYet(
-                uiText(context, spec.title).toLowerCase(),
+                nounInSentence(l, uiText(context, spec.title)),
               ) ??
-              'Nothing stored for ${uiText(context, spec.title).toLowerCase()} yet.',
+              'Nothing stored for ${nounInSentence(l, uiText(context, spec.title))} yet.',
           icon: spec.icon,
         ),
       ];
@@ -1370,4 +1387,49 @@ class _InvestigateState extends State<Investigate> {
       ),
     );
   }
+
+
+  // ── stress: the index behind the score, for the day being viewed ──
+  //
+  // The 0–100 score is a log mapping of the Baevsky index clamped at both ends,
+  // so on its own it cannot say WHY it reads 0. The index and its level are the
+  // unclamped facts. Read from the day bundle, not `metric_series`: the SI is
+  // not a stored series.
+  List<Widget> _stressPanels(BuildContext c, InvestigateData d) {
+    final l = AppLocalizations.of(c);
+    final b = d.stress;
+    // The level and the score are readings of the index; with no index there
+    // is nothing for them to explain.
+    final si = b['si'];
+    if (si is! num || !si.isFinite) return const [];
+    String num2(Object? v, int digits) =>
+        v is num && v.isFinite ? displayFixed(v, digits) : '—';
+    final rawLevel = b['level'];
+    // Only the four bands the labels know. An unknown token is absent, not
+    // an untranslated English word in a localized table.
+    final level = rawLevel is String &&
+            const {'low', 'normal', 'elevated', 'high'}.contains(rawLevel)
+        ? rawLevel
+        : null;
+    return [
+      const SizedBox(height: S.x3),
+      MonoTable(l?.investigateStressIndexTitle ?? 'Stress index', [
+        (l?.investigateStressIndexSi ?? 'Index (SI)', displayFixed(si, 2)),
+        (
+          l?.investigateStressLevel ?? 'Level',
+          level == null ? '—' : stressLevelLabel(l, level) ?? level,
+        ),
+        (l?.investigateStressScore ?? 'Score (0–100)', num2(b['score'], 1)),
+      ]),
+    ];
+  }
+}
+
+
+/// The `stress` block of a day bundle, or empty. Its own values only: no other
+/// block stands in for a missing field.
+Map<String, dynamic> stressBlockOf(Object? bundle) {
+  final blk = bundle is Map ? bundle['stress'] : null;
+  // A plain copy, not a cast view: it is returned across an isolate boundary.
+  return blk is Map ? Map<String, dynamic>.from(blk) : const {};
 }

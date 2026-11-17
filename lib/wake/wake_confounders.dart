@@ -44,8 +44,9 @@ class ConfounderProfile {
        assert(protectionMinutes >= 5),
        assert(trendWindowMinutes >= 3);
   static const identity = ConfounderProfile();
-  double get trendThresholdFactor =>
-      (stress || sick ? .5 : 1) * (lateMeal ? 1.5 : 1);
+  // PR #630 discussion_r4561540491: a late meal must not admit a movement
+  // rise that the ordinary profile vetoes. Stress/sickness only tighten it.
+  double get trendThresholdFactor => stress || sick ? .5 : 1;
   // Stable active-set identity. Persisted and displayed only as a number.
   int get track =>
       (alcohol || learningAlcohol ? 1 : 0) |

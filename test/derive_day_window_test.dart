@@ -84,7 +84,7 @@ void main() {
       final (from, to) = DerivationEngine().debugTargetDayWindow(dayId);
 
       expect(dayStart - from, kNocturnalSearchLookbackSec,
-          reason: 'calendarDays searches from dayStart − '
+          reason: 'calendarDaysHeavy searches from dayStart − '
               'kNocturnalSearchLookbackSec; loading less means '
               '`searchStart = max(dataStart, …)` silently clips it back');
       expect(dayStart - from, 12 * 3600, reason: 'the previous local NOON');
@@ -152,7 +152,7 @@ void main() {
       ];
       List<int> askedWith(List<({int startSec, int endSec, String dayKey})> h) {
         final asked = <int>[];
-        final days = calendarDays(
+        final days = calendarDaysHeavy(
           sub,
           // An override forces the segmentation branch (and therefore the
           // habitual-midsleep prior) to run on a short synthetic capture.

@@ -1,6 +1,7 @@
 // Presentation-only vocabulary. Never pass user-entered text or storage keys.
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/widgets.dart';
+import 'package:intl/intl.dart' show NumberFormat;
 import 'app_localizations.dart';
 
 String uiText(BuildContext context, String text) =>
@@ -41,6 +42,72 @@ String localizedJournalTag(AppLocalizations? l, String tag) {
   };
 }
 
+/// OS notification copy. Producers build titles and bodies as English (they run
+/// with no BuildContext, sometimes headless), so the lock screen showed English
+/// whatever the app language was. The bodies carry interpolated numbers, which
+/// an exact-match lookup can never hit, so those are parsed back here.
+String localizedNotificationText(AppLocalizations? l, String text) {
+  if (l == null || l.localeName == 'en') return text;
+  final slept =
+      RegExp(r'^Recovery (\d+), slept (\d+)h (\d+)m\.$').firstMatch(text);
+  if (slept != null) {
+    return l.notifRecoveryReadySleptBody(int.parse(slept[1]!),
+        int.parse(slept[2]!), int.parse(slept[3]!));
+  }
+  final recovery = RegExp(r'^Recovery (\d+)\.$').firstMatch(text);
+  if (recovery != null) {
+    return l.notifRecoveryReadyBody(int.parse(recovery[1]!));
+  }
+  final steps = RegExp(r'^You hit about (\d+) steps — at or above your (\d+) goal\.$')
+      .firstMatch(text);
+  if (steps != null) {
+    return l.notifStepGoalBody(int.parse(steps[1]!), int.parse(steps[2]!));
+  }
+  final battery =
+      RegExp(r'^Your band is at (\d+)%\. Charge it soon\.$').firstMatch(text);
+  if (battery != null) {
+    return l.notifLowBatteryBody(int.parse(battery[1]!));
+  }
+  // BatteryForecaster.describe. The clock is already formatted for display
+  // (12/24-hour, the locale's AM/PM), so it passes through as text; the rate
+  // is re-formatted so de/fr/es/ru get their own decimal separator.
+  final rateFormat = NumberFormat('0.0', l.localeName);
+  String rate(String s) => rateFormat.format(double.parse(s));
+  final drainBefore = RegExp(
+    r"^At (\d+(?:\.\d+)?)%/h it runs out around (.+)(?: —|,) before you wake\. Charge it now to keep tonight's sleep\.$",
+  ).firstMatch(text);
+  if (drainBefore != null) {
+    return l.notifBatteryForecastBeforeWakeBody(
+        rate(drainBefore[1]!), drainBefore[2]!);
+  }
+  final drainReserve = RegExp(
+    r"^At (\d+(?:\.\d+)?)%/h it runs out around (.+), just after your usual wake time(?: — about|\. The band will have about) (\d+)% left when you get up\. Charge it now to keep tonight's sleep\.$",
+  ).firstMatch(text);
+  if (drainReserve != null) {
+    return l.notifBatteryForecastReserveBody(rate(drainReserve[1]!),
+        drainReserve[2]!, int.parse(drainReserve[3]!));
+  }
+  final drainAfter = RegExp(
+    r'^At (\d+(?:\.\d+)?)%/h it runs out around (.+), after your usual wake time\.$',
+  ).firstMatch(text);
+  if (drainAfter != null) {
+    return l.notifBatteryForecastAfterWakeBody(
+        rate(drainAfter[1]!), drainAfter[2]!);
+  }
+  final windDown = RegExp(r'^Your bedtime is around (.+)\. Start slowing down\.$')
+      .firstMatch(text);
+  if (windDown != null) {
+    return l.notifWindDownBody(windDown[1]!);
+  }
+  final idle = RegExp(
+    r'^Nothing above resting effort has been recorded for (\d+) minutes\. If the session is over, finish it from the Workout tab\.$',
+  ).firstMatch(text);
+  if (idle != null) {
+    return l.notifWorkoutIdleBody(int.parse(idle[1]!));
+  }
+  return localizedText(l, text);
+}
+
 String localizedText(AppLocalizations? l, String text) {
   if (l == null || l.localeName == 'en') return text;
   final lowScore = RegExp(
@@ -61,6 +128,51 @@ String localizedText(AppLocalizations? l, String text) {
     "Aerobic" => l.activityZonesNameAerobic,
     "Threshold" => l.activityZonesNameThreshold,
     "Max effort" => l.activityZonesNameMaxEffort,
+    "Saved, but the band hasn't taken it yet — it's sent again on the next sync" =>
+      l.alarmSavedNotOnBand,
+    "Using ChatGPT plan" =>
+      l.coachChatgptUsingPlanShort,
+    "Signed in, but ChatGPT plan usage was not allowed. Continue with ChatGPT again and allow it to use your plan here." =>
+      l.coachChatgptSharingNotAllowed,
+    "Signed out of ChatGPT." =>
+      l.coachChatgptSignedOut,
+    "Signed out here, but ChatGPT did not confirm it. You can also disconnect OpenStrap in ChatGPT settings." =>
+      l.coachChatgptSignOutUnconfirmed,
+    "You’re using your ChatGPT plan" =>
+      l.coachChatgptWelcomeTitle,
+    "Eligible usage in this app uses your ChatGPT plan. Manage usage in your ChatGPT settings." =>
+      l.coachChatgptWelcomeBody,
+    "Got it" =>
+      l.coachChatgptGotIt,
+    "Use your ChatGPT plan" =>
+      l.coachChatgptUseTitle,
+    "Using your ChatGPT plan" =>
+      l.coachChatgptUsingTitle,
+    "Plan usage not allowed" =>
+      l.coachChatgptNotAllowedTitle,
+    "Complete eligible AI requests in this app with usage included in your ChatGPT plan or credits balance. OpenStrap never charges for this." =>
+      l.coachChatgptBlurb,
+    "Cancel sign-in" =>
+      l.coachChatgptCancelSignIn,
+    "Continue with ChatGPT" =>
+      l.coachChatgptContinue,
+    "Manage usage" =>
+      l.coachChatgptManageUsage,
+    "Sign out of ChatGPT" =>
+      l.coachChatgptSignOut,
+    "Your questions and the rows the coach reads are sent to OpenAI under your ChatGPT account, where your ChatGPT data controls, including model training, may apply. Check them in ChatGPT settings. See exactly what is sent on \"What was sent\"." =>
+      l.coachChatgptPrivacy,
+    "Before you sign in" =>
+      l.coachChatgptTermsTitle,
+    "Signing in uses your own ChatGPT account and plan. Your use of it here is covered by OpenAI’s Terms of Use and Usage Policies, so please read them before you continue." =>
+      l.coachChatgptTermsBody,
+    "OpenAI Terms of Use" =>
+      l.coachChatgptTermsLink,
+    "OpenAI Usage Policies" =>
+      l.coachChatgptPoliciesLink,
+    "I’ve read them, continue" =>
+      l.coachChatgptTermsAccept,
+    "Cancel" => l.actionCancel,
 
     "units" => l.presentationUnits,
     "mg" => l.presentationMg,
@@ -68,6 +180,18 @@ String localizedText(AppLocalizations? l, String text) {
     "lb" => l.presentationLb,
     "in" => l.presentationIn,
     "Weight" => l.journalComposeWeightLabel,
+    "Custom weight" => l.strengthCustomWeight,
+    "Enter a value" => l.strengthEnterValue,
+    "Invalid number" => l.strengthInvalidNumber,
+    "Must be 0–500 kg" => l.strengthLoadRangeKg,
+    "Must be 0–1100 lb" => l.strengthLoadRangeLb,
+    "Must be 1–200 reps" => l.strengthRepsRange,
+    "Edit set" => l.strengthEditSet,
+    "Delete set" => l.strengthDeleteSet,
+    "Delete this set?" => l.strengthDeleteSetConfirm,
+    "Bodyweight" => l.strengthBodyweight,
+    "Delete" => l.strengthDelete,
+    "Failed to save changes" => l.strengthSaveFailed,
     "Screens before bed" => l.presentationScreensBeforeBed,
     "Soreness" => l.presentationSoreness,
     "Alcohol" => l.presentationAlcohol,
@@ -172,8 +296,8 @@ String localizedText(AppLocalizations? l, String text) {
       l.supplementBanisterTRIMPFamilyLogCompressed553d36,
     "Bedtime" => l.supplementBedtimee3cb8b,
     "Blood oxygen" => l.supplementBloodOxygen8cd845,
-    "Breathing rate recovered from respiratory sinus arrhythmia — the periodic modulation breathing imposes on beat timing — over a grid of candidate rates." =>
-      l.supplementBreathingRateRecoveredFromRespiratory66461f,
+    "Breathing rate recovered from respiratory sinus arrhythmia — the periodic modulation breathing imposes on beat timing. The spectral peak is found in overlapping five-minute stretches of clean beats (Lomb–Scargle on native beat times) and the night's rate is their median, reported only when most stretches agree. At a sleeping heart rate near or below 48 bpm the beats are too slow to resolve normal breathing, and the rate is withheld." =>
+      l.investigateMethodRespRate,
     "Breathing variability" => l.supplementBreathingVariability99a552,
     "Calibrating" => l.homeCalibrating,
     "Calories" => l.workoutCaloriesStatLabel,
@@ -269,8 +393,8 @@ String localizedText(AppLocalizations? l, String text) {
     "Morning cortisol" => l.supplementMorningCortisolc31c55,
     "Motion coprocessor" => l.supplementMotionCoprocessord1ef3c,
     "Movement minutes" => l.supplementMovementMinutes4670da,
-    "Night-to-night coefficient of variation of RMSSD." =>
-      l.supplementNightToNightCoefficientOf0cae4a,
+    "Within one night: the standard deviation of the night's beat intervals after artifact correction (SDNN) as a percentage of their mean. The chart shows how that per-night figure moves across nights; it is not a night-to-night coefficient of variation." =>
+      l.investigateMethodHrvStability,
     "Nightly sweep" => l.supplementNightlySweepe95625,
     "No alarm set for tonight" => l.supplementNoAlarmSetForTonight1dd33d,
     "No motion was recorded alongside the heart rate." =>
@@ -311,8 +435,8 @@ String localizedText(AppLocalizations? l, String text) {
       l.supplementProviderReturnedAnUnsupportedResponse711ef9,
     "Querying your data…" => l.supplementQueryingYourData547061,
     "REM sleep" => l.supplementREMSleepd0c12b,
-    "RMSSD over the longest artefact-free window during sleep. Beat timing is recovered from the band's 1 Hz records and corrected by the Lipponen–Tarvainen method before any statistic is taken. Pulse-derived, so this is PRV: real and trendable, but not ECG HRV." =>
-      l.supplementRMSSDOverTheLongestArtefact4d9ff2,
+    "The mean of RMSSD across every 5-minute window of the detected sleep session that holds at least 20 clean successive differences. Beats outside 300–2000 ms, and beats more than 20% from their local median, are dropped first. On a night whose beat timing looks noisy, only windows that pass the jitter check on their own, or that sit on a steady breathing line, count; a window, or a night, whose beats add up to more time than passed is left out. Older nights whose raw beats are gone keep the value an earlier version of this method gave them. Pulse-derived, so this is PRV: real and trendable, but not ECG HRV." =>
+      l.investigateMethodHrvRmssd,
     "Readiness" => l.readinessDetailTitle,
     "Reading your food log…" => l.supplementReadingYourFoodLog4efdaa,
     "Reading your medications…" => l.supplementReadingYourMedications855987,
@@ -412,7 +536,8 @@ String localizedText(AppLocalizations? l, String text) {
       l.supplementTotalSleepTimeFromThee13b95,
     "Total testosterone" => l.supplementTotalTestosterone9e1b98,
     "Total volume" => l.activitySummaryTotalVolume,
-    "Training impulse: time in each heart-rate zone, weighted by the physiological cost of that zone." =>
+    "Training impulse: time in each heart-rate zone, weighted by the physiological cost of that zone." ||
+    "Training impulse (TRIMP): each minute counts by how far your heart rate sits between resting and maximum, weighted so harder minutes count exponentially more." =>
       l.supplementTrainingImpulseTimeInEachcd2945,
     "Training load" => l.workoutTrainingLoad,
     "Heart effort" => l.metricHeartEffortTitle,

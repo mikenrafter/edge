@@ -1,3 +1,12 @@
+import 'package:openstrap_protocol/openstrap_protocol.dart';
+import '../../data/db.dart';
+import '../substrate.dart';
+import '../vendor_sleep.dart';
+import 'canonical.dart';
+import 'garmin_inputs.dart';
+import 'pebble_inputs.dart' show rhrOnlyReadiness;
+import 'wearable_substrate_heavy.dart';
+
 // A Colmi ring as the day's wearable: its stored rows mapped onto the
 // canonical signals at the resolution the ring actually stores them.
 //
@@ -24,15 +33,7 @@
 // No beats, no respiration, no movement record: those rows are unavailable,
 // with the reason in [kColmiColumn].
 
-import 'package:openstrap_protocol/openstrap_protocol.dart';
 
-import '../../data/db.dart';
-import '../substrate.dart';
-import '../vendor_sleep.dart';
-import 'canonical.dart';
-import 'garmin_inputs.dart';
-import 'pebble_inputs.dart' show rhrOnlyReadiness;
-import 'wearable_substrate_heavy.dart';
 
 const String kColmiFamily = 'colmi';
 
@@ -102,7 +103,7 @@ const Set<String> kColmiNightRows = {
 Future<bool> colmiSleepUndecoded(String deviceId) async {
   final db = await LocalDb.instance;
   final rows = await db.rawQuery(
-    'SELECT hex FROM raw_archive WHERE device_id = ? AND reason = ? '
+    'SELECT hex FROM ${LocalDb.rawArchiveView} WHERE device_id = ? AND reason = ? '
     'ORDER BY captured_at DESC LIMIT 1',
     [deviceId, 'colmi_cmd_0x${kColmiCmdSetTime.toRadixString(16).padLeft(2, '0')}'],
   );

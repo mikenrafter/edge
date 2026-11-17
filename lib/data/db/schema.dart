@@ -76,63 +76,35 @@ Future<Database> _ldbPrivOpenOrRebuild() async {
     }
   }
 
-Future<Database?> _ldbPrivOpenReader(Database writer) async {
-    final path = writer.path;
-    if (path == inMemoryDatabasePath || path == ':memory:') return null;
-    final epoch = LocalDb._wipeEpoch;
-    await LocalDb._closeReader();
-    Database? opened;
+Future<Database?> _ldbPrivOpenReader(Database writer, int epoch) async {
+    Database? candidate;
     try {
-      opened =
-          await (LocalDb.readerOpenerForTest?.call(path) ??
-              openDatabase(
-                path,
-                readOnly: false,
-                singleInstance: false,
-                onConfigure: (db) async {
-                  await db.rawQuery('PRAGMA query_only=ON');
-                  // A WAL reader can still meet SQLITE_BUSY briefly (wal-index
-                  // recovery, checkpoint restart); wait instead of failing the
-                  // screen read. rawQuery: the pragma returns a row.
-                  await db.rawQuery('PRAGMA busy_timeout=2000');
-                  try {
-                    // Per-connection and cold: without it hot pages are re-read
-                    // from disk on every screen open (default cache ~2 MB).
-                    await db.execute('PRAGMA cache_size=-16000');
-                  } catch (_) {}
-                },
-              ));
-      // Without WAL the writer's lock would block this connection outright.
-      final mode = await opened.rawQuery('PRAGMA journal_mode');
-      if ('${mode.first.values.first}'.toLowerCase() != 'wal') {
-        throw StateError('not WAL');
+      candidate = await ((LocalDb.debugReaderOpener ?? LocalDb.readerOpenerForTest)?.call(writer.path) ??
+          openDatabase(writer.path, singleInstance: false));
+      await candidate.execute('PRAGMA query_only=ON');
+      // Read, never change, journal mode. A rollback-journal connection cannot
+      // provide the concurrent committed reads this connection exists for.
+      final mode = await candidate.rawQuery('PRAGMA journal_mode');
+      if (mode.isEmpty || '${mode.first.values.first}'.toLowerCase() != 'wal') {
+        throw StateError('reader requires WAL');
       }
-      // The store moved on (closed, replaced) while this was opening.
-      if (!identical(LocalDb._db, writer) || epoch != LocalDb._wipeEpoch) {
-        throw StateError('store changed');
+      if (!LocalDb._foreground || epoch != LocalDb._readerEpoch ||
+          !identical(LocalDb._db, writer) || !writer.isOpen) {
+        await candidate.close();
+        return null;
       }
+      LocalDb._reader = candidate;
+      LocalDb._readerWriter = writer;
+      return candidate;
     } catch (_) {
-      final o = opened;
-      if (o != null) {
-        try {
-          await o.close();
-        } catch (_) {}
+      if (candidate != null) {
+        try { await candidate.close(); } catch (_) {}
       }
-      LocalDb._readerFailedFor = writer;
-      LocalDb._readerFailedEpoch = epoch;
+      if (epoch == LocalDb._readerEpoch && identical(LocalDb._db, writer)) {
+        LocalDb._readerFailedFor = writer;
+      }
       return null;
     }
-    // Backgrounded while this was opening: not a failure (a later foreground
-    // may open one), so do not mark it failed, and do not keep the handle.
-    if (!LocalDb._foreground) {
-      try {
-        await opened.close();
-      } catch (_) {}
-      return null;
-    }
-    LocalDb._readDb = opened;
-    LocalDb._readerBeside = writer;
-    return opened;
   }
 
 Future<T?> _ldbPrivGuardedWrite<T>(Future<T> Function(Database db) op, {required bool bestEffort}) async {
@@ -184,6 +156,7 @@ Future<Database> _ldbPrivOpen() async {
         // bricks the open (confirmed on device). So: rawQuery + try/catch.
         try {
           await db.rawQuery('PRAGMA journal_mode=WAL');
+          await db.rawQuery('PRAGMA journal_size_limit=${LocalDb.walSizeLimitBytes}');
         } catch (_) {
           /* keep the default journal — this is a perf tweak, not a requirement */
         }
@@ -1098,9 +1071,28 @@ Future<Database> _ldbPrivOpen() async {
         if (oldV < 88) {
           await SleepEditStore.create(db);
         }
+        // Main's 59..62 are new rungs: fork users already ran 59..88.
+        if (oldV < 89) await createTriathlonTables(db);
+        if (oldV < 90) await createHyroxTables(db);
+        if (oldV < 91) {
+          await LocalDb._createInputRev(db);
+          await LocalDb._createSessionCeilingRev(db);
+        }
+        if (oldV < 92) {
+          await LocalDb._createStoreIdentity(db);
+          await LocalDb._createDayCheckpoint(db);
+          await LocalDb._createNightCheckpoint(db);
+          await LocalDb._createDeriveFingerprint(db);
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);
+        // Export copies use repair directly; only this phone adopts its window.
+        try {
+          await SubstrateArchive.keepLegacyWindowOnce(db);
+        } catch (e) {
+          debugPrintSynchronously('[db] archive window check skipped: $e');
+        }
       },
       version: LocalDb.schemaVersion,
     );
@@ -1110,6 +1102,15 @@ Future<Database> _ldbPrivOpen() async {
   }
 
 Future<void> _ldbPrivRepairOpenSchema(Database db) async {
+    // Legacy ladders can create the feed view before all its tables exist.
+    // SQLite validates existing views during an unrelated ALTER TABLE below.
+    // Recreate this owned view after its dependency creators at the end.
+    await db.execute('DROP VIEW IF EXISTS track_event_feed');
+    // A DB opened in place may carry the official app's mirror triggers.
+    // The fork indexes the exact payload key and has no second row writer.
+    await db.execute('DROP TRIGGER IF EXISTS trg_day_result_imported_ins');
+    await db.execute('DROP TRIGGER IF EXISTS trg_day_result_imported_upd');
+
     // Same-version merged builds can still need additive schema repair on an
     // existing install. Keep this idempotent and cheap: create missing tables,
     // indexes, and additive columns the current code assumes are present.
@@ -1121,7 +1122,7 @@ Future<void> _ldbPrivRepairOpenSchema(Database db) async {
     await LocalDb._createBandSignals(db);
     await LocalDb._ensureBandBatteryMillivolts(db);
     await LocalDb._ensureBandBatteryChargeUnits(db);
-    await LocalDb._createRawArchive(db);
+    await LocalDb._ensureRawArchiveStore(db);
     await LocalDb._createDerived(db);
     await LocalDb._createDayResult(db);
     await LocalDb._createUserTables(db);
@@ -1216,6 +1217,11 @@ Future<void> _ldbPrivRepairOpenSchema(Database db) async {
     await LocalDb._createLastResult(db);
     await LocalDb._addColumnIfMissing(db, 'last_result', 'input_sig', 'TEXT');
     await LocalDb._createDayCheckpoint(db);
+    await LocalDb._createNightCheckpoint(db);
+    await LocalDb._createStoreIdentity(db);
+    await LocalDb._createSessionCeilingRev(db);
+    await LocalDb._createDeriveFingerprint(db);
+    await LocalDb._ensureLiveStepCalibrationCounterVersion(db);
     await createGroupRow(db);
     await createDayManifest(db);
     await LocalDb._createWakeConfirmation(db);
@@ -1253,43 +1259,11 @@ Future<void> _ldbPrivScrubImportedSkinTempZ(Database db) async {
   }
 
 Future<void> _ldbPrivCreateInputRev(DatabaseExecutor db) async {
-    // Empty except inside a bulk transition restore (beginBulkSpans).
+    // Fork bulk mode and catalogue revisions keep their existing owner. The
+    // shared 15-minute bucket DDL has one literal-SQL creator.
     await db.execute(
         'CREATE TABLE IF NOT EXISTS input_rev_bulk (flag INTEGER NOT NULL)');
-    await db.execute(
-      'CREATE TABLE IF NOT EXISTS input_rev ('
-      'bucket INTEGER PRIMARY KEY, rev INTEGER NOT NULL)',
-    );
-    String bump(String row) =>
-        'INSERT INTO input_rev(bucket, rev) SELECT $row.rec_ts / 900, 0 '
-        'WHERE NOT EXISTS (SELECT 1 FROM input_rev WHERE bucket = $row.rec_ts / 900); '
-        'UPDATE input_rev SET rev = rev + 1 WHERE bucket = $row.rec_ts / 900;';
-    const live = 'NEW.rec_ts IS NOT NULL AND NEW.rec_ts > 0';
-    const gone = 'OLD.rec_ts IS NOT NULL AND OLD.rec_ts > 0';
-    for (final t in const ['decoded_onehz', 'decoded_rr']) {
-      final present = await db.rawQuery(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-        [t],
-      );
-      if (present.isEmpty) continue;
-      await db.execute(
-        'CREATE TRIGGER IF NOT EXISTS ${t}_rev_ai AFTER INSERT ON $t '
-        'WHEN $live BEGIN ${bump('NEW')} END',
-      );
-      await db.execute(
-        'CREATE TRIGGER IF NOT EXISTS ${t}_rev_au AFTER UPDATE ON $t '
-        'WHEN $live BEGIN ${bump('NEW')} END',
-      );
-      await db.execute(
-        'CREATE TRIGGER IF NOT EXISTS ${t}_rev_au_old AFTER UPDATE ON $t '
-        'WHEN $gone AND (NEW.rec_ts IS NULL OR '
-        'NEW.rec_ts / 900 != OLD.rec_ts / 900) BEGIN ${bump('OLD')} END',
-      );
-      await db.execute(
-        'CREATE TRIGGER IF NOT EXISTS ${t}_rev_ad AFTER DELETE ON $t '
-        'WHEN $gone BEGIN ${bump('OLD')} END',
-      );
-    }
+    await _ldbCreateInputRev(db);
     // Design 06 1c: the per-input revision table and its triggers, here so the
     // DDL lives in the one pinned input-revision member. Tables that do not
     // exist yet are skipped; the end of _repairOpenSchema calls this again.
@@ -1649,6 +1623,50 @@ Future<void> _ldbPrivCreateStepCalibration(Database db) async {
         reference_steps INTEGER,
         counter_ticks   INTEGER,
         PRIMARY KEY (day, device_family, wearing)
+      )
+    ''');
+    // Live 100 Hz pedometer calibration — a DIFFERENT model from
+    // `step_calibration*` above and deliberately in its own tables.
+    //
+    // That pair calibrates the gen5 ON-CHIP counter: a multiplicative factor on
+    // raw ticks, per (device family, wearing). These calibrate the LIVE 100 Hz
+    // pedometer `pedometer()` feeds: a scale per ACTIVITY family (slow / brisk
+    // / jog against the wearer's own count, everyday against the phone), with
+    // its own version namespace. Sharing a table would let one model overwrite
+    // the other's stored value — the same reasoning that keeps
+    // `kLiveStepGainVersion` away from `kStepCalibrationVersion`.
+    //
+    // `live_step_calibration_run` keeps the individual runs, not just the fit,
+    // because re-calibrating is meant to REFINE: the estimator is a ratio of
+    // sums, so a stored history is what lets a second walk outweigh the first
+    // by the steps it carried. Same shape as `step_calibration_day`.
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS live_step_calibration (
+        category   TEXT NOT NULL,
+        gain       REAL NOT NULL,
+        n_runs     INTEGER NOT NULL,
+        version    INTEGER NOT NULL,
+        updated_ts INTEGER NOT NULL,
+        PRIMARY KEY (category)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS live_step_calibration_run (
+        category       TEXT NOT NULL,
+        run_ts         INTEGER NOT NULL,
+        reference      TEXT NOT NULL,
+        expected_steps INTEGER NOT NULL,
+        raw_steps      INTEGER NOT NULL,
+        cadence_spm    REAL NOT NULL,
+        -- Nullable on purpose: a routine whose caller never measured these
+        -- stores NULL rather than a fabricated 0.0, which would be
+        -- indistinguishable from a real still reading.
+        p2p_g          REAL,
+        confidence     REAL,
+        -- `kLiveStepCounterVersion` that produced raw_steps. NULL = a row
+        -- banked before runs were tagged, i.e. the original counter.
+        counter_version INTEGER,
+        PRIMARY KEY (category, run_ts)
       )
     ''');
   }
@@ -2296,6 +2314,12 @@ Future<void> _ldbPrivCreateUserTables(Database db) async {
     // DDL belongs next to the code that reads it, not two thousand lines away.
     await createNutritionTables(db);
     await createMedTables(db);
+    // HYROX sessions and their round segments: hand-recorded race data, so
+    // the creator lives here where onCreate, the onOpen repair pass and the
+    // export database all run it. CREATE IF NOT EXISTS, so re-running is free.
+    await createHyroxTables(db);
+    // Triathlon sessions and their segments, same reasoning.
+    await createTriathlonTables(db);
     // cycle_log — menstrual cycle markers; `kind` is 'start' (cycle start) etc.
     await db.execute('''
       CREATE TABLE IF NOT EXISTS cycle_log (
@@ -3732,3 +3756,12 @@ Future<void> _ldbPrivCreateWorkoutSplit(Database db) async {
     ''');
   }
 
+
+// Independent cache owner: main night/cardio blobs must never replace fork day state.
+Future<void> _ldbCreateNightCheckpoint(Database db) async {
+    await db.execute('CREATE TABLE IF NOT EXISTS night_checkpoint ('
+      'day_id TEXT NOT NULL, algo_version INTEGER NOT NULL, '
+      'fmt INTEGER NOT NULL, ctx_sig TEXT NOT NULL, cp_rec_ts INTEGER NOT NULL, '
+      'rev_vec BLOB NOT NULL, state BLOB NOT NULL, night_ref TEXT, '
+      'computed_at INTEGER NOT NULL, PRIMARY KEY(day_id, algo_version))');
+  }

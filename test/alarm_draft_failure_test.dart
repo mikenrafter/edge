@@ -176,7 +176,7 @@ void main() {
       entries: _week(),
       isConnected: () => true,
       persist: (_) async {},
-      arm: () async => armReportOf((epoch: null, disabled: false, refused: true)),
+      arm: () async => armReportOf((epoch: null, disabled: false, failed: true, echoed: false)),
       awaitConfirmed: (_) async => true,
     );
     expect(out.status, AlarmSaveStatus.failed);

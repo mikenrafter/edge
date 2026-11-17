@@ -1,3 +1,4 @@
+import 'effect_work.dart';
 // SEAM: cloud removed. Implement against openstrap_analytics + db.dart in the local re-layer. See HANDOFF.
 //
 // LocalRepository is the contract every UI screen consumes. It MIRRORS the old
@@ -392,6 +393,7 @@ abstract class LocalRepository {
     required int startTs,
     required int endTs,
     required String type,
+    String source = 'manual',
   }) => throw UnimplementedError('re-layer: logManualWorkout');
 
   /// Retime an existing session and re-score it over the new window. Used to
@@ -514,4 +516,15 @@ abstract class LocalRepository {
     List<String> records, {
     double? pacedHz,
   }) => throw UnimplementedError('re-layer: breathingCoherence');
+  Future<T> sharingDayReads<T>(AsyncWork<T> work) => work.run();
+  Future<List<String>> toggleCycleSymptom(String date, String symptom) =>
+      throw UnimplementedError('re-layer: toggleCycleSymptom');
+
+  Future<void> editJournalMetrics(String date,
+      void Function(Map<String, JournalMetricValue> day) edit) async {
+    final day = {...await getJournalMetrics(date)};
+    edit(day);
+    await postJournalMetrics(date, day);
+  }
+
 }

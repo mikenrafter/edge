@@ -45,7 +45,11 @@ void main() {
         const MoreSettingsView(version: '0.9.26 (57)', devMode: false)));
     expect(find.text('Component gallery'), findsNothing);
     expect(find.text('Developer'), findsNothing);
-    // …and the row that reveals it says nothing about what it does.
+    // The row lives in the remembered About section.
+    await tester.scrollUntilVisible(find.text('About'), 300,
+        scrollable: find.byType(Scrollable).first);
+    if (find.text('Version').evaluate().isEmpty) await tester.tap(find.text('About'));
+    await tester.pumpAndSettle();
     expect(find.text('Version'), findsOneWidget);
   });
 
@@ -57,7 +61,11 @@ void main() {
       devMode: true,
       onGallery: () => opened = true,
     )));
+    await tester.scrollUntilVisible(find.text('Developer'), 300,
+        scrollable: find.byType(Scrollable).first);
     expect(find.text('Developer'), findsOneWidget);
+    await tester.ensureVisible(find.text('Component gallery'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Component gallery'));
     expect(opened, isTrue);
   });

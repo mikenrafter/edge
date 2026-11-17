@@ -24,6 +24,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/compute/step_calibration_fit.dart'
+    show kLiveStepGainVersion, kLiveStepCounterVersion;
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/screens/home_screen.dart' show dbRebuiltCard;
 
@@ -300,7 +302,17 @@ void main() {
         'payload_json': '{"mean":51}',
         'updated_at': 1,
       });
-      await db.insert('raw_archive', {
+      // Calibration is measured history, not a cache: a rebuild cannot fit it again.
+      await db.insert('live_step_calibration', {
+        'category': 'walk', 'gain': 1.125, 'n_runs': 3, 'version': kLiveStepGainVersion,
+        'updated_ts': 12345,
+      });
+      await db.insert('live_step_calibration_run', {
+        'category': 'walk', 'run_ts': 12345, 'reference': 'wearer count',
+        'expected_steps': 1125, 'raw_steps': 1000, 'cadence_spm': 105.5,
+        'p2p_g': .125, 'confidence': .85, 'counter_version': kLiveStepCounterVersion,
+      });
+      await db.insert(LocalDb.rawArchiveView, {
         'hex': 'deadbeef',
         'counter': 7,
         'packet_type': 0x2f,
@@ -334,6 +346,8 @@ void main() {
       'day_result',
       'metric_series',
       'baselines',
+      'live_step_calibration',
+      'live_step_calibration_run',
       'raw_archive',
       'decoded_onehz',
       'decoded_rr',
@@ -375,7 +389,10 @@ void main() {
           reason: 'the old file is parked, never deleted');
 
       for (final t in salvaged) {
-        expect(await db.query(t), hasLength(1), reason: '$t did not come back');
+        // The archive reads back through its view on this layout.
+        final live = t == 'raw_archive' ? LocalDb.rawArchiveView : t;
+        expect(await db.query(live), hasLength(1),
+            reason: '$t did not come back');
         expect(r.salvaged[t], 1, reason: '$t was not reported as recovered');
       }
       // Values, not just counts — a merge that dropped columns would pass a
@@ -384,6 +401,14 @@ void main() {
           'slept badly, three coffees');
       expect((await db.query('lab_result')).first['value'], 63.5);
       expect((await db.query('decoded_rr')).first['rr_ms'], 1042);
+      expect((await db.query('live_step_calibration')).single['gain'], 1.125);
+      final run = (await db.query('live_step_calibration_run')).single;
+      expect(run['expected_steps'], 1125);
+      expect(run['raw_steps'], 1000);
+      expect(run['cadence_spm'], 105.5);
+      expect(run['p2p_g'], .125);
+      expect(run['confidence'], .85);
+      expect(run['counter_version'], kLiveStepCounterVersion);
       // `_days` is the importer's bookkeeping key, not a table: it must never
       // reach the rebuild card, which prints this map verbatim.
       expect(r.salvaged.containsKey('_days'), isFalse);
@@ -404,7 +429,9 @@ void main() {
       final again = await LocalDb.instance;
       expect(LocalDb.lastRebuild, isNull);
       for (final t in salvaged) {
-        expect(await again.query(t), hasLength(1), reason: '$t lost on reopen');
+        final live = t == 'raw_archive' ? LocalDb.rawArchiveView : t;
+        expect(await again.query(live), hasLength(1),
+            reason: '$t lost on reopen');
       }
       await LocalDb.close();
     });

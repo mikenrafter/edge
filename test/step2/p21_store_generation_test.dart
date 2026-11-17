@@ -225,14 +225,18 @@ void main() {
     test('source: the salvage merge is followed by a mark', () {
       final src = _dbSource();
       final rebuild = _member(src, '_openOrRebuild');
-      final merge = _member(src, '_mergeFromDbFile');
+      final restore = File('lib/data/db/restore.dart').readAsStringSync();
+      final carrier = restore.indexOf('Future<Map<String, int>> _ldbPrivMergeFromDbFileWithReaderHeld(');
+      final merge = restore.substring(carrier, restore.indexOf('\nFuture', carrier + 1));
       expect(rebuild, isNotEmpty);
       expect(merge, isNotEmpty);
       final call = rebuild.indexOf('_mergeFromDbFile(');
       expect(call, isNonNegative);
       final markedInRebuild =
           rebuild.indexOf('_markStoreReplaced()', call) > call;
-      final lastTx = merge.lastIndexOf('transaction(');
+      final lastTx = merge.indexOf('await LocalDb._mergeFromDbFileBody(');
+      expect(lastTx, isNonNegative);
+      expect(merge, contains('LocalDb._mergePagesCommitted != committedBefore'));
       final markedInMerge = merge.indexOf('_markStoreReplaced()') > lastTx &&
           merge.contains('_markStoreReplaced()');
       expect(markedInRebuild || markedInMerge, isTrue,
@@ -242,7 +246,7 @@ void main() {
     });
 
     test('source: _open() marks a plain reopen', () {
-      expect(_member(_dbSource(), '_open'), contains('_markStoreReplaced()'));
+      expect(_member(_dbSource(), '_open'), contains('_markStoreReplaced(opened: true)'));
     });
   });
 

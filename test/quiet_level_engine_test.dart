@@ -1,3 +1,4 @@
+import 'support/test_callable.dart';
 // The quiet-waking level through the REAL engine: decoded 1 Hz rows →
 // DerivationEngine.run/runDays → day_result + metric_series.
 //
@@ -360,12 +361,12 @@ void main() {
     }
     final target = days[3];
     var calls = 0;
-    DerivationEngine.debugSecondHalfHook = (day) async {
+    DerivationEngine.debugSecondHalfHook = TestCall1((day) async {
       // Both the first pass and the re-score time out on the second half.
       if (day == target && ++calls <= 2) {
         throw TimeoutException('injected second-half timeout');
       }
-    };
+    });
     addTearDown(() => DerivationEngine.debugSecondHalfHook = null);
     await DerivationEngine().run(_profile, heavy: true);
     DerivationEngine.debugSecondHalfHook = null;

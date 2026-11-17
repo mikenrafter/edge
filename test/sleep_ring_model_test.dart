@@ -4,7 +4,7 @@
 //
 //   SLEPT   today has a scored night. The ring is that night's stages as
 //           contiguous arcs grouped Deep, REM, Light, then Awake; the total
-//           sweep of the asleep stages is asleep / target, NOT capped: above a full
+//           sweep of all stages is asleep / target, NOT capped: above a full
 //           circle. Stage totals absent => ONE solid arc, never an invented
 //           split. Sub-line percentage is asleep / target.
 //   UNSLEPT no scored night yet. Value is an ESTIMATE = wake - max(start, now).
@@ -125,9 +125,8 @@ void main() {
   });
 
   group('slept', () {
-    test('phase, asleep minutes and whole-percent of the default target', () {
+    test('asleep minutes and whole-percent of the default target', () {
       final m = _slept();
-      expect(m.phase, SleepRingPhase.slept);
       expect(m.asleepMin, 442);
       // 442 / 480 = 92.08 %
       expect(m.pct, 92);
@@ -160,19 +159,17 @@ void main() {
       );
     });
 
-    test('each stage is its minutes / target of the full circle', () {
+    test('stage proportions divide the earned sleep sweep, including awake', () {
       final m = _slept();
-      expect(m.arcs[0].fraction, closeTo(70 / 480, 1e-9));
-      expect(m.arcs[1].fraction, closeTo(95 / 480, 1e-9));
-      expect(m.arcs[2].fraction, closeTo(277 / 480, 1e-9));
-      expect(m.arcs[3].fraction, closeTo(30 / 480, 1e-9));
+      expect(m.arcs[0].fraction, closeTo(442 / 480 * 70 / 472, 1e-9));
+      expect(m.arcs[1].fraction, closeTo(442 / 480 * 95 / 472, 1e-9));
+      expect(m.arcs[2].fraction, closeTo(442 / 480 * 277 / 472, 1e-9));
+      expect(m.arcs[3].fraction, closeTo(442 / 480 * 30 / 472, 1e-9));
     });
 
-    test('the ASLEEP arcs together sweep exactly asleep / target', () {
+    test('all arcs together sweep exactly asleep / target', () {
       final m = _slept();
-      final asleep = m.arcs
-          .where((a) => a.kind != SleepArcKind.awake)
-          .fold<double>(0, (s, a) => s + a.fraction);
+      final asleep = m.arcs.fold<double>(0, (s, a) => s + a.fraction);
       expect(asleep, closeTo(442 / 480, 1e-9));
     });
 
@@ -189,10 +186,9 @@ void main() {
       expect(m.arcs[2].fraction / m.arcs[1].fraction, closeTo(270 / 95, 1e-9));
     });
 
-    test('Awake is drawn after Light with its own length, and never pushes the '
-        'ring past a full circle', () {
-      // Asleep covers 0.9208 of the circle; 38 min awake would be 0.0792
-      // more, which is exactly the room left. 60 min awake must be clipped.
+    test('Awake is drawn after Light within the earned sleep sweep', () {
+      // The 442 asleep + 60 awake staged minutes divide a 442/480-lap sweep.
+      // Awake gets 60/502 of that sweep; it does not fill the remaining track.
       final m = _slept(
         stages: const SleepStageMin(
           deep: 70,
@@ -202,11 +198,11 @@ void main() {
         ),
       );
       expect(m.arcs.last.kind, SleepArcKind.awake);
-      expect(m.sweep, closeTo(1.0, 1e-9));
-      expect(m.arcs.last.fraction, closeTo(1 - 442 / 480, 1e-9));
+      expect(m.sweep, closeTo(442 / 480, 1e-9));
+      expect(m.arcs.last.fraction, closeTo(442 / 480 * 60 / 502, 1e-9));
     });
 
-    test('asleep >= target: the circle is full of sleep and Awake gets no arc',
+    test('asleep >= target: Awake still shares the earned spiral sweep',
         () {
       final m = _slept(
         duration: 540,
@@ -217,12 +213,13 @@ void main() {
           awake: 20,
         ),
       );
-      expect(m.arcs.any((a) => a.kind == SleepArcKind.awake), isFalse);
+      expect(m.arcs.last.kind, SleepArcKind.awake);
+      expect(m.arcs.last.fraction, closeTo(540 / 480 * 20 / 560, 1e-9));
       expect(m.sweep, closeTo(540 / 480, 1e-9));
-      // Stage fractions are minutes / NEED, not rescaled to the circle.
-      expect(m.arcs[0].fraction, closeTo(90 / 480, 1e-9));
-      expect(m.arcs[1].fraction, closeTo(120 / 480, 1e-9));
-      expect(m.arcs[2].fraction, closeTo(330 / 480, 1e-9));
+      // Stage proportions divide the same sweep even beyond one lap.
+      expect(m.arcs[0].fraction, closeTo(540 / 480 * 90 / 560, 1e-9));
+      expect(m.arcs[1].fraction, closeTo(540 / 480 * 120 / 560, 1e-9));
+      expect(m.arcs[2].fraction, closeTo(540 / 480 * 330 / 560, 1e-9));
     });
 
     test('no awake figure => no awake arc (not a zero-length one)', () {
@@ -237,7 +234,6 @@ void main() {
 
     test('NO stage totals => ONE solid arc, never an invented split', () {
       final m = _slept(stages: null);
-      expect(m.phase, SleepRingPhase.slept);
       expect(m.arcs, hasLength(1));
       expect(m.arcs.single.kind, SleepArcKind.solid);
       expect(m.arcs.single.fraction, closeTo(442 / 480, 1e-9));
@@ -265,7 +261,6 @@ void main() {
       expect(m.arcs.single.fraction, closeTo(600 / 480, 1e-9));
       expect(m.sweep, closeTo(600 / 480, 1e-9));
     });
-
     test('a scored night wins over every schedule/alarm input', () {
       final m = sleepRingModel(
         now: _evening,
@@ -281,7 +276,6 @@ void main() {
       expect(m.cycles, isNull);
     });
   });
-
   group('unslept estimate', () {
     test('wake - start from the typical schedule; cycles = floor(est / 90)', () {
       final m = _unslept(now: _evening, schedule: _schedule);

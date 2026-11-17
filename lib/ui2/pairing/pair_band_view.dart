@@ -13,6 +13,7 @@ import 'pair_help.dart';
 import 'pair_sheets.dart';
 import 'pair_text.dart';
 import 'pair_widgets.dart';
+import 'whoop_firmware_warning.dart';
 
 /// The devices the first run offers as the main band, in registry order.
 List<BandEntry> firstRunBandEntries() => [
@@ -88,12 +89,13 @@ class _PairBandViewState extends State<PairBandView> {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          // No Padding: the fork's NavBar owns its inset.
           NavBar(l.pairSetUpTitle, onBack: widget.onBack),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x10),
               children: [
+                const WhoopFirmwareWarning(),
+                const SizedBox(height: S.x4),
                 Text(l.pairBandTitle,
                     key: const ValueKey('pair-band-title'),
                     style: F.t1.copyWith(color: p.ink)),
@@ -141,6 +143,10 @@ class _PairBandViewState extends State<PairBandView> {
   }
 }
 
+/// The line under a row says what a WHOOP sends. It is WHOOP copy, so another
+/// main-band entry added later gets no line until it has its own.
+bool _isWhoop(BandEntry e) => e.id == kWhoopGen4.id || e.id == kWhoopGen5.id;
+
 class _BandRow extends StatelessWidget {
   final BandEntry entry;
   final VoidCallback onTap;
@@ -170,8 +176,11 @@ class _BandRow extends StatelessWidget {
                 Text(uiText(c, entry.label),
                     style: F.body
                         .copyWith(color: p.ink, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 2),
-                Text(l.pairWhoopRowLine, style: F.cap.copyWith(color: p.ink2)),
+                if (_isWhoop(entry)) ...[
+                  const SizedBox(height: 2),
+                  Text(l.pairWhoopRowLine,
+                      style: F.cap.copyWith(color: p.ink2)),
+                ],
                 if (slot != null) ...[
                   const SizedBox(height: S.x2),
                   slotPill(l, slot),

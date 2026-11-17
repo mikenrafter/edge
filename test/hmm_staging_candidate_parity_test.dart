@@ -9,7 +9,6 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'package:openstrap_edge/compute/derive_prepare.dart';
-import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/compute/sleep_staging_worker.dart';
 import 'package:openstrap_edge/compute/substrate.dart';
 import 'package:openstrap_edge/util/worker_init.dart';

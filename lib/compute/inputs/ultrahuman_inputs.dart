@@ -1,3 +1,12 @@
+import 'dart:math' as math;
+import 'package:openstrap_protocol/openstrap_protocol.dart';
+import '../substrate.dart';
+import '../vendor_sleep.dart';
+import 'canonical.dart';
+import 'garmin_inputs.dart';
+import 'pebble_inputs.dart' show rhrOnlyReadiness;
+import 'wearable_substrate_heavy.dart';
+
 // The Ultrahuman Ring Air as the day's wearable: its stored rows mapped onto
 // the canonical signals at the resolution the ring actually stores them.
 //
@@ -25,16 +34,8 @@
 // No beats, no respiration, no stress: those rows are unavailable, with the
 // reason in [kUltrahumanColumn].
 
-import 'dart:math' as math;
 
-import 'package:openstrap_protocol/openstrap_protocol.dart';
 
-import '../substrate.dart';
-import '../vendor_sleep.dart';
-import 'canonical.dart';
-import 'garmin_inputs.dart';
-import 'pebble_inputs.dart' show rhrOnlyReadiness;
-import 'wearable_substrate_heavy.dart';
 
 const String kUltrahumanFamily = 'ultrahuman';
 

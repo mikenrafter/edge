@@ -1,3 +1,4 @@
+import '../../support/close_widget_database.dart';
 // Home's Review activities card counts assumed water glasses too (they need
 // review). The pure counts below keep the two apart: "N marked moments" (pending marks plus started
 // ranges that only owe their announcement) and "N assumed water" (glasses
@@ -19,7 +20,6 @@ import 'package:openstrap_edge/gestures/moment_review_queue.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/ui2/screens/detected_activities.dart';
-import 'package:openstrap_edge/ui2/screens/moment_follow_up.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
@@ -142,6 +142,9 @@ void main() {
     setUp(() => SharedPreferences.setMockInitialValues({}));
 
     Future<void> pumpCard(WidgetTester t, AppState app) async {
+      await t.runAsync(() async { await LocalDb.instance; });
+
+      addTearDown(() => closeWidgetDatabase(t));
       // Providers sit ABOVE the app so the pushed review route sees them too.
       await t.pumpWidget(MultiProvider(
         providers: [

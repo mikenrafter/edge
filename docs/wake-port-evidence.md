@@ -66,7 +66,9 @@ cutoffs:
 Edge owns the journal threshold profile. Its identity and associative,
 commutative combine use maximum HR/duration thresholds, minimum movement
 ceilings and boolean OR for conditions. Stress or sickness halves the trend
-factor once; late meal then multiplies it by 1.5.
+factor once. Late meal leaves that factor unchanged: PR #630's reviewer
+identified that multiplying it by 1.5 permits a movement rise that the ordinary
+profile vetoes (discussion_r4561540491, main d49bc7858).
 
 | Preset | Effect |
 | --- | --- |
@@ -74,13 +76,14 @@ factor once; late meal then multiplies it by 1.5.
 | Timed alcohol, dose >0 | HR +6, trend 5 min |
 | Timed caffeine, dose >=200 mg | HR +6 |
 | Stress tag or rating >=4 | Motion below 0.06 g, factor x0.5 |
-| Late meal | HR +5, factor x1.5 |
+| Late meal | HR +5, no relaxation of the movement veto |
 | Sick | HR +5, motion below 0.06 g, factor x0.5 |
 | Workout without rest-day tag | Protection 10 min, trend 5 min |
 | Active alcohol and stress | Disable early delivery |
 
-Increasing the trend factor is more permissive. The presets do not all make
-all gates stricter.
+Every profile keeps the three-minute trend veto. A longer trend window adds
+a second veto, so it cannot hide a recent rise by averaging over earlier motion
+(PR #630 discussion_r4564190134, main 8376b49ed).
 
 The owner chose the user's saved `expected_sleep_schedule_v1` as the timing
 reference, through `ExpectedSleepSchedule.windowFor()`. Alcohol counts from

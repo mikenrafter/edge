@@ -118,10 +118,10 @@ class SnoozeBandEngine extends BleEngine {
   }
 
   @override
-  Future<void> disableAlarm({int? id}) async {
+  Future<bool> disableAlarm({int? id}) async {
     if (allowUserDisable) {
       userDisables.add('disableAlarm');
-      return;
+      return true;
     }
     armCalls.add('disableAlarm');
     throw StateError('a snooze must never disable the native alarm');

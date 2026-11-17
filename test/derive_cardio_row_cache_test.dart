@@ -1,6 +1,6 @@
 // Round 17: the cardio row cache in edge staging (exact, no output change).
 //
-// `prepareSleepSessionCandidate` / `prepareDerivationPayload` / `calendarDays`
+// `prepareSleepSessionCandidateHeavy` / `prepareDerivationPayloadHeavy` / `calendarDaysHeavy`
 // take an optional `CardioRowCache? rowCache` and hand it to every
 // `segmentSleep` call. Null is today's behaviour; a cache must change nothing
 // about the output (byte-identical JSON) and only turn repeat work into hits.
@@ -90,13 +90,13 @@ void main() {
         'observation JSON), and a null cache is today\'s behaviour', () {
       final sub = _build(-2, 7, _night);
 
-      final plain = prepareSleepSessionCandidate(sub, targetDay: _day);
+      final plain = prepareSleepSessionCandidateHeavy(sub, targetDay: _day);
       expect(plain.present, isTrue, reason: 'guard: the fixture stages a night');
       final plainObs = jsonEncode(
-        prepareDerivationPayload(sub, targetDay: _day).days.first.sleepJson,
+        prepareDerivationPayloadHeavy(sub, targetDay: _day).days.first.sleepJson,
       );
 
-      final nullCache = prepareSleepSessionCandidate(
+      final nullCache = prepareSleepSessionCandidateHeavy(
         sub,
         targetDay: _day,
         rowCache: null,
@@ -104,7 +104,7 @@ void main() {
       expect(_json(nullCache), _json(plain));
 
       final cache = ana.CardioRowCache();
-      final cold = prepareSleepSessionCandidate(
+      final cold = prepareSleepSessionCandidateHeavy(
         sub,
         targetDay: _day,
         rowCache: cache,
@@ -115,7 +115,7 @@ void main() {
       final obsCache = ana.CardioRowCache();
       for (var i = 0; i < 2; i++) {
         final obs = jsonEncode(
-          prepareDerivationPayload(
+          prepareDerivationPayloadHeavy(
             sub,
             targetDay: _day,
             rowCache: obsCache,
@@ -127,10 +127,10 @@ void main() {
 
     test('staging the same day twice: the second run hits, never misses', () {
       final sub = _build(-2, 7, _night);
-      final plain = prepareSleepSessionCandidate(sub, targetDay: _day);
+      final plain = prepareSleepSessionCandidateHeavy(sub, targetDay: _day);
 
       final cache = ana.CardioRowCache();
-      final first = prepareSleepSessionCandidate(
+      final first = prepareSleepSessionCandidateHeavy(
         sub,
         targetDay: _day,
         rowCache: cache,
@@ -140,7 +140,7 @@ void main() {
 
       cache.hits = 0;
       cache.misses = 0;
-      final second = prepareSleepSessionCandidate(
+      final second = prepareSleepSessionCandidateHeavy(
         sub,
         targetDay: _day,
         rowCache: cache,
@@ -155,13 +155,13 @@ void main() {
     test('a night that grows between passes reuses the rows it already had', () {
       final partial = _build(-2, 3, _night);
       final full = _build(-2, 7, _night);
-      final plainFull = prepareSleepSessionCandidate(full, targetDay: _day);
+      final plainFull = prepareSleepSessionCandidateHeavy(full, targetDay: _day);
 
       final cache = ana.CardioRowCache();
-      prepareSleepSessionCandidate(partial, targetDay: _day, rowCache: cache);
+      prepareSleepSessionCandidateHeavy(partial, targetDay: _day, rowCache: cache);
       cache.hits = 0;
       cache.misses = 0;
-      final grown = prepareSleepSessionCandidate(
+      final grown = prepareSleepSessionCandidateHeavy(
         full,
         targetDay: _day,
         rowCache: cache,
@@ -173,19 +173,19 @@ void main() {
     test('D then D+1 shares one cache and each day equals its uncached self',
         () {
       final sub = _build(-2, 31, _twoNights);
-      final plainD = prepareSleepSessionCandidate(sub, targetDay: _day);
-      final plainD1 = prepareSleepSessionCandidate(sub, targetDay: _nextDay);
+      final plainD = prepareSleepSessionCandidateHeavy(sub, targetDay: _day);
+      final plainD1 = prepareSleepSessionCandidateHeavy(sub, targetDay: _nextDay);
       expect(plainD.present, isTrue);
       expect(plainD1.present, isTrue);
 
       final cache = ana.CardioRowCache();
-      final d = prepareSleepSessionCandidate(
+      final d = prepareSleepSessionCandidateHeavy(
         sub,
         targetDay: _day,
         rowCache: cache,
       );
       final afterD = cache.length;
-      final d1 = prepareSleepSessionCandidate(
+      final d1 = prepareSleepSessionCandidateHeavy(
         sub,
         targetDay: _nextDay,
         rowCache: cache,
@@ -197,12 +197,12 @@ void main() {
 
       // Order must not matter: D+1 first, then D, same bytes.
       final rev = ana.CardioRowCache();
-      final r1 = prepareSleepSessionCandidate(
+      final r1 = prepareSleepSessionCandidateHeavy(
         sub,
         targetDay: _nextDay,
         rowCache: rev,
       );
-      final r0 = prepareSleepSessionCandidate(
+      final r0 = prepareSleepSessionCandidateHeavy(
         sub,
         targetDay: _day,
         rowCache: rev,
@@ -220,14 +220,14 @@ void main() {
         offsetSec: _h(5),
         source: 'confirmed',
       );
-      final plain = prepareSleepSessionCandidate(
+      final plain = prepareSleepSessionCandidateHeavy(
         sub,
         targetDay: _day,
         override: ov,
       );
       final cache = ana.CardioRowCache();
       for (var i = 0; i < 2; i++) {
-        final got = prepareSleepSessionCandidate(
+        final got = prepareSleepSessionCandidateHeavy(
           sub,
           targetDay: _day,
           override: ov,
@@ -238,11 +238,11 @@ void main() {
       expect(cache.hits, greaterThan(0), reason: 'the forced window hits too');
     });
 
-    test('calendarDays takes the cache and returns the same days', () {
+    test('calendarDaysHeavy takes the cache and returns the same days', () {
       final sub = _build(-2, 7, _night);
-      final plain = calendarDays(sub);
+      final plain = calendarDaysHeavy(sub);
       final cache = ana.CardioRowCache();
-      final got = calendarDays(sub, rowCache: cache);
+      final got = calendarDaysHeavy(sub, rowCache: cache);
       expect(got.map((d) => d.date), plain.map((d) => d.date));
       expect(
         got.map((d) => jsonEncode(d.sleep.toJson())).toList(),
@@ -253,7 +253,7 @@ void main() {
 
     test('a malformed cache payload falls back to empty, output unchanged', () {
       final sub = _build(-2, 7, _night);
-      final plain = prepareSleepSessionCandidate(sub, targetDay: _day);
+      final plain = prepareSleepSessionCandidateHeavy(sub, targetDay: _day);
 
       // What the isolate does with plain data it was handed: decode, and on a
       // FormatException start empty (refuse, never guess).
@@ -278,7 +278,7 @@ void main() {
       for (final payload in bad) {
         final cache = decodeOrEmpty(payload);
         expect(cache.length, 0);
-        final got = prepareSleepSessionCandidate(
+        final got = prepareSleepSessionCandidateHeavy(
           sub,
           targetDay: _day,
           rowCache: cache,
@@ -289,15 +289,15 @@ void main() {
 
     test('a cache that went through JSON gives the same bytes and hits', () {
       final sub = _build(-2, 7, _night);
-      final plain = prepareSleepSessionCandidate(sub, targetDay: _day);
+      final plain = prepareSleepSessionCandidateHeavy(sub, targetDay: _day);
       final warm = ana.CardioRowCache();
-      prepareSleepSessionCandidate(sub, targetDay: _day, rowCache: warm);
+      prepareSleepSessionCandidateHeavy(sub, targetDay: _day, rowCache: warm);
 
       // The isolate seam: plain data in, plain data out.
       final wire = jsonDecode(jsonEncode(warm.toJson())) as Map<String, dynamic>;
       final decoded = ana.CardioRowCache.fromJson(wire);
       expect(decoded.length, warm.length);
-      final got = prepareSleepSessionCandidate(
+      final got = prepareSleepSessionCandidateHeavy(
         sub,
         targetDay: _day,
         rowCache: decoded,

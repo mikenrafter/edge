@@ -10,6 +10,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 // ignore: depend_on_referenced_packages
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
@@ -81,6 +82,9 @@ class _RefusingStore extends SharedPreferencesStorePlatform {
 }
 
 void main() {
+  // A missing key and an unreadable keystore are separate reviewed outcomes.
+  // This fixture specifically models an accessible, empty keystore.
+  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
   TestWidgetsFlutterBinding.ensureInitialized();
   late Directory tmp;
   late AppState app;

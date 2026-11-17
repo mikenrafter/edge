@@ -1,25 +1,10 @@
 import '../guides/guide_navigation.dart';
 import '../../l10n/display_text.dart';
-// WORKOUT — the interaction domain. Not "here are your numbers", but "what do
-// you want to do, and what did you do".
-//
-// Three tabs. There is deliberately no Programs tab: a training programme is a
-// data model this app does not have (UI_WIRING §2c), and a tab of four fake
-// plans with fake progress bars is the exact thing the absence contract
-// exists to stop.
-//
-// Everything numeric here comes from `AppState.repo`. Where the repo has
-// nothing — and for training load it very often has nothing, because CTL/ATL
-// need fourteen days — the card is a StatusCard that says which, why and what
-// fixes it.
-
 import 'dart:async' show unawaited;
 import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
-
 import '../../data/db.dart';
 import '../../data/local_repository.dart' show LocalRepository;
 import '../../gps/gps_source.dart';
@@ -44,6 +29,7 @@ import '../charts.dart';
 import '../older_version.dart';
 import '../profile/profile.dart' show ProfileAvatar, openProfile;
 import '../grammar.dart';
+import '../skeleton/async_section.dart';
 import '../guides/help_entry.dart';
 import '../last_result_cache.dart';
 import '../revision.dart';
@@ -55,6 +41,25 @@ import 'log_workout.dart';
 import 'metric_detail.dart' show MetricDetail, detailLinkRow;
 import 'nutrition_screen.dart';
 import 'start_card.dart';
+import 'dart:convert' show utf8;
+import '../../l10n/decimal_text.dart';
+import '../../telemetry/telemetry_service.dart';
+
+// WORKOUT — the interaction domain. Not "here are your numbers", but "what do
+// you want to do, and what did you do".
+//
+// Three tabs. There is deliberately no Programs tab: a training programme is a
+// data model this app does not have (UI_WIRING §2c), and a tab of four fake
+// plans with fake progress bars is the exact thing the absence contract
+// exists to stop.
+//
+// Everything numeric here comes from `AppState.repo`. Where the repo has
+// nothing — and for training load it very often has nothing, because CTL/ATL
+// need fourteen days — the card is a StatusCard that says which, why and what
+// fixes it.
+
+
+
 
 class WorkoutScreen extends StatefulWidget {
   const WorkoutScreen({super.key});
@@ -63,7 +68,13 @@ class WorkoutScreen extends StatefulWidget {
   State<WorkoutScreen> createState() => _WorkoutScreenState();
 }
 
-class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
+abstract interface class _WorkoutHistoryListener {
+  void workoutHistoryChanged();
+}
+
+class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload implements _WorkoutHistoryListener {
+  @override
+  void workoutHistoryChanged() { if (mounted) reload(); }
   int tab = 0;
   List<String> _tabs(AppLocalizations? loc) => [
         loc?.workoutTabForYou ?? 'For you',
@@ -104,6 +115,26 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
       builder: (c, snap) {
         final loc = AppLocalizations.of(c);
         final d = snap.data ?? const _WorkoutData.empty();
+        final pending = !snap.hasData && !snap.hasError;
+        final body = !snap.hasData && snap.hasError
+            ? <Widget>[
+                StatusCard(
+                  loc?.workoutLoadFailedTitle ?? 'Activity could not be read',
+                  loc?.workoutLoadFailedBody ??
+                      'Your sessions failed to load. Nothing was deleted — this '
+                          'is a read that went wrong, not missing data.',
+                  icon: LucideIcons.triangleAlert,
+                  fix: loc?.homeTryAgain ?? 'Try again',
+                  onFix: reload,
+                ),
+              ]
+            : switch (tab) {
+                0 => _forYou(c, d),
+                1 => _activities(c, d),
+                _ => _history(c, d),
+              };
+        // Main's first-load honesty with the fork's later pending owner:
+        // unread values and actions are masked together until the read settles.
         // THE LIST DROPS ITS SIDE PADDING and hands it to each child instead,
         // so the hero card can be the one child that does not get it and runs
         // edge to edge. Two earlier attempts had the CARD escape its parent —
@@ -121,19 +152,16 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
               SubTabs(_tabs(loc), tab, (i) => setState(() => tab = i),
                   color: C.domMove),
               const SizedBox(height: S.x5),
-              ...switch (tab) {
-                0 => _forYou(c, d),
-                1 => _activities(c, d),
-                _ => _history(c, d),
-              },
+              ...body,
               const HelpEntry(topic: GuideTopic.activity),
             ])
               if (w is StartCard)
-                w
+                PendingContent(pending: pending, child: w)
               else
                 Padding(
                     padding: const EdgeInsets.symmetric(horizontal: S.x4),
-                    child: w),
+                    child: body.contains(w)
+                        ? PendingContent(pending: pending, child: w) : w),
           ],
         );
       },
@@ -144,7 +172,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
   void _openPicker(BuildContext c, _WorkoutData d) =>
       Navigator.of(c).push(MaterialPageRoute(
           builder: (_) => ActivityPicker(
-              weightKg: d.weightKg, host: _host(d), recent: d.recent)));
+              weightKg: d.weightKg, host: _host(d), mostUsed: d.mostUsed)));
 
   ActivityHost _host(_WorkoutData d) =>
       activityHost(context.read<AppState>(), history: d.setHistory);
@@ -386,9 +414,10 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
               Text(ld == null ? '—' : ld.ctl.round().toString(),
                   style: F.n34.copyWith(color: p.ink)),
               const SizedBox(width: S.x2),
-              Text(loc?.workoutFitnessLabel ?? 'fitness',
-                  style: F.cap.copyWith(color: p.ink3)),
-              const Spacer(),
+              // Keep the value and provenance pills visible when a translated
+              // label needs a second line at large text sizes.
+              Expanded(child: Text(loc?.workoutFitnessLabel ?? 'fitness',
+                  style: F.cap.copyWith(color: p.ink3))),
               if (ld != null && ld.estimated) ...[
                 Pill(loc?.wearableEstimated ?? 'Estimated', C.purple),
                 const SizedBox(width: S.x2),
@@ -744,6 +773,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
       for (final w in d.workouts) ...[
         _HistoryRow(w,
             weightKg: d.weightKg,
+            onChanged: this,
             onDelete: w.id.isEmpty
                 ? null
                 : () => _confirmDeleteWorkout(c, w),
@@ -1196,7 +1226,11 @@ class _HistoryRow extends StatelessWidget {
   final VoidCallback? onScore;
 
   const _HistoryRow(this.w,
-      {this.weightKg, this.onRetime, this.onDelete, this.onScore});
+      {this.weightKg,
+      this.onRetime,
+      this.onDelete,
+      this.onScore,
+      this.onChanged});
 
   Future<void> _open(BuildContext c) async {
     // The route goes up first. Reading the stores for a session is the slow
@@ -1204,6 +1238,7 @@ class _HistoryRow extends StatelessWidget {
     await Navigator.of(c).push(MaterialPageRoute(
         builder: (_) =>
             _PastSummary(c.read<AppState>(), w, weightKg)));
+    onChanged?.workoutHistoryChanged();
   }
 
   @override
@@ -1264,7 +1299,7 @@ class _HistoryRow extends StatelessWidget {
                 ]),
           ),
           if (w.strain != null) ...[
-            Text(w.strain!.toStringAsFixed(1),
+            Text(displayFixed(w.strain!, 1),
                 style: F.n17.copyWith(color: p.ink)),
             const SizedBox(width: S.x1),
             Padding(
@@ -1373,6 +1408,10 @@ class _HistoryRow extends StatelessWidget {
             (loc?.workoutMaxHrStatLabel ?? 'Max HR', '${w.maxHr}', 'bpm'),
         ];
   }
+
+
+  /// Called after returning from the session's summary in case it changed.
+  final _WorkoutHistoryListener? onChanged;
 }
 
 /// One day's initial. Taken from the date the point carries — deriving it from
@@ -1555,31 +1594,17 @@ Future<bool> _startSession(AppState app, Activity a) async {
 /// `strength_set` rows for one log. `set_index` counts per exercise; `seq` is
 /// the position in the whole session and is [LocalDb.saveStrengthSets]'s own
 /// key, which is why re-sending the same log is idempotent.
-List<Map<String, Object?>> _setRows(List<LoggedSet> sets) {
-  final perExercise = <String, int>{};
-  return [
-    for (final s in sets)
-      {
-        'exercise_key': s.exerciseKey,
-        'set_index':
-            perExercise[s.exerciseKey] = (perExercise[s.exerciseKey] ?? 0) + 1,
-        'reps': s.reps,
-        'load_kg': s.loadKg,
-        'rpe': s.rpe,
-        'rest_sec': s.restSec,
-        'at_ts': s.at.millisecondsSinceEpoch ~/ 1000,
-      },
-  ];
-}
+List<Map<String, Object?>> _setRows(List<LoggedSet> sets) =>
+    strengthSetsToRows(sets);
 
 /// Bank the sets logged so far against the OPEN session. Called on every set,
 /// because a typed set is the one thing in a session no sensor can reproduce
 /// and it used to live in widget state until the user pressed stop.
 Future<void> _bankSets(AppState app, List<LoggedSet> sets) async {
   final id = app.activeWorkout?.workoutId;
-  if (id == null || sets.isEmpty) return;
+  if (id == null) return;
   try {
-    await LocalDb.saveStrengthSets(id, _setRows(sets));
+    await LocalDb.replaceStrengthSets(id, _setRows(sets));
   } catch (_) {
     // The draft still holds them, and finish writes the whole log again.
   }
@@ -1610,9 +1635,7 @@ Future<ActivityResult> _finishSession(
 
   // Written on every set already; written again here because the last one
   // may have landed while the app was being torn down.
-  if (draft.strength.sets.isNotEmpty) {
-    await LocalDb.saveStrengthSets(id, _setRows(draft.strength.sets));
-  }
+  await LocalDb.replaceStrengthSets(id, _setRows(draft.strength.sets));
 
   // The GPS tail is flushed by stopWorkout before it returns, so the route
   // read here is the whole route.
@@ -1904,6 +1927,8 @@ StrengthLog _logFrom(List<Map<String, Object?>> rows) => StrengthLog([
           loadKg: (r['load_kg'] as num?)?.toDouble(),
           rpe: (r['rpe'] as num?)?.toInt(),
           restSec: (r['rest_sec'] as num?)?.toInt(),
+          holdSec: (r['hold_sec'] as num?)?.toInt(),
+          note: _parseNote(r['note']),
           at: DateTime.fromMillisecondsSinceEpoch(
               ((r['at_ts'] as num?)?.toInt() ?? 0) * 1000),
         ),
@@ -2149,7 +2174,6 @@ class _WorkoutData {
   final int? workoutsTracked;
 
   /// The activities this user actually started, most recent first, deduped.
-  final List<Activity> recent;
 
   /// Previous and best set per exercise, from this user's own log.
   final Map<String, SetHistory> setHistory;
@@ -2191,7 +2215,7 @@ class _WorkoutData {
     this.weekImported = 0,
     this.weekLoad,
     this.workoutsTracked,
-    this.recent = const [],
+    this.mostUsed = const [],
     this.setHistory = const {},
     this.overreach,
     this.morningAfter = const [],
@@ -2200,6 +2224,11 @@ class _WorkoutData {
   });
 
   const _WorkoutData.empty() : this();
+
+
+  /// The activities this user does most, most-used first — the picker's quick
+  /// row, counted over the last 90 days (see [_load]).
+  final List<Activity> mostUsed;
 }
 
 /// One pass over the repo. Every call is defensive: this screen must render on
@@ -2270,8 +2299,10 @@ Future<_WorkoutData> _loadWorkoutData(AppState app) async {
       trimp = List<double?>.filled(7, null);
     }
 
+    // Not caught: a failed read of the session history has to reach the
+    // retry card, not draw as "No sessions recorded yet".
     final past = <_PastWorkout>[];
-    try {
+    {
       final rows = (await repo.getWorkouts(range: 'month'))['workouts'];
       if (rows is List) {
         for (final r in rows) {
@@ -2304,8 +2335,6 @@ Future<_WorkoutData> _loadWorkoutData(AppState app) async {
           ));
         }
       }
-    } catch (_) {
-      // leave `past` as-is
     }
     // Workouts another app recorded, on the SAME window the band's own list
     // uses. The store is read 90 days back (30 on Android) because that is the
@@ -2402,19 +2431,33 @@ Future<_WorkoutData> _loadWorkoutData(AppState app) async {
         .where((w) => w.strain != null)
         .fold<double?>(null, (a, w) => (a ?? 0) + w.strain!);
 
-    // Real recency, deduped, newest first — six tiles like the constant it
-    // replaces, so the picker's row is the same shape either way.
+    // The picker's quick row: the MOST-USED activities, not the most recent
+    // ones — hunting for an unusual activity is what the search and the
+    // collapsed groups are for. Counted over the last 90 days so a seasonal
+    // sport does not stay pinned at the top forever; newest use breaks ties.
     //
-    // Band sessions only. These tiles START a session, and most imported types
-    // land on the generic fallback activity — a row of "Workout" tiles that
-    // begin a five-MET nothing is worse than the six real ones.
-    final recent = <Activity>[];
-    for (final w in past) {
-      if (w.importedFrom != null) continue;
-      if (!recent.any((x) => x.name == w.activity.name)) {
-        recent.add(w.activity);
+    // Band sessions only (`sessions` table), same reason the tiles used to
+    // skip imports: these tiles START a session, and most imported types land
+    // on the generic fallback activity — a row of "Workout" tiles that begin a
+    // five-MET nothing is worse than the six real ones.
+    final mostUsed = <Activity>[];
+    try {
+      final since90 = now.millisecondsSinceEpoch ~/ 1000 - 90 * 86400;
+      // Fetch far more than the six the row shows: unknown stored types are
+      // dropped below, and a small SQL-side LIMIT could hand back only those
+      // and leave the picker on quickStart despite usable history.
+      for (final r in await LocalDb.mostUsedActivityTypes(
+          sinceTs: since90, limit: 200)) {
+        final a = activityByName(r['type'] as String?);
+        if (a == null) continue;
+        mostUsed.add(a);
+        if (mostUsed.length == 6) break;
       }
-      if (recent.length == 6) break;
+    } catch (e, st) {
+      // An unreadable table must not take the screen down — record it, then
+      // fall back to quickStart under its own heading.
+      TelemetryService.instance
+          .recordNonFatal(e, st, reason: 'most_used_activities_failed');
     }
 
     // The live screen has to have previous/best in hand before the first set;
@@ -2440,11 +2483,25 @@ Future<_WorkoutData> _loadWorkoutData(AppState app) async {
       weekImported: thisWeek.where((w) => w.importedFrom != null).length,
       weekLoad: weekLoad,
       workoutsTracked: tracked,
-      recent: recent,
+      mostUsed: mostUsed,
       setHistory: history,
       overreach: overreach,
       morningAfter: morningAfter,
       suggestions: await activeSuggestions(repo),
       importedLast: await lastImportAt(HealthImport.workouts),
     );
+}
+
+
+String _parseNote(Object? val) {
+  if (val == null) return '';
+  if (val is String) return val;
+  if (val is List<int>) {
+    try {
+      return utf8.decode(val, allowMalformed: true);
+    } catch (_) {
+      return '';
+    }
+  }
+  return '$val';
 }

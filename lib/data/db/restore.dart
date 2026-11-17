@@ -46,17 +46,87 @@ Future<void> _ldbPurgeDemoRows() async {
     });
   }
 
-Future<String> _ldbExportCopy({required bool includeSubstrateArchive, required BackupExtras extras}) async {
+Future<String> _ldbExportCopy({required bool includeSubstrateArchive, required BackupExtras extras, Directory? into, AttachedCopy? attached}) async {
+    // File-to-file SQL has one owner. The destination is opened here, never
+    // obtained from LocalDb.instance, so dynamic schema copying cannot write
+    // derived rows in the live store.
+    Future<void> copyAttached(String srcPath, String dest, AttachCopyWhere whereFor) async {
+  await deleteDatabase(dest);
+  final out = await openDatabase(dest, singleInstance: false);
+  try {
+    await out.execute('ATTACH DATABASE ? AS src', [srcPath]);
+    final schema = await out.rawQuery(
+        "SELECT type, name, sql FROM src.sqlite_master WHERE sql IS NOT NULL "
+        "AND name NOT LIKE 'sqlite_%' ORDER BY rowid");
+    final have = {
+      for (final r in await out.rawQuery(
+          "SELECT name FROM main.sqlite_master WHERE type = 'table'"))
+        r['name'] as String
+    };
+    // One DEFERRED transaction = one consistent read of the source, and
+    // only a read lock on it. sqflite's transaction() is BEGIN IMMEDIATE,
+    // which would take the source's write lock too and stall syncing.
+    await out.execute('BEGIN');
+    for (final r in schema) {
+      if (r['type'] != 'table' || have.contains(r['name'])) continue;
+      final name = r['name'] as String;
+      await out.execute(r['sql'] as String);
+      final where = await whereFor(out, name);
+      if (where == null) continue;
+      await out.execute(
+          'INSERT INTO main."$name" SELECT * FROM src."$name"$where');
+    }
+    final seq = await out.rawQuery(
+        "SELECT 1 FROM src.sqlite_master WHERE name = 'sqlite_sequence'");
+    if (seq.isNotEmpty) {
+      await out.execute('DELETE FROM main.sqlite_sequence');
+      await out.execute(
+          'INSERT INTO main.sqlite_sequence SELECT * FROM src.sqlite_sequence');
+    }
+    // Indexes, views and triggers after the rows (a trigger must not fire
+    // on the copy).
+    for (final type in const ['index', 'view', 'trigger']) {
+      for (final r in schema) {
+        if (r['type'] == type) await out.execute(r['sql'] as String);
+      }
+    }
+    final v = await out.rawQuery('PRAGMA src.user_version');
+    await out.execute('PRAGMA user_version = ${v.first.values.first}');
+    await out.execute('COMMIT');
+    await out.execute('DETACH DATABASE src');
+    await out.close();
+  } catch (_) {
+    try {
+      await out.close();
+    } catch (_) {}
+    try {
+      await deleteDatabase(dest);
+    } catch (_) {}
+    rethrow;
+  }
+    }
+    if (attached != null) {
+      await copyAttached(attached.srcPath, attached.dest, attached.whereFor);
+      return attached.dest;
+    }
+
     final db = await LocalDb.instance;
-    final tmp = await getTemporaryDirectory();
+    final tmp = into ?? await getTemporaryDirectory();
     final stamp = DateTime.now().millisecondsSinceEpoch;
     final dest = p.join(tmp.path, 'openstrap_export_$stamp.db');
     final f = File(dest);
     if (await f.exists()) await f.delete(); // VACUUM INTO requires a fresh path
     Database? copy;
     try {
-      await db.execute('VACUUM INTO ?', [dest]);
-      if (!includeSubstrateArchive) {
+      var archiveCopied = true;
+      if (!LocalDb.debugForceAttachExport && await LocalDb._vacuumIntoSupported(db)) {
+        await db.execute('VACUUM INTO ?', [dest]);
+      } else {
+        await copyAttached(db.path, dest, (_, table) async =>
+          !includeSubstrateArchive && table == SubstrateArchive.table ? null : '');
+        archiveCopied = includeSubstrateArchive;
+      }
+      if (!includeSubstrateArchive && archiveCopied) {
         copy = await openDatabase(dest, singleInstance: false);
         if (LocalDb.debugFailExportStrip) throw StateError('test: strip failed');
         await copy.delete(SubstrateArchive.table);
@@ -324,6 +394,45 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
         where: 'start_ts >= ? AND start_ts < ?',
         whereArgs: [startSec, endSec],
       );
+      // Same midnight rule as deleteDays (shared predicate _hyroxInWindowSql):
+      // a race is exported for a day when it starts that day OR one of its
+      // segments starts that day or overlaps it, and always whole.
+      await copyRows(
+        'hyrox_session',
+        where: 'id IN ${LocalDb._hyroxInWindowSql}',
+        whereArgs: [startSec, endSec, endSec, startSec, startSec, endSec, startSec],
+      );
+      await copyRows(
+        'hyrox_segment',
+        where: 'session_id IN ${LocalDb._hyroxInWindowSql}',
+        whereArgs: [startSec, endSec, endSec, startSec, startSec, endSec, startSec],
+      );
+      // Same midnight rule as deleteDays: a race is exported for a day when
+      // it starts that day OR one of its segments does, and always whole.
+      // An open segment only overlaps later days while the session is still
+      // live; a FINALIZED race (incl. an abandoned DNF with an open cut
+      // segment) is bounded by COALESCE(session.end_ts, session.start_ts),
+      // so it does not match every later day.
+      const triInWindow = '(SELECT id FROM triathlon_session '
+          'WHERE start_ts >= ? AND start_ts < ? '
+          'UNION SELECT session_id FROM triathlon_segment '
+          'WHERE start_ts IS NOT NULL AND start_ts < ? '
+          'AND ( (end_ts IS NOT NULL AND end_ts > ?) '
+          '   OR (end_ts IS NULL AND start_ts < ? '
+          '   AND EXISTS (SELECT 1 FROM triathlon_session s '
+          '        WHERE s.id = triathlon_segment.session_id '
+          '        AND (s.status <> \'finalized\' '
+          '             OR COALESCE(s.end_ts, s.start_ts, 0) > ?)))) )';
+      await copyRows(
+        'triathlon_session',
+        where: 'id IN $triInWindow',
+        whereArgs: [startSec, endSec, endSec, startSec, endSec, endSec],
+      );
+      await copyRows(
+        'triathlon_segment',
+        where: 'session_id IN $triInWindow',
+        whereArgs: [startSec, endSec, endSec, startSec, endSec, endSec],
+      );
       await copyRows(
         'live_coverage',
         where: 'end_ts > ? AND start_ts < ?',
@@ -515,6 +624,9 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
     }
 
     await db.transaction((txn) async {
+      // Scratch prefixes can include an evening owned by another day label.
+      // Clear every copy atomically with deletion so deleted raw stays deleted.
+      await LocalDb._rotateStoreIdentity(txn);
       // `raw_archive` frames are kept, but a later archive re-drive must not
       // decode them back into a day the user deleted: record the windows.
       final prevRow = await txn.query('compute_freshness',
@@ -591,6 +703,142 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
             'DELETE FROM $child WHERE session_id IN '
             '(SELECT id FROM sessions WHERE start_ts >= ? AND start_ts < ?)',
             [startSec, endSec],
+          );
+        }
+        // HYROX rows are NOT children of `sessions`: their key is the hyrox
+        // session id, and a segment's `workout_id` merely points at one.
+        // Treating them as session children matched nothing (a privacy leak
+        // on delete) and could delete a race segment whose string id collided
+        // with a workout id.
+        //
+        // A race belongs to a day when it STARTS that day, or when one of its
+        // segments OVERLAPS it. Overlap is not "starts inside": a segment that
+        // began yesterday and is still open, or ends today, was recorded on
+        // this day too. An open segment has no end, so it overlaps every later
+        // window. Deleting either day takes the WHOLE race — half a race is a
+        // record nobody can read.
+        //
+        // The ids are read first and deleted second: deleting the segments
+        // before the parent statement would empty the very subquery the parent
+        // delete is built from, which is how a cross-midnight race used to
+        // survive its own deletion.
+        // An open segment only overlaps later days while the session is still
+        // live; a FINALIZED race (incl. an abandoned DNF with an open cut
+        // segment) is bounded by COALESCE(session.end_ts, session.start_ts).
+        // The predicate is the shared _hyroxInWindowSql so export and delete
+        // cannot drift apart.
+        final hyroxIds = <String>[
+          for (final r in await txn.query(
+            'hyrox_session',
+            columns: ['id'],
+            where: 'id IN ${LocalDb._hyroxInWindowSql}',
+            whereArgs: [startSec, endSec, endSec, startSec, startSec, endSec, startSec],
+          ))
+            r['id'] as String,
+        ];
+        for (final chunk in LocalDb._sqlVarChunks(hyroxIds)) {
+          final marks = List.filled(chunk.length, '?').join(',');
+          // Collect the linked workouts BEFORE the segment rows go: a segment
+          // deleted with its `sessions` row left behind would orphan the
+          // workout's route and splits on a day the user asked to delete.
+          final linked = await txn.query(
+            'hyrox_segment',
+            columns: ['workout_id'],
+            where: 'session_id IN ($marks) AND workout_id IS NOT NULL',
+            whereArgs: chunk,
+          );
+          for (final w in linked) {
+            final wid = w['workout_id'] as String;
+            await txn.delete('workout_route',
+                where: 'session_id = ?', whereArgs: [wid]);
+            await txn.delete('workout_split',
+                where: 'session_id = ?', whereArgs: [wid]);
+            await txn.delete('session_sensor',
+                where: 'session_id = ?', whereArgs: [wid]);
+            await txn.delete('strength_set',
+                where: 'session_id = ?', whereArgs: [wid]);
+            deleted += await txn.delete('sessions',
+                where: 'id = ?', whereArgs: [wid]);
+          }
+          deleted += await txn.rawDelete(
+            'DELETE FROM hyrox_segment WHERE session_id IN ($marks)',
+            chunk,
+          );
+          deleted += await txn.rawDelete(
+            'DELETE FROM hyrox_session WHERE id IN ($marks)',
+            chunk,
+          );
+        }
+        // Triathlon rows are NOT children of `sessions`: their key is the
+        // triathlon session id, and a segment's `workout_id` merely points at
+        // one. Treating them as session children matched nothing (a privacy
+        // leak on delete) and could delete a race segment whose string id
+        // collided with a workout id.
+        //
+        // A race belongs to a day when it STARTS that day, or when one of its
+        // segments OVERLAPS it. Overlap is not "starts inside": a segment that
+        // began yesterday and is still open, or ends today, was recorded on
+        // this day too. An open segment has no end, so it overlaps every later
+        // window. Deleting either day takes the WHOLE race — half a race is a
+        // record nobody can read.
+        //
+        // The ids are read first and deleted second: deleting the segments
+        // before the parent statement would empty the very subquery the parent
+        // delete is built from, which is how a cross-midnight race used to
+        // survive its own deletion.
+        // An open segment only overlaps later days while the session is still
+        // live; a FINALIZED race (incl. an abandoned DNF with an open cut
+        // segment) is bounded by COALESCE(session.end_ts, session.start_ts).
+        const triInWindow = '(SELECT id FROM triathlon_session '
+            'WHERE start_ts >= ? AND start_ts < ? '
+            'UNION SELECT session_id FROM triathlon_segment '
+            'WHERE start_ts IS NOT NULL AND start_ts < ? '
+            'AND ( (end_ts IS NOT NULL AND end_ts > ?) '
+            '   OR (end_ts IS NULL AND start_ts < ? '
+            '   AND EXISTS (SELECT 1 FROM triathlon_session s '
+            '        WHERE s.id = triathlon_segment.session_id '
+            '        AND (s.status <> \'finalized\' '
+            '             OR COALESCE(s.end_ts, s.start_ts, 0) > ?)))) )';
+        final triIds = <String>[
+          for (final r in await txn.query(
+            'triathlon_session',
+            columns: ['id'],
+            where: 'id IN $triInWindow',
+            whereArgs: [startSec, endSec, endSec, startSec, endSec, endSec],
+          ))
+            r['id'] as String,
+        ];
+        for (final chunk in LocalDb._sqlVarChunks(triIds)) {
+          final marks = List.filled(chunk.length, '?').join(',');
+          // Collect the linked workouts BEFORE the segment rows go: a segment
+          // deleted with its `sessions` row left behind would orphan the
+          // workout's route and splits on a day the user asked to delete.
+          final linked = await txn.query(
+            'triathlon_segment',
+            columns: ['workout_id'],
+            where: 'session_id IN ($marks) AND workout_id IS NOT NULL',
+            whereArgs: chunk,
+          );
+          for (final w in linked) {
+            final wid = w['workout_id'] as String;
+            await txn.delete('workout_route',
+                where: 'session_id = ?', whereArgs: [wid]);
+            await txn.delete('workout_split',
+                where: 'session_id = ?', whereArgs: [wid]);
+            await txn.delete('session_sensor',
+                where: 'session_id = ?', whereArgs: [wid]);
+            await txn.delete('strength_set',
+                where: 'session_id = ?', whereArgs: [wid]);
+            deleted += await txn.delete('sessions',
+                where: 'id = ?', whereArgs: [wid]);
+          }
+          deleted += await txn.rawDelete(
+            'DELETE FROM triathlon_segment WHERE session_id IN ($marks)',
+            chunk,
+          );
+          deleted += await txn.rawDelete(
+            'DELETE FROM triathlon_session WHERE id IN ($marks)',
+            chunk,
           );
         }
         deleted += await txn.delete(
@@ -730,7 +978,7 @@ Future<int> _ldbWipeAll() async {
     final rows = await db.rawQuery(
       "SELECT name FROM sqlite_master WHERE type = 'table' "
       "AND name NOT LIKE 'sqlite_%' AND name != 'android_metadata' "
-      "AND name != 'input_revision'",
+      "AND name NOT IN ('input_revision', 'input_rev', 'session_ceiling_rev')",
     );
     var deleted = 0;
     await db.transaction((txn) async {
@@ -742,8 +990,11 @@ Future<int> _ldbWipeAll() async {
       // name every day the wearer had data, so "Delete everything" empties it
       // too. Every stamp went with the wipe, so restarting at revision 0
       // cannot collide; a pass still in flight is fenced by the wipe epoch
-      // ([LocalDb.storeGeneration]), not by these numbers.
+      // ([storeGeneration]), not by these numbers.
       deleted += await txn.delete('input_revision');
+      deleted += await txn.delete('input_rev');
+      deleted += await txn.delete('session_ceiling_rev');
+      await LocalDb._rotateStoreIdentity(txn);
     });
     await LocalDb._markStoreReplaced();
     return deleted;
@@ -769,7 +1020,7 @@ Future<Set<String>> _ldbForeignFamilyDates({required Iterable<String> ignore}) a
     return {for (final r in rows) r['date'] as String};
   }
 
-Future<Map<String, int>> _ldbImportFromDbFile(String path, {required void Function(ImportProgress p)? onProgress}) async {
+Future<ImportSummary> _ldbImportFromDbFile(String path, {required void Function(ImportProgress p)? onProgress}) async {
     if (!await File(path).exists()) {
       throw const FileSystemException('Backup file not found');
     }
@@ -856,17 +1107,36 @@ ImportStage _ldbPrivImportStageOf(String table) => switch (table) {
         _ => ImportStage.other,
       };
 
-Future<Map<String, int>> _ldbPrivMergeFromDbFile(String path, {required List<String>? only, required bool tolerant, required void Function(ImportProgress p)? onProgress, ImportRun? run}) async {
+Future<Map<String, int>> _ldbPrivMergeFromDbFile(String path, {required List<String>? only, required bool tolerant, required void Function(ImportProgress p)? onProgress, ImportRun? run}) =>
+    LocalDb._withReaderInvalidated(() => _ldbPrivMergeFromDbFileWithReaderHeld(
+        path, only: only, tolerant: tolerant, onProgress: onProgress, run: run));
+
+Future<Map<String, int>> _ldbPrivMergeFromDbFileWithReaderHeld(String path, {required List<String>? only, required bool tolerant, required void Function(ImportProgress p)? onProgress, ImportRun? run}) async {
     final committedBefore = LocalDb._mergePagesCommitted;
     try {
       return await LocalDb._mergeFromDbFileBody(path,
           only: only, tolerant: tolerant, onProgress: onProgress, run: run);
     } finally {
-      if (LocalDb._mergePagesCommitted != committedBefore) await LocalDb._markStoreReplaced();
+      if (LocalDb._mergePagesCommitted != committedBefore) {
+        await LocalDb._markStoreReplaced();
+      }
     }
   }
 
 Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List<String>? only, required bool tolerant, required void Function(ImportProgress p)? onProgress, ImportRun? run}) async {
+    final resetGen = ResetGate.generation;
+    var identityCommitted = false;
+    Future<void> beforePageCommit(Transaction txn) async {
+      if (ResetGate.changedSince(resetGen)) {
+        throw StateError('import cancelled by reset');
+      }
+      if (!identityCommitted) await LocalDb._rotateStoreIdentity(txn);
+    }
+    void pageCommitted() {
+      identityCommitted = true;
+      LocalDb._mergePagesCommitted++;
+    }
+
     final perfId = run == null ? 'salvage' : '${run.startedAt}-${run.id}';
     final prepWatch = Stopwatch()..start();
     // One place that reports a preparing step (opening, checking, counting).
@@ -933,6 +1203,10 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     // "nothing imported" from "we don't know".
     Set<String>? importedDays;
     List<String>? restoredWornOn;
+    final localCursors = <String, Object?>{
+      for (final r in await db.query('sync_cursor', columns: ['name', 'value']))
+        '${r['name']}': r['value'],
+    };
     // Days this device already finalized itself, read BEFORE anything merges.
     // The day_result guard below protects their bundle; their series scalars,
     // version stamp and this device's baselines are the same day's history and
@@ -960,6 +1234,139 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
         await ImportJournal.putMeta({'preFinal': run.preFinal!.join(',')});
       }
     }
+    // A LOCAL race wins over an OLDER snapshot, but a NEWER backup must be
+    // able to advance it (e.g. the final boundaries recorded on another
+    // phone). `discarded` is an explicit local decision and always wins.
+    // Segments follow their parent's verdict, because they arrive as separate
+    // rows and would otherwise rewrite the boundaries of a skipped race.
+    final protectedHyrox = <String>{};
+    final hyroxLastEdit = <String, int>{};
+    // Session ids whose imported hyrox_session row the merge skipped (locally
+    // discarded or newer). Their segment rows must be skipped too: segments
+    // follow their parent's verdict, and hyrox_session is merged before
+    // hyrox_segment in _restoreTables, so the set is complete before the
+    // segment pass starts.
+    final skippedHyrox = <String>{};
+    try {
+      // A race arrives as a parent row plus its segment rows, and a replaced
+      // parent has its local segments cleared first. A restore cut off between
+      // the two leaves a parent with none or only some of its segments; if that
+      // parent counted as "local and current" the next restore would skip the
+      // segments for good. So a parent only earns the newer-than-snapshot
+      // protection once every segment its plan calls for is on disk.
+      final haveHyroxSegments = <String, int>{
+        for (final r in await db.rawQuery(
+          'SELECT session_id, COUNT(*) AS n FROM hyrox_segment '
+          'GROUP BY session_id',
+        ))
+          '${r['session_id']}': (r['n'] as num?)?.toInt() ?? 0,
+      };
+      Future<int?> plannedHyroxSegments(Object? planJson) async {
+        try {
+          final j = await JsonPayloadLane.shared.decodeUncached('$planJson');
+          final segs = j is Map ? j['segments'] : null;
+          return segs is List ? segs.length : null;
+        } catch (_) {
+          return null;
+        }
+      }
+
+      for (final r in await db.query(
+        'hyrox_session',
+        columns: ['id', 'status', 'updated_at', 'finalized_at', 'plan_json'],
+        distinct: true,
+      )) {
+        final id = '${r['id']}';
+        // Finalization is one-way: a finalized local race is a record and is
+        // never replaced by an import, not even a newer backup's unfinalized
+        // copy. Discarded is an explicit local decision and always wins too.
+        if (r['status'] == 'discarded' || r['finalized_at'] != null) {
+          protectedHyrox.add(id);
+        }
+        final planned = await plannedHyroxSegments(r['plan_json']);
+        if (planned == null || (haveHyroxSegments[id] ?? 0) < planned) {
+          continue; // an interrupted import: let the next one finish it
+        }
+        hyroxLastEdit[id] = (r['updated_at'] as num?)?.toInt() ?? 0;
+      }
+    } on DatabaseException {
+      /* table absent in an older build of this file — nothing to protect */
+    }
+    // A local race is protected from an import when the athlete explicitly
+    // discarded it, or when the local row was edited no earlier than the
+    // imported snapshot (a newer backup may still advance the race). [row] is
+    // the imported hyrox_session row, null for segment rows.
+    bool isHyroxProtected(String id, Map<String, Object?>? row) {
+      if (protectedHyrox.contains(id)) return true;
+      if (row == null) return false;
+      final local = hyroxLastEdit[id];
+      if (local == null) return false;
+      final theirs = (row['updated_at'] as num?)?.toInt() ?? 0;
+      return local >= theirs;
+    }
+    // A LOCAL race wins over an OLDER snapshot, but a NEWER backup must be
+    // able to advance it (e.g. the final boundaries recorded on another
+    // phone). `discarded` is an explicit local decision and always wins.
+    // Segments follow their parent's verdict, because they arrive as separate
+    // rows and would otherwise rewrite the boundaries of a skipped race.
+    final protectedTriathlons = <String>{};
+    final triLastEdit = <String, int>{};
+    final skippedTriathlons = <String>{};
+    // A local race is protected from an import when the athlete explicitly
+    // discarded it, or when the local row was edited no earlier than the
+    // imported snapshot (a newer backup may still advance the race). [row] is
+    // the imported triathlon_session row, null for segment rows.
+    bool triProtected(String id, Map<String, Object?>? row) {
+      if (protectedTriathlons.contains(id)) return true;
+      if (row == null) return false;
+      final local = triLastEdit[id];
+      if (local == null) return false;
+      final theirs = (row['updated_at'] as num?)?.toInt() ?? 0;
+      return local >= theirs;
+    }
+
+    try {
+      // A race arrives as a parent row and its segment rows, in separate
+      // statements. A restore cut off between the two leaves a parent with
+      // none or only some of its segments; if that parent counted as "local
+      // and current" the next restore would skip its segments for good. So a
+      // parent only earns the newer-than-snapshot protection once every
+      // segment its plan calls for is on disk.
+      final haveSegments = <String, int>{
+        for (final r in await db.rawQuery(
+          'SELECT session_id, COUNT(*) AS n FROM triathlon_segment '
+          'GROUP BY session_id',
+        ))
+          '${r['session_id']}': (r['n'] as num?)?.toInt() ?? 0,
+      };
+      Future<int?> plannedSegments(Object? planJson) async {
+        try {
+          final j = await JsonPayloadLane.shared.decodeUncached('$planJson');
+          final segs = j is Map ? j['segments'] : null;
+          return segs is List ? segs.length : null;
+        } catch (_) {
+          return null;
+        }
+      }
+
+      for (final r in await db.query(
+        'triathlon_session',
+        columns: ['id', 'status', 'updated_at', 'plan_json'],
+        distinct: true,
+      )) {
+        final id = '${r['id']}';
+        if (r['status'] == 'discarded') {
+          protectedTriathlons.add(id);
+        }
+        final planned = await plannedSegments(r['plan_json']);
+        if (planned == null || (haveSegments[id] ?? 0) < planned) {
+          continue; // an interrupted import: let the next one finish it
+        }
+        triLastEdit[id] = (r['updated_at'] as num?)?.toInt() ?? 0;
+      }
+    } on DatabaseException {
+      /* table absent in an older build of this file — nothing to protect */
+    }
     var archiveSkipped = run?.archiveSkipped ?? 0;
     final resumedHad = <String>{};
     bool had(String t) => (counts[t] ?? 0) > 0 || resumedHad.contains(t);
@@ -986,6 +1393,44 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       }
     }
 
+    // Preserve a copy failure, but never report success when cleanup failed.
+    // Each cleanup is attempted even if an earlier one fails (main's contract).
+    Future<void> cleanupRestore({bool protectedRows = false,
+        bool rrRows = false, bool finalRows = false,
+        bool closeSource = false, required bool preserveError}) async {
+      Object? firstError;
+      StackTrace? firstStack;
+      if (protectedRows) {
+        try {
+          await db.execute('DROP TABLE IF EXISTS temp._restore_protected_day_results');
+        } catch (e, st) { firstError ??= e; firstStack ??= st; }
+      }
+      if (rrRows) {
+        try {
+          await db.execute('DROP TABLE IF EXISTS temp._restore_rr_src_max');
+        } catch (e, st) { firstError ??= e; firstStack ??= st; }
+        try {
+          await db.execute('DROP TABLE IF EXISTS temp._restore_rr_carried');
+        } catch (e, st) { firstError ??= e; firstStack ??= st; }
+      }
+      if (finalRows) {
+        try {
+          await db.execute('DROP TABLE IF EXISTS temp._restore_finalized_days');
+        } catch (e, st) { firstError ??= e; firstStack ??= st; }
+      }
+      if (closeSource) {
+        try {
+          if (impAttached) await db.execute('DETACH DATABASE imp');
+        } catch (e, st) { firstError ??= e; firstStack ??= st; }
+        try {
+          await src.close();
+        } catch (e, st) { firstError ??= e; firstStack ??= st; }
+      }
+      if (!preserveError && firstError != null) {
+        Error.throwWithStackTrace(firstError, firstStack!);
+      }
+    }
+
     final perfPages = <String, int>{};
     final perfSerialized = <String, int>{};
     Future<bool> mergeBulkTable(String t, int index) async {
@@ -1009,9 +1454,12 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       final sourceColumns = {
         for (final column in sourceInfo) column['name'] as String,
       };
-      final maxRowid = Sqflite.firstIntValue(
-        await db.rawQuery('SELECT MAX(rowid) FROM imp.${quoteSql(t)}'),
-      );
+      // Two indexed boundary lookups in one platform call; MIN+MAX as
+      // aggregates in one scan would walk the whole source on mobile.
+      final bounds = (await db.rawQuery(
+          'SELECT (SELECT MIN(rowid) FROM imp.${quoteSql(t)}) AS lo, '
+          '(SELECT MAX(rowid) FROM imp.${quoteSql(t)}) AS hi')).single;
+      final maxRowid = (bounds['hi'] as num?)?.toInt();
       if (maxRowid == null) {
         counts[t] = 0;
         return true;
@@ -1122,8 +1570,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       // `rowid > 0` never reads it, and a table whose highest rowid is 0 was
       // skipped outright. Start just below the lowest rowid when there is one
       // at or under 0; the common case keeps its 0-based chunks.
-      final minRowid = Sqflite.firstIntValue(
-          await db.rawQuery('SELECT MIN(rowid) FROM imp.${quoteSql(t)}'));
+      final minRowid = (bounds['lo'] as num?)?.toInt();
       final firstLower = minRowid != null && minRowid <= 0
           ? (minRowid == LocalDb._kBelowAnyRowid ? minRowid : minRowid - 1)
           : 0;
@@ -1132,7 +1579,19 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       var protectedDayResults = false;
       var rrSourceMax = false;
       var copied = 0;
+      var copyFailed = true;
       try {
+        // Main's row-count boundaries avoid one transaction per empty rowid
+        // range. Keep the fork journal's cursor as the committed upper rowid.
+        final ends = <int>[];
+        for (var lo = firstLower;;) {
+          final hi = Sqflite.firstIntValue(await db.rawQuery(
+            'SELECT MAX(r) FROM (SELECT rowid AS r FROM imp.${quoteSql(t)} '
+            'WHERE rowid > ? ORDER BY rowid LIMIT $chunkRows)', [lo]));
+          if (hi == null) break;
+          ends.add(hi);
+          lo = hi;
+        }
         if (t == 'decoded_rr') {
           final rrWatch = Stopwatch()..start();
           var rrPages = 0;
@@ -1146,7 +1605,9 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           rrSourceMax = true;
           // Paged like the copy below, so a band-sync commit can land between
           // pages instead of waiting out a scan of the whole source.
-          for (var lo = firstLower; lo < maxRowid; lo += chunkRows) {
+          for (var pageIndex = 0; pageIndex < ends.length; pageIndex++) {
+            final lo = pageIndex == 0 ? firstLower : ends[pageIndex - 1];
+            final hi = ends[pageIndex];
             rrPages++;
             final rrPageWatch = Stopwatch()..start();
             // REPLACE with a LEFT JOIN rather than an UPSERT: Android 8-10
@@ -1155,13 +1616,13 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                 (d, k, m)
               SELECT c.d, c.k, MAX(c.m, COALESCE(x.m, c.m))
               FROM (SELECT $derivedDeviceId AS d, $derivedTsMs AS k,
-                      MAX(${sourceColumn('beat_index')}) AS m
+                      MAX(CAST(${sourceColumn('beat_index')} AS INTEGER)) AS m
                     FROM imp.${quoteSql(t)} s
                     WHERE s.rowid > ? AND s.rowid <= ? AND $unbounded
                       AND ${numericSql(sourceColumn('beat_index'))}
-                    GROUP BY d, k) c
+                    GROUP BY 1, 2) c
               LEFT JOIN temp._restore_rr_src_max x ON x.d = c.d AND x.k = c.k''',
-                [lo, lo + chunkRows]);
+                [lo, hi]);
             if (rrPageWatch.elapsedMilliseconds > 2000) {
               ImportPerf.write(perfId, 'chunk', 'table=decoded_rr path=bulk phase=rr_prepare page=$rrPages lo=$lo hi=${lo + chunkRows} ms=${rrPageWatch.elapsedMilliseconds}');
             }
@@ -1170,14 +1631,14 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
         }
         var lower = startLower;
         var lastChunkCopied = -1;
-        while (lower < maxRowid) {
+        for (final upper in ends.where((end) => end > startLower)) {
           final chunkWatch = Stopwatch()..start();
           final chunkLower = lower;
-          final upper = lower + chunkRows > maxRowid ? maxRowid : lower + chunkRows;
           final first = lower == startLower;
           final txnWatch = Stopwatch()..start();
           var writeMs = 0, cleanupMs = 0, journalMs = 0, bodyMs = 0;
           await src.mainTransaction(db, (txn) async {
+            await beforePageCommit(txn);
             final bodyWatch = Stopwatch()..start();
             if (t == 'day_result' && first) {
               // Inside the first chunk's transaction, so a day the engine
@@ -1259,36 +1720,18 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           txnWatch.stop();
           perfPages[t] = (perfPages[t] ?? 0) + 1;
           ImportPerf.page(perfId);
-          LocalDb._mergePagesCommitted++;
+          pageCommitted();
           ImportJournal.notify();
           lower = upper;
-          if (lastChunkCopied == 0 && lower < maxRowid) {
-            // A table keyed on a big integer (rec_ts as the rowid) is mostly
-            // gaps: jump to its next row instead of walking every empty chunk
-            // (each one a transaction and a journal write).
-            final next = Sqflite.firstIntValue(await db.rawQuery(
-                'SELECT MIN(rowid) FROM imp.${quoteSql(t)} WHERE rowid > ?',
-                [lower]));
-            if (next == null) break;
-            if (next - 1 > lower) lower = next - 1;
-          }
           if (chunkWatch.elapsedMilliseconds > 2000) {
             ImportPerf.write(perfId, 'chunk', 'table=$t path=bulk lo=$chunkLower hi=$upper page=${perfPages[t]} rows=$lastChunkCopied ms=${chunkWatch.elapsedMilliseconds} write_ms=$writeMs cleanup_ms=$cleanupMs journal_ms=$journalMs txn_ms=${txnWatch.elapsedMilliseconds} body_ms=$bodyMs');
           }
           plan?.advance(t, upper);
         }
+        copyFailed = false;
       } finally {
-        // Never let a cleanup error mask the copy's own error; a leftover
-        // temp table is dropped before the next restore creates it.
-        try {
-          if (protectedDayResults) {
-            await db.execute(
-                'DROP TABLE IF EXISTS temp._restore_protected_day_results');
-          }
-          if (rrSourceMax) {
-            await db.execute('DROP TABLE IF EXISTS temp._restore_rr_src_max');
-          }
-        } catch (_) {}
+        await cleanupRestore(protectedRows: protectedDayResults,
+            rrRows: rrSourceMax, preserveError: copyFailed);
       }
       counts[t] = copied;
       return true;
@@ -1322,6 +1765,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
         newId: const RandomRangeIds(),
       );
       await db.transaction((txn) async {
+        if (additions.isNotEmpty) await beforePageCommit(txn);
         if (run != null) {
           await ImportJournal.advance(txn, run, index, t, rows.length, additions.length);
         }
@@ -1329,10 +1773,12 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           await txn.insert(t, range.toJson());
         }
       });
+      if (additions.isNotEmpty) pageCommitted();
       plan?.advance(t, rows.length);
       return additions.length;
     }
 
+    var restoreFailed = true;
     try {
       ImportPerf.phase('open_policy', prepWatch, run: perfId);
       final attachWatch = Stopwatch()..start();
@@ -1470,6 +1916,12 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
         try {
           plan?.start(t);
           await ImportHooks.table?.beforeTable(t);
+          if (t == 'raw_archive') {
+            counts[t] = await LocalDb._mergeRawArchive(src, db,
+              beforePageCommit: beforePageCommit,
+              onPageCommitted: pageCommitted);
+            continue;
+          }
           if (await mergeBulkTable(t, index)) continue;
           if (t == 'track_setup_history') {
             // CLAIM(range-restore-coverage) [review R3-1]: never REPLACE by id.
@@ -1606,10 +2058,38 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           // keeps it; restored nights arrive finalized and never re-fold.
           final localProfileNights = t == 'baselines'
               ? SleepProfilePolicy.foldedDays(
-                  (await LocalDb.baseline('sleep_user_profile'))?['payload_json']
+                  (await LocalDb.baseline('sleep_user_profile', executor: db))?['payload_json']
                       as String?,
                 ).length
               : 0;
+          // Hand-entered rows the user may have edited since the backup was
+          // taken. A plain REPLACE handed every colliding key back to the
+          // backup's older copy: a rewritten journal note, a corrected lab
+          // value or sleep window, a finished workout turned back into the
+          // 'live' one a mid-workout backup caught. So the newer side keeps
+          // the key; a table with no edit stamp keeps the local row, and a
+          // restore only adds what this install has lost.
+          //
+          // Snapshotted BEFORE the table merges, so a key the backup fills in
+          // on page 1 does not read as "local" on page 2.
+          final edited = LocalDb._restoreEditedKeys[t];
+          final localEdits = <String, int>{};
+          String editKey(Map<String, Object?> r) =>
+              [for (final c in edited!.$1) '${r[c]}'].join('|');
+          if (edited != null) {
+            final keys = edited.$1.join(', ');
+            final stamp = edited.$2 == null
+                ? '0'
+                : 'MAX(COALESCE(${edited.$2}, 0))';
+            for (final r in await db.rawQuery(
+              'SELECT $keys, $stamp AS f FROM $t GROUP BY $keys',
+            )) {
+              localEdits[editKey(r)] = (r['f'] as num?)?.toInt() ?? 0;
+            }
+          }
+          // Sets already replaced wholesale by a newer backup copy — the
+          // local set is cleared once, on the first row, never per page.
+          final replacedSets = <String>{};
           var copied = 0;
           var page = firstPage;
           // ONE TRANSACTION PER PAGE, not per table. The whole-table transaction
@@ -1661,6 +2141,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
             }
             final txnWatch = Stopwatch()..start();
             await src.mainTransaction(db, (txn) async {
+              await beforePageCommit(txn);
               final bodyWatch = Stopwatch()..start();
               final journalWatch = Stopwatch()..start();
               if (run != null) {
@@ -1755,6 +2236,23 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                   // A newer local correction has already answered this window.
                   if (local.isNotEmpty) continue;
                 }
+                if (edited != null) {
+                  final key = editKey(row);
+                  final mine = localEdits[key];
+                  if (mine != null) {
+                    final stamp = edited.$2;
+                    final theirs =
+                        stamp == null ? null : (row[stamp] as num?)?.toInt();
+                    if (theirs == null || theirs <= mine) continue;
+                    // The backup's day is newer, and a day's fields are a SET:
+                    // patching it row by row would keep a field the backup's
+                    // version had already removed.
+                    if (t == 'journal_metric' && replacedSets.add(key)) {
+                      batch.delete(t, where: 'date = ?', whereArgs: [row['date']]);
+                      if (++ops >= chunkOps) await flush();
+                    }
+                  }
+                }
                 if (t == 'activity_suggestions') {
                   final local = await txn.query(t, where: 'id = ?', whereArgs: [row['id']], limit: 1);
                   if (local.isNotEmpty && (local.single['status'] != 'pending' ||
@@ -1817,6 +2315,63 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                       if (++ops >= chunkOps) await flush();
                     }
                   }
+                  continue;
+                }
+                // Foreign hardware handles cannot identify a sensor on this phone.
+                if (t == 'device') {
+                  final local = await txn.query('device', columns: ['id'],
+                      where: 'id = ?', whereArgs: [row['id']]);
+                  if (local.isNotEmpty) continue;
+                  row['remote_id'] = null;
+                }
+                if (t == 'sync_cursor') {
+                  final name = '${row['name']}';
+                  // Only a successful restore on THIS install establishes it.
+                  if (name == LocalDb._kSettingsImported) continue;
+                  if (localCursors.containsKey(name)) {
+                    if (name != LocalDb.kDecodedPrunedBeforeCursor) continue;
+                    final mine = int.tryParse('${localCursors[name]}');
+                    final theirs = int.tryParse('${row['value']}');
+                    if (theirs == null || (mine != null && theirs <= mine)) {
+                      continue;
+                    }
+                  }
+                }
+                if (t == 'hyrox_session' &&
+                    isHyroxProtected('${row['id']}', row)) {
+                  skippedHyrox.add('${row['id']}');
+                  continue; // locally discarded/finalized, or newer than the snapshot
+                }
+                if (t == 'hyrox_session') {
+                  // The session pass runs before the segment pass and FKs are
+                  // off: a replaced parent would keep local segment rows the
+                  // backup does not carry. Delete them so the restored race
+                  // shows exactly the backup's segments. Skipped (protected)
+                  // sessions never reach here, so their segments stay protected.
+                  // MUST run on the transaction (txn), not db — calling db.*
+                  // inside db.transaction deadlocks.
+                  await txn.delete(
+                    'hyrox_segment',
+                    where: 'session_id = ?',
+                    whereArgs: ['${row['id']}'],
+                  );
+                }
+                if (t == 'hyrox_segment' &&
+                    (isHyroxProtected('${row['session_id']}', null) ||
+                        skippedHyrox.contains('${row['session_id']}'))) {
+                  continue; // parent skipped — the segments follow its verdict
+                }
+                if (t == 'triathlon_session' &&
+                    triProtected('${row['id']}', row)) {
+                  // Locally discarded, or newer than the snapshot. Its
+                  // segments are skipped with it: the parent table is merged
+                  // first, so the verdict is already known when they arrive.
+                  skippedTriathlons.add('${row['id']}');
+                  continue;
+                }
+                if (t == 'triathlon_segment' &&
+                    (protectedTriathlons.contains('${row['session_id']}') ||
+                        skippedTriathlons.contains('${row['session_id']}'))) {
                   continue;
                 }
                 if (t == 'day_result') {
@@ -2017,7 +2572,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
               ImportPerf.write(perfId, 'chunk', 'table=$t path=$perfPath lo=$lastRowid hi=$pageLast page=${perfPages[t]} rows=${page.length} ms=${pageWatch.elapsedMilliseconds} write_ms=$writeMs journal_ms=$journalMs txn_ms=${txnWatch.elapsedMilliseconds} body_ms=$bodyMs source_query_ms=$sourceQueryMs');
             }
             sourceQueryMs = 0;
-            LocalDb._mergePagesCommitted++;
+            pageCommitted();
             // Advance past the last row this page actually delivered. Read the
             // cursor BEFORE dropping the page, and stop on a short page rather
             // than issuing one more query to discover the end.
@@ -2060,17 +2615,11 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           }
         }
       }
+      restoreFailed = false;
     } finally {
-      // Cleanup errors are swallowed so they never mask the restore's own.
-      try {
-        if (finalizedDaysSnapshot) {
-          await db.execute('DROP TABLE IF EXISTS temp._restore_finalized_days');
-        }
-      } catch (_) {}
-      try {
-        if (impAttached) await db.execute('DETACH DATABASE imp');
-      } catch (_) {}
-      await src.close();
+      await cleanupRestore(protectedRows: impAttached, rrRows: impAttached,
+          finalRows: finalizedDaysSnapshot, closeSource: true,
+          preserveError: restoreFailed);
     }
     // AFTER every table, sync_cursor included: that table is a plain REPLACE
     // from the source, so a stale `decoded_pruned_before` in the file would
@@ -2078,7 +2627,14 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     // sit above the oldest decoded second actually present.
     final cleanupWatch = Stopwatch()..start();
     if (order.contains('decoded_onehz') || order.contains('sync_cursor')) {
-      await LocalDb._reconcilePrunedCursor(cursorBeforeImport);
+      // Main keeps the greater edge while copying. The fork must still
+      // preserve the ORIGINAL local holes on resume: its edge cannot be
+      // clamped to the newest row of an older backup. Only a newly imported
+      // claim (no local edge) uses the raw-aware initial clamp.
+      final current = await LocalDb.getCursorInt(LocalDb.kDecodedPrunedBeforeCursor);
+      final retainedEdge = cursorBeforeImport == null ? null
+          : (current != null && current > cursorBeforeImport ? current : cursorBeforeImport);
+      await LocalDb._reconcilePrunedCursor(retainedEdge);
     }
     ImportPerf.phase('reconcile_cursor', cleanupWatch, run: perfId);
     if (resumed || counts.values.any((count) => count > 0)) {
@@ -2124,8 +2680,9 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     // import. Rewind it.
     if (had('day_result')) {
       await LocalDb.putComputeFreshness(LocalDb.kReencodeCursorKey, jsonEncode({}));
-      // Same for the raw-free nap cleanup: imported old days may carry the
-      // next-night nap double count it removes, so it runs again.
+    }
+    // A resumed nap-edit copy can recompose a kept day without importing it.
+    if (had('day_result') || had('sleep_nap')) {
       await LocalDb.deleteComputeFreshness(LocalDb.kNapNextNightCleanupKey);
     }
     // A restored ecg_raw_packet row from an older export has no `origin`

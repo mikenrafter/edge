@@ -1,11 +1,11 @@
+import 'util/callable.dart';
+import 'package:flutter/foundation.dart' show debugPrintSynchronously;
 import 'dart:async';
 import 'ui2/read_prefetch.dart';
 import 'ui2/sleep_operation_errors.dart';
-
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
-
 import 'ai/briefing.dart' show BriefingPeriod;
 import 'coach/coach_config.dart';
 import 'demo/demo_mode_banner.dart';
@@ -45,11 +45,17 @@ import 'ui2/screens/sleep_tab.dart';
 import 'ui2/screens/wellness_screen.dart';
 import 'ui2/screens/workout_screen.dart';
 import 'ui2/ui2.dart';
-import 'data/db.dart' show LocalDb;
+import 'data/db.dart';
 import 'settings/settings_repository.dart' show settingsRestoredSignal;
 import 'ui2/guides/guide_dim.dart';
 import 'ui2/guides/guide_runner.dart';
 import 'ui2/skeleton/unit_paint.dart' show GuideScrollBehavior;
+
+import 'platform/activity_relaunch.dart';
+import 'state/units_controller.dart';
+
+
+
 
 class OpenStrapApp extends StatefulWidget {
   const OpenStrapApp({super.key});
@@ -69,18 +75,18 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
     // key-aware AI notification schedule live there).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      context.read<AppState>().startScaleWatcher();
       context.read<AppState>().attachCoachConfig(context.read<CoachConfig>());
+      context.read<AppState>().attachLocale(context.read<LocaleController>());
 
       final app = context.read<AppState>();
       // A cold start into the foreground has no `resumed` transition, so this
       // is where the read connection is first allowed. A process starts with it
       // off (a headless launch never reaches this callback).
-      final startState = WidgetsBinding.instance.lifecycleState;
-      unawaited(LocalDb.setForeground(
-        startState != AppLifecycleState.detached &&
-            startState != AppLifecycleState.paused &&
-            startState != AppLifecycleState.hidden,
-      ));
+      unawaited(LocalDb.setForeground(screenReadsForeground(WidgetsBinding.instance.lifecycleState)));
+      // Optional maintenance yields to sync/import and never joins Home's load.
+      final maintenance = app.indexMaintenanceStarter;
+      if (maintenance != null) unawaited(maintenance.call());
       if (app.isPaired) app.openSession();
       // A cold start into the foreground has no `resumed` transition.
       unawaited(app.noteAppOpened());
@@ -100,7 +106,15 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
   }
 
   void _onSettingsRestored() {
-    if (mounted) unawaited(context.read<ThemeController>().reloadFromPrefs());
+    if (!mounted) return;
+    unawaited(_reloadRestoredSetting('theme_choice',
+        context.read<ThemeController>().reloadFromPrefs()));
+    unawaited(_reloadRestoredSetting('locale_override',
+        context.read<LocaleController>().reloadFromPrefs()));
+    unawaited(_reloadRestoredSetting('units_system',
+        context.read<UnitsController>().reloadFromPrefs()));
+    unawaited(_reloadRestoredSetting('clock_format',
+        context.read<ClockFormatController>().reloadFromPrefs()));
   }
 
   @override
@@ -124,6 +138,12 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
     if (state == AppLifecycleState.resumed) {
       // The read connection lives only while the UI can show something.
       unawaited(LocalDb.setForeground(true));
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final maintenance = app.indexMaintenanceStarter;
+        if (maintenance != null) unawaited(maintenance.call());
+      });
+      app.resumeDerivationRetention();
       // The user may have flipped our notification switch either way in OS
       // Settings while we were backgrounded. Drop the cached authorization
       // decision so the next present/schedule re-reads reality — a denial used
@@ -151,6 +171,7 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       // that works on both platforms, and a schedule that claims "daily" while
       // delivering whenever the OS feels like it is worse than one that is
       // honest about when it fires.
+      app.startScaleWatcher();
       unawaited(app.runBackupIfDue());
       // Re-publish the widget snapshot. `has_data` is decided WHEN THE
       // SNAPSHOT IS WRITTEN (WidgetService.push evaluates isStale there), and
@@ -230,6 +251,25 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
             ReadPrefetch.routes],
       home: const _Gate(),
     )));
+  }
+
+
+  Future<void> _reloadRestoredSetting(
+      String key, Future<void> pending) async {
+    try {
+      await pending;
+    } catch (error, stack) {
+      // Controllers parse before replacing their value, so a malformed pref
+      // leaves the current/default choice active while other reloads continue.
+      debugPrintSynchronously('[import] $key reload failed: $error');
+      TelemetryService.instance.recordNonFatal(error, stack,
+          reason: 'restored $key reload failed');
+    }
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    context.read<AppState>().handleMemoryPressure();
   }
 }
 
@@ -494,14 +534,18 @@ ShellDomain domainForRoute(String route) => switch (routePath(route)) {
       // Water is a journal field logged beside food, and food is a section of
       // Activity.
       kRouteWater => ShellDomain.activity,
-      // The movement/sedentary nudges, recovery-ready and step-goal notes,
-      // and the detected-activity reviews: all about what is on Today.
+      // The movement/sedentary nudges, recovery-ready and step-goal notes:
+      // all about what is on Today.
       kRouteMovement ||
       kRouteRecovery ||
       kRouteSteps ||
-      kRouteDetectedActivities ||
       kRouteWorkoutSuggestion =>
         ShellDomain.today,
+      // The detected-activity reviews (naps and workouts alike). The
+      // suggestion cards they are about live on the Activity tab, so the
+      // pushed review sits over Activity — the tap lands where the content
+      // is, not on Home (issue #113's promise, extended to naps).
+      kRouteDetectedActivities => ShellDomain.activity,
       // The forgotten-workout nudge. Activity is the destination itself — the
       // live session bar with its finish control is pinned to the shell there
       // — so screenForRoute stays null for it.
@@ -577,7 +621,7 @@ class AppMainShell extends StatefulWidget {
   State<AppMainShell> createState() => _ShellState();
 }
 
-class _ShellState extends State<AppMainShell> implements GuideShellLink {
+class _ShellState extends State<AppMainShell> implements GuideShellLink, Call0<NavigatorState?> {
   /// Restore the last-selected tab so a relaunch lands where the user left off.
   late ShellDomain _domain = restoredShellTab();
 
@@ -587,7 +631,6 @@ class _ShellState extends State<AppMainShell> implements GuideShellLink {
   // scroll position of whatever tab was open. Deep links are rare and arrive
   // from outside the app; give AppShell an external controller if that ever
   // stops being true.
-  int _rev = 0;
 
   AppState? _app;
   GuideRunner? _guideRunner;
@@ -599,11 +642,13 @@ class _ShellState extends State<AppMainShell> implements GuideShellLink {
     // A tapped notification asks for a tab via AppState.navRequest. Jump there,
     // then clear the request so it isn't replayed on rebuild.
     _app = context.read<AppState>();
+    _selection = ValueNotifier(_domain);
     _guideRunner = context.read<GuideRunner?>();
     _guideShell = this;
     _guideRunner?.attachShell(this);
     _app!.navRequest.addListener(_consumeSoon);
     _app!.screenRequest.addListener(_consumeSoon);
+    ActivityRelaunch.listen(this);
     // Cold launch from a tapped notification: the route may already be set
     // before this shell mounted (so the listener never fired). Consume it once
     // attached.
@@ -679,12 +724,17 @@ class _ShellState extends State<AppMainShell> implements GuideShellLink {
 
   void _go(ShellDomain d, {bool persist = true}) {
     if (d == _domain) return;
-    setState(() {
-      _domain = d;
-      _rev++;
-    });
-    // Guide navigation is temporary; only the user's own tab changes persist.
+    setState(() => _domain = d);
     if (persist) Prefs.setInt(Prefs.shellTabV2, d.index);
+    // AppShell reports notifier-driven changes through onSelect as well.
+    // Keep guide write suppression scoped to that synchronous notification.
+    final previous = _persistSelection;
+    _persistSelection = persist;
+    try {
+      _selection.value = d;
+    } finally {
+      _persistSelection = previous;
+    }
   }
 
   @override
@@ -692,6 +742,8 @@ class _ShellState extends State<AppMainShell> implements GuideShellLink {
     if (_guideShell != null) _guideRunner?.detachShell(_guideShell!);
     _app?.navRequest.removeListener(_consumeSoon);
     _app?.screenRequest.removeListener(_consumeSoon);
+    ActivityRelaunch.stop(this);
+    _selection.dispose();
     super.dispose();
   }
 
@@ -701,12 +753,16 @@ class _ShellState extends State<AppMainShell> implements GuideShellLink {
     // AppState tick.
     final live = context.select<AppState, bool>((a) => a.activeWorkout != null);
     return AppShell(
-      key: ValueKey(_rev),
       initial: _domain,
+      selection: _selection,
       banner: live ? const _LiveSessionBar() : null,
       onSelect: (d) {
         _domain = d;
-        Prefs.setInt(Prefs.shellTabV2, d.index);
+        if (_persistSelection) Prefs.setInt(Prefs.shellTabV2, d.index);
+        // Manual tab changes (and Back) must update the notifier too:
+        // otherwise it goes stale and a later _go to that stale value fires
+        // no change event, so AppShell would not follow the deep link.
+        _selection.value = d;
       },
       builder: (c, d) => switch (d) {
         ShellDomain.today => const HomeScreen(),
@@ -716,6 +772,18 @@ class _ShellState extends State<AppMainShell> implements GuideShellLink {
       },
     );
   }
+
+
+  /// AppShell owns its own selection and takes only an `initial`, so a
+  /// programmatic jump drives it through this notifier instead of re-keying:
+  /// recreating AppShell would rebuild the tab stack and lose every visited
+  /// tab's state (scroll position included) on a notification deep link.
+  late final ValueNotifier<ShellDomain> _selection;
+  bool _persistSelection = true;
+
+  @override
+  NavigatorState? call() =>
+      mounted ? Navigator.of(context) : null;
 }
 
 /// The way back into a session that is running while its screen is not on
@@ -865,3 +933,13 @@ class _LiveSessionBar extends StatelessWidget {
     );
   }
 }
+
+
+/// Whether screen reads may use the reader connection at this lifecycle state.
+/// Null (no report yet) counts as visible; the observer corrects it on the
+/// first report.
+@visibleForTesting
+bool screenReadsForeground(AppLifecycleState? state) =>
+    state != AppLifecycleState.hidden &&
+    state != AppLifecycleState.paused &&
+    state != AppLifecycleState.detached;

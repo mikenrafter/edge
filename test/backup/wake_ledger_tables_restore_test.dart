@@ -45,7 +45,7 @@ void main() {
         reason: 'a table cannot be both restored and not restored');
     // Present only on an upgraded database (raw_records) or on an export copy
     // (the backup_* tables), so a fresh live schema does not show them.
-    const notInFreshSchema = {'raw_records', 'backup_prefs', 'backup_files'};
+    const notInFreshSchema = {'raw_records', 'backup_prefs', 'backup_files', 'backup_secrets'};
     expect(
         kTablesNotRestored.keys
             .where((t) => !tables.contains(t) && !notInFreshSchema.contains(t)),

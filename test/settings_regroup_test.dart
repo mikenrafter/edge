@@ -115,6 +115,7 @@ const Map<String, List<List<String>>> _rows = {
     ['Zoom wake-up events'],
     ['Time format'],
     ['Pull down to sync'],
+    ['Step calibration'],
     ['Expected sleep schedule'],
     ['Icon'],
     ['Cycle tracking'],
@@ -146,6 +147,7 @@ const Map<String, List<List<String>>> _rows = {
     ['Logs'],
     ['Data Explorer'],
     // The read-only timing line for the last derive pass.
+    ['Screen load timings'],
     ['Last calculation'],
     // Default ON: developer mode keeps reviving the Discord and Sponsor cards.
     ['Revive community cards'],

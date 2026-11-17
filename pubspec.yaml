@@ -6,7 +6,7 @@ publish_to: 'none'
 # Watch App" targets in ios/Runner.xcodeproj/project.pbxproj — they aren't wired
 # to FLUTTER_BUILD_NAME/FLUTTER_BUILD_NUMBER. See guides/IOS_INSTALLATION.md
 # "Version Numbers".
-version: 0.11.3+78
+version: 0.12.2+81
 
 environment:
   sdk: ^3.11.4
@@ -262,7 +262,7 @@ dependencies:
       # REPIN: protocol feat/multidevice-verified-decoders head (multi-device
       # decoders; WHOOP decode untouched, pinned by whoop_freeze_golden_test).
       # Re-point at the merge commit once it lands on protocol main.
-      ref: 89080bcfac7767b3a871fd3a7d9307f5f30dad26
+      ref: fbadb5bd055965d9400e266d6cf42748992ba950
   openstrap_analytics:
     git:
       # FORK PIN (user-approved): the causal sleep-stage API (CausalStager)

@@ -72,15 +72,49 @@ void main() {
 
   test('(CR r1) the band-not-sensor sentence names the band in the user\'s language', () {
     // WHY: the raw registry label ("Colmi ring") went into a German sentence.
-    // The fork translates its presentation labels into Russian only (German
-    // falls back to English there), so the control locale is Russian.
-    final ru = lookupAppLocalizations(const Locale('ru'));
-    final text = pairOutcomeText(ru, const PairOutcome.band(kColmi))!;
-    expect(text, contains(ru.presentationColmiRing));
-    expect(ru.presentationColmiRing, isNot('Colmi ring'), reason: 'control');
+    final de = lookupAppLocalizations(const Locale('de'));
+    final text = pairOutcomeText(de, const PairOutcome.band(kColmi))!;
+    expect(text, contains(de.presentationColmiRing));
+    expect(de.presentationColmiRing, isNot('Colmi ring'), reason: 'control');
   });
 
-  group('Trouble connecting card (H1)', () {
+  // WHY: WHOOP 4 must not send users into the app that may update their band.
+  // catches: restoring the generic app-opening fallback for gen4.
+  testWidgets('WHOOP 4 reset help never asks to open the maker app in any locale', (t) async {
+    for (final locale in AppLocalizations.supportedLocales) {
+      final l = lookupAppLocalizations(locale);
+      for (final view in [
+        ResetStepsView(entry: kWhoopGen4),
+        PairingModeSection(entry: kWhoopGen4),
+      ]) {
+        await pumpPair(t, _scroll(view), locale: locale);
+        expect(find.text(l.pairResetGenericStep1), findsNothing, reason: locale.toString());
+        expect(find.text(l.pairResetWhoop5Step3), findsOneWidget);
+        expect(find.text(l.pairResetGenericStep2), findsOneWidget);
+        expect(find.text(l.pairResetWhoop5Step4), findsOneWidget);
+      }
+    }
+    expect(kWhoopGen4.resetSteps!.kind, ResetKind.unverified);
+    expect(kWhoopGen4.resetSteps!.officialUrl,
+        'https://support.whoop.com/s/article/WHOOP-4-0-iOS-Connectivity-and-Pairing?language=en_US');
+  });
+
+  // WHY: compact help must disclose that these are unverified instructions.
+  // catches: hiding the note when the heading or help link is disabled.
+  testWidgets('unverified pairing sections always disclose general guidance', (t) async {
+    final l = lookupAppLocalizations(const Locale('en'));
+    for (final heading in [false, true]) {
+      for (final link in [false, true]) {
+        await pumpPair(t, _scroll(PairingModeSection(
+            entry: kColmi, heading: heading, link: link)));
+        expect(find.text(l.pairResetGenericNote), findsOneWidget);
+      }
+    }
+    await pumpPair(t, _scroll(PairingModeSection(entry: kWhoopGen5)));
+    expect(find.text(l.pairResetGenericNote), findsNothing);
+  });
+
+  group('Trouble connecting card', () {
     Widget card(List<BandEntry> entries, [PairLinkOpener? links]) => _scroll(
         TroubleConnectingCard(entries: entries, openLink: links ?? _Links()));
 
@@ -373,7 +407,7 @@ void main() {
       });
     }
 
-    testWidgets('(CR r2) a refused bond lists the Bluetooth-settings Forget step, even for WHOOP 5', (t) async {
+    testWidgets('a refused bond lists the Bluetooth-settings Forget step first, even for WHOOP 5', (t) async {
       // WHY: WHOOP 5's own four steps never say to forget the old pairing
       // record, and Try again cannot clear a refused bond without it.
       const forget = 'In your phone’s Bluetooth settings, find the device and choose Forget.';
@@ -389,7 +423,9 @@ void main() {
       // A device on the general steps already has it, once.
       expect(resetStepKeysFor(kWhoopGen4, bondRefused: true)
           .where((k) => k == 'pairResetGenericStep2'), hasLength(1));
-      expect(resetStepKeysFor(kWhoopGen5, bondRefused: true).last,
+      // WHOOP 5's last step is to retry, which fails while the refused
+      // record is still there, so Forget comes before its own steps.
+      expect(resetStepKeysFor(kWhoopGen5, bondRefused: true).first,
           'pairResetGenericStep2');
     });
 

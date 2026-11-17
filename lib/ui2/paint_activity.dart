@@ -1,3 +1,9 @@
+import 'dart:math';
+import 'package:flutter/material.dart';
+import 'charts.dart';
+import 'theme.dart';
+import './skeleton/guide_plot.dart';
+
 // The defining object for each activity family.
 //
 // A run is a route. A hike is an elevation profile. A swim is a lap ladder.
@@ -21,13 +27,8 @@
 // GPS coordinates into that box is the caller's job — it is the only place
 // that knows the projection, the bounding box and the aspect correction.
 
-import 'dart:math';
 
-import 'package:flutter/material.dart';
 
-import 'charts.dart';
-import 'theme.dart';
-import './skeleton/guide_plot.dart';
 
 /// A route is not a time series, so min/max-per-column does not apply — but a
 /// 90-minute ride at 1 Hz is still 5 400 points on a 350 pt canvas. Stride
@@ -298,3 +299,4 @@ class PaceBar extends StatelessWidget {
     );
   }
 }
+

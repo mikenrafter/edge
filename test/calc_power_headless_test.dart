@@ -128,6 +128,8 @@ class _RecordingEngine extends DerivationEngine {
     bool heavy = false,
     bool force = false,
     bool changedOnly = false,
+    Set<String> editedDays = const {},
+    void Function(int, String?)? onOutcome,
     ana.CalculationMode calculationMode = ana.CalculationMode.forced,
     void Function(String day, int index, int total)? onDayDone,
     void Function(int total)? onScope,

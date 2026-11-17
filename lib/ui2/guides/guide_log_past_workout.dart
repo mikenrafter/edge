@@ -1,10 +1,10 @@
 // GUIDE #8: log a workout you forgot to record.
 //
-//   Activity tab  ->  sub-tab "History"  ->  above the sessions, the card "Did
+//   Activity tab  ->  sub-tab "History"  ->  at the bottom the card "Did
 //   something the band missed?" with "Log a past workout"  ->  the form:
 //   activity, date, started, ended, length (the "When" group)  ->  "Log it".
 //
-// The card is on History only (_history in workout_screen.dart), on the empty and the
+// The card is on History only (workout_screen.dart:584), on the empty and the
 // filled list alike, not on "For you". One 'any' variant. Step 3 is the form;
 // it keeps the "When" group readable.
 
@@ -47,7 +47,11 @@ Guide get logPastWorkoutGuide => Guide(
             id: 'log-it',
             node: GuideNode.logWorkout,
             target: _logIt,
-            anchor: _logIt,
+            // The button sits at the bottom of the form: on a phone with larger text
+            // (and longer words, as in French) it can be below the fold, where an anchor
+            // on it is not built and the run would read as having left the path. The
+            // "When" group is at the top of the form and always built.
+            anchor: GuideTarget.label(ScreenLabel.logWorkoutWhenGroup),
             alsoKeep: [GuideTarget.label(ScreenLabel.logWorkoutWhenGroup)],
             action: GuideAction.tap,
             caption: GuideCopy.logPastCaptionLogIt,

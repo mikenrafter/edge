@@ -27,7 +27,7 @@ void main() {
       final result = await Isolate.run(() => wakeProfileHeavy(input));
       expect(result.hrArousalBpm, 6);
       expect(result.motionCeilingG, .06);
-      expect(result.trendThresholdFactor, .75);
+      expect(result.trendThresholdFactor, .5);
       expect(result.disableEarlyDelivery, isTrue);
     },
   );

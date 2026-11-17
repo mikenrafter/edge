@@ -175,9 +175,17 @@ Future<void> _ldbPruneNotifFired(String cutoffDate, {required int? nowMs}) async
       (handle) => handle.transaction((db) async {
         final dated = await db.rawDelete(
           "DELETE FROM notif_fired "
-          "WHERE substr(key, 1, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' "
-          "AND substr(key, 1, 10) < ?",
-          [cutoffDate],
+          "WHERE (substr(key, 1, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' "
+          "AND substr(key, 1, 10) < ?) "
+          // Main's embedded-date guards can remain in an imported store even
+          // though the fork does not emit morning briefings.
+          "OR (key GLOB 'morning_brief_announced:*' "
+          "AND substr(key, 25, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' "
+          "AND substr(key, 25, 10) < ?) "
+          "OR (key GLOB 'morning_brief_slot:*' "
+          "AND substr(key, 20, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' "
+          "AND substr(key, 20, 10) < ?)",
+          [cutoffDate, cutoffDate, cutoffDate],
         );
         final gestures = await db.rawDelete(
           "DELETE FROM notif_fired WHERE key LIKE 'gesture:%' AND fired_at < ?",
@@ -492,52 +500,15 @@ Future<void> _ldbSetAlarmScheduleDay({required int weekday, required int hour, r
     );
   }
 
-Future<void> _ldbPutVendorSleepEpochs(List<VendorEpoch> epochs, {required String deviceId, required String source, required bool wholeNights}) async {
-    if (epochs.isEmpty) return;
-    final sorted = [...epochs]..sort((a, b) => a.startSec.compareTo(b.startSec));
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final db = await LocalDb.instance;
-    await db.transaction((txn) async {
-      for (final e in sorted) {
-        // A re-reported whole night that starts later would otherwise keep
-        // the old report's leading epochs, chained in by onset.
-        if (wholeNights) {
-          await txn.rawDelete(
-              'DELETE FROM vendor_sleep_epoch WHERE device_id = ? AND '
-              'night_onset_ts IN (SELECT night_onset_ts FROM '
-              'vendor_sleep_epoch WHERE device_id = ? AND start_ts < ? '
-              'AND end_ts > ?)',
-              [deviceId, deviceId, e.endSec, e.startSec]);
-        }
-        await txn.delete('vendor_sleep_epoch',
-            where: 'device_id = ? AND start_ts < ? AND end_ts > ?',
-            whereArgs: [deviceId, e.endSec, e.startSec]);
-      }
-      int? onset;
-      var prevEnd = 0;
-      for (final e in sorted) {
-        if (onset == null || e.startSec - prevEnd > LocalDb._kVendorNightChainSec) {
-          final prior = await txn.rawQuery(
-            'SELECT night_onset_ts FROM vendor_sleep_epoch '
-            'WHERE device_id = ? AND end_ts >= ? AND start_ts < ? '
-            'ORDER BY end_ts DESC LIMIT 1',
-            [deviceId, e.startSec - LocalDb._kVendorNightChainSec, e.startSec],
-          );
-          onset = prior.isEmpty
-              ? e.startSec
-              : (prior.first['night_onset_ts'] as num).toInt();
-        }
-        await txn.insert('vendor_sleep_epoch', {
-          'device_id': deviceId,
-          'night_onset_ts': onset,
-          'start_ts': e.startSec,
-          'end_ts': e.endSec,
-          'stage': e.stage,
-          'source': source,
-          'decoded_at': now,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
-        prevEnd = e.endSec;
-      }
+Future<void> _ldbPutVendorSleepEpochs(List<VendorEpoch> epochs, {required String deviceId, required String source, required bool wholeNights, int? resetGeneration}) {
+    if (resetGeneration == null) {
+      return LocalDb._putVendorSleepEpochs(epochs,
+          deviceId: deviceId, source: source, wholeNights: wholeNights);
+    }
+    return LocalDb._withCommitGate(() {
+      LocalDb._refuseAfterReset(resetGeneration);
+      return LocalDb._putVendorSleepEpochs(epochs,
+          deviceId: deviceId, source: source, wholeNights: wholeNights);
     });
   }
 
@@ -904,8 +875,16 @@ Future<void> _ldbPutWakeConfirmation({required String dayId, required int atSec,
     );
   }
 
-Future<void> _ldbUpsertDevice({required String id, required String? adapterId, required String? remoteId, required String? label, required String? tier, required bool clearAdapterId}) async {
-    final db = await LocalDb.instance;
+Future<void> _ldbUpsertDevice({required String id, required String? adapterId, required String? remoteId, required String? label, required String? tier, required bool clearAdapterId, DatabaseExecutor? executor}) async {
+    if (executor == null) {
+      final db = await LocalDb.instance;
+      // A failed UPDATE must not leave the initial INSERT behind.
+      await db.transaction((txn) => LocalDb.upsertDevice(id: id, adapterId: adapterId,
+          remoteId: remoteId, label: label, tier: tier,
+          clearAdapterId: clearAdapterId, executor: txn));
+      return;
+    }
+    final db = executor;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     await db.insert('device', {
       'id': id,
@@ -945,30 +924,14 @@ Future<void> _ldbUpsertDevice({required String id, required String? adapterId, r
     );
   }
 
-Future<int> _ldbPutObservations(List<Observation> rows, {required String deviceId, required Map<String, String> cursors}) async {
-    if (rows.isEmpty && cursors.isEmpty) return 0;
-    final db = await LocalDb.instance;
-    await db.transaction((txn) async {
-      for (final c in cursors.entries) {
-        await LocalDb.setCursor(c.key, c.value, txn: txn);
-      }
-      final batch = txn.batch();
-      for (final o in rows) {
-        batch.insert('observation', {
-          'device_id': deviceId,
-          'ts_ms': o.at.millisecondsSinceEpoch,
-          'date': o.date,
-          'source_kind': o.sourceKind.name,
-          'vendor_key': o.vendorKey,
-          'key': o.key,
-          'value': o.value.toDouble(),
-          'unit': o.unit,
-          'attribution': o.attribution,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
-      }
-      await batch.commit(noResult: true);
+Future<int> _ldbPutObservations(List<Observation> rows, {required String deviceId, required Map<String, String> cursors, int? resetGeneration}) {
+    if (resetGeneration == null) {
+      return LocalDb._putObservations(rows, deviceId: deviceId, cursors: cursors);
+    }
+    return LocalDb._withCommitGate(() {
+      LocalDb._refuseAfterReset(resetGeneration);
+      return LocalDb._putObservations(rows, deviceId: deviceId, cursors: cursors);
     });
-    return rows.length;
   }
 
 Future<List<Map<String, Object?>>> _ldbObservationsForDay(String date) async {
@@ -1440,6 +1403,15 @@ Future<NapResolution?> _ldbPutNapEdit({required String dayId, required int start
           return ext.res;
         }
       }
+      // Legacy official rows can carry the night only in payload_json. If
+      // the union resolver could not identify a block, keep main's refusal
+      // rather than credit overlapping minutes again as a separate nap.
+      if (source == 'manual' &&
+          await ActivityStore.overlapsMainSleep(tx, startTs, endTs)) {
+        throw const ActivityReviewException(
+          'That overlaps your main sleep, which already counts that time.',
+        );
+      }
       if (source == 'rejected') {
         // A pre-upgrade nap may still live only in its retained day result.
         // Capture it before replacing that result with the user's rejection.
@@ -1481,7 +1453,7 @@ Future<void> _ldbDeleteNapEdit(String dayId, int startTs) async {
       if (rows.isNotEmpty && rows.single['source'] == 'rejected') {
         final payload = rows.single['payload_json'];
         if (payload is String) {
-          final source = (jsonDecode(payload) as Map)['source'];
+          final source = ((await JsonPayloadLane.shared.decodeUncached(payload)) as Map)['source'];
           if (source == 'confirmed' || source == 'legacy') restoreSource = source as String;
         } else {
           // A rejection from before activity review has no snapshot, and a
@@ -1492,7 +1464,7 @@ Future<void> _ldbDeleteNapEdit(String dayId, int startTs) async {
           if (startTs < cutoff) {
             final min = (((rows.single['end_ts'] as int) - startTs) / 60).round();
             restoreSource = 'legacy';
-            restorePayload = jsonEncode({
+            restorePayload = await JsonPayloadLane.shared.encode({
               'duration_min': min, 'in_bed_min': min,
               'confidence': null, 'source': 'legacy',
             });
@@ -1502,10 +1474,17 @@ Future<void> _ldbDeleteNapEdit(String dayId, int startTs) async {
       if (restoreSource != null) {
         // Removing a rejection means "Put it back". Keep its original asleep
         // minutes and confidence even after raw recordings have expired.
+        // This is now an explicit decision, even for a legacy snapshot: a
+        // later main-window correction must not suppress it as old detection.
+        restoreSource = 'confirmed';
+        final restored = Map<String, dynamic>.from((await JsonPayloadLane.shared.decodeUncached(
+          restorePayload ?? rows.single['payload_json'] as String)) as Map);
+        restored['source'] = restoreSource;
+        restorePayload = (await JsonPayloadLane.shared.encode(restored))!;
         await tx.update('sleep_nap', {
           'source': restoreSource,
           'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-          'payload_json': ?restorePayload,
+          'payload_json': restorePayload,
         }, where: 'day_id = ? AND start_ts = ?', whereArgs: [dayId, startTs]);
       } else {
         await tx.delete('sleep_nap', where: 'day_id = ? AND start_ts = ?', whereArgs: [dayId, startTs]);
@@ -1560,7 +1539,7 @@ Future<({double bpm, String date})?> _ldbObservedHrCeiling() async {
     return (bpm: v.toDouble(), date: d);
   }
 
-Future<bool> _ldbPrivFlagOffOnly(Map<String, dynamic> r) async {
+Future<bool> _ldbPrivFlagOffOnly(Map<String, dynamic> r, {DatabaseExecutor? executor}) async {
     final s = (r['start_ts'] as num?)?.toInt();
     final e = (r['end_ts'] as num?)?.toInt();
     if (s == null || e == null || r['status'] != 'done') return false;
@@ -1569,13 +1548,13 @@ Future<bool> _ldbPrivFlagOffOnly(Map<String, dynamic> r) async {
     // wearable's) and once its raw is pruned.
     // ponytail: a stamped window the band also measured serves empty too,
     // not band-only; rescore it from the band's rows if that matters.
-    if ((await LocalDb.sessionSensorsOf(r['id']))
+    if ((await LocalDb.sessionSensorsOf(r['id'], executor: executor))
         .any((s) => !LocalDb.sessionSensorSources.contains(s))) {
       return true;
     }
     final on = {...LocalDb.sessionSensorSources, ?LocalDb.sessionWearableSource};
     final sources = [
-      for (final x in await (await LocalDb.instance).rawQuery(
+      for (final x in await (executor ?? await LocalDb.instance).rawQuery(
           'SELECT DISTINCT source FROM decoded_onehz '
           'WHERE rec_ts >= ? AND rec_ts <= ? AND hr > 0',
           [s, e]))

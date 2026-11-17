@@ -1,12 +1,14 @@
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../data/water_units.dart';
+import '../l10n/decimal_text.dart' show parseTypedNumber;
+
 // Units controller — a LOCAL display preference (metric / imperial). The backend
 // always stores and returns metric (kg, cm); this only changes how values are
 // shown and how edit fields are parsed. Persisted on-device via SharedPreferences,
 // mirroring ThemeController. Nothing here ever touches the server.
 
-import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../data/water_units.dart';
 
 enum UnitSystem { metric, imperial }
 
@@ -171,14 +173,14 @@ class UnitsController extends ChangeNotifier {
 
   /// Parse a weight field (display units) → kg for storage.
   double? weightToKg(String text) {
-    final v = double.tryParse(text.trim());
+    final v = parseTypedNumber(text);
     if (v == null) return null;
     return isImperial ? v * _kgPerLb : v;
   }
 
   /// Parse a height field (display units = total inches when imperial) → cm.
   double? heightToCm(String text) {
-    final v = double.tryParse(text.trim());
+    final v = parseTypedNumber(text);
     if (v == null) return null;
     return isImperial ? v * _cmPerIn : v;
   }
@@ -206,4 +208,41 @@ class UnitsController extends ChangeNotifier {
 
   /// One glass / one stepper tap in ml for the current system.
   double get waterStepMl => WaterUnits.stepMl(_system);
+
+  static const double _metersPerFoot = 0.3048;
+
+  /// Adopt restored settings without persisting another write.
+  Future<void> reloadFromPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final next = _parse(prefs.getString(_kUnits));
+    if (next == _system) return;
+    _system = next;
+    notifyListeners();
+  }
+
+  // ── elevation (GPS altitude) ───────────────────────────────────────────────
+  // Its own unit, not the distance one: a climb in miles is unreadable, and a
+  // bare "m" printed under "3.12 mi" reads as miles to an imperial user.
+  /// "m" / "ft".
+  String get elevationUnit => isImperial ? 'ft' : 'm';
+
+  /// Elevation in the user's unit (m or ft), unformatted.
+  double elevationValue(double meters) =>
+      isImperial ? meters / _metersPerFoot : meters;
+
+  /// [weightToKg], except that a field still showing exactly what
+  /// [weightField] wrote for [shownKg] gives [shownKg] back. Imperial shows
+  /// whole pounds, so an untouched field otherwise drifts off the stored value
+  /// on every save (20 kg -> "44" -> 19.96 kg, under the plausible floor).
+  double? weightToKgKeeping(String text, num? shownKg) =>
+      shownKg != null && text.trim() == weightField(shownKg)
+          ? shownKg.toDouble()
+          : weightToKg(text);
+
+  /// [heightToCm] with the same untouched-field rule as [weightToKgKeeping].
+  double? heightToCmKeeping(String text, num? shownCm) =>
+      shownCm != null && text.trim() == heightField(shownCm)
+          ? shownCm.toDouble()
+          : heightToCm(text);
 }
+

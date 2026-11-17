@@ -16,10 +16,12 @@ import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/ui2/pairing/device_picker.dart' show DevicePickerView;
 import 'package:openstrap_edge/ui2/pairing/pair_text.dart' show PairFilter;
 import 'package:openstrap_edge/ui2/profile/pair_sensor.dart' show afterBandFoundText;
+import 'package:openstrap_edge/ble/slot_comparison.dart';
+import 'package:openstrap_edge/ui2/pairing/pair_choice_sheet.dart';
 import 'package:openstrap_edge/ui2/pairing/pair_sheets.dart';
-import 'package:openstrap_edge/ui2/pairing/slot_comparison_view.dart';
 
 import 'support/pair_ui_support.dart';
+import 'package:openstrap_edge/ui2/pairing/slot_comparison_view.dart';
 
 BandCandidate _cand(String entryId,
         {String id = 'AA:BB:CC:DD:EE:01', String? label, BandEntry? alsoBand}) =>
@@ -71,29 +73,28 @@ class _Calls implements AddDeviceIo {
   final events = <String>[];
   String? heldBack;
   final List<PairOutcome> outcomes;
+  Object? pairError;
   _Calls([this.outcomes = const [PairOutcome.saved()]]);
   int _i = 0;
   bool _hasMain = false;
   @override
   bool get hasMainBand => _hasMain;
 
+  String primaryId = 'primary';
+  @override
+  String? get mainBandRemoteId => _hasMain ? primaryId : null;
+
   String? bandName = 'Jordan’s WHOOP';
   @override
   String? get mainBandName => _hasMain ? bandName : null;
 
-  /// Holds the unpair open until completed (a slow unpair); null returns at
-  /// once.
-  Completer<void>? unpairGate;
-  Object? unpairError;
-  @override
-  Future<void> unpairMainBand() async {
-    events.add('unpair');
-    await unpairGate?.future;
-    if (unpairError != null) throw unpairError!;
-  }
+  BandFlowResult bandFlowResult = BandFlowResult.closed;
+  Completer<void>? openGate;
+  final replacementFlags = <bool>[];
   @override
   Future<PairOutcome> pair(BandCandidate cand, BandEntry entry,
       PairConfirmation? confirmation) async {
+    if (pairError != null) throw pairError!;
     events.add('pair:${entry.id}');
     pairs.add((entry.id, confirmation));
     return outcomes[_i < outcomes.length ? _i++ : outcomes.length - 1];
@@ -101,11 +102,14 @@ class _Calls implements AddDeviceIo {
 
   final openedWith = <(String remoteId, bool modelKnown)>[];
   @override
-  Future<void> openBandFlow(BandEntry band,
-      {required String remoteId, bool modelKnown = true}) async {
+  Future<BandFlowResult> openBandFlow(BandEntry band,
+      {required String? remoteId, bool modelKnown = true, bool replacing = false}) async {
     events.add('open:${band.id}');
+    replacementFlags.add(replacing);
+    await openGate?.future;
     opened.add(band.id);
-    openedWith.add((remoteId, modelKnown));
+    openedWith.add((remoteId!, modelKnown));
+    return bandFlowResult;
   }
 
   @override
@@ -153,31 +157,12 @@ void main() {
       return got;
     }
 
-    testWidgets('no main band yet: pair it as my band, or use it for workouts only', (t) async {
-      await open(t, kWhoopGen5, hasMain: false);
-      expect(find.text('This is a WHOOP band'), findsOneWidget);
-      expect(find.text('WHOOP 5'), findsOneWidget, reason: 'the device line');
-      expect(find.text('It does much more every day than during workouts only. Which do you want?'), findsOneWidget);
-      expect(find.text('Sleep'), findsOneWidget);
-      expect(find.text('Every day'), findsOneWidget);
-      expect(find.text('Workouts only'), findsOneWidget);
-      expect(find.text('Pair it as my band'), findsOneWidget);
-      expect(find.text('Use it for workouts only'), findsOneWidget);
-      expect(find.text('Go back'), findsOneWidget);
-    });
-
     testWidgets('pairing mode is up front: WHOOP 5’s steps, above the main button', (t) async {
       await open(t, kWhoopGen5, hasMain: false);
       expect(find.text('Put it in pairing mode'), findsOneWidget);
       final step = t.getTopLeft(find.byKey(const ValueKey('pairing-mode-step-gen5-1'))).dy;
       expect(step, lessThan(t.getTopLeft(find.text('Pair it as my band')).dy));
       expect(step, greaterThan(t.getTopLeft(find.byType(SlotTable)).dy));
-    });
-
-    testWidgets('a ring and a strap get their own pairing-mode section', (t) async {
-      await open(t, kOura, hasMain: false);
-      expect(find.byKey(const ValueKey('pairing-mode-oura')), findsOneWidget);
-      expect(find.byKey(const ValueKey('pairing-mode-step-oura-1')), findsOneWidget);
     });
 
     testWidgets('the table: every day sends sleep, workouts only does not; no dashes', (t) async {
@@ -202,6 +187,75 @@ void main() {
       expect(colour('everyDay'), isNotNull);
       expect(colour('workoutsOnly'), isNull);
     });
+
+    testWidgets('a ring fills every day: the ring’s rows with their captions, and the experimental note', (t) async {
+      await open(t, kOura, hasMain: false);
+      expect(find.text('This is a ring'), findsOneWidget);
+      expect(find.text('It can fill your days with sleep, recovery and heart rate.'), findsOneWidget);
+      expect(t.getSemantics(find.byKey(const ValueKey('slot-everyDay-sleep'))).label, 'Sleep, Every day: Sends. From the ring’s own sleep stages');
+      expect(t.getSemantics(find.byKey(const ValueKey('slot-workoutsOnly-sleep'))).label, 'Sleep, Workouts only: Doesn’t send');
+      expect(t.getSemantics(find.byKey(const ValueKey('slot-everyDay-strain'))).label, 'Strain, Every day: Doesn’t send');
+      expect(find.text('Every day: From the ring’s own sleep stages'), findsOneWidget);
+      expect(find.text('Every day: Estimated for the first 14 nights'), findsOneWidget);
+      expect(find.text('Every day: Provisional estimate; needs a few nights'), findsOneWidget);
+      expect(find.text('Fills days without your WHOOP. Experimental, so switch it on in Devices.'), findsOneWidget);
+      expect(find.text('Pair Oura Ring'), findsOneWidget);
+      expect(find.text('Pair it as my band'), findsNothing);
+    });
+
+    testWidgets('a heart-rate strap: workouts only, the switch note, and Pair', (t) async {
+      await pumpPair(t, Builder(builder: (c) => Scaffold(body: TextButton(
+          onPressed: () => showStrapSheet(c, sensor: kBleHrs),
+          child: const Text('open')))), size: const Size(412, 2000));
+      await t.tap(find.text('open'));
+      await t.pumpAndSettle();
+      expect(find.text('This is a heart-rate sensor'), findsOneWidget);
+      expect(find.text('It adds heart rate while you work out. It does not record sleep, recovery or daily strain.'), findsOneWidget);
+      expect(find.text('Turn on “Use during workouts” to record heart rate while you work out.'), findsOneWidget);
+      expect(find.text('Workouts only: If this device sends it, not confirmed'), findsOneWidget);
+      expect(find.text('Pair Bluetooth heart rate sensor'), findsOneWidget);
+      expect(find.text('Go back'), findsOneWidget);
+      expect(t.getSemantics(find.byKey(const ValueKey('slot-everyDay-sleep'))).label, 'Sleep, Every day: Doesn’t send');
+      expect(t.getSemantics(find.byKey(const ValueKey('slot-everyDay-workoutHeartRate'))).label, 'Heart rate during workouts, Every day: Doesn’t send');
+      expect(t.getSemantics(find.byKey(const ValueKey('slot-workoutsOnly-workoutHeartRate'))).label, 'Heart rate during workouts, Workouts only: Sends');
+    });
+
+    testWidgets('the confirm fits in German at 2x text', (t) async {
+      await pumpPair(
+          t,
+          Builder(
+              builder: (c) => Scaffold(
+                  body: TextButton(
+                      onPressed: () => showReplaceBandConfirm(c,
+                          mainBandName: 'Jordans WHOOP'),
+                      child: const Text('open')))),
+          locale: const Locale('de'), textScale: 2, size: const Size(360, 800));
+      await t.tap(find.text('open'));
+      await t.pumpAndSettle();
+      expect(t.takeException(), isNull);
+      expect(find.byType(SlotTable), findsNothing);
+    });
+    testWidgets('no main band yet: pair it as my band, or use it for workouts only', (t) async {
+      await open(t, kWhoopGen5, hasMain: false);
+      expect(find.text('This is a WHOOP band'), findsOneWidget);
+      expect(find.text('WHOOP 5'), findsOneWidget, reason: 'the device line');
+      expect(find.text('It does much more every day than during workouts only. Which do you want?'), findsOneWidget);
+      expect(find.text('Pair it as my band'), findsOneWidget);
+      expect(find.text('Use it for workouts only'), findsOneWidget);
+      expect(find.text('Go back'), findsOneWidget);
+    });
+
+
+
+    testWidgets('a ring and a strap get their own pairing-mode section', (t) async {
+      await open(t, kOura, hasMain: false);
+      expect(find.byKey(const ValueKey('pairing-mode-oura')), findsOneWidget);
+      expect(find.byKey(const ValueKey('pairing-mode-step-oura-1')), findsOneWidget);
+    });
+
+
+
+
 
     testWidgets('the choices come back to the caller', (t) async {
       BandSheetChoice? got;
@@ -250,14 +304,14 @@ void main() {
       expect(find.text('Your band now: Jordan’s WHOOP. Your data stays when you switch.'), findsOneWidget);
       expect(find.text('Pair it as my band'), findsNothing);
       expect(find.text('Use it for workouts only'), findsOneWidget);
-      await t.tap(find.text('Unpair Jordan’s WHOOP and pair this one'));
+      await t.tap(find.text('Pair this band, then disconnect Jordan’s WHOOP'));
       await t.pumpAndSettle();
       expect(got, BandSheetChoice.replaceBand);
     });
 
     testWidgets('a paired band with no name is “your band”', (t) async {
       await open(t, kWhoopGen5, hasMain: true);
-      expect(find.text('Unpair your band and pair this one'), findsOneWidget);
+      expect(find.text('Pair this band, then disconnect your band'), findsOneWidget);
     });
 
     testWidgets('Coros fits neither column: a watch, all crosses, one Pair button', (t) async {
@@ -266,24 +320,10 @@ void main() {
       expect(find.text('Pair Coros watch'), findsOneWidget);
       expect(find.text('Pair it as my band'), findsNothing);
       expect(find.byIcon(LucideIcons.check), findsNothing);
-      // The fork's plainer copy for the Coros explainer (pairSensorExplainerCoros).
-      expect(find.textContaining('Only battery and a few seconds of heart rate are read'), findsOneWidget);
+      expect(find.text('A sports watch. Only battery and a few seconds of heart rate are read.'), findsOneWidget);
     });
 
-    testWidgets('a ring fills every day: the ring’s rows with their captions, and the experimental note', (t) async {
-      await open(t, kOura, hasMain: false);
-      expect(find.text('This is a ring'), findsOneWidget);
-      expect(find.text('It can fill your days with sleep, recovery and heart rate.'), findsOneWidget);
-      expect(t.getSemantics(find.byKey(const ValueKey('slot-everyDay-sleep'))).label, 'Sleep, Every day: Sends. From the ring’s own sleep stages');
-      expect(t.getSemantics(find.byKey(const ValueKey('slot-workoutsOnly-sleep'))).label, 'Sleep, Workouts only: Doesn’t send');
-      expect(t.getSemantics(find.byKey(const ValueKey('slot-everyDay-strain'))).label, 'Strain, Every day: Doesn’t send');
-      expect(find.text('Every day: From the ring’s own sleep stages'), findsOneWidget);
-      expect(find.text('Every day: Estimated for the first 14 nights'), findsOneWidget);
-      expect(find.text('Every day: After a few nights'), findsOneWidget);
-      expect(find.text('Fills days without your WHOOP. Experimental, so switch it on in Devices.'), findsOneWidget);
-      expect(find.text('Pair Oura Ring'), findsOneWidget);
-      expect(find.text('Pair it as my band'), findsNothing);
-    });
+
 
     testWidgets('after connecting: says it identified itself, and that nothing was saved', (t) async {
       await open(t, kWhoopGen5, hasMain: false, afterConnect: true);
@@ -326,18 +366,7 @@ void main() {
       await t.pumpAndSettle();
     }
 
-    testWidgets('a heart-rate strap: workouts only, the switch note, and Pair', (t) async {
-      await open(t, kBleHrs, (_) {});
-      expect(find.text('This is a heart-rate strap'), findsOneWidget);
-      expect(find.text('It adds heart rate while you work out. It does not record sleep, recovery or daily strain.'), findsOneWidget);
-      expect(find.text('Both need “Use during workouts” on.'), findsOneWidget);
-      expect(find.text('Workouts only: If this device sends it, not confirmed'), findsOneWidget);
-      expect(find.text('Pair Bluetooth heart rate sensor'), findsOneWidget);
-      expect(find.text('Go back'), findsOneWidget);
-      expect(t.getSemantics(find.byKey(const ValueKey('slot-everyDay-sleep'))).label, 'Sleep, Every day: Doesn’t send');
-      expect(t.getSemantics(find.byKey(const ValueKey('slot-everyDay-workoutHeartRate'))).label, 'Heart rate during workouts, Every day: Doesn’t send');
-      expect(t.getSemantics(find.byKey(const ValueKey('slot-workoutsOnly-workoutHeartRate'))).label, 'Heart rate during workouts, Workouts only: Sends');
-    });
+
 
     testWidgets('a generic strap says there are no maker’s steps', (t) async {
       await open(t, kBleHrs, (_) {});
@@ -380,18 +409,19 @@ void main() {
   group('replacing the band', () {
     final whoop = _cand('gen5', id: 'AA:00:00:00:00:77', label: 'WHOOP 5A1B');
 
-    testWidgets('confirm: the existing unpair runs, then the band flow opens for the tapped device', (t) async {
+    testWidgets('confirm opens replacement pairing without forgetting the current band', (t) async {
       final calls = _Calls();
       await _tap(t, calls, whoop, hasMain: true);
-      await t.tap(find.text('Unpair Jordan’s WHOOP and pair this one'));
+      await t.tap(find.text('Pair this band, then disconnect Jordan’s WHOOP'));
       await t.pumpAndSettle();
-      expect(find.text('Unpair Jordan’s WHOOP and pair this band instead?'), findsOneWidget);
-      expect(find.text('Your data stays.'), findsOneWidget);
+      expect(find.text('Replace Jordan’s WHOOP after this band connects?'), findsOneWidget);
+      expect(find.text('Your current band stays paired if setup fails or you cancel. Data already saved on this phone stays. Anything still unsynced on the old band is not synced to this phone after the switch.'), findsOneWidget);
       expect(calls.events, isEmpty, reason: 'nothing happens before the one confirm');
-      await t.tap(find.text('Unpair and pair'));
+      await t.tap(find.text('Pair replacement'));
       await t.pumpAndSettle();
-      expect(calls.events, ['unpair', 'stop', 'open:gen5']);
+      expect(calls.events, ['stop', 'open:gen5']);
       expect(calls.openedWith, [('AA:00:00:00:00:77', true)]);
+      expect(calls.replacementFlags, [true]);
       expect(calls.pairs, isEmpty);
       expect(_result(t), 'openedBandFlow|');
     });
@@ -399,7 +429,7 @@ void main() {
     testWidgets('cancel does nothing: no unpair, no pairing, no band flow', (t) async {
       final calls = _Calls();
       await _tap(t, calls, whoop, hasMain: true);
-      await t.tap(find.text('Unpair Jordan’s WHOOP and pair this one'));
+      await t.tap(find.text('Pair this band, then disconnect Jordan’s WHOOP'));
       await t.pumpAndSettle();
       await t.tap(find.text('Cancel'));
       await t.pumpAndSettle();
@@ -409,38 +439,26 @@ void main() {
       expect(_result(t), 'cancelled|');
     });
 
-    testWidgets('an unpair that throws: a failed result with the reason, and no pairing opens', (t) async {
-      final calls = _Calls()..unpairError = StateError('engine busy');
-      await _tap(t, calls, whoop, hasMain: true);
-      await t.tap(find.text('Unpair Jordan’s WHOOP and pair this one'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('Unpair and pair'));
-      await t.pumpAndSettle();
-      expect(calls.events, ['unpair']);
-      expect(calls.opened, isEmpty);
-      expect(calls.pairs, isEmpty);
-      expect(_result(t),
-          'failed|Could not unpair your band, so the new one was not paired. Try again.');
-    });
 
-    testWidgets('a second tap while the unpair is still running starts nothing', (t) async {
-      final calls = _Calls()..unpairGate = Completer<void>();
+
+    testWidgets('a second tap while replacement pairing is running starts nothing', (t) async {
+      final calls = _Calls()..openGate = Completer<void>();
       await _tap(t, calls, whoop, hasMain: true);
-      await t.tap(find.text('Unpair Jordan’s WHOOP and pair this one'));
+      await t.tap(find.text('Pair this band, then disconnect Jordan’s WHOOP'));
       await t.pumpAndSettle();
-      await t.tap(find.text('Unpair and pair'));
+      await t.tap(find.text('Pair replacement'));
       await t.pump();
-      expect(calls.events, ['unpair']);
-      // The unpair is still awaiting; a competing tap is refused at once.
+      expect(calls.events, ['stop', 'open:gen5']);
+      // Replacement pairing is still awaiting; a competing tap is refused at once.
       await t.tap(find.text('tap again'));
       await t.pumpAndSettle();
       expect(find.text('This is a WHOOP band'), findsNothing,
           reason: 'no second sheet opened');
       expect((t.widget(find.byKey(const ValueKey('second'))) as Text).data,
           'cancelled|');
-      calls.unpairGate!.complete();
+      calls.openGate!.complete();
       await t.pumpAndSettle();
-      expect(calls.events, ['unpair', 'stop', 'open:gen5']);
+      expect(calls.events, ['stop', 'open:gen5']);
       expect(calls.opened, ['gen5']);
       expect(_result(t), 'openedBandFlow|');
       // Once it ended, the flow takes a tap again.
@@ -483,39 +501,69 @@ void main() {
       await _tap(t, calls,
           _cand('ble_hrs', id: 'AA:00:00:00:00:78', label: 'Jordan’s other WHOOP', alsoBand: kWhoopGen4),
           hasMain: true);
-      await t.tap(find.text('Unpair Jordan’s WHOOP and pair this one'));
+      await t.tap(find.text('Pair this band, then disconnect Jordan’s WHOOP'));
       await t.pumpAndSettle();
-      await t.tap(find.text('Unpair and pair'));
+      await t.tap(find.text('Pair replacement'));
       await t.pumpAndSettle();
-      expect(calls.events, ['unpair', 'stop', 'open:gen4']);
+      expect(calls.events, ['stop', 'open:gen4']);
       expect(calls.openedWith, [('AA:00:00:00:00:78', true)]);
     });
 
     testWidgets('after a connect found a band: the same replace, one confirm', (t) async {
       final calls = _Calls([PairOutcome.band(kWhoopGen5)]);
       await _tap(t, calls, _cand('ble_hrs', label: 'Polar H10'), hasMain: true);
-      await t.tap(find.text('Unpair Jordan’s WHOOP and pair this one'));
+      await t.tap(find.text('Pair this band, then disconnect Jordan’s WHOOP'));
       await t.pumpAndSettle();
-      await t.tap(find.text('Unpair and pair'));
+      await t.tap(find.text('Pair replacement'));
       await t.pumpAndSettle();
-      expect(calls.events, ['pair:ble_hrs', 'unpair', 'stop', 'open:gen5']);
+      expect(calls.events, ['pair:ble_hrs', 'stop', 'open:gen5']);
     });
 
-    testWidgets('the confirm fits in German at 2x text', (t) async {
-      await pumpPair(
-          t,
-          Builder(
-              builder: (c) => Scaffold(
-                  body: TextButton(
-                      onPressed: () => showReplaceBandConfirm(c,
-                          mainBandName: 'Jordans WHOOP'),
-                      child: const Text('open')))),
-          locale: const Locale('de'), textScale: 2, size: const Size(360, 800));
-      await t.tap(find.text('open'));
-      await t.pumpAndSettle();
-      expect(t.takeException(), isNull);
-      expect(find.byType(SlotTable), findsNothing);
+
+  });
+
+  // WHY: the workout cleanup must never own the main peripheral's link.
+  // catches: letting the primary's remote id reach the secondary pair call.
+  for (final discoveredAfterConnect in [false, true]) {
+    testWidgets('current main band cannot become a sensor (after connect=$discoveredAfterConnect)', (t) async {
+      final calls = _Calls(discoveredAfterConnect
+          ? [PairOutcome.band(kWhoopGen5), const PairOutcome.saved()]
+          : [const PairOutcome.saved()]);
+      await _tap(t, calls, _cand('ble_hrs', id: 'primary',
+          alsoBand: discoveredAfterConnect ? null : kWhoopGen5), hasMain: true);
+      final choice = find.text('Use it for workouts only');
+      if (choice.evaluate().isNotEmpty) {
+        await t.tap(choice);
+        await t.pumpAndSettle();
+      }
+      expect(calls.pairs, isEmpty,
+          reason: 'reject before connecting to the saved primary');
+      expect(_result(t), startsWith('failed|'));
     });
+  }
+
+  // WHY: another flow can commit a primary while this confirmation is open.
+  // catches: checking primary identity only at the original tap.
+  testWidgets('workouts choice rechecks the primary identity before connecting', (t) async {
+    final calls = _Calls();
+    await _tap(t, calls, _cand('gen5', id: 'new-main'), hasMain: true);
+    calls.primaryId = 'new-main';
+    await t.tap(find.text('Use it for workouts only'));
+    await t.pumpAndSettle();
+    expect(calls.pairs, isEmpty);
+    expect(_result(t), startsWith('failed|'));
+  });
+
+  // WHY: post-connect WHOOP identification supersedes a Polar-looking advert.
+  // catches: retrying WHOOP under Polar PMD's required characteristics.
+  testWidgets('WHOOP discovered during Polar pairing retries as BLE HRS', (t) async {
+    final calls = _Calls([PairOutcome.band(kWhoopGen5), const PairOutcome.saved()]);
+    await _tap(t, calls, _cand('polar_pmd'), hasMain: true);
+    await t.tap(find.text('Use it for workouts only'));
+    await t.pumpAndSettle();
+    expect(calls.pairs.map((p) => p.$1), ['polar_pmd', 'ble_hrs']);
+    expect(calls.pairs.last.$2?.bandEntryId, 'gen5');
+    expect(_result(t), 'pairedSecondary|');
   });
 
   group('tap flow', () {
@@ -597,7 +645,7 @@ void main() {
     testWidgets('a plain strap and no band: the strap sheet, then pairs without a confirmation', (t) async {
       final calls = _Calls();
       await _tap(t, calls, _cand('ble_hrs', label: 'Polar H10'));
-      expect(find.text('This is a heart-rate strap'), findsOneWidget);
+      expect(find.text('This is a heart-rate sensor'), findsOneWidget);
       expect(find.text('Polar H10'), findsOneWidget, reason: 'its own name');
       await t.tap(find.text('Pair Bluetooth heart rate sensor'));
       await t.pumpAndSettle();
@@ -669,6 +717,19 @@ void main() {
       expect(_result(t), 'cancelled|');
     });
 
+    // WHY: database/device errors must reach the screen and leave taps retryable.
+    // catches: an exception escaping onTap before its caller can show a result.
+    testWidgets('a thrown pairing error becomes a visible failure and allows retry', (t) async {
+      final calls = _Calls()..pairError = StateError('device rows unavailable');
+      await _tap(t, calls, _cand('ble_hrs'), hasMain: true);
+      expect(_result(t), contains('Could not pair that device: Bad state: device rows unavailable'));
+      expect(calls.flowFor.running, isFalse);
+      calls.pairError = null;
+      await t.tap(find.text('tap'));
+      await t.pumpAndSettle();
+      expect(_result(t), 'pairedSecondary|');
+    });
+
     testWidgets('a failure comes back as its sentence', (t) async {
       final calls = _Calls([const PairOutcome.failed('The sensor did not answer.')]);
       await _tap(t, calls, _cand('ble_hrs'), hasMain: true);
@@ -676,16 +737,20 @@ void main() {
     });
 
     testWidgets('a ring (a band in its own right) gets the band sheet, and its own screen does the pairing', (t) async {
-      final calls = _Calls();
+      final calls = _Calls()..bandFlowResult = BandFlowResult.pairedWearable;
       await _tap(t, calls, _cand('oura', label: 'Oura Ring'));
       expect(find.text('This is a ring'), findsOneWidget);
-      // Not a WHOOP, so there is no main-band choice (DT12): one button.
+      // Not a WHOOP, so there is no main-band choice: one button.
       expect(find.text('Pair it as my band'), findsNothing);
+      // The comparison table and unverified guidance can put this below the fold.
+      await t.ensureVisible(find.text('Pair Oura Ring'));
+      await t.pumpAndSettle();
       await t.tap(find.text('Pair Oura Ring'));
       await t.pumpAndSettle();
       // The ring needs its own key screen, so it never pairs from here.
       expect(calls.pairs, isEmpty);
       expect(calls.opened, ['oura']);
+      expect(_result(t), 'pairedOther|');
     });
   });
 
@@ -697,11 +762,14 @@ void main() {
       final calls = _Calls();
       await _tap(t, calls, ouraAsStrap);
       expect(find.text('This is a ring'), findsOneWidget);
+      // The comparison table and unverified guidance can put this below the fold.
+      await t.ensureVisible(find.text('Pair Oura Ring'));
+      await t.pumpAndSettle();
       await t.tap(find.text('Pair Oura Ring'));
       await t.pumpAndSettle();
       expect(calls.pairs, isEmpty);
       expect(calls.opened, ['oura']);
-      expect(_result(t), 'openedBandFlow|');
+      expect(_result(t), 'cancelled|');
     });
 
     testWidgets('a connect that finds the ring does the same', (t) async {
@@ -709,11 +777,14 @@ void main() {
       await _tap(t, calls, _cand('ble_hrs', label: 'HRM'), hasMain: true);
       await t.ensureVisible(find.text('Pair Oura Ring'));
       await t.pumpAndSettle();
+      // The comparison table and unverified guidance can put this below the fold.
+      await t.ensureVisible(find.text('Pair Oura Ring'));
+      await t.pumpAndSettle();
       await t.tap(find.text('Pair Oura Ring'));
       await t.pumpAndSettle();
       expect(calls.pairs.length, 1, reason: 'only the first connect');
       expect(calls.opened, ['oura']);
-      expect(_result(t), 'openedBandFlow|');
+      expect(_result(t), 'cancelled|');
     });
   });
 
@@ -733,6 +804,8 @@ void main() {
               found: [
                 _cand('ble_hrs', id: 'AA:00:00:00:00:A1', label: 'Jordan’s WHOOP', alsoBand: kWhoopGen5),
                 _cand('ble_hrs', id: 'AA:00:00:00:00:A2', label: 'Polar H10'),
+                // This Polar fixture is an armband; HRS alone proves no placement.
+                _cand('polar_pmd', id: 'AA:00:00:00:00:A3', label: 'Polar Verity Sense'),
               ],
               kindSelection: group,
             ),
@@ -746,7 +819,12 @@ void main() {
       group.value = PairFilter.straps;
       await t.pumpAndSettle();
       expect(find.text('Jordan’s WHOOP'), findsNothing);
+      expect(find.text('Polar H10'), findsNothing);
+      expect(find.text('Polar Verity Sense'), findsOneWidget);
+      group.value = null;
+      await t.pumpAndSettle();
       expect(find.text('Polar H10'), findsOneWidget);
+      expect(find.text('Jordan’s WHOOP'), findsOneWidget);
     });
   });
 
@@ -761,11 +839,11 @@ void main() {
       expect(afterBandFoundText(l, found, opened, bandPairedNow: false),
           contains('Nothing was saved'));
     });
-    test('a ring’s own screen reported its own outcome', () {
+    test('a ring handoff needs an explicit successful pair result', () {
       expect(
           afterBandFoundText(l, PairOutcome.band(kOura), opened,
               bandPairedNow: false),
-          isNull);
+          contains('Nothing was saved'));
     });
     test('backed out, or failed, as before', () {
       expect(
@@ -781,7 +859,7 @@ void main() {
     });
   });
 
-  group('G3 r1 S2: browsing goes through the same confirmations', () {
+  group('browsing goes through the same confirmations', () {
     // A button that runs confirmBrowse and prints the answer.
     Future<bool?> browse(WidgetTester t, _Calls calls, BandEntry e,
         {required bool hasMain, String? tapLabel}) async {
@@ -938,6 +1016,9 @@ void main() {
     await t.tap(find.text('Pair Colmi ring'));
     await t.pumpAndSettle();
     expect(calls.pairs.map((p) => p.$1), ['colmi']);
+    // WHY: a ring is not workout-only; CLAIM(wearable-pair-result).
+    // catches: treating the presence of confirmation as a workout sensor.
+    expect(_result(t), 'pairedOther|');
   });
 
   for (final sensor in kPairableSensors.where((s) => s.pick != null)) {
@@ -966,7 +1047,7 @@ void main() {
     });
   }
 
-  group('G3 r1 S3: the handoff to the main-band flow', () {
+  group('the handoff to the main-band flow', () {
     final whoopOnly = _cand('gen5', label: 'WHOOP 5A1B');
 
     testWidgets('the scan is stopped BEFORE the main-band flow opens', (t) async {
@@ -989,7 +1070,7 @@ void main() {
     });
   });
 
-  group('G3 r1 S4: a WHOOP-only advertisement', () {
+  group('a WHOOP-only advertisement', () {
     testWidgets('the band-choice flow runs for a scanned framed entry; a secondary choice pairs under ble_hrs with the confirmation', (t) async {
       final calls = _Calls();
       await _tap(t, calls, _cand('gen5', label: 'WHOOP 5A1B'), hasMain: true);
@@ -999,6 +1080,41 @@ void main() {
       expect(calls.pairs.single.$1, 'ble_hrs');
       expect(calls.pairs.single.$2!.bandEntryId, 'gen5');
       expect(_result(t), 'pairedSecondary|');
+    });
+  });
+
+  group('the choice sheet respects the top safe area', () {
+    testWidgets('a tall sheet stops below the status bar', (t) async {
+      // 120 physical px at dpr 2 = a 60 px status bar / notch.
+      t.view.padding = const FakeViewPadding(top: 120);
+      await pumpPair(
+        t,
+        Builder(
+          builder: (c) => TextButton(
+            onPressed: () => showPairChoiceSheet(
+              c,
+              PairChoiceSheet(
+                deviceIcon: LucideIcons.watch,
+                deviceName: 'A band',
+                title: 'Pair this band',
+                comparison: const SlotComparison(
+                    everyDay: SlotSide(sends: {}, doesNotSend: {}),
+                    workoutsOnly: SlotSide(sends: {}, doesNotSend: {})),
+                lead: List.filled(40, 'A long instruction line.').join(' '),
+                primaryLabel: 'Pair',
+                backLabel: 'Back',
+              ),
+            ),
+            child: const Text('open'),
+          ),
+        ),
+        size: const Size(412, 500),
+        textScale: 2,
+      );
+      await t.tap(find.text('open'));
+      await t.pumpAndSettle();
+      expect(t.getTopLeft(find.byType(PairChoiceSheet)).dy, greaterThanOrEqualTo(60),
+          reason: 'the sheet must not slide under the system bar');
     });
   });
 }

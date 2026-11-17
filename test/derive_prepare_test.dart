@@ -4,7 +4,7 @@ import 'package:openstrap_edge/compute/substrate.dart';
 
 void main() {
   test(
-    'prepareDerivationPayload can filter a multi-day substrate to one target day',
+    'prepareDerivationPayloadHeavy can filter a multi-day substrate to one target day',
     () {
       final start =
           DateTime(2026, 6, 26, 23, 55).millisecondsSinceEpoch ~/ 1000;
@@ -35,20 +35,20 @@ void main() {
         skinContact: List<int>.filled(ts.length, 0),
       );
 
-      final all = prepareDerivationPayload(sub);
+      final all = prepareDerivationPayloadHeavy(sub);
       expect(all.days.map((d) => d.date).toList(), [
         '2026-06-26',
         '2026-06-27',
       ]);
 
-      final one = prepareDerivationPayload(sub, targetDay: '2026-06-27');
+      final one = prepareDerivationPayloadHeavy(sub, targetDay: '2026-06-27');
       expect(one.days, hasLength(1));
       expect(one.days.first.date, '2026-06-27');
       expect(one.dataNowSec, sub.lastTs);
     },
   );
 
-  test('prepareDerivationPayload returns empty when target day is absent', () {
+  test('prepareDerivationPayloadHeavy returns empty when target day is absent', () {
     final start = DateTime(2026, 6, 27, 10).millisecondsSinceEpoch ~/ 1000;
     final ts = List<int>.generate(601, (i) => start + i);
     final sub = Substrate(
@@ -65,7 +65,7 @@ void main() {
       skinContact: List<int>.filled(ts.length, 0),
     );
 
-    final none = prepareDerivationPayload(sub, targetDay: '2026-06-28');
+    final none = prepareDerivationPayloadHeavy(sub, targetDay: '2026-06-28');
     expect(none.days, isEmpty);
   });
 
@@ -97,7 +97,7 @@ void main() {
     final offsetSec =
         DateTime(2026, 6, 27, 4, 30).millisecondsSinceEpoch ~/ 1000;
 
-    final out = prepareDerivationPayload(
+    final out = prepareDerivationPayloadHeavy(
       sub,
       targetDay: '2026-06-27',
       override: SleepWindowOverride(
@@ -172,7 +172,7 @@ void main() {
       final offsetSec =
           DateTime(2026, 6, 27, 4, 30).millisecondsSinceEpoch ~/ 1000;
 
-      final out = prepareDerivationPayload(
+      final out = prepareDerivationPayloadHeavy(
         sub,
         targetDay: '2026-06-27',
         override: SleepWindowOverride(

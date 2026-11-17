@@ -771,6 +771,8 @@ class _CallbackSources extends RecursiveAstVisitor<void> {
   final aliases = <Element, List<Element>>{};
   final known = <Element>{};
   final defaultedNulls = <Element>{};
+  final omitted = <Element>{};
+  final defaults = <Element, Expression>{};
   Element key(Element e) => (e is PropertyAccessorElement ? e.variable : e).baseElement;
   void add(Element? e, Expression? expression) {
     if (e != null && expression != null) sources.putIfAbsent(key(e), () => []).add(expression);
@@ -804,6 +806,13 @@ class _CallbackSources extends RecursiveAstVisitor<void> {
     }
     super.visitConstructorDeclaration(node);
   }
+  @override void visitDefaultFormalParameter(DefaultFormalParameter node) {
+    final e = node.declaredFragment?.element;
+    if (e != null && node.defaultValue != null) {
+      defaults[key(e)] = node.defaultValue!;
+    }
+    super.visitDefaultFormalParameter(node);
+  }
   @override void visitArgumentList(ArgumentList node) {
     final supplied = <Element>{};
     for (final argument in node.arguments) {
@@ -824,6 +833,9 @@ class _CallbackSources extends RecursiveAstVisitor<void> {
         // Only an observed omission supplies a null default. A public optional
         // parameter forwarded with no known caller is still unknown (R4-2).
         // CLAIM(resolved-effects) [unresolved_bad_optional_external_callback].
+        if (parameter.isOptional && !supplied.contains(key(parameter))) {
+          omitted.add(key(parameter));
+        }
         if (parameter.isOptional && !supplied.contains(key(parameter)) &&
             (parameter.defaultValueCode == null || parameter.defaultValueCode == 'null')) {
           defaultedNulls.add(key(parameter));
@@ -844,6 +856,23 @@ class _CallbackSources extends RecursiveAstVisitor<void> {
     final e = node.declaredFragment?.element;
     if (e != null) {
       known.add(key(e));
+      final owner = e.enclosingElement;
+      if (owner is InterfaceElement) {
+        for (final parent in owner.allSupertypes) {
+          final base = parent.element.getMethod(e.name ?? '');
+          if (base == null) continue;
+          for (var i = 0; i < e.formalParameters.length; i++) {
+            final p = e.formalParameters[i];
+            final candidates = base.formalParameters;
+            final matching = p.isNamed
+                ? candidates.where((b) => b.name == p.name).firstOrNull
+                : (i < candidates.length ? candidates[i] : null);
+            if (matching != null) {
+              aliases.putIfAbsent(key(p), () => []).add(key(matching));
+            }
+          }
+        }
+      }
       node.body.accept(_CallbackReturns((expression) => add(e, expression)));
     }
     super.visitMethodDeclaration(node);
@@ -852,7 +881,10 @@ class _CallbackSources extends RecursiveAstVisitor<void> {
     if (e == null) return false;
     final k = key(e);
     if (!seen.add(k)) return false;
-    final values = sources[k] ?? const <Expression>[];
+    final values = <Expression>[
+      ...?sources[k],
+      if (omitted.contains(k) && defaults[k] != null) defaults[k]!,
+    ];
     final links = aliases[k] ?? const <Element>[];
     if (values.isEmpty && links.isEmpty) {
       return defaultedNulls.contains(k);

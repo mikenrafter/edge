@@ -35,7 +35,10 @@ void main() {
       expect(justInside.shouldEnable, isTrue,
           reason: 'collection is already running when warm-up must begin');
       expect(justInside.lease, lease);
-      expect(at(lease + const Duration(minutes: 1)).shouldEnable, isFalse);
+      final full = justInside.effectiveLease!;
+      expect(full, greaterThanOrEqualTo(lease));
+      expect(at(full + const Duration(minutes: 1)).shouldEnable, isFalse);
+      expect(at(full).shouldEnable, isTrue);
     });
   }
 

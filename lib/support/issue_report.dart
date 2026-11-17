@@ -1,23 +1,13 @@
-// "Report an issue": what goes in the archive, how it is built, sent and
-// later deleted. The screen is lib/ui2/profile/report_issue.dart.
-//
-// ONE list of files ([reportPaths]) feeds the archive's manifest.json AND the
-// "What's included" section, so the two cannot say different things. Each
-// file's description is an ARB string: the manifest uses the English text,
-// the screen the user's language.
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
-
 import 'package:archive/archive_io.dart';
 import 'package:flutter/widgets.dart' show Locale;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 import '../compute/derivation_engine.dart' show kAlgoVersion;
 import '../data/backup_extras.dart' show BackupExtras;
 import '../data/db.dart';
@@ -27,6 +17,17 @@ import '../state/app_state.dart';
 import '../sync/dev_log.dart';
 import '../telemetry/telemetry_service.dart';
 import 'report_crypto.dart';
+
+// "Report an issue": what goes in the archive, how it is built, sent and
+// later deleted. The screen is lib/ui2/profile/report_issue.dart.
+//
+// ONE list of files ([reportPaths]) feeds the archive's manifest.json AND the
+// "What's included" section, so the two cannot say different things. Each
+// file's description is an ARB string: the manifest uses the English text,
+// the screen the user's language.
+
+
+
 
 /// The report service. One constant; the Worker answers under /v1.
 const String kReportBaseUrl = 'https://reports.openstrap.site';
@@ -96,6 +97,7 @@ class ReportDraft {
     required this.category,
     required this.title,
     required this.description,
+    this.contact = '',
     this.screenshotPath,
     this.includeDatabase = false,
     this.fullDatabase = false,
@@ -108,6 +110,11 @@ class ReportDraft {
     final ext = dot < 0 ? '' : s.substring(dot + 1).toLowerCase();
     return RegExp(r'^[a-z0-9]{1,5}$').hasMatch(ext) ? ext : 'img';
   }
+
+
+  /// Email or handle for a reply. Only in the encrypted user.txt, never in
+  /// the plaintext server meta.
+  final String contact;
 }
 
 /// The archive, from already-gathered parts, written to [path]. The tests
@@ -147,7 +154,9 @@ Future<File> writeReportZip(
     'logs/sync.log': utf8.encode(syncLog),
     'logs/telemetry.json': utf8.encode(pretty.convert(telemetry)),
     'user.txt': utf8.encode('Category: ${draft.category.name}\n'
-        'Title: ${draft.title}\n\n${draft.description}\n'),
+        'Title: ${draft.title}\n'
+        '${draft.contact.isEmpty ? '' : 'Contact: ${draft.contact}\n'}'
+        '\n${draft.description}\n'),
     'screenshot.${draft.screenshotExt}': ?screenshot,
   };
   final zip = ZipFileEncoder()..create(path);
@@ -172,7 +181,9 @@ Future<File> writeReportZip(
 }
 
 /// The plaintext `meta` field the Worker shows in the tracker. Nothing in it
-/// is health data.
+/// is health data. The band's generation and firmware ride here so a ticket
+/// can be triaged without decrypting it: most "no data" reports turn on them
+/// (a WHOOP 5.0 / MG on 50.43.x withholds all data, edge#673).
 Map<String, Object?> reportServerMeta(
         ReportDraft d, Map<String, Object?> meta) =>
     {
@@ -185,6 +196,8 @@ Map<String, Object?> reportServerMeta(
       'platform': meta['platform'],
       'osVersion': meta['osVersion'],
       'deviceModel': meta['deviceModel'],
+      'bandGeneration': ?meta['bandGeneration'],
+      'bandFirmware': ?meta['bandFirmware'],
       'hasDatabase': d.includeDatabase && !d.fullDatabase,
       'hasScreenshot': d.screenshotPath != null,
       if (d.includeDatabase && !d.fullDatabase) 'rawDays': ?meta['rawDays'],
@@ -205,7 +218,7 @@ Future<File> gzipFile(String path, String to) async {
 }
 
 String _tmp(String dir, String ext) =>
-    '$dir/openstrap_report_${DateTime.now().microsecondsSinceEpoch}$ext';
+    '$dir/$_kReportPrefix${DateTime.now().microsecondsSinceEpoch}$ext';
 
 /// Gather everything from the running app and write the archive to a temp
 /// file (the caller deletes it). Built on disk, so even the full database
@@ -223,6 +236,15 @@ Future<({File zip, Map<String, Object?> meta})> collectReport(
   final s = await t.staticDevice();
   final now = DateTime.now();
   final build = s['app_build'];
+  final d = app.device;
+  final bandGeneration = app.paired?.generation ?? d.generation;
+  // Only gen5 HELLOs record a firmware, and the record is per install, not
+  // per band: after a swap to a WHOOP 4.0, or with no band paired, it would
+  // name a band that is no longer the one reporting.
+  // ponytail: two gen5 bands in turn still share one record; keying it by
+  // serial is the upgrade if that ever misleads a ticket.
+  final bandFirmware =
+      bandGeneration == 'gen5' ? await LocalDb.bandFirmware() : null;
   final meta = <String, Object?>{
     'appVersion': '${s['app_version'] ?? '?'}${build == null ? '' : '+$build'}',
     'algoVersion': kAlgoVersion,
@@ -236,12 +258,14 @@ Future<({File zip, Map<String, Object?> meta})> collectReport(
     'tzOffsetMinutes': now.timeZoneOffset.inMinutes,
     'installId': app.deviceId,
     'createdAt': _iso(now),
+    'bandGeneration': bandGeneration,
+    'bandFirmware': bandFirmware,
   };
-  final d = app.device;
   final device = <String, Object?>{
     'band': {
       'paired': app.isPaired,
-      'generation': app.paired?.generation ?? d.generation,
+      'generation': bandGeneration,
+      'firmware': bandFirmware,
       'connection': d.connection,
       'batteryPct': d.batteryPct,
       'charging': d.charging,
@@ -250,8 +274,6 @@ Future<({File zip, Map<String, Object?> meta})> collectReport(
       'lastSyncedRecord': app.lastSynced?.tsEpoch,
       'bandDataOldest': d.dataRangeOldest,
       'bandDataNewest': d.dataRangeNewest,
-      // Firmware is not held in app state; the HELLO lines in logs/sync.log
-      // carry it.
     },
     'sensors': [
       for (final r in app.sensors)
@@ -284,6 +306,7 @@ Future<({File zip, Map<String, Object?> meta})> collectReport(
     'syncClockLost': d.syncClockLost,
     'strapNeedsReboot': d.strapNeedsReboot,
     'syncChunkQuarantined': d.syncChunkQuarantined,
+    'bandFirmware': d.firmware,
     'initError': app.initError,
     'importRollupError': app.importRollupError,
     'lastBackupError': app.lastBackupError,
@@ -301,6 +324,7 @@ Future<({File zip, Map<String, Object?> meta})> collectReport(
       ? null
       : await File(draft.screenshotPath!).readAsBytes();
   final tmp = (await getTemporaryDirectory()).path;
+  await sweepStaleReports(tmp);
   final slice = draft.includeDatabase && !draft.fullDatabase;
   Future<File> zipWith(File? dbGz, int? rawDays) {
     onStage?.call(ReportStage.packing);
@@ -527,4 +551,32 @@ Future<void> _store(List<SentReport> list) async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.setString(
       _kSentReports, jsonEncode([for (final s in list) s.toJson()]));
+}
+
+
+const _kReportPrefix = 'openstrap_report_';
+
+/// Delete report files left in [dir] by earlier runs: a Share locally whose
+/// cleanup never ran, or a run the OS killed mid-build. Each run writes a new
+/// name, and with the full database each one is a plaintext copy of the whole
+/// health record, so without this they pile up in the cache dir. Files newer
+/// than [olderThan] are left alone in case another build is still using them.
+Future<int> sweepStaleReports(String dir,
+    {Duration olderThan = const Duration(minutes: 10), DateTime? now}) async {
+  final cutoff = (now ?? DateTime.now()).subtract(olderThan);
+  var n = 0;
+  try {
+    await for (final e in Directory(dir).list(followLinks: false)) {
+      if (e is! File) continue;
+      final name = e.uri.pathSegments.last;
+      if (!name.startsWith(_kReportPrefix)) continue;
+      try {
+        if (e.lastModifiedSync().isBefore(cutoff)) {
+          await e.delete();
+          n++;
+        }
+      } catch (_) {}
+    }
+  } catch (_) {}
+  return n;
 }

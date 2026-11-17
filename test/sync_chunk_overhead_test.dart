@@ -25,11 +25,14 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/finalized_day_index_maintenance.dart';
 import 'package:openstrap_edge/data/models.dart';
+import 'package:openstrap_edge/sync/import_gate.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common/sqflite_logger.dart';
+import 'package:sqflite_common/src/mixin/factory.dart' show buildDatabaseFactory, SqfliteInvokeHandler;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 // ── call log ────────────────────────────────────────────────────────────────
@@ -63,6 +66,10 @@ class _Ev {
 
 final _log = <_Ev>[];
 var _counting = false;
+Completer<void>? _indexStarted;
+Completer<void>? _resumeIndex;
+Completer<void>? _commitStarted;
+int? _maintenanceId;
 
 void _mark(String m) {
   if (_counting) _log.add(_Ev.mark(m));
@@ -201,6 +208,8 @@ class _Rig {
       onCommit: (raws, samples, token,
           {archives, ecgRawPackets, deviceFamily}) async {
         _mark('commit-start');
+        _commitStarted?.complete();
+        _commitStarted = null;
         await LocalDb.commitSyncBatch(
           raws,
           samples,
@@ -277,10 +286,36 @@ void main() {
 
   setUpAll(() async {
     sqfliteFfiInit();
+    final native = databaseFactoryFfi as SqfliteInvokeHandler;
+    final delayedNative = buildDatabaseFactory(invokeMethod: (method, [args]) async {
+      final sql = args is Map ? args['sql'] : null;
+      if (_indexStarted != null && sql is String &&
+          sql.startsWith('CREATE INDEX IF NOT EXISTS idx_day_result_finalized_payload')) {
+        _maintenanceId = (args as Map)['id'] as int;
+        // Simulate an arbitrarily long index build while holding the REAL WAL
+        // writer lock on the same native connection. No sleeps/size threshold.
+        final nativeArgs = {'id': _maintenanceId, 'sql': 'BEGIN IMMEDIATE'};
+        await native.invokeMethod<Object?>('execute', nativeArgs);
+        _mark('index-lock-held');
+        _indexStarted!.complete();
+        await _resumeIndex!.future;
+        try {
+          return await native.invokeMethod<Object?>(method, args);
+        } finally {
+          await native.invokeMethod<Object?>('execute', {'id': _maintenanceId, 'sql': 'COMMIT'});
+          _mark('index-complete');
+        }
+      }
+      final result = await native.invokeMethod<Object?>(method, args);
+      if (method == 'closeDatabase' && args is Map && args['id'] == _maintenanceId) {
+        _mark('maintenance-closed');
+      }
+      return result;
+    });
     // The logger is the only public hook that sees every sqflite call.
     // ignore: experimental_member_use
     databaseFactory = SqfliteDatabaseFactoryLogger(
-      databaseFactoryFfi,
+      delayedNative,
       options: SqfliteLoggerOptions(
         type: SqfliteDatabaseFactoryLoggerType.invoke,
         log: (e) {
@@ -316,12 +351,76 @@ void main() {
   });
 
   tearDown(() async {
+    _indexStarted = null;
+    _resumeIndex = null;
+    _commitStarted = null;
+    _maintenanceId = null;
     _counting = false;
     for (final r in _rigs) {
       await r.engine.disconnect();
       await r.settle();
     }
     _rigs.clear();
+  });
+
+  // WHY: a large CREATE INDEX holds SQLite's one WAL writer lock; an incoming
+  // HISTORY_END still must commit and echo its exact token, without BUSY.
+  // CLAIM(index-sync-exclusion); catches: missing commit gate, early release,
+  // a leaked maintenance connection, or an import admitted before teardown.
+  test('index build racing HISTORY_END commits before ACK and releases imports/lifecycle', () async {
+    final db = await LocalDb.instance;
+    await LocalDb.setForeground(true);
+    // 12k history/version rows, with a 2KiB payload: a 24MiB+ real index input.
+    await db.rawInsert('WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM n WHERE i<12000) '
+      'INSERT INTO day_result(day_id,algo_version,payload_json,window_json,finalized,computed_at) '
+      "SELECT 'history-'||i,7,?, '{}',1,1 FROM n", ['{"note":"${'x' * 2048}"}']);
+    _indexStarted = Completer<void>();
+    _resumeIndex = Completer<void>();
+    _commitStarted = Completer<void>();
+    final commitStarted = _commitStarted!.future;
+    _counting = true;
+    final maintenance = const FinalizedDayIndexMaintenance().call();
+    try {
+      await _indexStarted!.future;
+      expect((ImportGate.check('race') as SyncRefused).reason, ImportBlock.maintenance);
+      final r = _Rig();
+      r.engine.debugClaimHistoryTask();
+      r.rx(_historyStart());
+      r.chunk(3, 0xB602, ts: 1780000000, counter: 6200);
+      await commitStarted;
+      expect(r.acks, isEmpty);
+      expect(_log.where((e) => e.sqlIs(r'^\s*BEGIN')), isEmpty,
+          reason: 'sync queues in Dart before reaching SQLite, regardless of build duration');
+      var admitted = false;
+      final admission = ImportGate.beginImport().then((v) { admitted = true; return v; });
+      final background = LocalDb.setForeground(false);
+      expect(admitted, isFalse);
+      _resumeIndex!.complete();
+      await maintenance;
+      await r.settle();
+      // HISTORY_COMPLETE/teardown ends the drain; an import waits for that too.
+      await r.engine.disconnect();
+      expect(await admission, isA<ImportAdmitted>());
+      ImportGate.leave();
+      await background;
+      expect(await _count('decoded_onehz'), 3);
+      expect(await LocalDb.getCursor('strap_trim'), isNotNull);
+      expect(r.acks.single.take(9).toList(), [1, 2, 0xB6, 0, 0, 0x18, 0, 0, 0]);
+      final closed = _log.indexWhere((e) => e.mark == 'maintenance-closed');
+      final committed = _log.indexWhere((e) => e.mark == 'commit-end');
+      final ack = _log.indexWhere((e) => e.mark == 'ack');
+      expect(closed, greaterThan(_log.indexWhere((e) => e.mark == 'index-complete')));
+      expect(committed, greaterThan(closed));
+      expect(ack, greaterThan(committed));
+      expect(await db.rawQuery("SELECT name FROM sqlite_master WHERE name='idx_day_result_finalized_payload'"), hasLength(1));
+      final closes = _log.where((e) => e.mark == 'maintenance-closed').length;
+      await const FinalizedDayIndexMaintenance().call(); // background never opens one
+      expect(_log.where((e) => e.mark == 'maintenance-closed').length, closes);
+    } finally {
+      if (!_resumeIndex!.isCompleted) _resumeIndex!.complete();
+      await maintenance;
+      ImportGate.leave();
+    }
   });
 
   group('A. commitSyncBatch round trips and durability', () {

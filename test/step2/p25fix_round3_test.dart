@@ -115,8 +115,10 @@ void main() {
     test('a wipe during a platform FAILURE call: no retry state is recreated',
         () async {
       await seed(days);
+      var callsBeforeWipe = 0;
       onSleep = (n) async {
         if (n != 1) return true;
+        callsBeforeWipe = healthCalls.length; // main's legacy purge can precede this write.
         await LocalDb.wipeAll();
         return false; // the priority write fails
       };
@@ -125,7 +127,8 @@ void main() {
 
       expect(done, 0);
       expect(await cursor('health_export_retry_state'), isEmpty);
-      expect(healthCalls, isEmpty, reason: 'and the bulk pass never started');
+      expect(healthCalls, hasLength(callsBeforeWipe),
+          reason: 'no platform call after the wipe; the bulk pass never started');
     });
 
     test('a wipe during the legacy STEPS purge: no purge stamp in the new store '
@@ -186,8 +189,10 @@ void main() {
 
     test('deleted: the bulk pass exports nothing for it', () async {
       await seed([days.first]);
+      var callsBeforeDelete = 0;
       onSleep = (n) async {
         if (n == 1) {
+          callsBeforeDelete = healthCalls.length;
           await db.delete('day_result', where: 'day_id = ?', whereArgs: [days.first]);
         }
         return true;
@@ -196,7 +201,8 @@ void main() {
       await export();
 
       expect(sleepCalls, hasLength(1), reason: 'only the priority write');
-      expect(healthCalls, isEmpty, reason: 'the old map was not exported');
+      expect(healthCalls, hasLength(callsBeforeDelete),
+          reason: 'no export call after the row disappeared');
     });
   });
 }

@@ -71,8 +71,8 @@ void main() {
     ImportHooks.table = _KillAt('substrate_archive');
     await expectLater(
         LocalDb.importFromDbFile(src), throwsA(isA<StateError>()));
-    expect(await LocalDb.getCursorInt(_cursor), _localSec(10, 3),
-        reason: 'precondition: the file\'s cursor replaced the local one');
+    expect(await LocalDb.getCursorInt(_cursor), _localSec(10, 10),
+        reason: 'main retains the greater prune edge during the copy too');
 
     ImportHooks.table = null;
     await LocalDb.close(); // a fresh open, as after a process restart

@@ -105,7 +105,8 @@ void main() {
       final code = codeOnly(src);
       expect(code, contains('void openProfile(BuildContext c) => '
           'goto(c, const MoreSettings());'));
-      expect(code, isNot(contains('class ProfileHome')));
+      expect(bodyOf(src, 'void openProfile('), isNot(contains('ProfileHome')),
+          reason: 'the real entry goes straight to Settings');
     });
 
     test('DeviceDetail: no Device lab entry any more', () {

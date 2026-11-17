@@ -28,6 +28,9 @@ import '../../support/skeleton_fixture.dart' show skLoadAppFonts;
 import 'pilot_secondary_shift_test.dart' show check, landed;
 
 class _PrivateRepo extends GuideFakeRepo {
+  @override
+  Future<Map<String, JournalMetricValue>> getJournalMetrics(String day) =>
+      LocalDb.journalMetricsForDay(day);
   final workout = Completer<Map<String, dynamic>>();
   int workoutReads = 0;
   @override

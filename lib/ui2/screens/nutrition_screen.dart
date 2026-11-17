@@ -1,3 +1,20 @@
+import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:provider/provider.dart';
+import '../../l10n/app_localizations.dart';
+import '../../data/db.dart';
+import '../../data/read_paused.dart';
+import '../../data/day_label.dart';
+import '../../data/nutrition_store.dart';
+import '../../models/metric.dart';
+import '../../data/journal_fields.dart';
+import '../../data/water_units.dart';
+import '../../state/app_state.dart';
+import '../ui2.dart';
+import '../onboarding/profile_setup.dart' show formatDay;
+import 'journal_compose.dart' show OsTextField;
+import 'log_food.dart';
+
 // Nutrition.
 //
 // Three things this screen refuses to do, and they shape everything else:
@@ -14,24 +31,7 @@
 // Water is NOT re-invented here: it is the existing `water_ml` journal field
 // (`lib/data/journal_fields.dart`), read and written through the repo.
 
-import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:provider/provider.dart';
 
-import '../../l10n/app_localizations.dart';
-import '../../data/db.dart';
-import '../../data/read_paused.dart';
-import '../../data/day_label.dart';
-import '../../data/nutrition_store.dart';
-import '../../models/metric.dart';
-import '../../data/journal_fields.dart';
-import '../../data/water_units.dart';
-import '../../state/app_state.dart';
-import '../ui2.dart';
-import '../older_version.dart';
-import '../onboarding/profile_setup.dart' show formatDay;
-import 'journal_compose.dart' show OsTextField;
-import 'log_food.dart';
 
 class NutritionScreen extends StatefulWidget {
   /// Pushed from the Activity tab rather than shown as a tab: a page with a
@@ -127,7 +127,22 @@ class _NutritionScreenState extends State<NutritionScreen>
     final t = beginRead(#nutrition);
     final app = context.read<AppState>();
     final db = await LocalDb.instance;
+    if (!stillNewest(#nutrition, t)) return;
     final week = await NutritionDb.window(db, days: 7);
+    if (!stillNewest(#nutrition, t)) return;
+    final weekDates = {for (final d in week.days) d.date};
+    // Measured days only: an imported vendor total is a different estimate,
+    // and averaging it with ours mixes two scales in one figure.
+    Map<String, double> weekOf(List<Map<String, dynamic>> rows) => {
+          for (final r in rows)
+            if (weekDates.contains(r['date']))
+              r['date'] as String: (r['value'] as num).toDouble(),
+        };
+    final burnedByDate = weekOf(
+        await LocalDb.metricSeries('calories_total', measuredOnly: true));
+    if (!stillNewest(#nutrition, t)) return;
+    final wornMinByDate = weekOf(await LocalDb.metricSeries('worn_min'));
+    if (!stillNewest(#nutrition, t)) return;
     Metric? burned;
     double? water;
     final date = _date;
@@ -138,16 +153,20 @@ class _NutritionScreenState extends State<NutritionScreen>
       // Stored read: burned calories are today's activity, absent (not
       // another day's) until the refresh lands; it is asked for after paint.
       final today = await repo.getTodayStored();
+      if (!stillNewest(#nutrition, t)) return;
       pending = (today['status'] as Map?)?['refresh_pending'] == true;
       final daily = today['daily'];
       if (daily is Map) burned = Metric.parse(daily['calories_total']);
       water = (await repo.getJournalMetrics(date))['water_ml']?.value;
+      if (!stillNewest(#nutrition, t)) return;
       assumed = water == null ? 0 : await LocalDb.assumedWaterMl(date);
     }
     if (!stillNewest(#nutrition, t)) return;
     setState(() {
       _week = week;
       _burned = burned;
+      _burnedByDate = burnedByDate;
+      _wornMinByDate = wornMinByDate;
       _waterMl = water;
       _waterDate = date;
       _assumedMl = assumed;
@@ -400,6 +419,7 @@ class _NutritionScreenState extends State<NutritionScreen>
     final w = _week;
     if (w == null) return const SizedBox.shrink();
     final counted = w.counted.length;
+    final balance = weeklyEnergyBalance(w, _burnedByDate, _wornMinByDate);
     // PARTIAL, not "excluded": today is excluded from the averages too, and it
     // is not partial — a day cannot be judged incomplete while it is still
     // happening (see `DayLogState.inProgress`).
@@ -446,7 +466,7 @@ class _NutritionScreenState extends State<NutritionScreen>
                   ),
                 ),
         ),
-        if (counted > 0 && w.meanKcal.value != null && _burned?.value != null)
+        if (balance != null)
           Section(
             l?.nutritionEnergyBalance ?? 'Energy balance',
             Surface(
@@ -455,38 +475,20 @@ class _NutritionScreenState extends State<NutritionScreen>
                 children: [
                   InlineMetrics([
                     (l?.nutritionLabelEaten ?? 'EATEN',
-                        '${w.meanKcal.value!.round()} kcal', C.domFood),
+                        '${balance.eaten.round()} kcal', C.domFood),
                     (l?.nutritionLabelBurned ?? 'BURNED',
-                        '${_burned!.value!.round()} kcal', C.purple),
+                        '${balance.burned.round()} kcal', C.purple),
                     (
                       l?.nutritionLabelBalance ?? 'BALANCE',
-                      '${(w.meanKcal.value! - _burned!.value!).round()} kcal',
+                      '${balance.balance.round()} kcal',
                       C.teal,
                     ),
                   ]),
-                  if (_burned!.fromOlderVersion != null) ...[
-                    const SizedBox(height: S.x2),
-                    Wrap(spacing: S.x2, children: [
-                      OlderVersionMark(
-                          id: 'calories_total',
-                          version: _burned!.fromOlderVersion,
-                          reason: _burned!.olderVersionReason,
-                          speak: false),
-                      OlderVersionMark(
-                          id: 'balance',
-                          version: _burned!.fromOlderVersion,
-                          reason: _burned!.olderVersionReason,
-                          speak: false),
-                    ]),
-                    OlderVersionNote(
-                        id: 'calories_total',
-                        version: _burned!.fromOlderVersion,
-                        reason: _burned!.olderVersionReason),
-                  ],
                   const SizedBox(height: S.x3),
                   Text(
-                    l?.nutritionEatenMeanNote(w.meanKcal.days) ??
-                        'Eaten: ${w.meanKcal.days}-day average. Burned: today.',
+                    l?.nutritionEatenMeanNote(balance.days) ??
+                        'Eaten and burned are both means over the same '
+                            '${balance.days} complete days.',
                     style: F.cap.copyWith(color: P.of(c).ink3, height: 1.45),
                   ),
                 ],
@@ -806,6 +808,13 @@ class _NutritionScreenState extends State<NutritionScreen>
       rateDown: diff > 0,
     );
   }
+
+
+  /// Whole-day total burn per local day label, for the weekly balance. Kept
+  /// apart from [_burned], which is today's running total and only fits the
+  /// per-day card.
+  Map<String, double> _burnedByDate = const {};
+  Map<String, double> _wornMinByDate = const {};
 }
 
 /// "Thu 4 Sep" from a `YYYY-MM-DD` day label, for an axis end-label.
@@ -1152,3 +1161,4 @@ class _WaterStep extends StatelessWidget {
     );
   }
 }
+
