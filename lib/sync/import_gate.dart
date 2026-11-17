@@ -220,6 +220,9 @@ class ImportGate {
     _pending = false;
     _drains.clear();
     _drained = null;
+    // CLAIM(import-reset-wakes-maintenance) [import_gate_test]. A waiter
+    // still owns this future even after the gate forgets its completer.
+    _maintenance?.complete();
     _maintenance = null;
     refusals.clear();
     state.value = const SyncAllowed();
