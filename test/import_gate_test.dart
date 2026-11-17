@@ -5,6 +5,8 @@
 // starts under a drain that is mid-chunk (commit-before-ACK, AGENTS 3.1).
 import 'dart:io';
 
+import 'package:fake_async/fake_async.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/import_journal.dart';
@@ -21,6 +23,25 @@ void main() {
     HeadlessSyncGate.resetForTest();
   });
   tearDown(ImportGate.resetForTest);
+
+  // WHY: reset must wake imports already awaiting maintenance, rather than
+  // strand them on the obsolete completer until the default 30-second bound.
+  // Proves CLAIM(import-reset-wakes-maintenance).
+  test('reset releases an import waiting on maintenance immediately', () {
+    fakeAsync((time) {
+      expect(ImportGate.tryBeginMaintenance(), isTrue);
+      ImportAdmission? admission;
+      ImportGate.beginImport().then((result) => admission = result);
+      time.flushMicrotasks();
+      expect(admission, isNull, reason: 'the maintenance wait is really active');
+      ImportGate.resetForTest();
+      time.flushMicrotasks();
+      expect(admission, isA<ImportAdmitted>());
+      expect(time.elapsed, Duration.zero);
+      ImportGate.endMaintenance();
+      ImportGate.resetForTest();
+    });
+  });
 
   group('the gate answers with a sealed result', () {
     test('allowed when nothing imports', () {
