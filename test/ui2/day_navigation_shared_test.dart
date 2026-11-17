@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/theme/theme_controller.dart';
+import 'package:openstrap_edge/ui2/day_navigation.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/activity/day_strain.dart';
 import 'package:openstrap_edge/ui2/profile/gallery.dart';
@@ -36,10 +38,12 @@ Future<void> frame(WidgetTester t, Widget page, {AppState? app,
   t.view.physicalSize = const Size(412, 1800);
   t.view.devicePixelRatio = 1;
   addTearDown(t.view.reset);
-  await t.pumpWidget(MaterialApp(theme: buildTheme(Brightness.light),
+  await t.pumpWidget(ChangeNotifierProvider<ThemeController>(
+    create: (_) => ThemeController.seed(AppThemeChoice.light, Brightness.light),
+    child: MaterialApp(theme: buildTheme(Brightness.light),
     navigatorObservers: [if (observer != null) observer],
     home: app == null ? page : ChangeNotifierProvider<AppState>.value(
-      value: app, child: page)));
+      value: app, child: page))));
   await t.pump();
 }
 
@@ -109,6 +113,73 @@ void main() {
     expect(repo.requested, ['2026-05-22']);
   });
 
+  // WHY: a date switch must remove the prior measurements on the next frame,
+  // and must allow another arrow before that read finishes.
+  testWidgets('rapid arrows show placeholders for the final selected day', (t) async {
+    final repo = StepsRepo();
+    final app = AppState.forTesting()..repo = repo;
+    await frame(t, const DayStepsDetail(day: '2026-05-22',
+      data: DayStepsData(day: '2026-05-22', days: days,
+        dayTotal: 987, daySource: 'strap_counter')), app: app);
+    await t.tap(find.byKey(const ValueKey('day-nav-previous')));
+    await t.pump();
+    expect(t.widget<DayNav>(find.byType(DayNav)).day, '2026-05-20');
+    expect(find.byType(PendingChart), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('day-nav-previous')));
+    await t.pump();
+    expect(t.widget<DayNav>(find.byType(DayNav)).day, past);
+    expect(find.byType(PendingChart), findsOneWidget);
+    await t.pumpWidget(const SizedBox());
+    app.dispose();
+  });
+
+  // WHY: an older read finishing last must not paint its measurements under
+  // the final selected date. CLAIM(day-navigation-immediate).
+  testWidgets('late prior day read cannot replace the final day', (t) async {
+    final repo = StepsRepo();
+    final app = AppState.forTesting()..repo = repo;
+    await frame(t, const DayStepsDetail(day: '2026-05-22',
+      data: DayStepsData(day: '2026-05-22', days: days)), app: app);
+    t.widget<DayNav>(find.byType(DayNav)).onDay('2026-05-20');
+    await t.pump();
+    t.widget<DayNav>(find.byType(DayNav)).onDay(past);
+    await t.pump();
+    repo.oldest.complete({'day_total': 222, 'day_source': 'strap_counter'});
+    await t.pump();
+    expect(find.textContaining('222 steps'), findsOneWidget);
+    repo.middle.complete({'day_total': 111, 'day_source': 'strap_counter'});
+    await t.pump();
+    expect(find.textContaining('222 steps'), findsOneWidget);
+    expect(find.textContaining('111 steps'), findsNothing);
+    expect(t.widget<DayNav>(find.byType(DayNav)).day, past);
+    await t.pumpWidget(const SizedBox());
+    app.dispose();
+  });
+
+  // WHY: a kept-alive page must reveal today after midnight and refresh on
+  // foreground even when no repository read or parent rebuild occurs.
+  testWidgets('today visibility refreshes at midnight and resume', (t) async {
+    var now = DateTime(2026, 5, 22, 23, 59, 59);
+    await withClock(Clock(() => now), () async {
+      final picked = <String>[];
+      await frame(t, Scaffold(body: backToTodayControl(
+        selectedDay: '2026-05-22', onSelect: picked.add)));
+      expect(find.text('Back to today'), findsNothing);
+      now = DateTime(2026, 5, 23);
+      await t.pump(const Duration(seconds: 1));
+      expect(find.text('Back to today'), findsOneWidget);
+      final button = find.byKey(const ValueKey('home-back-to-today'));
+      expect(t.getSize(button).height, greaterThanOrEqualTo(48));
+      await t.tap(button);
+      expect(picked, ['2026-05-23']);
+      now = DateTime(2026, 5, 22, 15);
+      t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await t.pump();
+      expect(find.text('Back to today'), findsNothing);
+      await t.pumpWidget(const SizedBox());
+    });
+  });
+
   // WHY: the gallery must demonstrate the production component, not a copy.
   testWidgets('gallery includes back to today', (t) async {
     final cases = galleryCases();
@@ -130,4 +201,16 @@ class EmptyTodayRepo extends LocalRepository {
     requested.add(day);
     return const SleepDetailBundle(night: {}, timeline: {}, insights: {}, charts: {}, windows: []);
   }
+}
+
+class StepsRepo extends LocalRepository {
+  final middle = Completer<Map<String, dynamic>>();
+  final oldest = Completer<Map<String, dynamic>>();
+  @override
+  Future<List<String>> availableDays() async => days;
+  @override
+  Future<Map<String, dynamic>> getInsights() async => {};
+  @override
+  Future<Map<String, dynamic>> getDaySteps(String day) =>
+    day == past ? oldest.future : middle.future;
 }
