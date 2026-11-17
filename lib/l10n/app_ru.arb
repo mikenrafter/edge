@@ -10018,6 +10018,7 @@
   "importStageResults": "рассчитанные результаты",
   "importStageArchive": "необработанные записи браслета",
   "importStageOther": "прочие данные",
+  "statusLineUpdatingDatabaseIndex": "Обновление индекса базы данных (один раз)",
   "statusLineImporting": "Импорт · {status}",
   "@statusLineImporting": {
     "placeholders": {

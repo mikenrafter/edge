@@ -137,6 +137,10 @@ Future<Database> _ldbPrivOpen() async {
     final opened = await openDatabase(
       path,
       onConfigure: (db) async {
+        // Bound waits for other SQLite connections. Index maintenance instead
+        // shares this writer queue so UI/live writes wait without contention.
+        // CLAIM(index-derive-exclusion) [finalized_day_ids_index_test].
+        await db.rawQuery('PRAGMA busy_timeout=30000');
         // WRITE PERFORMANCE. The default rollback journal (journal_mode=delete)
         // with synchronous=FULL fsyncs the whole DB on every commit — brutal for
         // the high-volume sync-ingest and the raw re-decode migration on a large

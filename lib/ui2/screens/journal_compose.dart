@@ -360,6 +360,7 @@ class _JournalComposeState extends State<JournalCompose>
           children: [
             NavBar(l?.journalComposeTitle ?? 'Journal',
                 sub: _date, onBack: () => Navigator.of(c).pop()),
+            const StatusLine(maintenanceOnly: true),
             Expanded(
               child: _paused
                   ? ListView(

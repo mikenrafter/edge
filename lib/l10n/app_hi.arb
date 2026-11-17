@@ -4362,6 +4362,7 @@
   "importStageResults": "गणना किए गए परिणाम",
   "importStageArchive": "बैंड के कच्चे रिकॉर्ड",
   "importStageOther": "अन्य डेटा",
+  "statusLineUpdatingDatabaseIndex": "डेटाबेस इंडेक्स अपडेट हो रहा है (एक बार)",
   "statusLineImporting": "आयात · {status}",
   "statusLineImportingStep": "आयात · {status} · चरण {index} / {count}",
   "healthObservationsNotYet": "आपकी पहली स्कोर की गई रात के बाद शुरू होगा",

@@ -4362,6 +4362,7 @@
   "importStageResults": "resultados calculados",
   "importStageArchive": "registros sin procesar de la pulsera",
   "importStageOther": "otros datos",
+  "statusLineUpdatingDatabaseIndex": "Actualizando el índice de la base de datos (una sola vez)",
   "statusLineImporting": "Importando · {status}",
   "statusLineImportingStep": "Importando · {status} · paso {index} de {count}",
   "healthObservationsNotYet": "Empieza tras tu primera noche puntuada",

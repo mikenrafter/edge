@@ -26,6 +26,7 @@ class _App extends AppState {
   final DateTime? at;
   final derive = ValueNotifier<DeriveProgress?>(null);
   final index = ValueNotifier<bool>(false);
+  @override
   ValueListenable<bool> get indexMaintenanceActive => index;
 
   @override
@@ -39,9 +40,10 @@ class _App extends AppState {
 const _syncing = SyncPresentationState(
     phase: 'downloading', busy: true, contactedBand: true);
 
-Widget _host(AppState? app, {double scale = 1}) {
+Widget _host(AppState? app, {double scale = 1, bool syncActions = false, bool maintenanceOnly = false}) {
   Widget body = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-    StatusLine(todayId: '2026-10-04', now: _t0),
+    StatusLine(todayId: '2026-10-04', now: _t0,
+        syncActions: syncActions, maintenanceOnly: maintenanceOnly),
     const SharedSlot('below', child: SizedBox(height: 40)),
   ]);
   if (app != null) {
@@ -97,6 +99,20 @@ void main() {
     app.index.value = false;
     await t.pump();
     expect(_text(t), 'Downloading…');
+  });
+
+  testWidgets('save screen and Home both show index work in their reserved row', (t) async {
+    final app = _App(_syncing);
+    addTearDown(app.dispose);
+    await t.pumpWidget(_host(app, maintenanceOnly: true));
+    final height = t.getSize(find.byType(StatusLine)).height;
+    expect(find.text('Downloading…'), findsNothing);
+    app.index.value = true;
+    await t.pump();
+    expect(find.text('Updating the database index (one time)'), findsOneWidget);
+    expect(t.getSize(find.byType(StatusLine)).height, height);
+    await t.pumpWidget(_host(app, syncActions: true));
+    expect(find.text('Updating the database index (one time)'), findsOneWidget);
   });
 
   testWidgets('import beats derive; copying shows stage and step', (t) async {

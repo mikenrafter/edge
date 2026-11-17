@@ -22,7 +22,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' show sha1;
-import 'package:flutter/foundation.dart' show debugPrintSynchronously, visibleForTesting;
+import 'package:flutter/foundation.dart' show debugPrintSynchronously, visibleForTesting, ValueListenable, ValueNotifier;
 import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -41,12 +41,12 @@ import 'db/group_row_store.dart';
 import 'import_source_guard.dart';
 import 'db/manifest_store.dart';
 import 'db/input_revision_store.dart';
-// The ONE thing this layer takes from compute/: the running build's algo
-// version, which every day_result read applies as a CEILING (see [dayResult]).
-// `show` keeps the rest of the engine out of this namespace.
+// The engine owns the derive latch; index maintenance shares it so its WAL
+// write lock cannot overlap derive commits. Reads also use the algo ceiling.
 import '../coach/coach_db.dart' show CoachDb;
 import '../compute/derivation_engine.dart'
     show
+        DerivationEngine,
         kAlgoVersion,
         kOvernightGiveUpSec,
         kPinWakeToleranceSec,
@@ -9758,16 +9758,29 @@ class LocalDb {
       "CASE WHEN json_valid(payload_json) THEN "
       "COALESCE(json_type(payload_json, '\$.imported') = 'true', 0) ELSE 0 END";
 
-  /// Call after the first painted foreground frame. A separate maintenance
-  /// connection owns the index build. sqflite executes its SQL on a native
+  /// Call after the first painted foreground frame. The main writer queue
+  /// defers UI/live writes until the index finishes. sqflite runs SQL on a native
   /// database worker (FFI uses its database isolate), never the UI thread.
   /// The Dart caller only awaits completion; it does not scan/decode rows.
   static Future<void>? _finalizedIndexFlight;
+
+  // LocalDb owns the build lifetime; screens observe it without owning writes.
+  static final _finalizedDayIndexBuilding = ValueNotifier<bool>(false);
+  static ValueListenable<bool> get finalizedDayIndexBuilding =>
+      _finalizedDayIndexBuilding;
 
   static Future<void> prepareFinalizedDayIndex() => _finalizedIndexFlight ??=
       _prepareFinalizedDayIndex().whenComplete(() => _finalizedIndexFlight = null);
 
   static Future<void> _prepareFinalizedDayIndex() async {
+    if (!_foreground) return;
+    // CLAIM(index-derive-exclusion): wait before claiming ImportGate, so a
+    // derive already running can finish without waiting on maintenance
+    // [finalized_day_ids_index_test]. The latch stays held through completion.
+    await DerivationEngine.whileIdle(_buildFinalizedDayIndex);
+  }
+
+  static Future<void> _buildFinalizedDayIndex() async {
     if (!_foreground) return;
     await ImportGate.probe();
     // No await between the headless check and the maintenance claim: every
@@ -9779,12 +9792,18 @@ class LocalDb {
       // This also catches a commit already queued before drainActive was raised.
       await _withCommitGate(() async {
         if (!_foreground) return;
-        Database? maintenance;
+        final db = await instance;
+        if (!_foreground) return;
+        if ((await db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='index' "
+            "AND name='idx_day_result_finalized_payload'")).isNotEmpty) {
+          return;
+        }
+        _finalizedDayIndexBuilding.value = true;
         try {
-          final path = (await instance).path;
-          if (!_foreground) return;
-          maintenance = await openDatabase(path, singleInstance: false);
-          final db = maintenance;
+          // CLAIM(index-writer-queue): use the same native queue as journal,
+          // med, notification and live ingest writes. A second writer
+          // can fail with SQLITE_BUSY even before its busy timeout expires;
+          // queued writes wait for this statement instead [bench_finalized_day_index].
           // Keep this literal equivalent to the reader's indexed expression.
           await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_day_result_finalized_payload "
@@ -9793,7 +9812,7 @@ class LocalDb {
             "COALESCE(json_type(payload_json, '\$.imported') = 'true', 0) ELSE 0 END), day_id)",
           );
         } finally {
-          await maintenance?.close();
+          _finalizedDayIndexBuilding.value = false;
         }
       });
     } catch (_) {

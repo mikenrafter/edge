@@ -17,6 +17,7 @@ const _algo = 7;
 final _maintenanceConnections = <Database>[];
 final _indexOwners = <int>[];
 final _deriveLatchAtIndex = <bool>[];
+final _visibleAtIndex = <bool>[];
 int? _writerProbeId;
 const _expr = "CASE WHEN json_valid(payload_json) THEN "
     "COALESCE(json_type(payload_json, '\$.imported') = 'true', 0) ELSE 0 END";
@@ -46,6 +47,7 @@ void main() {
             e.sql.startsWith('CREATE INDEX IF NOT EXISTS idx_day_result_finalized_payload')) {
           _indexOwners.add(e.databaseId);
           _deriveLatchAtIndex.add(DerivationEngine().running);
+          _visibleAtIndex.add(LocalDb.finalizedDayIndexBuilding.value);
         }
         if (e is SqfliteLoggerDatabaseOpenEvent &&
             e.options?.singleInstance == false && e.db != null) {
@@ -66,6 +68,8 @@ void main() {
     final before = _maintenanceConnections.length;
     await const FinalizedDayIndexMaintenance().call();
     expect(_deriveLatchAtIndex.last, isTrue);
+    expect(_visibleAtIndex.last, isTrue);
+    expect(LocalDb.finalizedDayIndexBuilding.value, isFalse);
     expect(_indexOwners.last, _writerProbeId);
     expect(_maintenanceConnections.length, before);
     expect(writer.isOpen, isTrue);
@@ -94,6 +98,8 @@ void main() {
     }
     expect(_maintenanceConnections.length, before);
     expect(_deriveLatchAtIndex.last, isTrue);
+    expect(_visibleAtIndex.last, isTrue);
+    expect(LocalDb.finalizedDayIndexBuilding.value, isFalse);
   });
 
   test('main connection explicitly waits for transient WAL writer contention', () async {
@@ -115,6 +121,7 @@ void main() {
     expect(db.isOpen, isTrue);
     expect(DerivationEngine().running, isFalse);
     expect(ImportGate.check('after failed build'), isA<SyncAllowed>());
+    expect(LocalDb.finalizedDayIndexBuilding.value, isFalse);
     await db.execute('DROP TABLE idx_day_result_finalized_payload');
     await const FinalizedDayIndexMaintenance().call();
     expect(db.isOpen, isTrue);

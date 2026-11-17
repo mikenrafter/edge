@@ -2880,6 +2880,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// one has. Read-only, for Settings > Developer.
   Map<String, Object?>? get lastPassPerf => _deriveCoordinator.lastPassPerf;
 
+  /// The one-time database index is holding the main writer queue.
+  ValueListenable<bool> get indexMaintenanceActive =>
+      LocalDb.finalizedDayIndexBuilding;
+
   /// Where a running derive pass is (any kind, not only a user sync); null when
   /// none runs.
   ValueListenable<DeriveProgress?> get deriveProgress =>
