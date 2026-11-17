@@ -685,6 +685,10 @@ Future<List<String>> _extractCsvMembers(
     );
   }
 
+  // Every refusal below closes the picked file too (upstream cd64eaa89): an
+  // ordinary wrong pick (a ZIP of photos) otherwise left a descriptor open on
+  // it for the life of the process, one per retry.
+  try {
   if (archive.files.length > _kMaxArchiveMembers) {
     throw ImportFormatException(
       '“$name” holds ${archive.files.length} entries, far more than '
@@ -717,7 +721,6 @@ Future<List<String>> _extractCsvMembers(
 
   final out = <String>[];
   final used = <String>{};
-  try {
     for (final f in csvFiles) {
     // Members can share a basename (`daily/data.csv`, `workouts/data.csv`).
     // Flattening them onto one destination silently dropped one file and
@@ -742,10 +745,10 @@ Future<List<String>> _extractCsvMembers(
       }
       out.add(destPath);
     }
+    return out;
   } finally {
     await input.close();
   }
-  return out;
 }
 
 

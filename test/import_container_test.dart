@@ -373,6 +373,26 @@ void main() {
       );
     });
 
+    // WHY: every refusal after the archive opens must close the picked file
+    // (upstream cd64eaa89 import_container.dart:752); a ZIP of photos picked
+    // again and again otherwise leaks one descriptor per retry.
+    test('a refused archive leaves no file descriptor open', () async {
+      final path = await write(
+        'photos.zip',
+        _zipOf({'readme.txt': 'nothing here'}),
+      );
+      int openFds() => Directory('/proc/self/fd').listSync().length;
+      // Warm up once so lazily opened runtime descriptors are not counted.
+      await expectLater(resolveImportCsvPaths([path], flavor: 'WHOOP'),
+          throwsA(isA<ImportFormatException>()));
+      final before = openFds();
+      for (var i = 0; i < 20; i++) {
+        await expectLater(resolveImportCsvPaths([path], flavor: 'WHOOP'),
+            throwsA(isA<ImportFormatException>()));
+      }
+      expect(openFds() - before, lessThan(5));
+    }, skip: !Directory('/proc/self/fd').existsSync());
+
     test('an archive with no CSVs at all says so', () async {
       final path = await write(
         'empty.zip',
