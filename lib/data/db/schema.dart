@@ -82,6 +82,11 @@ Future<Database?> _ldbPrivOpenReader(Database writer, int epoch) async {
       candidate = await ((LocalDb.debugReaderOpener ?? LocalDb.readerOpenerForTest)?.call(writer.path) ??
           openDatabase(writer.path, singleInstance: false));
       await candidate.execute('PRAGMA query_only=ON');
+      // CLAIM(reader-connection-settings): transient WAL recovery waits instead
+      // of failing a screen read [wal_reader_connection_test]. Negative cache
+      // sizes are KiB, independent of the database page size.
+      await candidate.rawQuery('PRAGMA busy_timeout=2000');
+      await candidate.rawQuery('PRAGMA cache_size=-16000');
       // Read, never change, journal mode. A rollback-journal connection cannot
       // provide the concurrent committed reads this connection exists for.
       final mode = await candidate.rawQuery('PRAGMA journal_mode');
