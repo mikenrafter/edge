@@ -255,7 +255,9 @@ part of '../derivation_engine.dart';
 // whole-session baselines, rejects artifact epochs, gates wake on movement and
 // falls back to cardio when degenerate, with provenance keys. Cardio output is
 // unchanged. kAlgoVersion 119.
-const String kAnalyticsPin = 'd876c427ce59eed95b5e54411e3b69253f294ae6';
+// Merge main a438df40 into fork d876c427; reviewed policy/codec fixes
+// retain the fork HMM and wake APIs. Output changes use kAlgoVersion 125.
+const String kAnalyticsPin = '52e4ddd4233c661b34975a8e188da1e7810ec4f5';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both

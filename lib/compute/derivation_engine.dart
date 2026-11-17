@@ -128,6 +128,8 @@ import '../util/worker_audit.dart';
 import '../util/worker_init.dart' show WorkerInputs;
 import '../util/worker_entries.dart' show Dispatcher;
 
+export 'sleep_staging_worker.dart' show observationOfNight;
+
 part 'engine/top_level.dart';
 part 'engine/prepare.dart';
 part 'engine/day_compute.dart';
@@ -2015,10 +2017,14 @@ part 'engine/settled.dart';
 // 122 (sleep edit R4): preserve settled measured nights and reuse unchanged
 // assertions when overnight input is gone even if daytime raw survives.
 // 122 → 125: merge upstream 0.12.2 ownership, workout and checkpoint
-// orchestration with fork incremental/HMM staging at analytics d876c42.
+// orchestration with fork incremental/HMM staging. Analytics 52e4ddd4 merges
+// reviewed main a438df40 into d876c427: PRSA/CVHR honesty, RR/HRV clock and
+// checkpoint refusals, RSA v3, pooled-run cardio baselines, observation bounds,
+// circadian/load/zone fixes, dated readiness and nullable CVHR comparisons.
+// Keep fork HMM baseline/fallback/provenance and incremental/wake APIs.
 // Main NIGHT state lives in night_checkpoint; the fork DAY format is unchanged.
-// Stored TRIMP/calories use one IncrementalMinuteMetrics fold in input order.
-// Main analytics #102-#110 policy/codec changes are deferred to the sibling merge.
+// Stored TRIMP/calories retain the E18 single fold in canonical input order.
+// Version 125 is one unreleased merge step, including this analytics repin.
 const int kAlgoVersion = 125;
 
 enum SleepEditCalculation { complete, incomplete, superseded }

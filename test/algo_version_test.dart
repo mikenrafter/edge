@@ -32,7 +32,7 @@ void main() {
     return out;
   }
 
-  test('merged kAlgoVersion is 125', () {
+  test('merged analytics repin uses kAlgoVersion 125', () {
     expect(kAlgoVersion, 125);
     expect(int.parse(m.group(1)!), 125);
   });
@@ -89,13 +89,13 @@ void main() {
         greaterThan(at118));
   });
 
-  test('the 119 entry names the HMM fix, says cardio is unchanged, and closes '
-      'the changelog', () {
+  test('the 119 entry keeps the historical HMM fix before '
+      'the merged analytics entry', () {
     final b = block();
     final at119 = b.lastIndexWhere((l) => l.startsWith('// 119:'));
     final at118 = b.lastIndexWhere((l) => l.startsWith('// 118:'));
     expect(at119, greaterThan(at118));
-    expect(b.lastIndexWhere((l) => RegExp(r'^// \d+:').hasMatch(l)), at119);
+    expect(b.lastIndexWhere((l) => l.startsWith('// 122 → 125:')), greaterThan(at119));
     final entry = b.sublist(at119).join('\n');
     expect(entry, contains('d876c427'));
     expect(entry, contains('HMM'));

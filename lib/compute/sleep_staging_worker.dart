@@ -10,6 +10,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:openstrap_analytics/onehz.dart' as ana;
 
 import '../util/heavy.dart';
@@ -103,6 +104,29 @@ class SleepStagingResult {
   final int segmentedDays;
 }
 
+/// The observation of the night [onsetSec, offsetSec): the recorded one whose
+/// staged window overlaps it most, or null when none does. An observation with
+/// no window (an older analytics) never matches, and the night folds nothing
+/// rather than a session of another day.
+@visibleForTesting
+ana.SleepNightObservation? observationOfNight(
+    List<ana.SleepNightObservation> obs, int onsetSec, int offsetSec) {
+  ana.SleepNightObservation? best;
+  var bestOverlap = 0;
+  for (final o in obs) {
+    final s = o.startTsSec, e = o.endTsSec;
+    if (s == null || e == null) continue;
+    final int lo = s > onsetSec ? s : onsetSec;
+    final int hi = e < offsetSec ? e : offsetSec;
+    final int overlap = hi - lo;
+    if (overlap > bestOverlap) {
+      best = o;
+      bestOverlap = overlap;
+    }
+  }
+  return best;
+}
+
 /// WORKER ENTRY: stages [input]'s night on a worker isolate, never the UI
 /// thread. `cardioStager` reads analytics "ambient" globals (the rolling sleep
 /// profile it blends in, bounded <= 0.5, and the observation-recording flag it
@@ -187,7 +211,7 @@ SleepStagingResult stageSleepCandidateHeavy(
           deviceNight: candidate.deviceNight,
           deviceId: candidate.deviceId,
         );
-  // Fold the MAIN sleep (most epochs) of a freshly-staged night into the
+  // Fold the target window's observation of a freshly-staged night into the
   // rolling profile — done here in the worker because the observations live in
   // THIS isolate's globals. Skipped for overrides. EWMA self-seeds.
   String? observationJson;
@@ -203,10 +227,10 @@ SleepStagingResult stageSleepCandidateHeavy(
     // ONLY the target day's own observation (D36): the shared buffer holds
     // every walked night, and the longest of those used to be folded under
     // the target's id. No staged night on the target ⇒ nothing to fold.
-    final obs = ana.takeCardioObservations()
-      ..sort((a, b) => b.epochs.compareTo(a.epochs));
-    if (obs.isNotEmpty) {
-      final main = obs.first;
+    final obs = ana.takeCardioObservations();
+    final main = observationOfNight(
+        obs, candidate.sleepOnsetSec, candidate.sleepOffsetSec);
+    if (main != null) {
       if (main.epochs >= 120) {
         // require ≥60 min — not a nap.
         // Return the raw OBSERVATION, not a folded profile. Folding here would

@@ -1301,9 +1301,12 @@ Map<String, dynamic> deriveDayBundle(
   // (`_attachHistory` → `_BaselineHistoryCache.valuesBefore`), which is what
   // makes this single append the correct, non-duplicating one.
   final lnHist = [...d.lnRmssdHistory, ?lnToday];
+  final lnDates = d.lnRmssdDates.length == d.lnRmssdHistory.length
+      ? [...d.lnRmssdDates, if (lnToday != null) d.date]
+      : null;
   final lnReadiness = memo(
     'ln_readiness',
-    [lnToday, lnHist],
+    [lnToday, lnHist, lnDates],
     () => lnHist.length < 4
         ? Metric<ReadinessLnRmssd>.absent(
             tier: Tier.high,
@@ -1316,7 +1319,7 @@ Map<String, dynamic> deriveDayBundle(
             inputs_used: ['ln_rmssd_history', 'sleep_session_rmssd'],
             note: 'no sleep-session RMSSD tonight, so there is no night to score',
           )
-        : readinessLnRmssd(lnHist),
+        : readinessLnRmssd(lnHist, dates: lnDates),
   );
 
   // ── STRAIN: Banister TRIMP over the WAKE span (per-minute day HR) ──────────

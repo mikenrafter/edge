@@ -1180,9 +1180,14 @@ class _InvestigateState extends State<Investigate> {
               style: F.over.copyWith(color: p.ink3)),
           const SizedBox(height: S.x3),
           Text(
-            // Analytics d876 exposes a non-null comparison. Nullable older-
-            // night refusal belongs to the separate analytics merge round.
-            v.aboveOwnUsual
+            // A thin reference carries no comparison; do not present it as
+            // evidence that recent nights stayed inside a measured range.
+            v.aboveOwnUsual == null
+                ? (l?.investigateCvhrNoComparisonYet ??
+                    'There aren\'t enough older nights behind your recent '
+                    'ones yet to say whether the heart-rate cycling this '
+                    'screen counts is running higher than usual.')
+                : v.aboveOwnUsual!
                 ? (l?.investigateCvhrAboveUsual(n) ??
                     'Over your most recent nights, the heart-rate cycling '
                         'this screen counts has been running higher than '

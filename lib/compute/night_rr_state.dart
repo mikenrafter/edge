@@ -110,7 +110,7 @@ class NightRrState {
     // The edge checkpointHeavy requires ordered NN. A reset that regresses cannot
     // restore its RSA/CVHR state; leave this disposable checkpointHeavy cold.
     // ↳ CLAIM(merged-clock-refusal)
-    if (hasRegressingBeatTimes([..._nnTimes, ..._tailTimes])) return null;
+    if (ana.hasRegressingBeatTimes([..._nnTimes, ..._tailTimes])) return null;
     var n = 0;
     while (n < _times.length && _times[n] < boundary * 1000) { n++; }
     if (n == 0) return null;
@@ -409,13 +409,4 @@ class _PassListDigests {
     z = (z ^ (z >>> 27)) * 0x94d049bb133111eb;
     return z ^ (z >>> 31);
   }
-}
-
-// Input-clock guard, retained here until the separately pinned analytics merge
-// exports its shared clock-policy helper. Equality is valid; backwards is not.
-bool hasRegressingBeatTimes(List<double> times) {
-  for (var i = 1; i < times.length; i++) {
-    if (times[i] < times[i - 1]) return true;
-  }
-  return false;
 }
