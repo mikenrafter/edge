@@ -88,6 +88,16 @@ void main() {
     await frame(t, const Scaffold(body: HealthScreen(
       data: HealthData(), vitals: VitalsData(day: past, days: days), tab: 3)));
     expect(find.text('Back to today').hitTestable(), findsOneWidget);
+    await t.pumpWidget(const SizedBox());
+    final app = AppState.forTesting()..repo = HeldRepo();
+    await frame(t, const Scaffold(body: HealthScreen(tab: 3)), app: app);
+    expect(find.byType(DayNav), findsOneWidget,
+      reason: 'Vitals navigation cannot wait for the Health overview read');
+    t.widget<DayNav>(find.byType(DayNav)).onDay(past);
+    await t.pump();
+    expect(find.text('Back to today').hitTestable(), findsOneWidget);
+    await t.pumpWidget(const SizedBox());
+    app.dispose();
   });
 
   // WHY: rapid route callbacks must push once and unlock after return.

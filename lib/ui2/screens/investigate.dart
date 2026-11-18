@@ -376,7 +376,7 @@ class _InvestigateState extends State<Investigate> {
           const SizedBox(height: S.x5),
           _method(c, spec),
         ],
-      ].map((child) => PendingContent(pending: _loading && _d == null,
+      ].map((child) => child is DayNav ? child : PendingContent(pending: _loading && _d == null,
         child: child)).toList(),
     );
   }

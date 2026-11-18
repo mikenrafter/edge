@@ -104,25 +104,58 @@ Widget dayReadFailure(BuildContext c, VoidCallback retry) {
   );
 }
 
-/// Reserves the control's measured height below the page, including large text
-/// and system insets. A footer and the last scroll row remain above the pill.
+/// Floats Home's pill over the page. Existing list/footer padding reserves its
+/// ordinary height; measured extra height reserves room when its text wraps.
 class DayNavigationFrame extends StatelessWidget {
   const DayNavigationFrame({super.key, required this.selectedDay,
     required this.onSelect, required this.child});
+  static const clearance = 48.0 + S.x2;
   final String selectedDay;
   final ValueChanged<String> onSelect;
   final Widget child;
 
   @override
   Widget build(BuildContext c) => ColoredBox(color: P.of(c).bg,
-    child: Column(children: [
-    Expanded(child: child),
-    SafeArea(top: false, child: Padding(
-      padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x3),
-      child: Center(child: backToTodayControl(
-        selectedDay: selectedDay, onSelect: onSelect)),
-    )),
-  ]));
+    child: Stack(children: [Positioned.fill(
+      child: CustomMultiChildLayout(
+        delegate: _DayNavigationLayout(MediaQuery.paddingOf(c).bottom),
+        children: [
+          LayoutId(id: _DayNavigationSlot.page, child: child),
+          LayoutId(id: _DayNavigationSlot.control,
+            child: SafeArea(top: false, child: Padding(
+              padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x2),
+              child: Align(alignment: Alignment.bottomCenter, heightFactor: 1,
+                child: backToTodayControl(
+                  selectedDay: selectedDay, onSelect: onSelect)),
+            ))),
+        ],
+      ),
+    )]));
+}
+
+enum _DayNavigationSlot { page, control }
+
+class _DayNavigationLayout extends MultiChildLayoutDelegate {
+  _DayNavigationLayout(this.safeBottom);
+  final double safeBottom;
+
+  @override
+  void performLayout(Size size) {
+    final control = layoutChild(_DayNavigationSlot.control,
+      BoxConstraints.loose(size));
+    // Reserve the actual wrapped height above the ordinary 48 dp pill, so
+    // large text cannot cover a footer or the last scrollable row.
+    final extra = (control.height - safeBottom - DayNavigationFrame.clearance)
+        .clamp(0.0, size.height).toDouble();
+    layoutChild(_DayNavigationSlot.page,
+      BoxConstraints.tight(Size(size.width, size.height - extra)));
+    positionChild(_DayNavigationSlot.page, Offset.zero);
+    positionChild(_DayNavigationSlot.control,
+      Offset(0, size.height - control.height));
+  }
+
+  @override
+  bool shouldRelayout(_DayNavigationLayout old) => old.safeBottom != safeBottom;
 }
 
 final _openPickers = Expando<bool>();

@@ -3044,7 +3044,8 @@ class _HomeScreenState extends State<HomeScreen>
 
     return DayNavigationFrame(selectedDay: _day ?? todayLabel(),
       onSelect: _goDay,
-      child: _refreshable(tabRootList(padding: pad, children: [
+      child: _refreshable(tabRootList(padding: pad.copyWith(
+        bottom: pad.bottom + DayNavigationFrame.clearance), children: [
       if (d.sleepEdit case final status? when !status.isNone) SleepEditStatus(status: status),
       // ── greeting ──
       //

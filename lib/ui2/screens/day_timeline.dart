@@ -1679,9 +1679,8 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
               child: Padding(padding: const EdgeInsets.symmetric(horizontal: S.x4),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                PendingContent(pending: _loading && _d == null,
-                  child: DayNav(day: _day ?? d.day ?? todayLabel(), days: d.days,
-                    onDay: _goDay, alwaysShow: true)),
+                DayNav(day: _day ?? d.day ?? todayLabel(), days: d.days,
+                  onDay: _goDay, alwaysShow: true),
                 const SizedBox(height: S.x3),
                 TextButton(onPressed: () => go(c, const TypicalDayScreen()),
                   child: Text(l?.typicalDayTitle ?? 'Typical day')),
@@ -1773,6 +1772,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                 DayReviewSaveBar(key: review != null && !review.loading &&
                   (review.hasChanges || review.busy)
                   ? const ValueKey('apk2-review-savebar') : null, controller: review),
+                const SizedBox(height: DayNavigationFrame.clearance),
                 ],
                 ]))),
           )),

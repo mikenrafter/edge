@@ -738,7 +738,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
       const HeaderRows(),
       SubTabs(_tabsOf(l), _tab, _select, color: C.blue),
       const SizedBox(height: S.x5),
-      if (_loading && _d == null)
+      if (_loading && _d == null && (_tab == 0 || _tab == 2))
         PendingContent(pending: true, child: _tab == 2 ? _trends(c, d) : _overview(c, d))
       else
         switch (_tab) {

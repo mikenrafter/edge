@@ -2486,7 +2486,7 @@ Widget detailScaffold(BuildContext c, String title, List<Widget> body,
               onBack: () => Navigator.of(c).maybePop()),
         Expanded(
           child: PendingSectionScope(pendingSectionName: title, child: ListView(
-              padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x12),
+              padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x16),
               children: body)),
         ),
       ]),
