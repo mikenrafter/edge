@@ -255,4 +255,45 @@ void main() {
     expect((await db.query('sleep_block')).map((r)=>r['owner_rule']).toSet(),{0});
   });
 
+  // WHY: sparse merged/legacy schemas must heal without quarantining user rows.
+  // catches: rung 94 reads a missing legacy nap, review-meta or result table.
+  test('B18 sparse upgrades and current-version repair preserve existing rows', () async {
+    for (final version in [LocalDb.schemaVersion,93,77]) {
+      await LocalDb.close();
+      await databaseFactory.deleteDatabase(await dbPath());
+      final raw = await databaseFactory.openDatabase(await dbPath(), options:OpenDatabaseOptions(
+        version:version,onCreate:(db,_) async {
+          await db.execute('CREATE TABLE last_result (key TEXT PRIMARY KEY, computed_at INTEGER NOT NULL, payload_json TEXT NOT NULL, input_sig TEXT)');
+          await db.insert('last_result',{'key':'kept','computed_at':7,'payload_json':'{}'});
+          await db.execute('CREATE TABLE sleep_override (day_id TEXT PRIMARY KEY, onset_ts INTEGER NOT NULL, offset_ts INTEGER NOT NULL, source TEXT NOT NULL, created_at INTEGER NOT NULL)');
+          await db.insert('sleep_override',{'day_id':fixtureDay,'onset_ts':100,'offset_ts':200,'source':'manual','created_at':11});
+        }));
+      await raw.close();
+      LocalDb.lastRebuild = null;
+      final db = await reopen();
+      expect(LocalDb.lastRebuild,isNull,reason:'schema $version must not quarantine missing source tables');
+      expect(await db.query('last_result',columns:['key','computed_at','payload_json'],where:'key = ?',whereArgs:['kept']),
+        [{'key':'kept','computed_at':7,'payload_json':'{}'}]);
+      expect(await db.query('sleep_block',columns:['id','owner_day','owner_rule','start_ts','end_ts','source']),
+        [{'id':'legacy:main:$fixtureDay','owner_day':fixtureDay,'owner_rule':0,'start_ts':100,'end_ts':200,'source':'manual'}]);
+    }
+  });
+  // WHY: recreating a nap projection must still invalidate that day's inputs.
+  // catches: repair installs the nap input-revision triggers after absorption.
+  test('B19 repair installs revision triggers before a missing nap projection is captured', () async {
+    var db = await reopen();
+    await db.update('activity_review_meta',{'activated_at':20000});
+    await seedDay(db,fixtureDay,naps:[{'start':5000,'end':5600,'duration_min':10}]);
+    await db.execute('DROP TABLE sleep_nap');
+    await db.execute('DROP TABLE sleep_block');
+    LocalDb.lastRebuild = null;
+    db = await reopen();
+    expect(LocalDb.lastRebuild,isNull);
+    expect(await db.query('sleep_nap',columns:['day_id','start_ts','end_ts','source']),
+      [{'day_id':fixtureDay,'start_ts':5000,'end_ts':5600,'source':'legacy'}]);
+    expect(await db.query('input_revision',columns:['rev'],where:'source = ? AND scope = ?',whereArgs:['sleep_nap',fixtureDay]),
+      [{'rev':1}]);
+    expect(await db.query('sleep_edit_job'),isEmpty);
+  });
+
 }
