@@ -1,7 +1,11 @@
 // Fixtures for the structural Pulse store tests (pulse_ep_*). Literal rows, no
 // production helpers: a test that derives its expectation from the code under
 // test proves nothing.
+import 'dart:convert';
+import 'dart:io' show ZLibCodec;
 import 'dart:typed_data';
+
+import 'package:crypto/crypto.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/processing_context.dart';
@@ -135,4 +139,31 @@ Future<void> seedEpisode(
     'state': state, 'reason': reason, 'origin': origin,
     'debt_ms': createdMs, 'source_ms': endMs,
   });
+}
+
+/// Independent format fixture: handwritten schema-1 JSON, not the codec writer.
+({List<int> bytes, String checksum, int expanded}) literalPulseRecording(
+    String id, String source, int start, int end, {int rr = 800, int version = 1}) {
+  final json = '{"v":$version,"id":"$id","source":"$source","start":$start,"end":$end,'
+      '"ongoing":false,"beats":{"k":[0],"i":[0],"x":[0],"t":[0],"o":[0],'
+      '"r":[$rr],"c":[null],"f":[1],"l":[0]},"labelSets":[[]],'
+      '"windows":[],"overview":[],"hr":[],"comparison":[],"jumps":[],"omitted":[]}';
+  final expanded = utf8.encode(json);
+  return (bytes: ZLibCodec(level: 6).encode(expanded),
+      checksum: sha256.convert(expanded).toString(), expanded: expanded.length);
+}
+
+Future<void> seedPortableEpisode(DatabaseExecutor db, {
+  required String id, String source = '', required int startMs,
+  required int endMs, required String startDay, String? endDay,
+  String state = 'owed', int revision = 1, int rr = 800,
+  int? createdMs,
+}) async {
+  final recording = literalPulseRecording(id, source, startMs, endMs, rr: rr);
+  await seedEpisode(db, id: id, source: source, startMs: startMs, endMs: endMs,
+      startDay: startDay, endDay: endDay, state: state, revision: revision,
+      checksum: recording.checksum, payload: recording.bytes,
+      createdMs: createdMs ?? DateTime.now().millisecondsSinceEpoch);
+  await db.update('pulse_ep_evidence', {'expanded_bytes': recording.expanded},
+      where: 'episode_id = ? AND revision = ?', whereArgs: [id, revision]);
 }

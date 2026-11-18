@@ -1,7 +1,12 @@
 // Pulse structural phase 2: every pulse_ep table has a transport, slice and
 // deletion policy, proved through the real export, import and delete paths.
 // CLAIM(pulse-transport) CLAIM(pulse-no-realert)
+import 'dart:io' show ZLibCodec;
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/compute/pulse_ep_worker.dart';
+import 'package:openstrap_edge/data/pulse_ep/pulse_ep_codec.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/import_journal.dart';
 import 'package:openstrap_edge/data/recent_slice.dart';
@@ -68,7 +73,7 @@ void main() {
   // the next sync is not classified as an unbounded pre-upgrade history.
   test('wipeAll clears every pulse_ep row and re-initializes an empty marker', () async {
     final db = await LocalDb.instance;
-    await seedEpisode(db, id: ':$_t0', startMs: _t0, endMs: _t0 + 600000, startDay: _day);
+    await seedPortableEpisode(db, id: ':$_t0', startMs: _t0, endMs: _t0 + 600000, startDay: _day);
     await db.insert('pulse_ep_upgrade_record', {'source': '', 'ts_ms': 5});
     await LocalDb.wipeAll();
     final after = await LocalDb.instance;
@@ -83,8 +88,8 @@ void main() {
   test('a full export and import carries portable rows and not local state', () async {
     final db = await LocalDb.instance;
     await env.seedData();
-    await seedEpisode(db, id: ':$_t0', startMs: _t0, endMs: _t0 + 600000,
-        startDay: _day, state: 'sent', payload: [9, 8, 7]);
+    await seedPortableEpisode(db, id: ':$_t0', startMs: _t0, endMs: _t0 + 600000,
+        startDay: _day, state: 'sent');
     await db.insert('pulse_ep_admission', {
       'source': '', 'start_ms': _t0, 'end_ms': _t0 + 1000, 'digest': 'd',
       'records': 1, 'novel': 1, 'origin': 'recentSync', 'admitted_ms': 1, 'historical': 0,
@@ -101,7 +106,10 @@ void main() {
     final got = await LocalDb.instance;
     expect((await pulseRows(got, 'pulse_ep_episode')).single['id'], ':$_t0');
     expect((await pulseRows(got, 'pulse_ep_outbox')).single['state'], 'sent');
-    expect((await pulseRows(got, 'pulse_ep_evidence')).single['payload'], [9, 8, 7]);
+    final recording = (await pulseRows(got, 'pulse_ep_evidence')).single;
+    final read = await PulseEpisodeWorker.decode(recording['payload'] as List<int>, recording['checksum'] as String);
+    expect(read, isA<PulseEvidenceAvailable>());
+    expect((read as PulseEvidenceAvailable).evidence.beats.single.rawMs, 800);
     expect(await pulseRows(got, 'pulse_ep_admission'), hasLength(1));
     expect((await pulseRows(got, 'pulse_ep_upgrade_record')).single['ts_ms'], 77000);
     expect(await pulseRows(got, 'pulse_ep_checkpoint'), isEmpty,
@@ -113,7 +121,7 @@ void main() {
   test('importing the same file twice converges', () async {
     final db = await LocalDb.instance;
     await env.seedData();
-    await seedEpisode(db, id: ':$_t0', startMs: _t0, endMs: _t0 + 600000, startDay: _day, state: 'sent');
+    await seedPortableEpisode(db, id: ':$_t0', startMs: _t0, endMs: _t0 + 600000, startDay: _day, state: 'sent');
     final path = await LocalDb.exportCopy();
     await env.wipe();
     await LocalDb.importFromDbFile(path);
@@ -143,13 +151,13 @@ void main() {
   // directions; otherwise a restore re-announces what was already announced.
   test('consumed delivery state wins over owed, whichever side holds it', () async {
     final a = await exportThenImport(
-      (s) => seedEpisode(s, id: ':$_t0', startMs: _t0, endMs: _t0 + 600000, startDay: _day, state: 'sent'),
-      (d) => seedEpisode(d, id: ':$_t0', startMs: _t0, endMs: _t0 + 600000, startDay: _day, state: 'owed'),
+      (s) => seedPortableEpisode(s, id: ':$_t0', startMs: _t0, endMs: _t0 + 600000, startDay: _day, state: 'sent'),
+      (d) => seedPortableEpisode(d, id: ':$_t0', startMs: _t0, endMs: _t0 + 600000, startDay: _day, state: 'owed'),
     );
     expect((await pulseRows(a, 'pulse_ep_outbox')).single['state'], 'sent');
     final b = await exportThenImport(
-      (s) => seedEpisode(s, id: ':$_t0', startMs: _t0, endMs: _t0 + 600000, startDay: _day, state: 'owed'),
-      (d) => seedEpisode(d, id: ':$_t0', startMs: _t0, endMs: _t0 + 600000, startDay: _day, state: 'sent'),
+      (s) => seedPortableEpisode(s, id: ':$_t0', startMs: _t0, endMs: _t0 + 600000, startDay: _day, state: 'owed'),
+      (d) => seedPortableEpisode(d, id: ':$_t0', startMs: _t0, endMs: _t0 + 600000, startDay: _day, state: 'sent'),
     );
     expect((await pulseRows(b, 'pulse_ep_outbox')).single['state'], 'sent');
   });
@@ -159,9 +167,9 @@ void main() {
   test('imported pending becomes unknown with no token; imported owed becomes historical', () async {
     final db = await exportThenImport(
       (s) async {
-        await seedEpisode(s, id: 'a:$_t0', source: 'a', startMs: _t0, endMs: _t0 + 600000, startDay: _day, state: 'pending');
+        await seedPortableEpisode(s, id: 'a:$_t0', source: 'a', startMs: _t0, endMs: _t0 + 600000, startDay: _day, state: 'pending');
         await s.update('pulse_ep_outbox', {'token': 'foreign'}, where: 'episode_id = ?', whereArgs: ['a:$_t0']);
-        await seedEpisode(s, id: 'b:$_t0', source: 'b', startMs: _t0, endMs: _t0 + 600000, startDay: _day, state: 'owed');
+        await seedPortableEpisode(s, id: 'b:$_t0', source: 'b', startMs: _t0, endMs: _t0 + 600000, startDay: _day, state: 'owed');
       },
       (d) async {},
     );
@@ -177,13 +185,14 @@ void main() {
   // arbitrary newer-looking row; local valid evidence stays.
   test('a divergent revision with the same identity keeps the local evidence', () async {
     final db = await exportThenImport(
-      (s) => seedEpisode(s, id: ':$_t0', startMs: _t0, endMs: _t0 + 600000, startDay: _day,
-          state: 'sent', checksum: 'foreign', payload: [6, 6, 6]),
-      (d) => seedEpisode(d, id: ':$_t0', startMs: _t0, endMs: _t0 + 600000, startDay: _day,
-          state: 'sent', checksum: 'local', payload: [1, 1, 1]),
+      (s) => seedPortableEpisode(s, id: ':$_t0', startMs: _t0, endMs: _t0 + 600000, startDay: _day,
+          state: 'sent', rr: 900),
+      (d) => seedPortableEpisode(d, id: ':$_t0', startMs: _t0, endMs: _t0 + 600000, startDay: _day,
+          state: 'sent', rr: 800),
     );
-    expect((await pulseRows(db, 'pulse_ep_revision')).single['checksum'], 'local');
-    expect((await pulseRows(db, 'pulse_ep_evidence')).single['payload'], [1, 1, 1]);
+    final literal = literalPulseRecording(':$_t0', '', _t0, _t0 + 600000);
+    expect((await pulseRows(db, 'pulse_ep_revision')).single['checksum'], literal.checksum);
+    expect((await pulseRows(db, 'pulse_ep_evidence')).single['payload'], literal.bytes);
   });
 
   // WHY: deleting a day removes the recording and its numbers; only an opaque
@@ -192,9 +201,9 @@ void main() {
   test('deleteDays removes evidence for every intersecting episode and keeps a tombstone', () async {
     final db = await LocalDb.instance;
     await env.seedData();
-    await seedEpisode(db, id: 'x:1', source: 'x', startMs: _t0, endMs: _t0 + 600000,
+    await seedPortableEpisode(db, id: 'x:1', source: 'x', startMs: _t0, endMs: _t0 + 600000,
         startDay: '2026-11-10', endDay: '2026-11-11', state: 'sent');
-    await seedEpisode(db, id: 'x:2', source: 'x', startMs: _t0 + 9 * 86400000,
+    await seedPortableEpisode(db, id: 'x:2', source: 'x', startMs: _t0 + 9 * 86400000,
         endMs: _t0 + 9 * 86400000 + 600000, startDay: '2026-11-19', state: 'owed');
     await db.insert('pulse_ep_upgrade_record', {'source': 'x', 'ts_ms': _t0});
     await LocalDb.deleteDays({'2026-11-11'});
@@ -213,7 +222,7 @@ void main() {
   test('deleteDays cancels unclaimed debt as a consumed deletion', () async {
     final db = await LocalDb.instance;
     await env.seedData();
-    await seedEpisode(db, id: 'x:1', source: 'x', startMs: _t0, endMs: _t0 + 600000,
+    await seedPortableEpisode(db, id: 'x:1', source: 'x', startMs: _t0, endMs: _t0 + 600000,
         startDay: '2026-11-10', state: 'owed');
     await LocalDb.deleteDays({'2026-11-10'});
     final out = (await pulseRows(db, 'pulse_ep_outbox')).single;
@@ -226,8 +235,8 @@ void main() {
   test('a selected-day export carries intersecting episodes and no local state', () async {
     final db = await LocalDb.instance;
     await env.seedData();
-    await seedEpisode(db, id: 'x:1', source: 'x', startMs: _t0, endMs: _t0 + 600000, startDay: '2026-11-10');
-    await seedEpisode(db, id: 'x:2', source: 'x', startMs: _t0 + 9 * 86400000,
+    await seedPortableEpisode(db, id: 'x:1', source: 'x', startMs: _t0, endMs: _t0 + 600000, startDay: '2026-11-10');
+    await seedPortableEpisode(db, id: 'x:2', source: 'x', startMs: _t0 + 9 * 86400000,
         endMs: _t0 + 9 * 86400000 + 600000, startDay: '2026-11-19');
     await db.insert('pulse_ep_checkpoint', {
       'source': 'x', 'through_ms': _t0, 'detector': 4, 'stamp': 's',
@@ -251,7 +260,7 @@ void main() {
     test('R1 tombstone removes measurements during $direction', () async {
       var db = await LocalDb.instance;
       await env.seedData();
-      await seedEpisode(db, id: ':$_t0', startMs: _t0,
+      await seedPortableEpisode(db, id: ':$_t0', startMs: _t0,
           endMs: _t0 + 600000, startDay: _day);
       final live = await LocalDb.exportCopy();
       await LocalDb.deleteDays({_day});
@@ -276,5 +285,45 @@ void main() {
       expect((await pulseRows(db, 'pulse_ep_outbox')).single['state'], 'deleted');
     });
   }
+
+  // WHY/R6: checksum labels alone cannot authenticate a recording. These
+  // independent compressed fixtures travel through the actual paged importer.
+  // catches: accepting matching header labels without bounded decode/schema checks.
+  test('R6 importer validates mixed valid corrupt unsupported and oversized recordings', () async {
+    final db = await LocalDb.instance;
+    await env.seedData();
+    for (final id in ['valid', 'tampered', 'bogus', 'bomb', 'unsupported', 'size']) {
+      await seedPortableEpisode(db, id: id, startMs: _t0, endMs: _t0 + 600000, startDay: _day);
+    }
+    await db.update('pulse_ep_evidence', {'payload': Uint8List.fromList([9, 8, 7]), 'encoded_bytes': 3},
+        where: 'episode_id = ?', whereArgs: ['tampered']);
+    for (final table in ['pulse_ep_revision', 'pulse_ep_evidence']) {
+      await db.update(table, {'checksum': 'f' * 64}, where: 'episode_id = ?', whereArgs: ['bogus']);
+    }
+    final bomb = ZLibCodec(level: 6).encode(List.filled(1024 * 1024 + 1, 32));
+    await db.update('pulse_ep_evidence', {'payload': Uint8List.fromList(bomb),
+        'encoded_bytes': bomb.length, 'expanded_bytes': 1024 * 1024 + 1},
+        where: 'episode_id = ?', whereArgs: ['bomb']);
+    final unknown = literalPulseRecording('unsupported', '', _t0, _t0 + 600000, version: 99);
+    await db.update('pulse_ep_evidence', {'payload': Uint8List.fromList(unknown.bytes),
+        'encoded_bytes': unknown.bytes.length, 'expanded_bytes': unknown.expanded, 'checksum': unknown.checksum},
+        where: 'episode_id = ?', whereArgs: ['unsupported']);
+    await db.update('pulse_ep_revision', {'checksum': unknown.checksum},
+        where: 'episode_id = ?', whereArgs: ['unsupported']);
+    await db.update('pulse_ep_evidence', {'expanded_bytes': 1}, where: 'episode_id = ?', whereArgs: ['size']);
+    final path = await LocalDb.exportCopy();
+    await env.wipe();
+    final result = await LocalDb.importFromDbFile(path);
+    final got = await LocalDb.instance;
+    expect((await pulseRows(got, 'pulse_ep_evidence')).map((r) => r['episode_id']), ['valid']);
+    final revisions = {for (final r in await pulseRows(got, 'pulse_ep_revision')) r['episode_id']: r['evidence_status']};
+    expect(revisions, {'valid': 'available', 'tampered': 'corrupt', 'bogus': 'corrupt',
+        'bomb': 'corrupt', 'unsupported': 'unsupported', 'size': 'corrupt'});
+    final debts = {for (final r in await pulseRows(got, 'pulse_ep_outbox')) r['episode_id']: r['state']};
+    expect(debts, {'valid': 'owed', 'tampered': 'not_sent', 'bogus': 'not_sent',
+        'bomb': 'not_sent', 'unsupported': 'not_sent', 'size': 'not_sent'});
+    expect(result['_pulse_evidence_corrupt'], 4);
+    expect(result['_pulse_evidence_unsupported'], 1);
+  });
 
 }
