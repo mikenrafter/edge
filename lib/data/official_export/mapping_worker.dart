@@ -12,6 +12,7 @@ import '../hyrox_plan.dart';
 import '../triathlon_plan.dart';
 import '../../util/worker_init.dart';
 import '../../util/worker_audit.dart';
+import '../../util/worker_entries.dart' show Dispatcher;
 import '../raw_archive_row.dart';
 import '../substrate_archive_codec.dart';
 import 'profile_tables.dart';
@@ -47,8 +48,10 @@ class MappingOutput {
   final String? text;
 }
 
-Future<MappingOutput> runMappingWorker(MappingInput input) =>
-    Isolate.run(() => officialMappingHeavy(mappingWorkerInputs, input));
+Future<MappingOutput> runMappingWorker(MappingInput input) {
+  final dispatch = WorkerAudit.dispatched(Dispatcher.run, 'officialMappingHeavy.${input.operation}');
+  return Isolate.run(WorkerAudit.wrap(() => officialMappingHeavy(mappingWorkerInputs, input), dispatch));
+}
 
 @heavy
 Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput input) async {

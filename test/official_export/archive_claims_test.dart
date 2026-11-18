@@ -12,6 +12,7 @@ import 'package:openstrap_edge/data/official_export/mapper.dart';
 import 'package:openstrap_edge/data/official_export/mapping_worker.dart';
 import 'package:openstrap_edge/data/official_export/space_budget.dart';
 import 'package:openstrap_edge/data/substrate_archive_codec.dart';
+import 'package:openstrap_edge/util/worker_audit.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'archive_fixture.dart';
 import 'support.dart';
@@ -26,14 +27,22 @@ class ProbingSpace implements ExportFreeSpace {
   ProbingSpace(this.path);
   final String path;
   final samples=<({List<String> columns,int rows,int devices})>[];
+  final pendingDuringExpansion=<int>[];
+  final liveParentCounts=<int>[];
   @override
   Future<int> readAvailableBytes() async {
     if (!File(path).existsSync()) {return 1<<40;}
     final db=await databaseFactoryFfi.openDatabase(path,options:OpenDatabaseOptions(readOnly:true,singleInstance:false));
     try {
+      if ((await db.rawQuery("SELECT name FROM sqlite_master WHERE name='live_parent'")).isNotEmpty) {
+        liveParentCounts.add(Sqflite.firstIntValue(await db.rawQuery('SELECT count(*) FROM live_parent'))!);
+      }
       final info=await db.rawQuery("PRAGMA table_info('archive_claims')");
       if (info.isNotEmpty) {
         final r=(await db.rawQuery('SELECT count(*) AS n,count(DISTINCT device_id) AS d FROM archive_claims')).single;
+        if (info.any((c)=>c['name']=='verdict') && Sqflite.firstIntValue(await db.rawQuery('SELECT count(*) FROM decoded_onehz'))!>0) {
+          pendingDuringExpansion.add(Sqflite.firstIntValue(await db.rawQuery('SELECT count(*) FROM archive_claims WHERE verdict IS NULL'))!);
+        }
         samples.add((columns:[for(final c in info) c['name'] as String],rows:r['n'] as int,devices:r['d'] as int));
       }
     } finally {await db.close();}
@@ -87,7 +96,7 @@ void main() {
      space:ExportSpaceBudget(source:space,liveFloorBytes:0));
    expect(space.samples,isNotEmpty,reason:'the claim table must be visible in the output file, not TEMP');
    for(final s in space.samples) {
-    expect(s.columns,containsAll(['device_id','ts_ms','bucket_id','row_index','beats','digest']));
+    expect(s.columns,containsAll(['device_id','ts_ms','bucket_id','row_index','beats','digest','verdict']));
     expect(s.columns,isNot(contains('claim')),reason:'no claim content is stored');
    }
    expect(space.samples.map((s)=>s.rows).reduce((x,y)=>x>y?x:y),lessThanOrEqualTo(8),reason:'only group A (8 claims) at once');
@@ -103,4 +112,46 @@ void main() {
    } finally {await out.close();}
   });
  },timeout:const Timeout(Duration(minutes:8)));
+ // WHY: CLAIM(official-export-bounded-unpack) [P2 review N2]. Selection pages
+ // must bound unpacked parents without re-decoding once per 4096 claim rows.
+ test('a bucket settles all verdicts before two capped unpack calls for 20001 parents',() async {
+  await withFreshForkDb((db,path) async {
+   const a=1792670400;
+   await bucket(db,10,[for(var i=0;i<20001;i++) parent(a+i,70)],
+     [beat(a,0),beat(a+19999,0),beat(a+20000,0)]);
+   await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');await LocalDb.close();
+   final calls=<DispatchEvent>[];
+   WorkerAudit.onDispatch=(e) {if(e.label=='officialMappingHeavy.unpack') {calls.add(e);}};
+   final outPath='${File(path).parent.path}/mapped.db',space=ProbingSpace('${File(path).parent.path}/mapped.db');
+   late OfficialMapReport report;
+   try {
+    report=await mapOfficialSnapshot(snapshotPath:path,outputPath:outPath,factory:databaseFactoryFfi,
+      space:ExportSpaceBudget(source:space,liveFloorBytes:0),calendar:const FixedOffsetCalendar(0));
+   } finally {WorkerAudit.reset();}
+   expect(calls,hasLength(2),reason:'20000 plus one parent, never per claim page');
+   expect(space.pendingDuringExpansion,isNotEmpty,reason:'observe the settled claim table during sliced writes');
+   expect(space.pendingDuringExpansion,everyElement(0));
+   final out=await databaseFactoryFfi.openDatabase(report.path,options:OpenDatabaseOptions(readOnly:true));
+   try {
+    expect(Sqflite.firstIntValue(await out.rawQuery('SELECT count(*) FROM decoded_onehz')),20001);
+    expect((await out.query('decoded_rr',orderBy:'rec_ts')).map((r)=>r['rec_ts']).toList(),[a,a+19999,a+20000]);
+   } finally {await out.close();}
+  });
+ },timeout:const Timeout(Duration(minutes:8)));
+ // WHY: CLAIM(official-export-file-owned-keys) [P2 review live_parent]. The
+ // ownership index must consume accounted disk rather than Android TEMP RAM.
+ test('live ownership keys live in the output file and are dropped before verification',() async {
+  await withFreshForkDb((db,path) async {
+   await db.insert('decoded_onehz',parent(1792670400,70));
+   await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');await LocalDb.close();
+   final outPath='${File(path).parent.path}/mapped.db',space=ProbingSpace('${File(path).parent.path}/mapped.db');
+   final report=await mapOfficialSnapshot(snapshotPath:path,outputPath:outPath,factory:databaseFactoryFfi,
+     space:ExportSpaceBudget(source:space,liveFloorBytes:0),calendar:const FixedOffsetCalendar(0));
+   expect(space.liveParentCounts,contains(1));
+   final out=await databaseFactoryFfi.openDatabase(report.path,options:OpenDatabaseOptions(readOnly:true));
+   try {expect(await out.rawQuery("SELECT name FROM sqlite_master WHERE name='live_parent'"),isEmpty);}
+   finally {await out.close();}
+  });
+ });
+
 }
