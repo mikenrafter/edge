@@ -1093,6 +1093,8 @@ Future<Database> _ldbPrivOpen() async {
           await LocalDb._createNightCheckpoint(db);
           await LocalDb._createDeriveFingerprint(db);
         }
+        // Rung 93: sleep_override.payload_json (the checked sleep-edit envelope).
+        if (oldV < 93) await LocalDb._createSleepOverride(db);
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);

@@ -5,19 +5,10 @@
 
 import 'package:sqflite/sqflite.dart';
 
+import 'sleep_edit_codec.dart';
 import 'sleep_editor.dart';
 
-/// Reads and writes the namespaced envelope inside a stored payload.
-class SleepEditCodec {
-  const SleepEditCodec._();
-
-  static Future<EnvelopeRead> read(String? payloadJson) async =>
-      const EnvelopeUnavailable({}, 'unsupported');
-
-  static Future<String?> write(
-          Map<String, Object?> retained, SleepEditEnvelope envelope) async =>
-      null;
-}
+export 'sleep_edit_codec.dart';
 
 class SleepEditorWrite {
   const SleepEditorWrite._();

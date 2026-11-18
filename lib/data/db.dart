@@ -667,7 +667,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 92;
+  static const int schemaVersion = 93;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1887,9 +1887,17 @@ class LocalDb {
         onset_ts INTEGER NOT NULL,
         offset_ts INTEGER NOT NULL,
         source TEXT NOT NULL,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        payload_json TEXT
       )
     ''');
+    // Rung 93 / same-version repair: the checked sleep-edit envelope travels
+    // with its row. Nullable, no backfill (history is unavailable, never
+    // guessed), so this stays cheap under iOS's upgrade watchdog.
+    final cols = await db.rawQuery('PRAGMA table_info(sleep_override)');
+    if (!cols.any((c) => c['name'] == 'payload_json')) {
+      await db.execute('ALTER TABLE sleep_override ADD COLUMN payload_json TEXT');
+    }
   }
 
   /// Upsert the user's sleep window for [dayId] (local date label). [source] is
