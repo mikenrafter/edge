@@ -561,12 +561,11 @@ abstract final class SleepBlockStore {
       "json_extract(r.window_json, '\$.offset_ms')) END AS off_ms "
       "FROM day_result r ${LocalDb.servedDayJoinSql} WHERE r.skipped = 0");
     final byDay={for(final r in rows) r['day_id']:r};
+    int? seconds(Object? value) => value is num ? value ~/ 1000 : null;
     return [for(final r in rows) {
       ...r,
-      'next_start':(byDay[dayLabelBefore(r['day_id'] as String,-1)]?['on_ms'] as num?)?.toInt() == null
-          ? null : (byDay[dayLabelBefore(r['day_id'] as String,-1)]!['on_ms'] as num) ~/ 1000,
-      'next_end':(byDay[dayLabelBefore(r['day_id'] as String,-1)]?['off_ms'] as num?)?.toInt() == null
-          ? null : (byDay[dayLabelBefore(r['day_id'] as String,-1)]!['off_ms'] as num) ~/ 1000,
+      'next_start':seconds(byDay[dayLabelBefore(r['day_id'] as String,-1)]?['on_ms']),
+      'next_end':seconds(byDay[dayLabelBefore(r['day_id'] as String,-1)]?['off_ms']),
     }];
   }
 
