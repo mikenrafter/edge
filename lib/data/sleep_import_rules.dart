@@ -25,6 +25,7 @@ class SleepImportEntry {
   final String? other;
 
   bool get refused => kind.startsWith('refused');
+  bool get closeReview => kind.startsWith('close-');
 
   Map<String, Object?> toJson() => {
         'kind': kind,

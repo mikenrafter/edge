@@ -619,7 +619,7 @@ Future<ImportSummary?> lastImportSummary() async {
       interruptedAndResumed: v.length > 6 ? n(6) : 0,
       needsReentry: [if (v.length > 7 && n(7) & 1 != 0) kNeedsReentryCoachKey],
       sleepRefused: [for (final e in sleep) if (e.refused) e],
-      sleepCloseReview: [for (final e in sleep) if (!e.refused) e],
+      sleepCloseReview: [for (final e in sleep) if (e.closeReview) e],
     );
   } on FormatException {
     return null;
