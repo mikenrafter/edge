@@ -185,4 +185,21 @@ void main() {
     expect(r, isA<PulseRefused>());
     expect(await pulseRows(db, 'pulse_ep_episode'), isEmpty);
   });
+  // WHY/R3: an empty detection is not proof that pending or invalid support
+  // was evaluated. The checkpoint must retain a durable, explicit refusal.
+  // catches: results.every(...) accepting an empty episode list as completion.
+  for (final invalid in [false, true]) {
+    test('R3 empty ${invalid ? 'invalid' : 'pending'} input records refusal', () async {
+      final db = await LocalDb.instance;
+      await insertRows(db, '', rows);
+      if (invalid) await db.rawUpdate('UPDATE decoded_rr SET beat_ts_ms = NULL');
+      await PulseEpisodeWorker.evaluate(db, source: '', fromMs: _t0,
+          toMs: _t0 + 30 * 60000, sourceStartMs: _t0 - 3600000,
+          completeThroughMs: invalid ? _t0 + 35 * 60000 : _t0,
+          origin: 'recentSync', nowMs: 10);
+      final cp = (await pulseRows(db, 'pulse_ep_checkpoint')).single;
+      expect(cp['refused_json'], contains(invalid ? 'timestamps' : 'pending'));
+    });
+  }
+
 }

@@ -480,4 +480,32 @@ void main() {
     expect(PulseDelivery.notSent.consumed, isFalse);
     expect(PulseDelivery.pending.consumed, isTrue);
   });
+  // WHY/R3: an old range must not refresh authority over a later replacement.
+  // catches: max(old watermark, new end) paired with a fresh wall-clock time.
+  test('R3 older evaluation cannot consume a replacement beyond its range', () async {
+    await admit(100, 200);
+    var stamp = await PulseEpisodeStore.readStamp(db, source: 's', fromMs: 0, toMs: 300000);
+    await PulseEpisodeStore.advanceCheckpoint(db,
+        source: 's', throughMs: 300000, stamp: stamp, detector: 4, nowMs: 10);
+    await admit(100, 200, digest: 'replacement', now: 20);
+    stamp = await PulseEpisodeStore.readStamp(db, source: 's', fromMs: 0, toMs: 100000);
+    await PulseEpisodeStore.advanceCheckpoint(db,
+        source: 's', throughMs: 100000, stamp: stamp, detector: 4, nowMs: 30);
+    await db.transaction((txn) => PulseEpisodeStore.pruneAdmissions(txn,
+        cutoffMs: 400000, hardFloorMs: 0, holdEnabled: true));
+    final left = await pulseRows(db, 'pulse_ep_admission');
+    expect(left.map((r) => r['digest']), ['replacement']);
+  });
+
+  // WHY/R3: even a zero-episode pass must recheck its admission snapshot.
+  // catches: checkpointing new input that arrived after the worker's read.
+  test('R3 checkpoint refuses a late admission and leaves it unconsumed', () async {
+    final stamp = await PulseEpisodeStore.readStamp(db, source: 's', fromMs: 0, toMs: 300000);
+    await admit(100, 200);
+    await expectLater(PulseEpisodeStore.advanceCheckpoint(db,
+        source: 's', throughMs: 300000, stamp: stamp, detector: 4, nowMs: 10),
+        throwsA(anything));
+    expect(await pulseRows(db, 'pulse_ep_checkpoint'), isEmpty);
+  });
+
 }
