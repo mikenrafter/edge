@@ -16,7 +16,7 @@ import 'package:openstrap_edge/compute/findings.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/models/chart_point.dart';
 import 'package:openstrap_edge/ui2/screens/findings_log.dart';
-import 'package:openstrap_edge/ui2/screens/explorer_annotations.dart';
+import 'package:openstrap_edge/ui2/screens/metric_annotations.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 import 'support/skeleton_fixture.dart';
 

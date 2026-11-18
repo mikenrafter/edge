@@ -18,7 +18,7 @@ import '../../state/recalc_state.dart';
 import '../ui2.dart';
 import 'advanced.dart';
 import '../../compute/findings.dart';
-import 'explorer_annotations.dart' show AnnotationLoader, loadAnnotations;
+import 'metric_annotations.dart' show AnnotationLoader, loadAnnotations;
 import 'day_steps.dart';
 import 'home_screen.dart';
 import 'investigate.dart';

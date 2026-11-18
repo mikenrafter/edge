@@ -16,7 +16,7 @@ import 'package:openstrap_edge/ui2/screens/screens.dart'
     show MetricData, MetricDetail, specOf, WorkoutScreen;
 import 'package:openstrap_edge/ui2/ui2.dart';
 
-import 'support/explorer_harness.dart';
+import 'support/chart_harness.dart';
 import 'support/older_version_fixtures.dart';
 
 Finder get _strip => find.byIcon(LucideIcons.history);
@@ -153,94 +153,7 @@ void main() {
     });
   });
 
-  group('Explorer', () {
-    List<Map<String, dynamic>> older(Set<String> days, {int v = 104}) => [
-          for (final d in [
-            '2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01',
-            '2026-10-02', '2026-10-03',
-          ])
-            days.contains(d) ? {...pt(d, 7), 'from_older_version': v} : pt(d, 7),
-        ];
 
-    Future<void> open(WidgetTester t, Map<String, List<Map<String, dynamic>>> by,
-        List<String> picks) async {
-      await pumpExplorer(
-          t, ExplorerRepo(charts: {for (final e in by.entries) specOf(e.key).chartKey: e.value}));
-      await tapKey(t, 'explore-range:d7');
-      for (final k in picks) {
-        await tapKey(t, 'explore-pick:$k');
-      }
-    }
-
-    testWidgets('scrubbing onto an older day: no note row, same heights',
-        (t) async {
-      await open(t, {'strain': older({'2026-10-01'})}, ['strain']);
-      expect(_strip, findsNothing);
-      final size = t.getSize(find.byType(ChartFrame));
-      await scrubAt(t, 3.5 / 7);
-      expect(olderMark('readout'), findsOneWidget);
-      expect(_noteText, findsNothing);
-      expect(t.getSize(find.byType(ChartFrame)), size);
-    });
-
-    testWidgets('latest older: strip on load, unchanged after a scrub',
-        (t) async {
-      await open(t, {'strain': older({'2026-10-03'})}, ['strain']);
-      expect(olderNote('readout'), findsOneWidget);
-      expect(_strip, findsOneWidget);
-      final at = t.getTopLeft(_strip);
-      final size = t.getSize(find.byType(ChartFrame));
-      await scrubAt(t, 1.5 / 7);
-      expect(_noteText, findsOneWidget);
-      expect(t.getTopLeft(_strip), at);
-      expect(t.getSize(find.byType(ChartFrame)), size);
-    });
-
-    testWidgets('one range per run of older days; the label is in the one '
-        'fixed place and names the series', (t) async {
-      await open(
-          t,
-          {'strain': older({'2026-09-29', '2026-09-30', '2026-10-02'})},
-          ['strain']);
-      final ranges = olderRanges(t);
-      expect(ranges.length, 2, reason: 'runs: 29-30 Sep and 2 Oct');
-      expect([for (final r in ranges) r.until! - r.at], [2.0, 1.0]);
-      await scrubAt(t, 1.9 / 7);
-      final first = find.byKey(ChartAnnotationLane.labelKey);
-      expect(first, findsOneWidget);
-      final text = t.widget<Text>(first).data!;
-      expect(text, contains(specOf('strain').title));
-      expect(text, contains('older calculation (v104)'));
-      final at = t.getTopLeft(first);
-      await scrubAt(t, 4.5 / 7);
-      expect(t.getTopLeft(find.byKey(ChartAnnotationLane.labelKey)), at);
-    });
-
-    testWidgets('each series gets its own ranges, labelled by name',
-        (t) async {
-      await open(t, {
-        'strain': older({'2026-09-29'}),
-        'trimp': older({'2026-10-01'}, v: 103),
-      }, ['strain', 'trimp']);
-      final labels = [for (final r in olderRanges(t)) r.label];
-      expect(labels.length, 2);
-      expect(labels.where((l) => l.contains(specOf('strain').title)).length, 1);
-      expect(labels.where((l) => l.contains(specOf('trimp').title)).length, 1);
-    });
-
-    testWidgets('no older day: no range, no strip', (t) async {
-      await open(t, {'strain': older({})}, ['strain']);
-      expect(olderRanges(t), isEmpty);
-      expect(_strip, findsNothing);
-    });
-
-    testWidgets('spoken once', (t) async {
-      final h = t.ensureSemantics();
-      await open(t, {'strain': older({'2026-10-03'})}, ['strain']);
-      expect(spokenOlder(t, 104), 1);
-      h.dispose();
-    });
-  });
 
   group('Workout 7-day bars', () {
     Future<void> open(WidgetTester t, List<Map<String, dynamic>> trimp) async {

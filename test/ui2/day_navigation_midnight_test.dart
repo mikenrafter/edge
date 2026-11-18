@@ -8,7 +8,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
-import '../support/explorer_harness.dart' show ExplorerRepo, initPrefs, loadType;
+import '../support/chart_harness.dart' show ChartRepo, initPrefs, loadType;
 
 const past = '2026-05-19';
 const days = ['2026-05-22', '2026-05-20', past];
@@ -32,7 +32,6 @@ void main() {
   });
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
-    await Prefs.setStringAcked(kExploreScalePref, 'daily');
   });
 
   // WHY: Overview has no selected day; midnight must never create a pill.
@@ -54,52 +53,11 @@ void main() {
 
   // WHY: the daily scale shows a range, so midnight cannot create a day action.
   // catches: replacing the absent explorer day with a captured today label.
-  testWidgets('explorer daily scale after midnight shows no pill', (t) async {
-    var now = DateTime(2026, 5, 22, 23, 59, 59);
-    await withClock(Clock(() => now), () async {
-      final app = AppState.forTesting()..repo = ExplorerRepo();
-      await host(t, ExplorerScreen(annotationLoader: (_, _) async => const []), app: app);
-      expect(find.text('Back to today'), findsNothing, reason: 'before midnight');
-      now = DateTime(2026, 5, 23, 0, 0, 1);
-      await t.pump(const Duration(seconds: 2));
-      await t.pump();
-      expect(find.text('Back to today'), findsNothing,
-        reason: 'daily scale (no single day shown) grew a Back to today pill at midnight');
-      await t.pumpWidget(const SizedBox());
-      app.dispose();
-    });
-  });
+
 
   // WHY: a remembered day scale must publish its date on first mount, so a
   // kept-alive view offers today after midnight. CLAIM(day-navigation-immediate).
   // catches: deleting the post-frame publication or reading the host clock.
-  testWidgets('explorer remembered day scale publishes today and crosses midnight', (t) async {
-    var now = DateTime(2026, 5, 22, 23, 59, 59);
-    await withClock(Clock(() => now), () async {
-      await Prefs.setStringAcked(kExploreScalePref, 'day');
-      final app = AppState.forTesting()..repo = ExplorerRepo();
-      await host(t, ExplorerScreen(annotationLoader: (_, _) async => const []), app: app);
-      String? selected() => t.widget<DayNavigationFrame>(
-          find.byType(DayNavigationFrame)).selectedDay;
-      expect(selected(), '2026-05-22', reason: 'publish the actual day on first mount');
-      expect(find.text('Back to today'), findsNothing);
-      now = DateTime(2026, 5, 23, 0, 0, 1);
-      await t.pump(const Duration(seconds: 2));
-      await t.pump();
-      expect(find.text('Back to today'), findsOneWidget);
-      await t.tap(find.text('Back to today'));
-      await t.pump();
-      expect(selected(), '2026-05-23');
-      expect(find.text('Back to today'), findsNothing);
-      await t.tap(find.byKey(const ValueKey('explore-scale:daily')));
-      await t.pump();
-      expect(selected(), isNull, reason: 'a range has no selected day');
-      await t.tap(find.byKey(const ValueKey('explore-scale:day')));
-      await t.pump();
-      expect(selected(), '2026-05-23');
-      await t.pumpWidget(const SizedBox());
-      app.dispose();
-    });
-  });
+
 
 }

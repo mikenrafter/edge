@@ -12631,16 +12631,9 @@
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "ui2/screens/explorer.dart",
-      "symbol": "_ExplorerViewState._ensureAnnotations",
-      "element": "load(from, to)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ui2/screens/explorer_annotations.dart",
+      "file": "ui2/screens/metric_annotations.dart",
       "symbol": "loadAnnotations",
-      "element": "debugPrint('explorer annotations: $e')",
+      "element": "debugPrint('metric annotations: $e')",
       "count": 1
     },
     {

@@ -15,7 +15,7 @@ import 'package:openstrap_edge/ui2/screens/screens.dart'
     show MetricData, MetricDetail, specOf, WorkoutScreen;
 import 'package:openstrap_edge/ui2/ui2.dart';
 
-import 'support/explorer_harness.dart';
+import 'support/chart_harness.dart';
 import 'support/older_version_fixtures.dart';
 import 'support/scrub_panel_laws.dart';
 

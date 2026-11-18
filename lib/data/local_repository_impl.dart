@@ -5125,11 +5125,7 @@ class LocalRepositoryImpl extends LocalRepository {
     return sec == null ? null : DateTime.fromMillisecondsSinceEpoch(sec * 1000);
   }
 
-  @override
-  Future<Map<String, int>> getSeriesCounts(List<String> keys) async {
-    _focusCheck('getSeriesCounts');
-    return LocalDb.metricSeriesCounts(keys);
-  }
+
 
   /// A day's intraday calories: one record per minute, gaps null, as the
   /// derive stored them (`kcal_minutes|<day>`); null when there is none (no raw
@@ -6099,4 +6095,3 @@ num hrvConfidenceForToday(Map<String, dynamic> clinical) {
   }
   return wholeConf ?? 0.5;
 }
-

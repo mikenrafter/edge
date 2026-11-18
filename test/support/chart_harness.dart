@@ -1,31 +1,3 @@
-// Shared harness for the Data Explorer widget tests (not a test itself).
-//
-// ASSUMED API used here, besides what explorer_series_test.dart lists:
-//
-//   lib/ui2/screens/explorer.dart (exported from screens.dart)
-//     class ExplorerView extends StatefulWidget {
-//       const ExplorerView({super.key, this.today});   // 'YYYY-MM-DD' local; null = todayLabel()
-//       static const plotKey = ValueKey('explore-plot');  // the RepaintBoundary around the plot painter
-//       static const limitMessage = ...;                  // shown when a 5th metric is refused
-//       // keys: explore-scale:daily|day   explore-range:d7|d30|m6|y1|custom
-//       //       explore-pick:<key>  explore-chip:<key>  explore-z:<key>
-//       //       explore-z-reason:<key>  explore-day-prev|next|label
-//       //       explore-empty:<key>  explore-no-data  explore-retry
-//       //       explore-normalised-note (Text containing 'Normalised')
-//     }
-//     class ExplorePlotLine { final String key; final Color color;
-//                             final List<List<ExploreXY>> runs; }   // drawn, normalised
-//     class ExplorePlotPainter extends CustomPainter {
-//       final List<ExplorePlotLine> lines; final List<ExploreBand> bands;
-//       final double? selectedAt; }
-//   lib/ui2/screens/metric_catalogue.dart (exported from screens.dart)
-//     class MetricCatalogueRow { final String key, series, blurb; }
-//     class MetricCategory { final String title; final List<MetricCatalogueRow> rows; }
-//     const List<MetricCategory> kMetricCatalogue;   // moved out of health_screen.dart
-//   prefs (in explorer.dart): kExploreMetricsPref = 'ui.explore_metrics',
-//     kExploreIntradayPref = 'ui.explore_intraday', kExploreRangePref =
-//     'ui.explore_range', kExploreScalePref = 'ui.explore_scale' ('daily'|'day'),
-//     kExploreZPref = 'ui.explore_z'. '' means unset.
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
@@ -40,9 +12,6 @@ import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/state/units_controller.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
-import 'package:openstrap_edge/ui2/screens/explorer.dart';
-import 'package:openstrap_edge/ui2/screens/explorer_annotations.dart'
-    show AnnotationLoader;
 import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -59,23 +28,9 @@ const kWeek = [
   '2026-10-04',
 ];
 
-const kPrefKeys = [
-  kExploreMetricsPref,
-  kExploreIntradayPref,
-  kExploreRangePref,
-  kExploreScalePref,
-  kExploreZPref,
-];
-
 Future<void> initPrefs() async {
   SharedPreferences.setMockInitialValues({});
   await Prefs.ensureLoaded();
-}
-
-void clearPrefs() {
-  for (final k in kPrefKeys) {
-    Prefs.setString(k, '');
-  }
 }
 
 /// A stored `getChart` point: local noon of [day], as the real seam stamps it.
@@ -87,10 +42,8 @@ Map<String, dynamic> pt(String day, num v) {
   };
 }
 
-/// The minimum repository the Explorer reads: `getChart`, `getDayTimeline`,
-/// `getDayCalorieCurve`. Everything else throws, which is the point: the
-/// Explorer must not need anything else.
-class ExplorerRepo extends LocalRepository {
+/// Stored chart fixtures for metric, trend and navigation tests.
+class ChartRepo extends LocalRepository {
   /// Keyed by the metric string `getChart` is called with (the MetricSpec
   /// `chartKey`, e.g. 'recovery' for readiness).
   final Map<String, List<Map<String, dynamic>>> charts;
@@ -110,16 +63,13 @@ class ExplorerRepo extends LocalRepository {
   /// While > 0 every `getChart` throws (and decrements).
   int failChart = 0;
 
-  ExplorerRepo({
+  ChartRepo({
     this.charts = const {},
     this.timelines = const {},
     this.calorieCurves = const {},
     this.counts = const {},
   });
 
-  @override
-  Future<Map<String, int>> getSeriesCounts(List<String> keys) async =>
-      {for (final k in keys) k: counts[k] ?? 0};
 
   @override
   Future<Map<String, dynamic>> getChart(String metric,
@@ -186,39 +136,6 @@ Widget providers(AppState app, Widget home, {double scale = 1}) =>
       ),
     );
 
-/// Pumps [ExplorerView] inside a list (as a screen does), over [repo].
-Future<void> pumpExplorer(
-  WidgetTester t,
-  ExplorerRepo repo, {
-  double width = 390,
-  double height = 3000,
-  double scale = 1,
-  String today = kToday,
-
-  /// The journal items drawn on the chart. Empty by default: no test here
-  /// opens a database.
-  AnnotationLoader? annotationLoader,
-}) async {
-  t.view.devicePixelRatio = 1;
-  t.view.physicalSize = Size(width, height);
-  addTearDown(t.view.reset);
-  final app = AppState.forTesting()..repo = repo;
-  addTearDown(app.dispose);
-  await t.pumpWidget(providers(
-    app,
-    ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      children: [
-        ExplorerView(
-            today: today,
-            annotationLoader: annotationLoader ?? (_, _) async => const []),
-      ],
-    ),
-    scale: scale,
-  ));
-  await settle(t);
-}
-
 /// Bounded pumps until [done] is true (default: a few frames). Never
 /// pumpAndSettle: an InlineLoading spinner never settles.
 Future<void> settle(WidgetTester t, {bool Function()? done}) async {
@@ -235,30 +152,6 @@ Future<void> tapKey(WidgetTester t, String key) async {
   await t.ensureVisible(f);
   await t.tap(f);
   await settle(t);
-}
-
-Finder pick(String key) => find.byKey(ValueKey('explore-pick:$key'));
-Finder chip(String key) => find.byKey(ValueKey('explore-chip:$key'));
-
-/// The painter the plot actually draws with.
-ExplorePlotPainter plotPainter(WidgetTester t) {
-  final boundary = find.byKey(ExplorerView.plotKey);
-  expect(boundary, findsOneWidget, reason: 'no plot is on screen');
-  final all = t.widgetList<CustomPaint>(
-      find.descendant(of: boundary, matching: find.byType(CustomPaint)));
-  return all.map((c) => c.painter).whereType<ExplorePlotPainter>().single;
-}
-
-ExplorePlotLine plotLine(WidgetTester t, String key) =>
-    plotPainter(t).lines.singleWhere((l) => l.key == key);
-
-List<int> runLens(ExplorePlotLine l) => [for (final r in l.runs) r.length];
-
-/// Taps the plot at [frac] (0..1) across its width.
-Future<void> scrubAt(WidgetTester t, double frac) async {
-  final r = t.getRect(find.byKey(ExplorerView.plotKey));
-  await t.tapAt(Offset(r.left + r.width * frac, r.center.dy));
-  await t.pump();
 }
 
 /// The value in the series' own cell, for both single- and multi-series

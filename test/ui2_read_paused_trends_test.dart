@@ -13,7 +13,6 @@ import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
-import 'support/explorer_harness.dart' as ex;
 import 'support/read_paused_fakes.dart';
 
 Future<void> _settle(WidgetTester t, {int n = 40}) async {
@@ -102,65 +101,5 @@ void main() {
     });
   });
 
-  group('Explorer', () {
-    Future<ex.ExplorerRepo> pumpPaused(WidgetTester t) async {
-      await ex.initPrefs();
-      Prefs.setString(kExploreMetricsPref, 'resting_hr');
-      addTearDown(ex.clearPrefs);
-      startFocus();
-      final repo = _PausedExplorerRepo();
-      await ex.pumpExplorer(t, repo);
-      return repo;
-    }
 
-    testWidgets('paused: the line replaces the plot area, no retry button, '
-        'no spinner', (t) async {
-      final repo = await pumpPaused(t);
-
-      expect(find.text(kPausedLine), findsOneWidget);
-      expect(find.byKey(const ValueKey('explore-retry')), findsNothing);
-      expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(find.byKey(ExplorerView.plotKey), findsNothing);
-
-      final calls = repo.chartCalls.length;
-      await ex.settle(t, done: () => false);
-      for (var i = 0; i < 300; i++) {
-        await t.pump(const Duration(milliseconds: 20));
-      }
-      expect(repo.chartCalls.length, calls, reason: 'no retry loop');
-    });
-
-    testWidgets('focus ends: the chart is read again, once, and drawn',
-        (t) async {
-      final repo = await pumpPaused(t);
-      final calls = repo.chartCalls.length;
-
-      endFocus();
-      await ex.settle(t, done: () => false);
-
-      expect(find.text(kPausedLine), findsNothing);
-      expect(repo.chartCalls.length, calls + 1);
-      expect(find.byKey(ExplorerView.plotKey), findsOneWidget);
-    });
-  });
-}
-
-/// The Explorer's fake, paused the way the real repository pauses a series.
-class _PausedExplorerRepo extends ex.ExplorerRepo {
-  _PausedExplorerRepo()
-      : super(charts: {
-          specOf('resting_hr').chartKey: [
-            for (final d in ex.kWeek) ex.pt(d, 55),
-          ],
-        });
-
-  @override
-  Future<Map<String, dynamic>> getChart(String metric,
-      {int? from, int? to, Set<String> signals = const {}}) async {
-    if (ImportFocus.active.value) {
-      chartCalls.add(metric);
-      throw const ReadPaused('import');
-    }
-    return super.getChart(metric, from: from, to: to, signals: signals);
-  }
 }

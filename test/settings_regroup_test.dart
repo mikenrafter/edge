@@ -143,7 +143,6 @@ const Map<String, List<List<String>>> _rows = {
     ['Live devices'],
     ['Device lab'],
     ['Logs'],
-    ['Data Explorer'],
     // The read-only timing line for the last derive pass.
     ['Screen load timings'],
     ['Last calculation'],

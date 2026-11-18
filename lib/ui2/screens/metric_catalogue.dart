@@ -1,7 +1,6 @@
 // The Trends catalogue: every measure the app charts a history of, grouped the
 // way a person would look for it. The ONE list: Trends (health_screen.dart)
-// reads it to draw its rows and the Data Explorer (explorer.dart) reads it to
-// offer its picks, so a measure added here appears in both.
+// reads it to draw its rows.
 //
 // It is an index, not a dashboard: nothing here computes and nothing here is a
 // number about you.
@@ -13,7 +12,7 @@ import '../../l10n/app_localizations.dart';
 /// line that says what it answers.
 ///
 /// [importOnly] marks a measure this app does not produce: only an import
-/// writes its history. Such a row is listed (Trends) or offered (Explorer)
+/// writes its history. Such a row is listed in Trends
 /// only when `metric_series` holds at least one value for [series].
 ///
 /// Icon, colour and title are NOT here — they come off the spec. A second copy
@@ -105,4 +104,3 @@ String metricCategoryTitle(AppLocalizations? l, String title) => switch (title) 
       'Body & wear' => l?.healthCatBodyWear ?? title,
       _ => title,
     };
-

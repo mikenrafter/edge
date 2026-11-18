@@ -200,11 +200,7 @@ class FocusRepo extends LocalRepository {
     return sig;
   }
 
-  @override
-  Future<Map<String, int>> getSeriesCounts(List<String> keys) async {
-    _gate('getSeriesCounts');
-    return {for (final k in keys) k: 0};
-  }
+
 
   /// 40 days of a flat series, newest last, ending today.
   @override
