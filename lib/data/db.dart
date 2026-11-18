@@ -9774,11 +9774,19 @@ class LocalDb {
 
   static Future<void> _prepareFinalizedDayIndex() async {
     if (!_foreground) return;
+    // Cheap pre-check so a resume on an install that already built the index
+    // never takes the derive latch (a derive refused as busy backs off 30 s).
+    // The check inside the gates below stays authoritative.
+    if (await _finalizedDayIndexExists()) return;
     // CLAIM(index-derive-exclusion): wait before claiming ImportGate, so a
     // derive already running can finish without waiting on maintenance
     // [finalized_day_ids_index_test]. The latch stays held through completion.
     await DerivationEngine.whileIdle(_buildFinalizedDayIndex);
   }
+
+  static Future<bool> _finalizedDayIndexExists() async =>
+      (await (await instance).rawQuery("SELECT 1 FROM sqlite_master WHERE "
+          "type='index' AND name='idx_day_result_finalized_payload'")).isNotEmpty;
 
   static Future<void> _buildFinalizedDayIndex() async {
     if (!_foreground) return;
@@ -9794,10 +9802,7 @@ class LocalDb {
         if (!_foreground) return;
         final db = await instance;
         if (!_foreground) return;
-        if ((await db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='index' "
-            "AND name='idx_day_result_finalized_payload'")).isNotEmpty) {
-          return;
-        }
+        if (await _finalizedDayIndexExists()) return;
         _finalizedDayIndexBuilding.value = true;
         try {
           // CLAIM(index-writer-queue): use the same native queue as journal,

@@ -335,7 +335,6 @@ class _WellnessScreenState extends State<WellnessScreen>
       body: SafeArea(
         child: Column(children: [
           NavBar(l?.wellnessTitle ?? 'Wellness'),
-          const StatusLine(maintenanceOnly: true),
           Expanded(child: ListView(
       padding: const EdgeInsets.fromLTRB(0, 0, 0, S.x16),
       children: [

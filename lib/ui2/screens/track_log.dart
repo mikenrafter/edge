@@ -130,7 +130,6 @@ class _TrackLogScreenState extends State<TrackLogScreen> {
       body: ListView(
         padding: const EdgeInsets.all(S.x4),
         children: [
-          const StatusLine(maintenanceOnly: true),
           if (_error != null)
             Text(text(_error!), key: const ValueKey('track-log-error')),
           if (_tracks == null) ...[

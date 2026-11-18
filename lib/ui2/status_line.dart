@@ -43,15 +43,13 @@ class StatusLine extends StatelessWidget {
   /// the same fixed-height slot. The other tabs carry the text alone.
   final bool syncActions;
 
-  /// Save screens reserve the same row, showing only writer maintenance.
-  final bool maintenanceOnly;
   final String? idleLabel;
   final double? slotHeight;
 
   /// The actions' own reserved lines (see [syncActionLines]); the same extra
   /// height in every state, text-only states included.
   final int actionLines;
-  const StatusLine({super.key, this.todayId, this.now, this.syncActions = false, this.maintenanceOnly = false, this.idleLabel, this.slotHeight, this.actionLines = 0});
+  const StatusLine({super.key, this.todayId, this.now, this.syncActions = false, this.idleLabel, this.slotHeight, this.actionLines = 0});
 
   double _height(BuildContext c) => slotHeight ?? heightFor(c);
 
@@ -127,7 +125,6 @@ class StatusLine extends StatelessWidget {
 
   Widget _text(BuildContext c, AppState app, ImportProgress? imp,
       DeriveProgress? der, bool indexActive) {
-    if (maintenanceOnly && !indexActive) return SizedBox(height: _height(c));
     final l = AppLocalizations.of(c);
     final p = P.of(c);
     // Only the fields this line needs, so AppState's heartbeat does not
