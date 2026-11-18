@@ -166,7 +166,7 @@ void main() {
   });
 
   test('rung 61 input revisions remain present with rung 62 checkpoints', () async {
-    expect(LocalDb.schemaVersion, 93, reason: 'main revisions/checkpoints follow preserved fork migrations in89–93');
+    expect(LocalDb.schemaVersion, 94, reason: 'input revisions survive the sleep-block rung after preserved fork migrations 89–93');
     final db = await open();
     expect(await db.getVersion(), LocalDb.schemaVersion);
     expect(await _hasRevisions(db), isTrue);

@@ -1097,6 +1097,15 @@ Future<Database> _ldbPrivOpen() async {
         // Rung 93: sleep_override.payload_json (the checked sleep-edit envelope).
         if (oldV < 93) await LocalDb._createSleepOverride(db);
         if (oldV < 94) {
+          // CLAIM(sleep-block-backfill): sparse merged databases can miss
+          // earlier tables despite their version. Prepare sources and their
+          // invalidation triggers before absorption [B18/B19].
+          await LocalDb._createDayResult(db);
+          await LocalDb._ensureDayResultSkippedColumn(db);
+          await LocalDb._createSleepOverride(db);
+          await LocalDb._createSleepNap(db);
+          await ActivityStore.create(db);
+          await LocalDb._createInputRev(db);
           await LocalDb._createSleepBlock(db);
           await SleepBlockStore.backfill(db);
         }
@@ -1141,6 +1150,7 @@ Future<void> _ldbPrivRepairOpenSchema(Database db) async {
     await LocalDb._ensureRawArchiveStore(db);
     await LocalDb._createDerived(db);
     await LocalDb._createDayResult(db);
+    await LocalDb._ensureDayResultSkippedColumn(db);
     await LocalDb._createUserTables(db);
     await LocalDb._createSyncState(db);
     await LocalDb._createSyncCursor(db);
@@ -1200,7 +1210,12 @@ Future<void> _ldbPrivRepairOpenSchema(Database db) async {
     )).isNotEmpty;
     await db.transaction((tx) async {
       await LocalDb._createSleepBlock(tx);
-      if (!hadSleepBlocks) await SleepBlockStore.backfill(tx);
+      if (!hadSleepBlocks) {
+        // A missing projection table lost its triggers too. Captured naps
+        // must invalidate inputs in this transaction [B19].
+        await LocalDb.createInputRevTriggers(tx);
+        await SleepBlockStore.backfill(tx);
+      }
     });
     await LocalDb._createWorkoutRoute(db);
     await LocalDb._ensureWorkoutRouteSpeed(db);
@@ -1209,7 +1224,6 @@ Future<void> _ldbPrivRepairOpenSchema(Database db) async {
     // Self-skipping (one PRAGMA) unless the table really is still NOT NULL —
     // the same-version merged-build case this whole method exists for.
     await LocalDb._relaxDecodedHrNull(db);
-    await LocalDb._ensureDayResultSkippedColumn(db);
     await LocalDb._ensureDayResultPartialColumn(db);
     await LocalDb._createNotifFired(db);
     await LocalDb._createPulseAlert(db);
