@@ -57,10 +57,14 @@ void main() {
     await seed('n',a,a+2400); final before=await snapshot();
     expect(await save([SetIntervals(const StoredBlockRef('n',0),a,a+2400)]),isA<SleepNoChange>());
     expect(await snapshot(),before);
+    expect(await save([ClearMain(day)]),isA<SleepNoChange>());
+    expect(await snapshot(),before);
   });
   test('W2 add then remove in one Save has no durable effect',() async {
     final before=await snapshot();
     expect(await save([AddNap(a,a+2400),RemoveBlock(DetectedNapRef(day,a,a+2400))]),isA<SleepNoChange>());
+    expect(await snapshot(),before);
+    expect(await save([AddMain(day,a,a+3600),ClearMain(day)]),isA<SleepNoChange>());
     expect(await snapshot(),before);
   });
   test('W3 first automatic main edit snapshots the served detection',() async {
