@@ -1,3 +1,4 @@
+import 'support/pin_tz.dart';
 // The scrubbed values live in a row under the chart, in the
 // chart's own key. Synthetic fixtures; no device or personal data.
 //
@@ -106,11 +107,13 @@ Widget _dayHr({required bool gaps}) => Builder(
     );
 
 Future<void> _tapPlot(WidgetTester t, double frac) async {
-  final box = t.getRect(find.byType(ChartScrub));
-  await t.tapAt(Offset(box.left + box.width * frac, box.center.dy));
+  final box = t.getRect(find.byKey(const ValueKey('shared-timeline-plot')));
+  await t.tapAt(Offset(box.left + 44 + (box.width-52) * frac, box.center.dy));
+  await t.pump(const Duration(milliseconds:350));
 }
 
 void main() {
+  pinProcessTimeZone('UTC');
   setUpAll(loadFonts);
   final fixtures = <String, (double, Widget, _Act?)>{
     'day_hr_gaps': (900, _dayHr(gaps: true), null),

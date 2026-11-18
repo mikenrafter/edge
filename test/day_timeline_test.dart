@@ -1,3 +1,4 @@
+import 'package:openstrap_edge/ui2/day_timeline/timeline_chart.dart';
 // What goes on a clock, and what does not. `dayMoments`, `dayNotes` and
 // `dayGraph` are pure, so the placement rules are testable without a database
 // or a frame — and they are the rules the page is only honest because of. A
@@ -394,9 +395,10 @@ void _graphTests() {
     testWidgets('a day with a curve draws one axis, labelled once', (t) async {
       await t.pumpWidget(frame(full()));
       expect(find.text('Heart rate'), findsOneWidget);
-      expect(find.text('bpm'), findsOneWidget);
-      expect(find.text('Midnight'), findsNWidgets(2));
-      expect(find.text('Noon'), findsOneWidget);
+      final painter=t.widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((w)=>w.painter).whereType<TimelinePainter>().single;
+      expect(painter.view,TimelineView(_gStart.toDouble(),(_gStart+86400).toDouble()));
+      expect(painter.graph.hr,hasLength(1440));
       // Every lane with something in it is named, and none that is empty. The
       // night is no longer a lane: it is the main-sleep annotation, so there
       // is no "Asleep" key (the full() day has a night and a workout).

@@ -862,7 +862,11 @@ class ChartAnnotationLane extends StatefulWidget {
     required this.set,
     required this.cursor,
     required this.plotHeight,
+    this.tapTargetSize = 44,
+    this.emphasis,
   });
+  final double tapTargetSize;
+  final Set<String>? emphasis;
   final AnnotationSet set;
   final double? cursor;
   final double plotHeight;
@@ -915,9 +919,6 @@ class ChartAnnotationLane extends StatefulWidget {
   State<ChartAnnotationLane> createState() => _ChartAnnotationLaneState();
 }
 
-/// How far a 44 pt tap target overhangs the 24 pt icon on each side.
-const double _tap = 44;
-const double _overhang = (_tap - ChartAnnotationLane.iconSize) / 2;
 
 class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
   /// The member a tap on an icon stepped to. Cleared when the cursor moves.
@@ -933,17 +934,21 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
   Widget build(BuildContext context) {
     final p = P.of(context);
     final source = widget.set;
+    final tap = widget.tapTargetSize;
+    final iconFootprint = tap >= 48 ? tap : ChartAnnotationLane.iconSize;
+    final overhang = (tap - iconFootprint) / 2;
     final l = AppLocalizations.of(context);
     final set = AnnotationSet(items: [for (final a in source.items) a.localized(l)],
       domainStart: source.domainStart, domainEnd: source.domainEnd,
       reach: source.reach, listener: source.listener);
     final labelH = ChartAnnotationLane.labelRowHeight(
         MediaQuery.textScalerOf(context), Directionality.of(context));
-    final header = labelH + ChartAnnotationLane.iconSize;
+    final header = labelH + iconFootprint;
     return LayoutBuilder(builder: (context, box) {
       final width = box.maxWidth.isFinite ? box.maxWidth : 0.0;
       final scale = AnnotationScale(
-          domainStart: set.domainStart, domainEnd: set.domainEnd, width: width);
+          domainStart: set.domainStart, domainEnd: set.domainEnd, width: width,
+          iconWidth: iconFootprint);
       final cur = widget.cursor;
       final cursorPx = cur == null ? null : cur.clamp(0.0, 1.0) * width;
       AnnotationLayout layoutFor(String? f) => layoutAnnotations(
@@ -1041,22 +1046,24 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
           // The tap target is 44 pt (Pressable) around a 24 pt icon: it
           // overhangs the icon's box rather than pushing the lane apart.
           Positioned(
-            left: i.iconLeft - _overhang,
-            top: labelH - _overhang,
-            child: Pressable(
+            left: i.iconLeft - overhang,
+            top: labelH - overhang,
+            child: Opacity(opacity: widget.emphasis != null && widget.emphasis!.isNotEmpty &&
+                !i.memberIds.any(widget.emphasis!.contains) ? .4 : 1,
+              child: SizedBox(width: tap, height: tap, child: Pressable(
               onTap: () => step(i),
               child: AnnotationIcon(
                   key: ChartAnnotationLane.iconKey(i.id),
                   kind: i.kind,
                   icon: byId[i.id]?.icon,
                   bold: i.focused),
-            ),
+            ))),
           ),
           if (i.more > 0)
             Positioned(
-              left: i.iconLeft + i.iconWidth - (_tap - i.badgeWidth) / 2,
-              top: labelH - _overhang,
-              child: Pressable(
+              left: i.iconLeft + i.iconWidth - (tap - i.badgeWidth) / 2,
+              top: labelH - overhang,
+              child: SizedBox(width: math.max(tap, i.badgeWidth), height:tap,child:Pressable(
                 onTap: () => step(i),
                 child: SizedBox(
                   width: i.badgeWidth,
@@ -1081,7 +1088,7 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
                     ),
                   ),
                 ),
-              ),
+              )),
             ),
         ],
       ];

@@ -100,4 +100,8 @@ int calendarDaysBetween(DateTime a, DateTime b) {
 }
 
 /// Local noon, constructed independently of midnight across DST boundaries.
-int? localDayNoonSec(String dayId) => null;
+int? localDayNoonSec(String dayId) {
+  final p = _partsOf(dayId);
+  if (p == null) return null;
+  return DateTime(p[0], p[1], p[2], 12).millisecondsSinceEpoch ~/ 1000;
+}

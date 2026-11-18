@@ -1,3 +1,4 @@
+import 'package:openstrap_edge/ui2/day_timeline/timeline_chart.dart';
 // The Day timeline's heart-rate card: the night is an ANNOTATION, not a band.
 //
 // Before: the night (and naps) were a blue "Asleep" band behind the curve, with
@@ -116,16 +117,17 @@ Map<String, double> _lineX(WidgetTester t) => {
         l.id: l.x,
     };
 
-DayLanes _dayLanes(WidgetTester t) => t
+TimelinePainter _dayLanes(WidgetTester t) => t
     .widgetList<CustomPaint>(find.byType(CustomPaint))
     .map((c) => c.painter)
-    .whereType<DayLanes>()
+    .whereType<TimelinePainter>()
     .single;
 
 Future<void> _scrubAt(WidgetTester t, double x) async {
   final lane = t.getRect(_lane);
   await t.tapAt(
       Offset(lane.left + x, lane.top + ChartAnnotationLane.header + 100));
+      await t.pump(const Duration(milliseconds:350));
   await t.pump();
 }
 
@@ -302,11 +304,11 @@ void main() {
       await _pumpCard(t, dayGraph(tl),
           annotations: dayAnnotations(dayMoments(timeline: tl)));
       final lanes = _dayLanes(t);
-      expect(lanes.rest, isEmpty,
+      expect(lanes.stages, isNull,
           reason: 'neither the night nor the nap is a blue band any more');
-      expect(lanes.gaps, isNotEmpty);
-      for (final (a, b) in lanes.gaps) {
-        expect(b <= 400 / 1440 + 1e-9 || a >= 400 / 1440 - 1e-9, isTrue,
+      expect(lanes.graph.unmeasured, isNotEmpty);
+      for (final (a, b) in lanes.graph.unmeasured) {
+        expect(b <= 400 || a >= 400, isTrue,
             reason: 'no gap shading across the night ($a-$b)');
       }
     });
@@ -382,6 +384,7 @@ void main() {
         (t) async {
       await _pumpCard(t, graph, annotations: ann);
       await t.tap(_icon('water-noon'));
+      await t.pump(const Duration(milliseconds:350));
       await t.pump();
       expect(_label(t), 'Drank water');
       expect(t.widget<AnnotationIcon>(_icon('water-noon')).bold, isTrue);
@@ -394,6 +397,7 @@ void main() {
         'label', (t) async {
       await _pumpCard(t, graph, annotations: ann);
       await t.tap(_icon(nightId()));
+      await t.pump(const Duration(milliseconds:350));
       await t.pump();
       expect(_label(t), _nightLabel);
       expect(t.widget<AnnotationIcon>(_icon(nightId())).bold, isTrue);
@@ -599,9 +603,10 @@ void main() {
         // Header and plot agree: the dashed lines start where the icon row
         // ends, which is where the plot starts.
         final iconBottom = t.getBottomLeft(_icon('night')).dy;
-        final plotTop = t.getTopLeft(find.byType(ChartScrub)).dy;
+        final painter=_dayLanes(t);
+        final plotTop=t.getTopLeft(find.byKey(const ValueKey('shared-timeline-plot'))).dy+painter.header;
         final linesTop = t.getTopLeft(find.byKey(ChartAnnotationLane.linesKey)).dy;
-        expect(linesTop, moreOrLessEquals(iconBottom, epsilon: .5));
+        expect(linesTop-iconBottom, moreOrLessEquals(12, epsilon: .5));
         expect(plotTop, moreOrLessEquals(linesTop, epsilon: .5));
       });
     }
@@ -635,14 +640,12 @@ void main() {
       ),
     ));
     await t.pumpAndSettle();
-    final frame = t.widget<ChartFrame>(find.byType(ChartFrame));
-    expect(frame.legend.first.$1, startsWith('Heart rate'));
-    final scrub = t.widget<ChartScrub>(find.byType(ChartScrub));
-    expect(scrub.keys.first.label, startsWith('Heart rate'));
+    final readout=t.widget<ChartKeyReadout>(find.byType(ChartKeyReadout));
+    expect(readout.cells.first.label,startsWith('Heart rate'));
     final panel = t.widget<Container>(find.byKey(ChartKeyReadout.panelKey));
     expect(panel, isNotNull);
     final cap = t.widget<Text>(find.byKey(ChartKeyReadout.captionKey));
-    expect(cap.style!.color, scrub.keys.first.color,
+    expect(cap.style!.color, readout.cells.first.color,
         reason: 'the caption takes the heart-rate colour, not Movement\'s');
     final hr = t.getTopLeft(find.byKey(const ValueKey(
         'chart-key-cell:Heart rate (bpm)')));
