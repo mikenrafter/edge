@@ -37,7 +37,7 @@ void main() {
           onTapToggle: (n, a, on) async => toggled.add('$n:${a.name}:$on'),
         ));
     await openGesturesTab(t, 3);
-    expect(gesturesTabName(t), 'Double tap + 1 ECG tap');
+    expect(gesturesTabName(t), '2 double taps');
     await t.tap(find.byType(Switch).first);
     await t.pumpAndSettle();
     expect(toggled, hasLength(1));

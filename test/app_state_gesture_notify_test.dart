@@ -112,7 +112,8 @@ void main() {
 
     await rig.app.gestureSettings.setRepeatTapWindowMs(1500);
     await settleMs(100);
-    expect((t.app.ticks, t.settings, t.failures), (0, 3, 0));
+    // Two surviving settings writes; the retired tap-method write is gone.
+    expect((t.app.ticks, t.settings, t.failures), (0, 2, 0));
     t.stop();
   });
 

@@ -1,8 +1,7 @@
 // The Home card for a failed gesture.
 //
 // USER: "The next time Home is opened, show ONE card styled like the Join
-// Discord card: 'A gesture failed to activate' / 'A gesture failed to
-// activate'; actions: 'Save log file' (a .txt through the platform save/share
+// Discord card: 'A gesture failed to activate'; actions: 'Save log file' (a .txt through the platform save/share
 // flow, NOT the clipboard), 'Report' (GitHub issues link + the community
 // links, with one line encouraging a report), 'Dismiss'. The card text says
 // that dismissed failures stay viewable in Settings. Only the newest
@@ -26,8 +25,7 @@
 //   * Keys: card `gesture-failure-card`; actions `gesture-failure-save`
 //     ("Save log file"), `gesture-failure-report` ("Report"),
 //     `gesture-failure-dismiss` ("Dismiss").
-//   * Titles: an ECG failure "A gesture failed to activate", a
-//     double-tap one "A gesture failed to activate". The body says dismissed
+//   * Title: "A gesture failed to activate". The body says dismissed
 //     failures stay viewable in Settings (it names "Settings" and "Gesture
 //     failures").
 //   * Save calls the saver with the shown failure; the card stays (a saved log
@@ -68,7 +66,7 @@ Future<void> _record(GestureFailureStore s, String id,
         {GestureFailureKind kind = GestureFailureKind.doubleTap, int minute = 0}) async {
   await s.record(
     kind: kind,
-    reason: kind == GestureFailureKind.doubleTap ? 'start_failed' : 'log_water',
+    reason: 'log_water',
     gestureId: id,
     log: 'log of $id',
     at: _t0.add(Duration(minutes: minute)),
@@ -136,17 +134,6 @@ void main() {
       expect(find.textContaining('failed to activate'), findsNothing);
     });
 
-    testWidgets('an ECG failure: "A gesture failed to activate"',
-        (t) async {
-      _phone(t);
-      final s = _Backing().store();
-      await _record(s, 'a');
-      await t.pumpWidget(_Rig().card(s));
-      expect(find.byKey(_cardKey), findsOneWidget);
-      expect(find.text('A gesture failed to activate'), findsOneWidget);
-      expect(find.text('A gesture failed to activate'), findsNothing);
-    });
-
     testWidgets('a double-tap failure: "A gesture failed to activate"',
         (t) async {
       _phone(t);
@@ -154,7 +141,6 @@ void main() {
       await _record(s, 'a', kind: GestureFailureKind.doubleTap);
       await t.pumpWidget(_Rig().card(s));
       expect(find.text('A gesture failed to activate'), findsOneWidget);
-      expect(find.text('A gesture failed to activate'), findsNothing);
     });
 
     testWidgets('three actions, by name: Save log file, Report, Dismiss',
@@ -217,10 +203,14 @@ void main() {
       final s = _Backing().store();
       await _record(s, 'old', kind: GestureFailureKind.doubleTap);
       await _record(s, 'new', minute: 5);
-      await t.pumpWidget(_Rig().card(s));
+      final rig = _Rig();
+      await t.pumpWidget(rig.card(s));
       expect(find.byKey(_cardKey), findsOneWidget);
       expect(find.text('A gesture failed to activate'), findsOneWidget);
-      expect(find.text('A gesture failed to activate'), findsNothing);
+      // Both failures now share a title; prove which one the card owns.
+      await t.tap(find.byKey(const ValueKey('gesture-failure-save')));
+      await t.pumpAndSettle();
+      expect(rig.saved, ['new']);
     });
 
     testWidgets('the same failure reported twice is one card', (t) async {

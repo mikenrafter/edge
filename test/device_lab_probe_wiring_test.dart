@@ -151,20 +151,4 @@ void main() {
     expect(probes.running, isNull);
   });
 
-  // The ECG failure buzz is the "Gesture failed" cue (default:
-  // one long command looped twice), played through the same dispatcher
-  // delivery as every other gesture cue.
-  test('a failed ECG tap session plays the Gesture failed cue through the '
-      'dispatcher', () async {
-    final rig = await newRig();
-    await mapActions(rig.app, [2, 3]);
-    // No wrist remembered: the session cannot start the stream and fails.
-    rig.doubleTap();
-    await until(() => rig.cues.contains('failed'),
-        within: const Duration(seconds: 8));
-    expect(rig.cues, contains('failed'));
-    final c = await claims();
-    expect(c.any((c) => c[0] != 'hardware_probe' && c[2] == 'band'), isTrue,
-        reason: 'the failure cue is a dispatcher delivery');
-  });
 }

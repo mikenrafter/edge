@@ -18,7 +18,6 @@ import 'package:openstrap_edge/haptics/haptics_service.dart';
 import 'package:openstrap_edge/haptics/pattern_store.dart';
 import 'package:openstrap_edge/notify/alert_dispatcher.dart';
 import 'package:openstrap_edge/state/gesture_controller.dart';
-import 'package:openstrap_edge/sync/sync_policy.dart' show ClockRef;
 
 import 'support/app_state_gesture_harness.dart';
 
@@ -63,11 +62,10 @@ class FakeBand implements BandHapticsPort {
 
 /// Every collaborator of the controller, as a recorder.
 class FakeHost {
-  FakeHost({this.supported = true, bool wrist = true}) {
+  FakeHost() {
     band = FakeBand(order);
     haptics = HapticsService(port: band, allowLong: () => false);
     band.haptics = haptics;
-    ecg = SpyEcg(order, remembersWrist: wrist);
     dispatcher = AlertDispatcher(
       phone: () async => false,
       band: () async => true,
@@ -102,22 +100,18 @@ class FakeHost {
     );
   }
 
-  final bool supported;
   final order = <String>[];
   final logged = <String>[];
   final acted = <String>[];
-  final sessions = <(int?, String?)>[];
   final written = <String>[];
   final settings = GestureSettings();
   final lab = DeviceLabLog();
-  ClockRef? clockRef;
   int loads = 0;
   int assignmentReads = 0;
   bool loadThrows = false;
   bool workoutThrows = false;
   late final FakeBand band;
   late final HapticsService haptics;
-  late final SpyEcg ecg;
   late final AlertDispatcher dispatcher;
   late final GestureController controller;
 
@@ -139,7 +133,6 @@ class FakeHost {
   void dispose() {
     band.dispose();
     settings.dispose();
-    ecg.dispose();
   }
 }
 
@@ -156,19 +149,16 @@ void main() {
   });
 
   late FakeHost h;
-  Future<FakeHost> newHost({bool supported = true, bool wrist = true}) async {
-    h = FakeHost(supported: supported, wrist: wrist);
+  Future<FakeHost> newHost() async {
+    h = FakeHost();
     addTearDown(h.dispose);
-    // The app's default is repeated double taps; an ECG band here counts
-    // touches, as one whose wearer chose them.
-
     return h;
   }
 
   group('route dispatch', () {
     test('an immediate double tap runs the mapped in-app action and nothing '
         'else, with no ECG and no cue', () async {
-      await newHost(supported: false);
+      await newHost();
       await h.settings.setDoubleTapActions({DeviceAction.markMoment});
       final out = await h.controller.handle(h.doubleTap());
       expect(out.map((o) => o.status), [GestureStatus.ran]);
@@ -194,27 +184,9 @@ void main() {
   });
 
   group('failures', () {
-    test('a gesture abandoned because the stream could not start is kept '
-        'with the lab log, and the 2-tap action still runs', () async {
-      await newHost(wrist: false);
-      await h.settings.setActionsForTaps(2, {DeviceAction.markMoment});
-      await h.settings.setActionsForTaps(3, {DeviceAction.workoutToggle});
-      final out = await h.controller.handle(h.doubleTap());
-      expect(out.single.action, DeviceAction.markMoment);
-      expect(h.acted, ['mark']);
-      final f = h.controller.failures.all.single;
-      expect(f.kind, GestureFailureKind.doubleTap);
-      expect(f.reason, 'start_failed');
-      expect(f.log, contains('start_failed'));
-      await until(() => h.written.isNotEmpty);
-      expect(h.written.last, contains('start_failed'));
-      expect(h.sessions.single.$1, isNull);
-      expect(h.sessions.single.$2, 'start_failed');
-    });
-
     test('an action that fails is kept as a double-tap failure and the lab '
         'says so', () async {
-      await newHost(supported: false);
+      await newHost();
       h.workoutThrows = true;
       await h.settings.setDoubleTapActions({DeviceAction.workoutToggle});
       final out = await h.controller.handle(h.doubleTap());

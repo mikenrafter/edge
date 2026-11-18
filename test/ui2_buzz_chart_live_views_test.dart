@@ -124,23 +124,12 @@ void main() {
         repeatWindowMs: 2500,
         onRepeatWindowMs: (_) {},
         sessions: const [
-          'ECG sensor touches | start 300 ms, gap 200 ms, confirm 200 ms | '
-              '3 taps | 6.4 s in total',
+          'More double taps | window 2500 ms | 3 taps | 4.1 s in total',
         ],
         steps: const [
-          '09:15:09.650 | tap +6400 ms | last +40 ms | Session ended: ECG '
-              'sensor touches | start 300 ms, gap 200 ms, confirm 200 ms | 3 '
-              'taps | 6.4 s in total',
-          '09:15:09.610 | tap +6360 ms | last +900 ms | Final count 3 at sample '
-              'time 1002600 ms.',
-          '09:15:04.690 | tap +1440 ms | last +30 ms | Acknowledgement '
-              'written, 1440 ms after the tap (260 ms after the request).',
-          '09:15:04.660 | tap +1410 ms | last +10 ms | Stream is steady, 1180 '
-              'ms after the tap (two packets within 1500 ms of each other).',
-          '09:15:03.480 | tap +230 ms | last +30 ms | Packet 1: 100 samples, 0 '
-              'with contact, strap time 1787823784.000, first packet',
-          '09:15:03.250 | tap +0 ms | last +0 ms | Double tap received. '
-              'Starting the ECG stream.',
+          '09:15:07.350 | tap +4100 ms | last +0 ms | Session ended: '
+              'More double taps | window 2500 ms | 3 taps | 4.1 s in total',
+          '09:15:03.250 | tap +0 ms | last +0 ms | Double tap received.',
         ],
       ),
       null,
@@ -263,22 +252,17 @@ void main() {
   }
 
   // Structural cover for the SCREEN fixtures that have no picture.
-  screenStructure('device_lab_mg', fixtures['device_lab_mg']!.$2, () {
-    expect(find.text('Device lab'), findsOneWidget);
-    expect(find.text('ECG on double tap'), findsOneWidget);
-    expect(find.text('Touch windows'), findsOneWidget);
-    expect(find.text('Start threshold'), findsOneWidget);
-    expect(find.text('Gap threshold'), findsOneWidget);
-    expect(find.text('Confirmation threshold'), findsOneWidget);
-    // The ECG row is usable on an MG band.
-    expect(find.text('This band has no ECG sensor'), findsNothing);
-  });
-  screenStructure('device_lab_no_ecg', fixtures['device_lab_no_ecg']!.$2, () {
-    expect(find.text('Device lab'), findsOneWidget);
-    expect(find.text('ECG on double tap'), findsOneWidget);
-    expect(find.text('This band has no ECG sensor'), findsOneWidget);
-    expect(find.text('Touch windows'), findsOneWidget);
-  });
+  // CLAIM(retired-ecg-gestures): retained lab controls work without ECG counting.
+  for (final name in ['device_lab_mg', 'device_lab_no_ecg']) {
+    screenStructure(name, fixtures[name]!.$2, () {
+      expect(find.text('Device lab'), findsOneWidget);
+      expect(find.text('Repeated double taps'), findsOneWidget);
+      expect(find.text('Logs'), findsOneWidget);
+      expect(find.text('ECG on double tap'), findsNothing);
+      expect(find.text('Touch windows'), findsNothing);
+      expect(find.text('This band has no ECG sensor'), findsNothing);
+    });
+  }
   screenStructure('collapsed_taps', fixtures['collapsed_taps']!.$2, () {
     expect(find.text('What happened'), findsOneWidget);
     // Five double taps in a row collapse to one row with a count.
@@ -290,20 +274,20 @@ void main() {
       'gestures_draft_taps_no_ecg', fixtures['gestures_draft_taps_no_ecg']!.$2,
       () {
     expect(find.text('Gestures'), findsOneWidget);
-    expect(find.text('Count extra taps with'), findsOneWidget);
-    expect(find.text('ECG sensor touches'), findsOneWidget);
-    expect(find.text('This band has no ECG sensor'), findsOneWidget);
-    expect(find.text('More double taps'), findsOneWidget);
+    expect(find.text('Count extra taps with'), findsNothing);
+    expect(find.text('ECG sensor touches'), findsNothing);
+    expect(find.text('This band has no ECG sensor'), findsNothing);
     expect(find.text('×2'), findsOneWidget, reason: 'the count tabs');
-    expect(find.text('What needs a WHOOP MG'), findsOneWidget);
+    expect(find.text('What needs a WHOOP MG'), findsNothing);
   });
   screenStructure(
       'gestures_tap_method_mg', fixtures['gestures_tap_method_mg']!.$2, () {
     expect(find.text('Gestures'), findsOneWidget);
-    expect(find.text('Count extra taps with'), findsOneWidget);
-    expect(find.text('ECG sensor touches'), findsOneWidget);
+    expect(find.text('Timing'), findsOneWidget);
+    expect(find.text('Count extra taps with'), findsNothing);
+    expect(find.text('ECG sensor touches'), findsNothing);
     expect(find.text('This band has no ECG sensor'), findsNothing);
     expect(find.text('×2'), findsOneWidget, reason: 'the count tabs');
-    expect(find.text('What needs a WHOOP MG'), findsOneWidget);
+    expect(find.text('What needs a WHOOP MG'), findsNothing);
   });
 }

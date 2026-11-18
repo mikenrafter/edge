@@ -51,7 +51,7 @@ void main() {
     });
 
     test(
-      'with no session the tag is "none"; an ECG session tags "tap <time>"',
+      'with no session the tag is "none"; a probe tags its name and time',
       () {
         final log = DeviceLabLog();
         expect(log.sessionTag, 'none');
@@ -59,14 +59,14 @@ void main() {
         expect(log.packets.single.tag, 'none');
 
         log.beginSession(
-          method: 'ECG sensor touches',
+          method: 'ECG touch probe',
           settings: 's',
           tapAt: _t0,
           at: _t0,
         );
-        expect(log.sessionTag, 'tap 18:17:57.367');
+        expect(log.sessionTag, 'ECG touch probe 18:17:57.367');
         log.addPacket(_pkt(1), _t0);
-        expect(log.packets.last.tag, 'tap 18:17:57.367');
+        expect(log.packets.last.tag, 'ECG touch probe 18:17:57.367');
       },
     );
 
@@ -84,13 +84,13 @@ void main() {
     test('the tag stays after the session ends and goes on clear', () {
       final log = DeviceLabLog();
       log.beginSession(
-        method: 'ECG sensor touches',
+        method: 'ECG touch probe',
         settings: 's',
         tapAt: _t0,
         at: _t0,
       );
       log.endSession(count: 2, at: _t0.add(const Duration(seconds: 3)));
-      expect(log.sessionTag, 'tap 18:17:57.367');
+      expect(log.sessionTag, 'ECG touch probe 18:17:57.367');
       log.clear();
       expect(log.sessionTag, 'none');
     });
@@ -98,7 +98,7 @@ void main() {
     test('an explicit tag wins over the session tag', () {
       final log = DeviceLabLog();
       log.beginSession(
-        method: 'ECG sensor touches',
+        method: 'ECG touch probe',
         settings: 's',
         tapAt: _t0,
         at: _t0,
