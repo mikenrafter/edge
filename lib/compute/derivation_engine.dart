@@ -2647,6 +2647,11 @@ class DerivationEngine {
   }
 
   @visibleForTesting
+  Future<void> debugPublishSleepReview(String day,List<Map<String,dynamic>> naps,int dataNowSec,{
+    bool forceFinalize=false,bool batchReference=false,Future<void> Function(ActivitySuggestion)? onPrompt,
+  }) async {}
+
+  @visibleForTesting
   Future<void> debugDerivePreparedDay(PreparedDerivationDay day, Profile profile,
       int dataNowSec, {ana.CalculationMode calculationMode = ana.CalculationMode.forced}) async {
     await _derivePreparedDay(day, profile, dataNowSec,

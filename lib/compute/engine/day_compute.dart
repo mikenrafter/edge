@@ -1,11 +1,6 @@
 part of '../derivation_engine.dart';
 
 extension _EngineDayCompute on DerivationEngine {
-  @visibleForTesting
-  Future<void> debugPublishSleepReview(String day,List<Map<String,dynamic>> naps,int dataNowSec,{
-    bool forceFinalize=false,bool batchReference=false,Future<void> Function(ActivitySuggestion)? onPrompt,
-  }) async {}
-
   /// The coverage verdict for [dayId]: null when no coverage was recorded for
   /// its stored result (the cursor rule applies); otherwise the recorded
   /// baseline and a description of what is now missing (null: nothing).
