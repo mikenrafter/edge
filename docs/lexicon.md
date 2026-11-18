@@ -197,6 +197,9 @@ in the same change that introduces it (AGENTS.md §6).
 - **Delivery root**: the one `pulse_ep_outbox` row per episode that owns its alert
   debt and outcome. A consumed state (sent, in a summary, unknown, before this
   version, deleted) is never replayed.
+- **Delivery recording checksum**: the content identity attached to an outbox
+  revision. A divergent imported consumed outcome retains its own checksum and a
+  conflict reason, so local evidence cannot be presented as its handed-off bytes.
 - **Retained range**: the part of an episode's recording that the evidence blob
   really holds; what it does not hold is declared as omitted ranges.
 - **Upgrade record membership**: the exact `(source, record second)` keys present

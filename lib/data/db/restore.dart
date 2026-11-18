@@ -1233,6 +1233,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       }
     }
     final counts = <String, int>{};
+    final pulseConflicts = <(Object?, Object?)>{};
     // DISTINCT DAYS ACTUALLY WRITTEN — the number the caller reports as
     // "N days imported".
     //
@@ -2024,6 +2025,17 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
               'WHERE rowid > ? ORDER BY rowid ASC LIMIT ?',
               [lastRowid, pageSize],
             );
+            if (t == 'pulse_ep_outbox') {
+              final withChecksums = <Map<String, Object?>>[];
+              for (final row in rows) {
+                final revision = await src.query('pulse_ep_revision', columns: ['checksum'],
+                    where: 'episode_id = ? AND revision = ?',
+                    whereArgs: [row['episode_id'], row['revision']], limit: 1);
+                withChecksums.add({...row, 'recording_checksum': row['recording_checksum'] ??
+                    (revision.isEmpty ? null : revision.single['checksum'])});
+              }
+              return withChecksums;
+            }
             if (isPulseEvidence) {
               final withBlobs = <Map<String, Object?>>[];
               for (final r in rows) {
@@ -2546,6 +2558,10 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                   final outcome = await PulseEpisodeStore.mergeImportedRow(txn, t, row,
                       recording: recording, nowMs: DateTime.now().millisecondsSinceEpoch);
                   if (outcome is PulseApplied) copied++;
+                  if (outcome is PulseRefused && outcome.reason == 'conflicting revision checksum') {
+                    pulseConflicts.add((row['episode_id'], row['revision']));
+                    counts['_pulse_conflicts'] = pulseConflicts.length;
+                  }
                   if (outcome is PulseRefused && outcome.reason == 'evidence budget full') {
                     counts['_pulse_evidence_budget_refused'] = (counts['_pulse_evidence_budget_refused'] ?? 0) + 1;
                   }

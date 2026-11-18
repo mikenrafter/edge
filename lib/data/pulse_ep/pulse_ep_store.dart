@@ -176,6 +176,10 @@ class PulseEpisodeStore {
     if (!admissionColumns.any((c) => c['name'] == 'evaluated')) {
       await db.execute('ALTER TABLE pulse_ep_admission ADD COLUMN evaluated INTEGER NOT NULL DEFAULT 0');
     }
+    final outboxColumns = await db.rawQuery('PRAGMA table_info(pulse_ep_outbox)');
+    if (!outboxColumns.any((c) => c['name'] == 'recording_checksum')) {
+      await db.execute('ALTER TABLE pulse_ep_outbox ADD COLUMN recording_checksum TEXT');
+    }
     await db.execute('CREATE INDEX IF NOT EXISTS pulse_ep_episode_time ON pulse_ep_episode(start_ms, id)');
     await db.execute('CREATE INDEX IF NOT EXISTS pulse_ep_episode_day ON pulse_ep_episode(start_day, end_day)');
     await db.execute('CREATE INDEX IF NOT EXISTS pulse_ep_evidence_age ON pulse_ep_evidence(created_ms)');
@@ -615,6 +619,7 @@ class PulseEpisodeStore {
         'pulse_ep_outbox',
         {
           'revision': revision,
+          'recording_checksum': p.evidence?.checksum,
           'state': next.wire,
           if (next != state || reopen) 'reason': next == eligibleState ? eligibleReason : cur['reason'],
         },
@@ -644,6 +649,7 @@ class PulseEpisodeStore {
       'episode_id': id,
       'delivery_key': 'pulse-episode:$id',
       'revision': revision,
+      'recording_checksum': p.evidence?.checksum,
       'state': state.wire,
       'reason': reason,
       'origin': p.origin,
@@ -949,6 +955,11 @@ class PulseEpisodeStore {
         return outcome;
       case 'pulse_ep_revision':
         if (await _isDeleted(txn, row['episode_id'])) return const PulseRefused('recording deleted');
+        final local = await txn.query('pulse_ep_revision', columns: ['checksum'],
+            where: 'episode_id = ? AND revision = ?', whereArgs: [row['episode_id'], row['revision']], limit: 1);
+        if (local.isNotEmpty && local.first['checksum'] != row['checksum']) {
+          return const PulseRefused('conflicting revision checksum');
+        }
         return changed((await txn.insert('pulse_ep_revision', row, conflictAlgorithm: ConflictAlgorithm.ignore)) > 0);
       case 'pulse_ep_evidence':
         final id = row['episode_id'], rev = row['revision'];
@@ -957,7 +968,7 @@ class PulseEpisodeStore {
             where: 'episode_id = ? AND revision = ?', whereArgs: [id, rev], limit: 1);
         final sum = row['checksum'];
         if (local.isEmpty || sum is! String || sum.isEmpty || local.first['checksum'] != sum) {
-          return PulseUnchanged(identity);
+          return const PulseRefused('conflicting revision checksum');
         }
         if (local.first['evidence_status'] == 'expired') return const PulseRefused('recording expired');
         if (recording == null) return const PulseRefused('unvalidated recording');
@@ -993,7 +1004,14 @@ class PulseEpisodeStore {
             where: 'episode_id = ? AND revision = ?', whereArgs: [id, rev]);
         return changed((await txn.insert('pulse_ep_evidence', recording.row, conflictAlgorithm: ConflictAlgorithm.ignore)) > 0);
       case 'pulse_ep_outbox':
-        return changed(await _mergeOutbox(txn, row));
+        final applied = await _mergeOutbox(txn, row);
+        final local = await txn.query('pulse_ep_revision', columns: ['checksum'],
+            where: 'episode_id = ? AND revision = ?', whereArgs: [row['episode_id'], row['revision']], limit: 1);
+        if (row['recording_checksum'] != null && local.isNotEmpty &&
+            row['recording_checksum'] != local.first['checksum']) {
+          return const PulseRefused('conflicting revision checksum');
+        }
+        return changed(applied);
       case 'pulse_ep_admission':
         return changed((await txn.insert('pulse_ep_admission', {...row, 'historical': 1, 'evaluated': 0}, conflictAlgorithm: ConflictAlgorithm.ignore)) > 0);
       case 'pulse_ep_upgrade_record':
@@ -1012,11 +1030,16 @@ class PulseEpisodeStore {
       "WHERE r.episode_id = ? AND r.revision = ? AND r.evidence_status IN ('available','partial')",
       [row['episode_id'], row['revision']],
     )).isNotEmpty;
-    final unavailable = !theirs.consumed && !usable;
+    final header = await txn.query('pulse_ep_revision', columns: ['checksum'],
+        where: 'episode_id = ? AND revision = ?', whereArgs: [row['episode_id'], row['revision']], limit: 1);
+    final conflict = row['recording_checksum'] != null && header.isNotEmpty &&
+        row['recording_checksum'] != header.first['checksum'];
+    final reason = conflict ? 'imported delivered recording conflicts with local revision' : row['reason'];
+    final unavailable = !theirs.consumed && (!usable || conflict);
     if (unavailable) theirs = PulseDelivery.notSent;
     final imported = {
       ...row,
-      if (unavailable) 'reason': 'evidence unavailable',
+      'reason': conflict ? reason : unavailable ? 'evidence unavailable' : row['reason'],
       'state': theirs.wire,
       'token': null,
       'claim_ms': null,
@@ -1034,7 +1057,8 @@ class PulseEpisodeStore {
     if (theirs.consumed) {
       await txn.update('pulse_ep_outbox', {
         'state': theirs.wire,
-        'reason': row['reason'],
+        'reason': reason,
+        'recording_checksum': row['recording_checksum'],
         'handoff_ms': row['handoff_ms'],
         'targets': row['targets'],
         'revision': row['revision'],
