@@ -209,6 +209,12 @@ void main() {
       expect(main['onset_ts'], _t0 - 9 * 3600);
       expect(main['payload_json'],isNull,reason:'no history is fabricated from an old projection');
       expect(await db.query('sleep_nap'), hasLength(1));
+      // T1: opening the destination already ran its ladder. Restore must
+      // absorb now; waiting for a future schema upgrade loses these edits.
+      final blocks = await db.query('sleep_block', orderBy: 'kind');
+      expect(blocks, hasLength(2));
+      expect(blocks.map((r) => r['owner_rule']), everyElement(0));
+      expect(blocks.map((r) => r['history']), everyElement('unavailable'));
     });
 
     // WHY: a repeated import converges: refusals are reported again, identical
@@ -242,6 +248,20 @@ void main() {
       final summary = await lastImportSummary();
       expect(summary?.sleepCloseReview, isNotEmpty);
     });
+  });
+
+  // WHY T9: Delete day must delete the owner rows, otherwise a later
+  // projection or export resurrects the wearer's deleted assertions.
+  test('T9 Delete day removes owned blocks and retains other days', () async {
+    for (final day in [_day, '2026-10-13']) {
+      await db.insert('sleep_block', SleepBlockStore.encodeBlock(
+        SleepBlock(id: day, kind: SleepBlockKind.nap, day: day,
+          startTs: _t0, endTs: _t0 + 2400),
+        source: SleepBlockSource.manual, state: SleepBlockState.live,
+        createdAt: 5, history: const DetectedAbsent()));
+    }
+    await LocalDb.deleteDays({_day});
+    expect((await db.query('sleep_block')).map((r) => r['id']), ['2026-10-13']);
   });
 
   group('CLAIM(timeline-draft-lifetime) legacy queue pref', () {
