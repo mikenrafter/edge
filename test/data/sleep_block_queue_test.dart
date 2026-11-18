@@ -11,6 +11,8 @@ import 'package:openstrap_edge/data/activity_store.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/state/prefs.dart';
+import 'package:openstrap_edge/state/app_state.dart';
+import '../support/test_callable.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/sleep_edit_store.dart';
 import 'package:openstrap_edge/data/sleep_editor.dart';
@@ -19,14 +21,14 @@ void main() {
   late Database db;
   final start = DateTime(2026, 10, 12, 14).millisecondsSinceEpoch ~/ 1000;
   const day = '2026-10-12';
-  setUpAll(() { sqfliteFfiInit(); databaseFactory = databaseFactoryFfi; });
+  setUpAll(() { TestWidgetsFlutterBinding.ensureInitialized(); sqfliteFfiInit(); databaseFactory = databaseFactoryFfi; });
   setUp(() async {
     await LocalDb.close();
     LocalDb.dbName = 'sleep_block_queue_test.db';
     await databaseFactory.deleteDatabase(p.join(await databaseFactory.getDatabasesPath(), LocalDb.dbName));
     db = await LocalDb.instance;
   });
-  tearDown(() async { await LocalDb.close(); });
+  tearDown(() async { DerivationEngine.debugSecondHalfHook=null;await LocalDb.close(); });
   test('Q1 nap receipt has only nap work and preserves the frozen headline', () async {
     await db.insert('sync_cursor', {'name': LocalDb.kFrozenHeadlineCursor, 'updated_at': 1, 'value': jsonEncode({'day': day, 'readiness': 71})});
     final repo = LocalRepositoryImpl(getProfileMap: () => {});
@@ -134,7 +136,12 @@ void main() {
         payloadJson:shape=='skipped'?' {"skipped":true}':'{}',windowJson:'{}',source:'band',
         finalized:false,partial:true,skipped:shape=='skipped'); }
       await block(); await db.transaction((tx)=>SleepEditStore.enqueue(tx,day,main:false));
-      await LocalDb.recomposeNaps(day,1);
+      var nightDerives=0;
+      DerivationEngine.debugSecondHalfHook=TestCall1((_) async { nightDerives++; });
+      final app=AppState.forTesting();
+      try { await app.sleepEditRunner.start(); } finally { app.dispose(); }
+      expect(nightDerives,0,reason:'nap-only jobs never invoke night derivation');
+      expect((await db.query('sleep_edit_job')).single['phase'],'done');
       final row=await LocalDb.dayResult(day);
       expect(row,isNotNull,reason:shape);
       expect(row!['skipped'],0,reason:shape);
