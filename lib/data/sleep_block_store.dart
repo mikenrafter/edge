@@ -242,7 +242,7 @@ abstract final class SleepBlockStore {
           }
           await add(SleepBlockKind.main,day,startTs,endTs,'manual');
         case ConfirmMain(:final day,:final startTs,:final endTs):
-          final existing=(await read(tx,day)).entries.where((e)=>e.ref.kind==SleepBlockKind.main && !e.removed).firstOrNull;
+          final existing=(await read(tx,day)).entries.where((e)=>e.kind==SleepBlockKind.main && !e.removed).firstOrNull;
           if(existing==null) { refuse(SleepRefusalReason.staleEntry);break; }
           final w=await bind(existing.ref);
           if(w!=null) { w.row['start_ts']=startTs;w.row['end_ts']=endTs;w.row['source']='confirmed';w.row['state']='live'; }
@@ -578,9 +578,9 @@ abstract final class SleepBlockStore {
       final survivor = r.row['merged_into'];
       final attached = survivor is String && survivor.isNotEmpty &&
         (await tx.query('sleep_block', columns: ['id'], where: 'id = ?', whereArgs: [survivor])).isNotEmpty;
-      entries.add(SleepEditorEntry(id: b.id, revision: b.revision, ownerRule: b.ownerRule,
+      entries.add(SleepEditorEntry(kind:b.kind,day:day,id: b.id, revision: b.revision, ownerRule: b.ownerRule,
         mergedInto: attached ? survivor : null,
-        ref: StoredBlockRef(b.id!,b.revision,kind:b.kind,day:day),
+        ref: StoredBlockRef(b.id!,b.revision),
         startTs: b.startTs, endTs: b.endTs, provenance: b.provenance,
         history: r.history, removed: r.state != SleepBlockState.live));
     }
@@ -589,13 +589,13 @@ abstract final class SleepBlockStore {
         final on = r['on_ms'], off = r['off_ms'];
         if (on is! num || off is! num || off <= on) continue;
         final start = on.toInt() ~/ 1000, end = off.toInt() ~/ 1000;
-        entries.add(SleepEditorEntry(ref: DetectedMainRef(day,start,end), startTs: start, endTs: end,
+        entries.add(SleepEditorEntry(kind:SleepBlockKind.main,day:day,ref: DetectedMainRef(day,start,end), startTs: start, endTs: end,
           provenance: SleepEntryProvenance.automatic,
           history: DetectedKnown(startTs: start,endTs: end,sourceDay: day),removed: false));
       }
     }
     entries.sort((a,b) => a.startTs.compareTo(b.startTs));
-    final main = entries.where((e) => e.ref.kind == SleepBlockKind.main).firstOrNull;
+    final main = entries.where((e) => e.kind == SleepBlockKind.main).firstOrNull;
     final span = SleepOwnership.framingSpan(day,main: main == null ? null : (start:main.startTs,end:main.endTs),
       entries:[for (final e in entries) (start:e.startTs,end:e.endTs)]);
     final jobs = await tx.query('sleep_edit_job', columns:['revision'],where:'day_id = ?',whereArgs:[day]);

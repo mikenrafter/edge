@@ -132,7 +132,7 @@ class SleepMergeRequiredException extends ActivityReviewException {
   final SleepMergeProposal proposal;
 }
 
-// ── History and the stored envelope ─────────────────────────────────────────
+// ── Detection history and retained stages ─────────────────────────────────────────
 
 /// What the app knows of the detection an entry started from.
 sealed class DetectedHistory {
@@ -185,41 +185,25 @@ class StageResult {
 
 enum SleepEntryProvenance { automatic, manual, confirmed, retained, legacy, unknown }
 
-sealed class SleepBlockRef {
-  const SleepBlockRef();
-  SleepBlockKind get kind => SleepBlockKind.nap;
-  String get day;
-
-}
+sealed class SleepBlockRef { const SleepBlockRef(); }
 final class StoredBlockRef extends SleepBlockRef {
-  const StoredBlockRef(this.id, this.expectedRevision, {this.kind=SleepBlockKind.nap,this.day=''});
-  @override
-  final SleepBlockKind kind;
-  @override
-  final String day;
+  const StoredBlockRef(this.id,this.expectedRevision);
   final String id;
   final int expectedRevision;
 }
 final class DetectedMainRef extends SleepBlockRef {
-  @override
-  SleepBlockKind get kind => SleepBlockKind.main;
-  const DetectedMainRef(this.day, this.expectedStartTs, this.expectedEndTs);
-  @override
+  const DetectedMainRef(this.day,this.expectedStartTs,this.expectedEndTs);
   final String day;
-  final int expectedStartTs, expectedEndTs;
+  final int expectedStartTs,expectedEndTs;
 }
 final class NoDetectionMainRef extends SleepBlockRef {
-  @override
-  SleepBlockKind get kind => SleepBlockKind.main;
   const NoDetectionMainRef(this.day);
-  @override
   final String day;
 }
 final class DetectedNapRef extends SleepBlockRef {
-  const DetectedNapRef(this.day, this.expectedStartTs, this.expectedEndTs);
-  @override
+  const DetectedNapRef(this.day,this.expectedStartTs,this.expectedEndTs);
   final String day;
-  final int expectedStartTs, expectedEndTs;
+  final int expectedStartTs,expectedEndTs;
 }
 
 sealed class SleepEditorCommand {
@@ -351,6 +335,8 @@ class SleepEditorRead {
 class SleepEditorEntry {
   const SleepEditorEntry({
     required this.ref,
+    required this.kind,
+    required this.day,
     required this.startTs,
     required this.endTs,
     required this.provenance,
@@ -365,6 +351,8 @@ class SleepEditorEntry {
   final int revision;
   final int? ownerRule;
   final SleepBlockRef ref;
+  final SleepBlockKind kind;
+  final String day;
   final int startTs, endTs;
   final SleepEntryProvenance provenance;
   final DetectedHistory history;

@@ -2159,7 +2159,7 @@ class LocalRepositoryImpl extends LocalRepository {
     final db=await LocalDb.instance;
     return db.transaction((tx) async {
       final read=await SleepBlockStore.read(tx,dayId);
-      final existing=read.entries.where((e)=>e.ref.kind==SleepBlockKind.nap && e.startTs==startTs && !e.removed).firstOrNull;
+      final existing=read.entries.where((e)=>e.kind==SleepBlockKind.nap && e.startTs==startTs && !e.removed).firstOrNull;
       final SleepEditorCommand command;
       if(source=='rejected') {
         command=RemoveBlock(existing?.ref ?? DetectedNapRef(dayId,startTs,endTs));
@@ -2180,7 +2180,7 @@ class LocalRepositoryImpl extends LocalRepository {
     final db=await LocalDb.instance;
     return db.transaction((tx) async {
       final read=await SleepBlockStore.read(tx,dayId);
-      final e=read.entries.where((e)=>e.ref.kind==SleepBlockKind.nap && e.startTs==startTs).firstOrNull;
+      final e=read.entries.where((e)=>e.kind==SleepBlockKind.nap && e.startTs==startTs).firstOrNull;
       if(e==null) return const SleepNoChange();
       return SleepBlockStore.apply(SleepEditorPlan(dayId:dayId,
         commands:[e.removed?RestoreRemoved(e.ref):RemoveBlock(e.ref)],

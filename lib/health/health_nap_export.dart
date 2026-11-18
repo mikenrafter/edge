@@ -609,7 +609,7 @@ class HealthNapExporter {
 
   static Future<List<Map<String,dynamic>>> _defaultDayNapRows(String dayId) async => [
     for(final b in (await SleepBlockStore.read(await LocalDb.instance,dayId)).entries)
-      if(b.ref.kind==SleepBlockKind.nap && !b.removed)
+      if(b.kind==SleepBlockKind.nap && !b.removed)
         {'id':b.id,'day_id':dayId,'start_ts':b.startTs,'end_ts':b.endTs,
           'source':b.provenance==SleepEntryProvenance.automatic?'confirmed':b.provenance.name},
   ];

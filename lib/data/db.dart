@@ -1894,9 +1894,8 @@ class LocalDb {
         payload_json TEXT
       )
     ''');
-    // Rung 93 / same-version repair: the checked sleep-edit envelope travels
-    // with its row. Nullable, no backfill (history is unavailable, never
-    // guessed), so this stays cheap under iOS's upgrade watchdog.
+    // Keep rung 93's nullable legacy column on upgrades and same-version repair.
+    // Block projections leave it NULL; detection history lives in sleep_block.
     final cols = await db.rawQuery('PRAGMA table_info(sleep_override)');
     if (!cols.any((c) => c['name'] == 'payload_json')) {
       await db.execute('ALTER TABLE sleep_override ADD COLUMN payload_json TEXT');

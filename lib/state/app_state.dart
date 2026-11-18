@@ -4350,7 +4350,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     final db=await LocalDb.instance;
     await db.transaction((tx) async {
       final read=await SleepBlockStore.read(tx,day);
-      final main=read.entries.where((e)=>e.ref.kind==SleepBlockKind.main).firstOrNull;
+      final main=read.entries.where((e)=>e.kind==SleepBlockKind.main).firstOrNull;
       final command=confirm?ConfirmMain(day,start,end):main==null?AddMain(day,start,end):SetIntervals(main.ref,start,end);
       requireSleepSaved(await SleepBlockStore.apply(await SleepBlockStore.plan(tx,day,[command]),tx:tx));
     });
@@ -4391,7 +4391,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       final db=await LocalDb.instance;
       await db.transaction((tx) async {
         final read=await SleepBlockStore.read(tx,date);
-        final main=read.entries.where((e)=>e.ref.kind==SleepBlockKind.main).firstOrNull;
+        final main=read.entries.where((e)=>e.kind==SleepBlockKind.main).firstOrNull;
         requireSleepSaved(await SleepBlockStore.apply(await SleepBlockStore.plan(tx,date,
           [RemoveBlock(main?.ref??NoDetectionMainRef(date))]),tx:tx));
       });
