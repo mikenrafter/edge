@@ -112,8 +112,8 @@ void main() {
   });
 
   test('E16 fresh storage uses fork89+ and a versioned composite key', () async {
-    expect(LocalDb.schemaVersion, 92,
-        reason: 'main NIGHT storage follows the preserved fork88 ladder');
+    expect(LocalDb.schemaVersion, 95,
+        reason: 'Pulse rung 95 follows the preserved NIGHT schema ladder');
     final db = await _storage();
     expect(await db.getVersion(), LocalDb.schemaVersion);
     expect(await db.query('store_identity'), hasLength(1));
