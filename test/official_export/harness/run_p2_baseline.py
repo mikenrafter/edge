@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Reproduce selected-gate failures against the frozen base lib, restoring finally.
 
-build/official_probe/base-lib.tar must be `git archive origin/integrate/next lib`.
+build/official_probe/base-lib.tar must match P2_BASELINE_REF (the pre-P2 HEAD).
 This runs only after the selected gate, on the idle owned Boat worktree.
 """
 import json, os, pathlib, subprocess, tarfile
@@ -50,7 +50,7 @@ if files:
    row=dict(test,file=suites[test['suiteID']],errors=errors.get(event['testID'],[]))
    baseline[key(row)]=signature(row['errors'])
 actual={key(t):signature(t['errors']) for t in current}
-comparison={'base':'origin/integrate/next','files':files,'matched':[
+comparison={'base':os.environ.get('P2_BASELINE_REF','95d68f6cb'),'files':files,'matched':[
  {'file':k[0],'test':k[1],'signature':v} for k,v in actual.items() if baseline.get(k)==v],
  'unmatched_current':[k for k,v in actual.items() if baseline.get(k)!=v],
  'base_only':[k for k in baseline if k not in actual]}
