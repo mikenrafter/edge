@@ -299,8 +299,9 @@ abstract final class SleepBlockStore {
     for (final row in rows) {
       final r = _StoredBlock(row), b = r.block;
       if (b.day == day) {
+        final payload = await _payload(row['payload_json']);
         out.add(NapEdit(kind: r.state == SleepBlockState.live ? NapEditKind.added : NapEditKind.rejected,
-          startSec:b.startTs,endSec:b.endTs,snapshot:await _payload(row['payload_json'])));
+          startSec:b.startTs,endSec:b.endTs,snapshot:payload == null || payload.isEmpty ? null : payload));
       } else if (r.history case DetectedKnown(:final startTs,:final endTs)) {
         out.add(NapEdit(kind:NapEditKind.rejected,startSec:startTs,endSec:endTs));
       }
