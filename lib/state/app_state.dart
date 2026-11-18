@@ -138,6 +138,7 @@ import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
 import '../notify/notification_prefs.dart';
 import '../notify/alert_dispatcher.dart';
+import '../notify/alert_policy.dart';
 import '../notify/alert_rule.dart';
 import '../gestures/device_action.dart';
 import '../gestures/gesture_settings.dart';
@@ -903,6 +904,9 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   }
 
   late final AlertDispatcher alertDispatcher = AlertDispatcher(
+    policy: AlertPolicy.permits,
+    fallbackDestination: AlertPolicy.fallback,
+    latestRule: AlertPolicy.currentRule,
     phone: () async => false,
     // The default band transport (tap ack, a water or medication buzz with no
     // saved rhythm): one short buzz, in the band queue like everything else.
@@ -960,6 +964,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
         commandLimit: () => Prefs.hapticCommandLimit,
         log: _log,
         planningNow: _wakeNow,
+        permit: () => AlertPolicy.permits(_buzzPreviewRule, 'band'),
       ));
   HapticsService? _hapticsForTesting;
 
@@ -1076,7 +1081,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       sourceTime: time,
       historical: false,
       transportTargets: transportTargets,
-      targetAllowed: (_) => const {'breath', 'wake'}.contains(ruleId) ||
+      targetAllowed: (_) => AlertPolicy.releaseClass(prefs.alertRule(ruleId)) == AlertReleaseClass.alwaysPass ||
           !prefs.inQuietHours(DateTime.now().hour * 60 + DateTime.now().minute),
       phoneTransport: () => NotificationCenter.instance.emit(
         NotificationEvent(
@@ -8226,10 +8231,8 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// The "alarm not confirmed" safety notification (Feature 2.1): fires once
   /// per armed epoch, only once every retry this grace window can offer is
   /// exhausted and the strap still never confirmed. Respects its own toggle
-  /// (default ON). Category device + critical priority rides the same
-  /// quiet-hours exemption as the band's other own-failure alerts (flat
-  /// battery, gone quiet) — a wake alarm that silently didn't latch is
-  /// exactly the kind of thing quiet hours must not swallow.
+  /// (default ON). Its explicit alarmLatchFailed rule is a wake alert and
+  /// passes quiet/sleep checks. Critical priority alone grants no exemption.
   Future<void> _notifyAlarmLatchFailed(int epoch) async {
     try {
       final prefs = await NotificationPrefs.load();

@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart' show debugPrintSynchronously;
 import 'dart:async';
 import 'dart:convert';
 import 'alert_dispatcher.dart';
+import 'alert_policy.dart';
 import 'alert_rule.dart';
 import 'buzz_sequence.dart';
 import 'notification_prefs.dart';
@@ -559,6 +560,9 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   }) : dispatcher =
            dispatcher ??
            AlertDispatcher(
+             policy: AlertPolicy.permits,
+             fallbackDestination: AlertPolicy.fallback,
+             latestRule: AlertPolicy.currentRule,
              phone: () async => false,
              band: () async {
                await buzz();

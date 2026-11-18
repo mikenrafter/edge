@@ -165,7 +165,7 @@ const _goldenMirrors = <String, Object>{
   'notif_auto_detect': true,
   'notif_battery_pct': 25,
   'notif_checkin': false,
-  'notif_critical_override': true,
+  'notif_fallback_destination': 'phone',
   'notif_device': true,
   'notif_health': true,
   'notif_meds': false,

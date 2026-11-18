@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../data/db.dart';
-import '../haptics/band_queue.dart' show BandHold, kBandHoldKey;
+import '../haptics/band_queue.dart' show BandHold, kBandHoldKey, kAlertHandoffKey;
 import 'alert_rule.dart';
 import 'buzz_sequence.dart';
 
@@ -55,8 +55,14 @@ class AlertDispatcher {
     this.transportTimeout = const Duration(seconds: 10),
     this.bandQueueWait = Duration.zero,
     this.sequenceTimeout,
+    this.policy,
+    this.fallbackDestination,
+    this.latestRule,
   }) : now = now ?? DateTime.now;
 
+  final Future<bool> Function(AlertRule, String)? policy;
+  final Future<String> Function()? fallbackDestination;
+  final Future<AlertRule> Function(AlertRule)? latestRule;
   final Future<bool> Function() phone;
   final Future<bool> Function() band;
 
@@ -160,30 +166,35 @@ class AlertDispatcher {
         typed.historicalReplay != AlertHistoricalReplay.historical) {
       return const AlertDeliveryOutcome([], 'historical');
     }
-    final availableTargets = currentSupportedTargets;
     final selected = <String>{
       if ((typed.destinations & 1) != 0) 'phone',
       if ((typed.destinations & 2) != 0) 'band',
     };
     String? reason;
-    if (selected.contains('band') &&
-        (!availableTargets.contains('band') || !isConnected())) {
-      selected.remove('band');
-      reason = 'bandUnavailable';
-      if (typed.fallback == AlertFallback.phoneIfBandUnavailable) {
-        selected.add('phone');
+    String? unavailable(String target, [AlertRule? rule]) {
+      if (transportTargets != null && !transportTargets.contains(target)) {
+        return 'transportUnavailable';
       }
-    }
-    selected.removeWhere((target) {
-      final unsupported = AlertCapabilityRegistry.destinationSupportReason(
-        typed, target, supportedTargets: availableTargets,
+      if (target == 'band' && !isConnected()) return 'bandUnavailable';
+      return AlertCapabilityRegistry.destinationSupportReason(rule ?? typed, target,
+        supportedTargets: currentSupportedTargets,
         supportedBandModes: supportedBandModes,
         supportedPhoneModes: supportedPhoneModes);
-      if (unsupported != null) { reason ??= unsupported; }
-      return unsupported != null;
-    });
-    if (transportTargets != null) selected.retainAll(transportTargets);
+    }
+    Future<String?> configuredFallback() async =>
+        await fallbackDestination?.call() ??
+        (typed.fallback == AlertFallback.phoneIfBandUnavailable ? 'phone' : null);
+    final lost = selected.where((t) => unavailable(t) != null).toList();
+    for (final target in lost) {
+      reason ??= unavailable(target);
+      selected.remove(target);
+    }
+    if (lost.isNotEmpty) {
+      final fallback = await configuredFallback();
+      if (fallback != null && unavailable(fallback) == null) selected.add(fallback);
+    }
     final delivered = <String>[];
+    var bandRefused = false;
     // Separate claims keep a denied phone permission from consuming band output.
     for (final target in selected) {
       final key = jsonEncode([typed.id, eventId, target]);
@@ -202,6 +213,34 @@ class AlertDispatcher {
           reason ??= 'channelSuppressed';
           continue;
         }
+
+        Future<bool> permit() async {
+          if (unavailable(target) != null) return false;
+          final current = await latestRule?.call(typed) ?? typed;
+          if (!current.enabled || current.destinations == 0 ||
+              unavailable(target, current) != null) {
+            return false;
+          }
+          final selectedNow = target == 'phone' ? current.phoneSelected : current.bandSelected;
+          if (!selectedNow) {
+            final fallback = await configuredFallback();
+            final primaryAvailable =
+                (current.phoneSelected && unavailable('phone', current) == null) ||
+                (current.bandSelected && unavailable('band', current) == null);
+            if (fallback != target || primaryAvailable) return false;
+          }
+          if (!(await policy?.call(current, target) ?? true)) return false;
+          final allowed = targetAllowed;
+          return unavailable(target, current) == null &&
+              (allowed == null || [target].every(allowed));
+        }
+        if (!await permit()) {
+          if (target == 'band' && unavailable(target) != null) bandRefused = true;
+          reason ??= 'channelSuppressed';
+          continue;
+        }
+        Future<T> guarded<T>(Future<T> Function() work) => runZoned(work,
+          zoneValues: <Object?, Object?>{kAlertHandoffKey: permit});
 
         final saved = typed.buzzSequence;
         final sequencePlayer = bandSequence;
@@ -231,7 +270,7 @@ class AlertDispatcher {
                     : null);
         if (delivery != null) {
           final d = await _within(
-            delivery,
+            () => guarded(delivery),
             limit,
             () {
               claimed = false;
@@ -245,6 +284,7 @@ class AlertDispatcher {
             case BuzzDelivery.complete:
               success = true;
             case BuzzDelivery.rejected:
+              bandRefused = true;
               reason ??= 'deliveryFailed';
             case BuzzDelivery.partial:
             case BuzzDelivery.unknown:
@@ -261,7 +301,7 @@ class AlertDispatcher {
                       ? () => sequencePlayer(saved)
                       : band);
           success = await _within(
-            transport,
+            () => guarded(transport),
             limit,
             () {
               claimed = false;
@@ -288,6 +328,16 @@ class AlertDispatcher {
             await ledger.release(key);
           } catch (_) {}
         }
+      }
+    }
+    if (delivered.isEmpty && bandRefused) {
+      final fallback = await configuredFallback();
+      if (fallback != null && !selected.contains(fallback) && unavailable(fallback) == null) {
+        return dispatch(typed.copyWith(destinations: fallback == 'phone' ? 1 : 2),
+          eventId: eventId, sourceTime: sourceTime, historical: historical,
+          phoneTransport: phoneTransport, bandTransport: bandTransport,
+          bandDelivery: bandDelivery, transportTargets: transportTargets,
+          targetAllowed: targetAllowed, bandTimeout: bandTimeout);
       }
     }
     return AlertDeliveryOutcome(delivered, reason);

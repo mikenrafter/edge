@@ -20,6 +20,8 @@ NotificationEvent _ev(NotifCategory c, NotifPriority p) => NotificationEvent(
       title: 't',
       body: 'b',
       date: '2026-06-27',
+      route: c == NotifCategory.reminders && p == NotifPriority.critical
+          ? kRouteAlarm : null,
     );
 
 /// The auto-detected-workout prompt exactly as `derivation_engine` emits it —
@@ -219,9 +221,9 @@ void main() {
               12 * 60),
           isTrue);
     });
-    test('critical overrides quiet hours when allowed', () {
+    test('retired critical override cannot bypass quiet hours', () {
       expect(p.shouldFireOs(_ev(NotifCategory.health, NotifPriority.critical),
-          2 * 60), isTrue);
+          2 * 60), isFalse);
     });
     test('critical respects quiet hours when override is off', () {
       const d = NotificationPrefs(criticalOverridesQuiet: false);

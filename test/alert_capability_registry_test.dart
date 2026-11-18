@@ -125,7 +125,8 @@ void main() {
     final rule = NotificationPrefs.legacyRule('checkIn', true, 3);
     expect(AlertCapabilityRegistry.destinationSupportReason(rule, 'band'),
         'bandScheduleUnavailable');
-    expect(AlertCapabilityRegistry.summary(rule), contains('unsupported'));
+    expect(AlertCapabilityRegistry.summary(rule),
+      contains('Band scheduling unavailable; phone fallback'));
   });
 
   test('connected generic adapters do not acquire WHOOP haptic support', () {

@@ -23,6 +23,8 @@
 // guard, not the cross-isolate claim (see notification_claim_atomic_test.dart).
 
 import 'package:flutter_test/flutter_test.dart';
+import 'support/alert_sleep_source.dart';
+import 'package:openstrap_edge/notify/alert_policy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:openstrap_edge/data/day_label.dart';
@@ -87,6 +89,8 @@ void main() {
   tearDown(() => NotificationCenter.instance.presentSink = original);
 
   setUp(() {
+    // Dedupe storage is deliberately unavailable; sleep is independently known.
+    AlertPolicy.sleepSource = const AwakeAlertSleepSource();
     NotificationIds.instance.resetForTest();
   });
 

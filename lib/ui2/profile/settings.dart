@@ -35,6 +35,7 @@ import '../../haptics/pattern_store.dart' show SavedHapticPattern;
 import '../../notify/alert_rule.dart';
 import '../../notify/buzz_sequence.dart';
 import '../../notify/notification_prefs.dart';
+import '../../notify/alert_policy.dart';
 import '../../notify/notification_service.dart';
 import '../../settings/settings_repository.dart';
 import '../../platform/app_icon.dart';
@@ -1373,15 +1374,16 @@ class _NotificationSettingsState extends State<NotificationSettings> with Widget
 }
 
 /// One alert: its name, a single destination picker, and what that choice needs
-/// in order to run. A destination this alert cannot honour is shown disabled.
+/// in order to run. Unavailable execution is explained beneath the choice.
 class _AlertRow extends StatelessWidget {
   const _AlertRow(this.icon, this.color, this.title, this.sub, this.rule,
-      this.onMask, {this.sequence, this.patternName, this.onBuzzPattern});
+      this.onMask, {this.fallbackDestination = 'phone', this.sequence, this.patternName, this.onBuzzPattern});
   final IconData icon;
   final Color color;
   final String title, sub;
   final AlertRule rule;
   final ValueChanged<int> onMask;
+  final String fallbackDestination;
 
   /// What this alert buzzes the band with, and the opener for the sheet that
   /// changes it. Null [sequence] means the alert cannot reach the band.
@@ -1398,12 +1400,6 @@ class _AlertRow extends StatelessWidget {
     (AlertRule.phone | AlertRule.band, 'Phone + Band'),
   ];
 
-  bool _supported(int mask) => [
-        if (mask & AlertRule.phone != 0) 'phone',
-        if (mask & AlertRule.band != 0) 'band',
-      ].every(
-          (t) => AlertCapabilityRegistry.destinationSupportReason(rule, t) == null);
-
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
@@ -1413,9 +1409,9 @@ class _AlertRow extends StatelessWidget {
       Wrap(spacing: S.x2, children: [
         for (final (m, label) in _options)
           Pressable(
-            onTap: _supported(m) ? () => onMask(m) : null,
+            onTap: () => onMask(m),
             semanticLabel:
-                '$label${m == mask ? ', selected' : ''}${_supported(m) ? '' : ', unavailable'}',
+                '$label${m == mask ? ', selected' : ''}',
             child: Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: S.x3, vertical: S.x2),
@@ -1429,9 +1425,7 @@ class _AlertRow extends StatelessWidget {
                   style: F.cap.copyWith(
                       color: m == mask
                           ? p.on(C.blue)
-                          : _supported(m)
-                              ? p.ink
-                              : p.ink3,
+                          : p.ink,
                       fontWeight: FontWeight.w600)),
             ),
           ),
@@ -1448,7 +1442,7 @@ class _AlertRow extends StatelessWidget {
                       (F.over.fontSize ?? 12) * (F.over.height ?? 1.3))),
           child: Align(
             alignment: Alignment.topLeft,
-            child: Text(AlertCapabilityRegistry.summary(rule),
+            child: Text(AlertCapabilityRegistry.summary(rule, fallbackDestination: fallbackDestination),
                 style: F.over.copyWith(color: p.ink3)),
           ),
         ),
@@ -1524,6 +1518,7 @@ class NotificationSettingsView extends StatelessWidget {
       return _AlertRow(icon, color, title, sub, rule,
           (mask) => set(prefs.withAlertRule(
               {...rule.toJson(), 'enabled': mask != 0, 'destinations': mask})),
+          fallbackDestination: prefs.fallbackDestination.name,
           sequence: AlertCapabilityRegistry.destinationSupportReason(
                       rule, 'band') ==
                   null
@@ -1763,14 +1758,14 @@ class NotificationSettingsView extends StatelessWidget {
                           final v = await pickMinute(c, prefs.quietEndMin);
                           if (v != null) set(prefs.copyWith(quietEndMin: v));
                         }),
-                    SetRow(LucideIcons.triangleAlert, C.red,
-                        l?.settingsHealthExceptionsBreakThroughRowTitle ??
-                            'Health exceptions break through',
-                        value: prefs.criticalOverridesQuiet ? on : off,
+                    SetRow(LucideIcons.bell, C.blue,
+                        'If unavailable, send to',
+                        value: prefs.fallbackDestination == AlertDestination.phone
+                            ? 'Phone' : 'Band',
                         chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            criticalOverridesQuiet:
-                                !prefs.criticalOverridesQuiet))),
+                        onTap: () => set(prefs.copyWith(fallbackDestination:
+                            prefs.fallbackDestination == AlertDestination.phone
+                                ? AlertDestination.band : AlertDestination.phone))),
                   ]),
                   // Same gap above as the accordions around it.
                   Padding(

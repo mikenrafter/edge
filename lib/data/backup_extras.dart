@@ -1,5 +1,6 @@
 export '../settings/settings_repository.dart' show settingsRestoredSignal;
 import 'dart:convert';
+import '../notify/notification_prefs.dart';
 import 'dart:io';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as p;
@@ -46,6 +47,8 @@ const String kBackupFilesTable = 'backup_files';
 
 /// Exact preference keys that stay on the device, each with the reason.
 const Map<String, String> kPrefsNotBackedUp = {
+  'device_alerts.charge_pending_ts': 'Local pending hardware notice; re-evaluate live band state after restore.',
+  'notif_critical_override': 'Retired quiet-hours override; accepted from old storage but ignored.',
   'developer.load_timings.v1': 'local performance diagnostics for this install',
   'developer.load_timings_enabled.v1': 'switch for those diagnostics on this install',
   'install_device_id': 'identifies THIS install; a restore must not clone it',
@@ -245,7 +248,17 @@ Future<void> writeBackupExtras(
       }
       for (final key in sp.getKeys()) {
         if (!prefsKeyBackedUp(key) && !kPrefsSignalOnly.contains(key)) continue;
-        final row = _encodePref(sp.get(key));
+        var value = sp.get(key);
+        if (key == NotificationPrefs.storageKey && value is String) {
+          try {
+            final decoded = jsonDecode(value);
+            if (decoded is Map && decoded['preferences'] is Map) {
+              (decoded['preferences'] as Map).remove('criticalOverridesQuiet');
+              value = jsonEncode(decoded);
+            }
+          } on FormatException { /* Preserve existing malformed-value policy. */ }
+        }
+        final row = _encodePref(value);
         if (row == null) continue;
         await txn.insert(
             'backup_prefs', {'key': key, 'type': row.$1, 'value': row.$2},
@@ -664,7 +677,8 @@ const Map<String, String> kPrefTypes = {
   'notif_auto_detect': 'bool',
   'notif_battery_pct': 'int',
   'notif_checkin': 'bool',
-  'notif_critical_override': 'bool',
+  'notif_critical_override': 'bool', // Legacy import type.
+  'notif_fallback_destination': 'string',
   'notif_device': 'bool',
   'notif_fired_keys': 'stringList',
   'notif_health': 'bool',
@@ -784,6 +798,10 @@ Future<void> writeBackupPrefs(String path) =>
 
 Future<bool> _write(SharedPreferences prefs, String key,
     String type, String value) async {
+  if (key == 'notif_fallback_destination' &&
+      (type != 'string' || !const {'phone', 'band'}.contains(value))) {
+    throw const FormatException('invalid fallback destination');
+  }
   switch (type) {
     case 'bool':
       if (value != 'true' && value != 'false') {

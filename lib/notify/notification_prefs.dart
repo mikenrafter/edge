@@ -7,6 +7,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'alert_rule.dart';
+import 'alert_policy.dart';
 import 'buzz_sequence.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -41,8 +42,9 @@ class NotificationPrefs {
   final int quietEndMin;
   final bool quietEnabled;
 
-  /// When true, NotifPriority.critical events fire even inside quiet hours.
+  /// Retired; accepted from old settings and ignored by every decision.
   final bool criticalOverridesQuiet;
+  final AlertDestination fallbackDestination;
 
   /// Water reminder: a recurring strap buzz across the waking window, every
   /// [waterIntervalMin] minutes. It is a nudge to LOG a drink and nothing more
@@ -150,6 +152,7 @@ class NotificationPrefs {
     this.quietStartMin = 22 * 60, // 22:00
     this.quietEndMin = 7 * 60, // 07:00
     this.criticalOverridesQuiet = true,
+    this.fallbackDestination = AlertDestination.phone,
     this.waterEnabled = false,
     this.waterIntervalMin = 120, // every 2 hours
     this.waterAssumeDrank = false,
@@ -174,6 +177,7 @@ class NotificationPrefs {
   static const _kQuietStart = 'notif_quiet_start';
   static const _kQuietEnd = 'notif_quiet_end';
   static const _kCriticalOverride = 'notif_critical_override';
+  static const fallbackKey = 'notif_fallback_destination';
   static const _kWater = 'notif_water';
   static const _kWaterInterval = 'notif_water_interval';
   static const _kNapDetect = 'notif_nap_detect';
@@ -212,11 +216,14 @@ class NotificationPrefs {
       // Existing background consumers can adjust quiet hours and schedule
       // settings without changing delivery targets or re-running migration.
       return rules.copyWith(
+        fallbackDestination: p.containsKey(fallbackKey)
+            ? AlertDestination.parse(p.get(fallbackKey)) : rules.fallbackDestination,
         quietEnabled: p.getBool(_kQuietEnabled) ?? rules.quietEnabled,
         quietStartMin: p.getInt(_kQuietStart) ?? rules.quietStartMin,
         quietEndMin: p.getInt(_kQuietEnd) ?? rules.quietEndMin,
         criticalOverridesQuiet:
-            p.getBool(_kCriticalOverride) ?? rules.criticalOverridesQuiet,
+            p.get(_kCriticalOverride) is bool
+                ? p.get(_kCriticalOverride) as bool : rules.criticalOverridesQuiet,
         waterIntervalMin: p.getInt(_kWaterInterval) ?? rules.waterIntervalMin,
         batteryAlertPct: (p.getInt(_kBatteryPct) ?? rules.batteryAlertPct)
             .clamp(batteryPctMin, batteryPctMax)
@@ -224,6 +231,7 @@ class NotificationPrefs {
       );
     }
     final legacy = NotificationPrefs(
+      fallbackDestination: AlertDestination.parse(p.get(fallbackKey)),
       healthEnabled: p.getBool(_kHealth) ?? true,
       recoveryEnabled: p.getBool(_kRecovery) ?? true,
       remindersEnabled: p.getBool(_kReminders) ?? true,
@@ -231,7 +239,8 @@ class NotificationPrefs {
       quietEnabled: p.getBool(_kQuietEnabled) ?? true,
       quietStartMin: p.getInt(_kQuietStart) ?? 22 * 60,
       quietEndMin: p.getInt(_kQuietEnd) ?? 7 * 60,
-      criticalOverridesQuiet: p.getBool(_kCriticalOverride) ?? true,
+      criticalOverridesQuiet: p.get(_kCriticalOverride) is bool
+          ? p.get(_kCriticalOverride) as bool : true,
       waterEnabled: p.getBool(_kWater) ?? false,
       waterIntervalMin: p.getInt(_kWaterInterval) ?? 120,
       autoDetectEnabled: p.getBool(_kAutoDetect) ?? true,
@@ -324,7 +333,7 @@ class NotificationPrefs {
     _kQuietEnabled: quietEnabled,
     _kQuietStart: quietStartMin,
     _kQuietEnd: quietEndMin,
-    _kCriticalOverride: criticalOverridesQuiet,
+    fallbackKey: fallbackDestination.name,
     _kWater: waterEnabled,
     _kWaterInterval: waterIntervalMin,
     _kAutoDetect: autoDetectEnabled,
@@ -351,6 +360,7 @@ class NotificationPrefs {
     int? quietStartMin,
     int? quietEndMin,
     bool? criticalOverridesQuiet,
+    AlertDestination? fallbackDestination,
     bool? waterEnabled,
     int? waterIntervalMin,
     bool? waterAssumeDrank,
@@ -503,6 +513,7 @@ class NotificationPrefs {
           rules['reminders']!.enabled && rules['reminders']!.destinations != 0,
       deviceEnabled:
           rules['device']!.enabled && rules['device']!.destinations != 0,
+      fallbackDestination: fallbackDestination ?? this.fallbackDestination,
       quietEnabled: quietEnabled ?? this.quietEnabled,
       quietStartMin: quietStartMin ?? this.quietStartMin,
       quietEndMin: quietEndMin ?? this.quietEndMin,
@@ -627,7 +638,12 @@ class NotificationPrefs {
       BuzzSequence.defaultFor(
           alertRuleOrder.indexOf(ruleId).clamp(0, alertRuleOrder.length));
 
-  bool phoneDeliveryEnabled(String id) => alertRule(id).phoneSelected;
+  bool phoneDeliveryEnabled(String id) {
+    final rule = alertRule(id);
+    return rule.phoneSelected || (rule.bandSelected &&
+        fallbackDestination == AlertDestination.phone &&
+        AlertCapabilityRegistry.destinationSupportReason(rule, 'band') != null);
+  }
   bool bandDeliveryEnabled(String id) => alertRule(id).bandSelected;
 
   NotificationPrefs withAlertRule(Map<String, Object?> json) {
@@ -645,7 +661,7 @@ class NotificationPrefs {
       'quietEnabled': quietEnabled,
       'quietStartMin': quietStartMin,
       'quietEndMin': quietEndMin,
-      'criticalOverridesQuiet': criticalOverridesQuiet,
+      'fallbackDestination': fallbackDestination.name,
       'waterEnabled': waterEnabled,
       'waterIntervalMin': waterIntervalMin,
       'waterAssumeDrank': waterAssumeDrank,
@@ -679,6 +695,7 @@ class NotificationPrefs {
     final defaults = const NotificationPrefs();
     final rules = Map<String, dynamic>.from(json['rules'] as Map);
     final prefs = NotificationPrefs(
+      fallbackDestination: AlertDestination.parse(values['fallbackDestination']),
       healthEnabled: values['healthEnabled'] as bool? ?? defaults.healthEnabled,
       recoveryEnabled:
           values['recoveryEnabled'] as bool? ?? defaults.recoveryEnabled,
@@ -689,8 +706,8 @@ class NotificationPrefs {
       quietStartMin: values['quietStartMin'] as int? ?? defaults.quietStartMin,
       quietEndMin: values['quietEndMin'] as int? ?? defaults.quietEndMin,
       criticalOverridesQuiet:
-          values['criticalOverridesQuiet'] as bool? ??
-          defaults.criticalOverridesQuiet,
+          values['criticalOverridesQuiet'] is bool
+              ? values['criticalOverridesQuiet'] as bool : defaults.criticalOverridesQuiet,
       waterEnabled: values['waterEnabled'] as bool? ?? defaults.waterEnabled,
       waterIntervalMin:
           values['waterIntervalMin'] as int? ?? defaults.waterIntervalMin,
@@ -786,7 +803,7 @@ class NotificationPrefs {
     // The alarm is the one thing quiet hours must not silence: the user armed
     // it FOR a time, usually inside the quiet window, and its off switch is
     // cancelling the alarm rather than a preference buried in settings.
-    if (klass == NotifClass.alarm) return true;
+    if (klass == NotifClass.alarm || activityRoute == kRouteAlarm) return true;
     // The reminders switch is the Weekly lookback row. The activity prompts and
     // the movement/step nudges have rows of their own, so it must not silence
     // them as well.
@@ -795,7 +812,7 @@ class NotificationPrefs {
             const {kRouteMovement, kRouteSteps}.contains(activityRoute));
     if (!ownSwitch && !categoryEnabled(event.category)) return false;
     if (inQuietHours(minuteOfDay)) {
-      return event.priority == NotifPriority.critical && criticalOverridesQuiet;
+      return false;
     }
     return true;
   }

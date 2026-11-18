@@ -9,21 +9,12 @@
 // never passes through emit at all: the OS fires those with no Dart running.
 // They are gated by NotificationService.schedulableIds instead.
 //
-// Whether an emitted event fires an OS notification is decided by
-// NotificationPrefs:
-//   • it must be one of the four sanctioned NotifClasses (see classOf), AND
-//   • its category must be enabled, AND
-//   • either we're outside quiet hours, or the event is critical and the user
-//     allowed critical-overrides-quiet.
-// The alarm is exempt from the last two: the user armed it for a time that is
-// usually inside their own quiet window.
-//
-// Emit sites that are no longer one of the three (recovery-ready, step goal,
-// posture, "did you work out?") still call emit() and are dropped HERE rather
-// than at each site — one gate is how the rule stays true when the next emit
-// site is added.
+// AlertPolicy owns quiet/sleep eligibility for every destination. Wake alerts
+// and explicitly scheduled reminders pass those gates. Category switches and
+// the existing presentation classes still decide which phone events are enabled.
 
 import 'dart:async';
+import '../haptics/band_queue.dart' show kAlertHandoffKey;
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -38,6 +29,8 @@ import '../data/water_units.dart';
 import 'fired_keys.dart';
 import 'reminder_sleep_gate.dart';
 import 'alert_dispatcher.dart';
+import 'alert_rule.dart';
+import 'alert_policy.dart';
 import 'notification_event.dart';
 import 'notification_prefs.dart';
 import 'notification_service.dart';
@@ -52,6 +45,9 @@ class NotificationCenter {
   /// AppState installs the connected-band transport; headless callers still
   /// use this same dispatcher with the phone transport available.
   AlertDispatcher dispatcher = AlertDispatcher(
+    policy: AlertPolicy.permits,
+    fallbackDestination: AlertPolicy.fallback,
+    latestRule: AlertPolicy.currentRule,
     phone: () async => false,
     band: () async => false,
     isConnected: () => false,
@@ -98,14 +94,10 @@ class NotificationCenter {
                 : 'autoDetect',
           _ => classOf(e) == NotifClass.alarm ? 'alarm' : e.category.name,
         };
-    final now = DateTime.now();
-    if (const {'water', 'movement', 'windDown', 'checkIn'}.contains(id) &&
-        (await ReminderSleepGate.load(now: now)).reasonAt(prefs, now) != null) {
-      return const {};
-    }
-    final minuteOfDay = now.hour * 60 + now.minute;
+    final rule = prefs.alertRule(id);
     final explicitAction = ruleId != null &&
         const {'zone', 'breath', 'tasker', 'wake', 'relay'}.contains(ruleId);
+    if (!await AlertPolicy.permits(rule, 'phone')) return const {};
     // FeatureFlag.alertDispatcher OFF: the pre-dispatcher delivery. Phone only,
     // through the same fire-once claim; a rule that does not select the phone
     // (or is off) stays silent, so switching the flag off never adds a phone
@@ -113,11 +105,18 @@ class NotificationCenter {
     await FeatureFlags.ensureLoaded();
     if (!FeatureFlags.isOn(FeatureFlag.alertDispatcher)) {
       final rule = prefs.alertRule(id);
-      if (!rule.enabled || !rule.phoneSelected) return const {};
+      if (AlertCapabilityRegistry.destinationSupportReason(rule, 'phone') != null) {
+        return const {};
+      }
+      if (!rule.enabled || (!rule.phoneSelected &&
+          prefs.fallbackDestination != AlertDestination.phone)) {
+        return const {};
+      }
       return await _emitPhone(
         e,
         allowPermissionPrompt: allowPermissionPrompt,
         explicitAction: explicitAction,
+        ruleId: id,
       )
           ? const {'phone'}
           : const {};
@@ -127,9 +126,9 @@ class NotificationCenter {
       eventId: e.dedupeKey,
       sourceTime: sourceTime ?? DateTime.now(),
       historical: historical,
-      targetAllowed: (_) => explicitAction
-          ? !prefs.inQuietHours(minuteOfDay)
-          : prefs.shouldFireOs(e, minuteOfDay),
+      targetAllowed: (_) => explicitAction ||
+          AlertPolicy.releaseClass(rule) == AlertReleaseClass.alwaysPass ||
+          prefs.shouldFireOs(e, DateTime.now().hour * 60 + DateTime.now().minute),
       // Legacy derived reports may describe yesterday. Their receipt time
       // cannot authorize a time-sensitive band haptic.
       transportTargets: phoneOnly || e.date.compareTo(todayLabel()) < 0
@@ -138,6 +137,7 @@ class NotificationCenter {
         e,
         allowPermissionPrompt: allowPermissionPrompt,
         explicitAction: explicitAction,
+        ruleId: id,
       ),
     );
     return out.targets.toSet();
@@ -197,15 +197,17 @@ class NotificationCenter {
     NotificationEvent e, {
     bool allowPermissionPrompt = true,
     bool explicitAction = false,
+    String? ruleId,
   }) async {
     var presented = false;
     try {
       final prefs = await NotificationPrefs.load();
       final now = DateTime.now();
       final minuteOfDay = now.hour * 60 + now.minute;
-      if (explicitAction) {
-        if (prefs.inQuietHours(minuteOfDay)) return false;
-      } else if (!prefs.shouldFireOs(e, minuteOfDay)) {
+      final rule = prefs.alertRule(ruleId ??
+          (routePath(e.route ?? '') == kRouteAlarm ? 'alarm' : e.category.name));
+      final always = AlertPolicy.releaseClass(rule) == AlertReleaseClass.alwaysPass;
+      if (!explicitAction && !always && !prefs.shouldFireOs(e, minuteOfDay)) {
         return false;
       }
       // Enforce the dedupeKey's "fires at most once" contract (issue #136).
@@ -228,10 +230,22 @@ class NotificationCenter {
         if (!await _fired.claim(e.dedupeKey)) return;
         var shown = false;
         try {
-          shown = await presentSink(
-            e,
-            allowPermissionPrompt: allowPermissionPrompt,
-          );
+          final upstreamPermit = Zone.current[kAlertHandoffKey]
+              as Future<bool> Function()?;
+          Future<bool> permit() async {
+            if (upstreamPermit != null && !await Future<bool>.sync(upstreamPermit)) {
+              return false;
+            }
+            if (!await AlertPolicy.permits(rule, 'phone')) return false;
+            final current = await NotificationPrefs.load();
+            final now = DateTime.now();
+            return explicitAction || always || current.shouldFireOs(e,
+                now.hour * 60 + now.minute);
+          }
+          if (!await permit()) return;
+          shown = await runZoned(
+            () => presentSink(e, allowPermissionPrompt: allowPermissionPrompt),
+            zoneValues: <Object?, Object?>{kAlertHandoffKey: permit});
         } finally {
           if (!shown) await _fired.release(e.dedupeKey);
         }

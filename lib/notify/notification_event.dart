@@ -8,9 +8,8 @@
 // notifications are the only surface now.)
 //
 // Categories map 1:1 onto OS notification channels (see notification_service)
-// so Android users can mute each kind independently. Priority drives the
-// quiet-hours decision: `critical` can break through; everything else respects
-// the user's quiet window.
+// so Android users can mute each kind independently. AlertPolicy gates quiet
+// hours and sleep; critical priority never grants an exception.
 
 import 'tap_router.dart';
 
@@ -77,7 +76,8 @@ enum NotifClass {
 NotifClass? classOf(NotificationEvent e) => switch (e.category) {
       NotifCategory.health || NotifCategory.device => NotifClass.exception,
       NotifCategory.reminders
-          when e.priority == NotifPriority.critical =>
+          when e.priority == NotifPriority.critical &&
+              routePath(e.route ?? '') == kRouteAlarm =>
         NotifClass.alarm,
       // Priority as well as route. The doc above says "reminders at NORMAL
       // priority", and without the second half a low-priority event carrying

@@ -20,6 +20,9 @@ class AlertRule {
   final AlertHistoricalReplay historicalReplay;
   final String channelPolicyId;
 
+  /// Explicit scheduling by the wearer, independent of producer or recurrence.
+  final bool userScheduled;
+
   /// The user's own buzz rhythm for this rule, or null for the registry
   /// default ([NotificationPrefs.buzzSequenceFor]).
   final BuzzSequence? buzzSequence;
@@ -35,6 +38,7 @@ class AlertRule {
     this.historicalReplay = AlertHistoricalReplay.liveOnly,
     required this.channelPolicyId,
     this.buzzSequence,
+    this.userScheduled = false,
   }) : assert(destinations >= 0 && destinations <= 3);
 
   bool get phoneSelected => enabled && destinations & phone != 0;
@@ -78,6 +82,7 @@ class AlertRule {
         AlertHistoricalReplay.liveOnly,
       ),
       channelPolicyId: json['channelPolicyId'] as String? ?? id,
+      userScheduled: json['userScheduled'] == true,
       buzzSequence: json['buzzSequence'] == null
           ? null
           : BuzzSequence.fromJson(json['buzzSequence']),
@@ -94,6 +99,7 @@ class AlertRule {
     'staleAfterSeconds': staleAfter.inSeconds,
     'historicalReplay': historicalReplay.name,
     'channelPolicyId': channelPolicyId,
+    'userScheduled': userScheduled,
     if (buzzSequence != null) 'buzzSequence': buzzSequence!.toJson(),
   };
 
@@ -105,6 +111,7 @@ class AlertRule {
     Duration? staleAfter,
     AlertHistoricalReplay? historicalReplay,
     String? channelPolicyId,
+    bool? userScheduled,
     BuzzSequence? buzzSequence,
   }) => AlertRule(
     id: id,
@@ -116,6 +123,7 @@ class AlertRule {
     staleAfter: staleAfter ?? this.staleAfter,
     historicalReplay: historicalReplay ?? this.historicalReplay,
     channelPolicyId: channelPolicyId ?? this.channelPolicyId,
+    userScheduled: userScheduled ?? this.userScheduled,
     buzzSequence: buzzSequence ?? this.buzzSequence,
   );
 }
@@ -235,6 +243,7 @@ class AlertCapabilityRegistry {
     bool bandConnected = true,
     bool bandSupported = true,
     bool phoneSupported = true,
+    String fallbackDestination = 'phone',
     Set<AlertExecutionMode> supportedBandModes = liveBandModes,
     Set<AlertExecutionMode> supportedPhoneModes = phoneModes,
   }) {
@@ -256,6 +265,11 @@ class AlertCapabilityRegistry {
             supportedBandModes: supportedBandModes,
             supportedPhoneModes: supportedPhoneModes,
           );
+          if (reason == 'bandScheduleUnavailable') {
+            return fallbackDestination == 'phone'
+                ? 'Band scheduling unavailable; phone fallback'
+                : 'Band scheduling unavailable; not sent';
+          }
           if (reason != null) {
             return target == 'phone'
                 ? 'Phone delivery is unsupported'

@@ -96,7 +96,8 @@ void main() {
     () async {
       await NotificationCenter.instance.scheduleStandingReminders(
         const NotificationPrefs(waterEnabled: true),
-        sleep: ReminderSleepGate(periods: [ReminderSleepPeriod(at(0))]),
+        sleep: ReminderSleepGate(periods: [ReminderSleepPeriod(
+          DateTime.now().subtract(const Duration(hours: 3)))]),
       );
       expect(
         calls.where((c) => c.method == 'cancel').length,
@@ -108,7 +109,9 @@ void main() {
               c.method == 'zonedSchedule' &&
               (c.arguments as Map)['title'] == 'Water',
         ),
-        isEmpty,
+        everyElement(predicate<MethodCall>((c) =>
+          !DateTime.parse((c.arguments as Map)['scheduledDateTime'] as String)
+            .isBefore(DateTime.now().add(const Duration(hours: 13, minutes: -1))))),
       );
     },
   );
@@ -330,7 +333,10 @@ void main() {
         AssumedState.removed);
     expect((await LocalDb.journalMetricsForDay(day))['water_ml'], isNull);
     expect(calls.where((c) => c.method == 'zonedSchedule' &&
-        (c.arguments as Map)['title'] == 'Water'), isEmpty);
+        (c.arguments as Map)['title'] == 'Water'),
+      everyElement(predicate<MethodCall>((c) =>
+        DateTime.parse((c.arguments as Map)['scheduledDateTime'] as String)
+          .isAfter(onset.add(const Duration(hours: 16))))));
   });
 
   test('unknown review status still cancels a check-in protected by sleep', () async {

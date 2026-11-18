@@ -1,6 +1,11 @@
 import '../util/callable.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
+import '../haptics/band_queue.dart' show kAlertHandoffKey;
+import 'alert_policy.dart';
+import 'alert_rule.dart';
+import 'notification_prefs.dart';
+import 'reminder_sleep_gate.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
@@ -512,11 +517,14 @@ class NotificationService {
       // share an id, and `show` REPLACES: one of them vanished silently.
       // e.osId overrides only for a caller that also cancels by id (see
       // NotificationEvent.osId).
+      final id = e.osId ?? await NotificationIds.instance.idFor(e);
+      final title = await osText(e.title);
+      final body = e.body.isEmpty ? null : await osText(e.body);
+      final details = _details(e.category);
+      final permit = Zone.current[kAlertHandoffKey] as Future<bool> Function()?;
+      if (permit != null && !await Future<bool>.sync(permit)) return false;
       await _plugin.show(
-        e.osId ?? await NotificationIds.instance.idFor(e),
-        await osText(e.title),
-        e.body.isEmpty ? null : await osText(e.body),
-        _details(e.category),
+        id, title, body, details,
         payload: e.route,
       );
       return true;
@@ -558,6 +566,17 @@ class NotificationService {
     return false;
   }
 
+  Future<bool> _slotAllowed(int id, DateTime at) async {
+    if (isMedSlot(id) || id == idSnoozeBackstop) return true;
+    final prefs = await NotificationPrefs.load();
+    final sleep = await ReminderSleepGate.load(now: DateTime.now());
+    final rule = prefs.alertRule(id == idStillness ? 'movement' :
+        id >= idWaterBase && id < idWaterBase + maxWaterSlots ? 'water' :
+        id == idWindDown ? 'windDown' : id == idCheckIn ? 'checkIn' : 'reminders');
+    return AlertPolicy(prefs, sleep).decide(
+        rule.copyWith(executionMode: AlertExecutionMode.osScheduled), at).allowed;
+  }
+
   Future<void> scheduleDaily({
     required int id,
     required NotifCategory category,
@@ -584,6 +603,7 @@ class NotificationService {
           when = nextCalendarDay(when);
         }
       }
+      if (!await _slotAllowed(id, when)) return;
       await _plugin.zonedSchedule(
         id,
         await osText(title),
@@ -613,11 +633,13 @@ class NotificationService {
       if (!_maySchedule(id)) return;
       if (!await ensurePermission(allowPrompt: false)) return;
       await ensureTimezone();
+      final when = _nextInstanceOf(hour, minute, weekday: weekday);
+      if (!await _slotAllowed(id, when)) return;
       await _plugin.zonedSchedule(
         id,
         await osText(title),
         await osText(body),
-        _nextInstanceOf(hour, minute, weekday: weekday),
+        when,
         _details(category),
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
@@ -655,6 +677,7 @@ class NotificationService {
       final mode = exact && await canScheduleExact()
           ? AndroidScheduleMode.exactAllowWhileIdle
           : AndroidScheduleMode.inexactAllowWhileIdle;
+      if (!await _slotAllowed(id, when)) return false;
       await _plugin.zonedSchedule(
         id,
         await osText(title),
