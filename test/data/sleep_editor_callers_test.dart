@@ -526,7 +526,7 @@ void main() {
       expect(await _everything(db),before);
       await db.execute('DROP TRIGGER crash_suggestion');
       final kept=(await store.get(s.id))!;
-      await store.discard(kept);
+      await expectLater(store.discard(kept),completes);
       expect((await store.get(s.id))!.status,ActivityReviewStatus.discarded);
       expect((await db.query('sleep_block',where:'id = ?',whereArgs:[block['id']])).single['state'],'removed');
       expect(await db.query('activity_review_days'),isEmpty);
@@ -577,6 +577,21 @@ void main() {
     expect((await db.query('sleep_nap')).single['end_ts'],_a0+3600);
     requireSleepSaved(await repo.deleteNap(_day,_a0));
     expect((await db.query('sleep_block',where:"state = 'live'")).single['id'],original);
+  });
+
+  // WHY: editing a proposal is the first mutation of a known detection, so its
+  // old day must retain a suppression and both days need nap recomposition.
+  test('C28 edited Keep records original detection and queues both ownership days',() async {
+    final old=DateTime(2026,10,12,23,30).millisecondsSinceEpoch~/1000;
+    final store=ActivityStore(db);
+    final s=(await store.reconcile(ActivityKind.nap,[{'start':old,'end':old+2400,'duration_min':32}])).single;
+    await store.confirm(s,startTs:old+3600,endTs:old+6000,edited:true);
+    final r=(await db.query('sleep_block')).single;
+    expect([r['owner_day'],r['owner_rule'],r['source'],r['history'],r['detected_start'],r['detected_end'],r['detected_day']],
+      ['2026-10-13',1,'manual','known',old,old+2400,_day]);
+    final edits=await SleepBlockStore.napEdits(db,_day);
+    expect(edits,hasLength(1));expect([edits.single.kind.name,edits.single.startSec,edits.single.endSec],['rejected',old,old+2400]);
+    expect((await db.query('sleep_edit_job')).map((r)=>r['day_id']).toSet(),{_day,'2026-10-13'});
   });
 
   group('CLAIM(sleep-editor-draft-generation) invalidation', () {
