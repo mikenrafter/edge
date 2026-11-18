@@ -24,6 +24,9 @@ in the same change that introduces it (AGENTS.md §6).
 - **Profile-owed day** — a day whose metric abstained for a missing profile field (`need_input:name=age|sex|height_cm|weight_kg`); held unfinalized with its raw (`profile_repass:<day>`) until the field is supplied or the raw-hold window passes.
 - **Artifact** — a persisted derived result other than a day result, keyed by kind + scope + algo version + input revision (design 02).
 - **Input revision** — a counter that changes whenever a day's inputs change.
+- **Certified target** — the one official release (tag plus peeled commit) whose own code the export was proven against; not "latest".
+- **Compatibility profile** — the frozen table/column/merge-key policy for turning this app's data into a certified target's database (`data/official_export/profile*.dart`).
+- **Carried prune cursor** — the recomputed `decoded_pruned_before` row the official file carries: the first local midnight at or after the oldest exact second it holds, never above the fork's own cursor.
 - **Heavy** — work whose cost grows with stored data; runs only on a worker isolate (`@heavy`).
 - **Live** — bounded per-packet or per-sample work allowed on the UI isolate (`@live`).
 

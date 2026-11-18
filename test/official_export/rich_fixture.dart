@@ -58,8 +58,15 @@ class RichFixture {
       final catalog = await SchemaCatalog.read(db);
       final specific = _specificRows();
       for (final e in specific.entries) {
+        final shape = catalog.tables[e.key]!;
         for (final row in e.value) {
-          await db.insert(e.key, row, conflictAlgorithm: ConflictAlgorithm.replace);
+          // Literal columns win; required columns the scenario does not care
+          // about get the generic filler so the row is valid.
+          await db.insert(
+            e.key,
+            {..._filler(shape), ...row},
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
         }
       }
       // Generic filler: one row in every table the specifics did not reach.
@@ -174,6 +181,56 @@ Map<String, List<Map<String, Object?>>> _specificRows() {
     ],
     'journal_metric': [
       {'date': '2026-10-21', 'field': 'custom_caffeine', 'value': 0.2, 'updated_at': 1},
+    ],
+    // Migration overlap: the legacy hex table repeats one frame already in the
+    // BLOB table (exact identity) and adds one only it holds.
+    'raw_archive_legacy': [
+      {'device_id': '', 'hex': 'AA01', 'counter': 5, 'packet_type': 36, 'rec_ts': dayStart(5), 'captured_at': dayStart(5), 'reason': 'unknown-version'},
+      {'device_id': '', 'hex': 'BB01', 'counter': 6, 'packet_type': 36, 'rec_ts': dayStart(5), 'captured_at': dayStart(5), 'reason': 'unknown-version'},
+    ],
+    // A finished outdoor workout with a recorded route, fork-computed fields set.
+    'sessions': [
+      {
+        'id': 'w${dayStart(6) * 1000}', 'start_ts': dayStart(6) + 7 * 3600, 'end_ts': dayStart(6) + 8 * 3600,
+        'type': 'run', 'status': 'completed', 'calories': 410.0, 'strain': 9.1, 'max_hr': 171,
+        'avg_hr': 148, 'rpe': 7.0, 'private': 0, 'created_at': dayStart(6),
+      },
+    ],
+    'workout_route': [
+      for (var i = 0; i < 3; i++)
+        {'session_id': 'w${dayStart(6) * 1000}', 'seq': i, 'ts_ms': (dayStart(6) + 7 * 3600 + i * 60) * 1000, 'lat': 40.1 + i / 1000, 'lng': -105.2},
+    ],
+    'ecg_reading': [
+      {'id': 'ecg-1', 'category': 'sinusRhythm', 'status': 'completed', 'wrist': 'left', 'notes': 'My exact ECG note', 'created_at': dayStart(5)},
+    ],
+    'ecg_reading_packet': [
+      {'reading_id': 'ecg-1', 'ordinal': 0, 'sequence': 1, 'sample_count': 2, 'samples': Uint8List.fromList([1, 0, 2, 0]), 'inner_hex': 'AA'},
+    ],
+    'hyrox_session': [
+      {'id': 'hy-1', 'kind': 'race', 'preset': 'open', 'status': 'completed', 'plan_json': '{}', 'created_at': dayStart(6), 'updated_at': dayStart(6)},
+    ],
+    'hyrox_segment': [
+      {'session_id': 'hy-1', 'idx': 0, 'kind': 'run'},
+    ],
+    'sleep_override': [
+      {'day_id': '2026-10-24', 'onset_ts': dayStart(4) + 23 * 3600, 'offset_ts': dayStart(5) + 6 * 3600, 'source': 'manual', 'created_at': dayStart(5)},
+    ],
+    // Fork-only user records the official file must omit but recovery keeps.
+    'track_event': [
+      {'id': 'tr-1', 'track_id': 'caffeine', 'date': '2026-10-24', 'source_kind': 'manual', 'source_id': 'x'},
+    ],
+    'water_moment': [
+      {'id': 'wm-1', 'date': '2026-10-24', 'at_min': 600, 'ml': 250},
+    ],
+    // A substrate-archive row whose blob is larger than Android's ~2 MiB cursor
+    // window: chunked reads, never SELECT * (spec §3.3). Content is opaque here.
+    'substrate_archive': [
+      {
+        'device_id': '', 'utc_day': dayStart(4) ~/ 86400, 'codec': 1,
+        'from_ts': dayStart(4), 'to_ts': dayStart(5), 'onehz_rows': 1, 'rr_rows': 0,
+        'raw_bytes': 3 * 1024 * 1024, 'fingerprint': 7,
+        'blob': Uint8List(3 * 1024 * 1024), 'created_at': 1, 'updated_at': 1,
+      },
     ],
     // Distinct frames sharing a counter, plus a second device.
     'raw_archive_frames': [
