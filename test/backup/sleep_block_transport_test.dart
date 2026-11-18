@@ -15,7 +15,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/gestures/moment_review_service.dart';
 import 'package:openstrap_edge/data/sleep_import_rules.dart';
-import '../data/support/sleep_block_fixture.dart' show blockRow;
+import '../data/support/sleep_block_fixture.dart' show blockRow, seedDay;
 
 const day = '2026-10-12', otherDay = '2026-10-13';
 final start = DateTime(2026,10,12,14).millisecondsSinceEpoch ~/ 1000;
@@ -165,10 +165,13 @@ void main() {
       block('excluded',owner:'2026-10-14',s:start+172800,e:start+175200)]) {
       await db.insert('sleep_block',r);
     }
+    await seedDay(db,day);
+    await seedDay(db,otherDay);
     final path=await LocalDb.exportDaysDb({day});
     final src=await databaseFactory.openDatabase(path);
     expect((await src.query('sleep_block',orderBy:'id')).map((r)=>r['id']),['overlap','owned','survivor']);
     expect(await src.query('day_result',where:'day_id = ?',whereArgs:[otherDay]),isEmpty);
+    expect(await src.query('day_result',where:'day_id = ?',whereArgs:[day]),hasLength(1));
     await src.close(); await clear(); await restoreBackup(path);
     expect((await rows()).map((r)=>r['id']),['overlap','owned','survivor']);
     expect((await notes()).where((e)=>e.day==otherDay && e.kind=='imported'),hasLength(2));
