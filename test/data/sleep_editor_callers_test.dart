@@ -562,6 +562,23 @@ void main() {
     expect((refused as SleepRefused).proposal!.authorization,(proposal as SleepProposalMergeRequired).proposal.authorization);
   });
 
+  // WHY: the legacy Naps action identifies the projection-visible interval.
+  // A second removed block at the same start must not redirect that Restore.
+  test('C27 natural-key restore selects the projection winner by update order',() async {
+    await rawNap(_a0,_a0+3600,source:'confirmed');
+    final original=(await db.query('sleep_block')).single['id'] as String;
+    requireSleepSaved(await repo.putNap(dayId:_day,startTs:_a0,endTs:_a0+3600,source:'rejected'));
+    requireSleepSaved(await repo.putNap(dayId:_day,startTs:_a0,endTs:_a0+2400,source:'manual'));
+    final manual=(await db.query('sleep_block',where:'id <> ?',whereArgs:[original])).single['id'] as String;
+    requireSleepSaved(await repo.putNap(dayId:_day,startTs:_a0,endTs:_a0+2400,source:'rejected'));
+    await db.update('sleep_block',{'updated_at':100},where:'id = ?',whereArgs:[manual]);
+    await db.update('sleep_block',{'updated_at':200},where:'id = ?',whereArgs:[original]);
+    await SleepBlockStore.projectForTest(db,{_day});
+    expect((await db.query('sleep_nap')).single['end_ts'],_a0+3600);
+    requireSleepSaved(await repo.deleteNap(_day,_a0));
+    expect((await db.query('sleep_block',where:"state = 'live'")).single['id'],original);
+  });
+
   group('CLAIM(sleep-editor-draft-generation) invalidation', () {
     // WHY: an add-only plan has no revision row to go stale, so deleting the
     // day must advance the generation and refuse the old plan at commit.
