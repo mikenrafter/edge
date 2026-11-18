@@ -492,7 +492,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     // rollup, applied activity reviews, a forced re-derive) publishes through
     // the same gate: freshness, then the bump, debounced.
     ..onSettled = () async {
-      if (!_disposed) _deriveCoordinator.publishGate.request();
+      if (!_disposed) {
+        _deriveCoordinator.publishGate.request();
+        unawaited(sleepEditRunner.start(restart:true).catchError((Object e)=>_log('[sleep edit] $e')));
+      }
     };
   /// The derive orchestration: scheduler wiring, the pass itself,
   /// recalc state, per-day publish, warmer hand-off. Everything it needs from
@@ -501,10 +504,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     engine: () => _derive,
     profile: () => _profile,
     log: _log,
-    notify: () {
-      if(!_disposed && !_derive.running) unawaited(sleepEditRunner.start(restart:true).catchError((Object e)=>_log('[sleep edit] $e')));
-      notifyListeners();
-    },
+    notify: notifyListeners,
     isDisposed: () => _disposed,
     repo: () => repo,
     warmHeld: () => _liveSessionActive || _background,
