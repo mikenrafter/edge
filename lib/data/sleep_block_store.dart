@@ -192,7 +192,7 @@ abstract final class SleepBlockStore {
         }
         final start = a.toInt(), end = b.toInt();
         if ((await tx.query('sleep_block', columns: ['id'],
-            where: 'start_ts < ? AND end_ts > ?', whereArgs: [end, start])).isNotEmpty) {
+            where: "kind = 'nap' AND start_ts < ? AND end_ts > ?", whereArgs: [end, start])).isNotEmpty) {
           continue;
         }
         final payload = await JsonPayloadLane.shared.encode({...nap, 'source': 'legacy'});
