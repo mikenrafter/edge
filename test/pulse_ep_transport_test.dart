@@ -3,6 +3,7 @@
 // CLAIM(pulse-transport) CLAIM(pulse-no-realert)
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/import_journal.dart';
 import 'package:openstrap_edge/data/recent_slice.dart';
 import 'package:openstrap_edge/data/restore_classification.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,11 +23,19 @@ const _local = ['pulse_ep_checkpoint', 'pulse_ep_complete', 'pulse_ep_upgrade'];
 const _day = '2026-11-10';
 const _t0 = 1794000000000;
 
+class _StopBeforeRevisions implements ImportTableProbe {
+  @override
+  Future<void> beforeTable(String table) async {
+    if (table == 'pulse_ep_revision') throw StateError('interrupted after episodes');
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late BackupEnv env;
   setUpAll(() async => env = await BackupEnv.create('pulse-ep-transport.db'));
   tearDownAll(() async => env.dispose());
+  tearDown(ImportHooks.reset);
   setUp(() async {
     await env.wipe();
     SharedPreferences.setMockInitialValues({});
@@ -235,4 +244,37 @@ void main() {
       await out.close();
     }
   });
+  // WHY/R1: deletion must survive backups taken before deletion, in either
+  // merge direction, including a process death between parent and child tables.
+  // catches: merging revision/evidence rows independently of tombstone status.
+  for (final direction in ['local deletion', 'imported deletion', 'resume']) {
+    test('R1 tombstone removes measurements during $direction', () async {
+      var db = await LocalDb.instance;
+      await env.seedData();
+      await seedEpisode(db, id: ':$_t0', startMs: _t0,
+          endMs: _t0 + 600000, startDay: _day);
+      final live = await LocalDb.exportCopy();
+      await LocalDb.deleteDays({_day});
+      final deleted = await LocalDb.exportCopy();
+      if (direction == 'imported deletion') {
+        await env.wipe();
+        await LocalDb.importFromDbFile(live);
+        await LocalDb.importFromDbFile(deleted);
+      } else if (direction == 'resume') {
+        ImportHooks.table = _StopBeforeRevisions();
+        await expectLater(LocalDb.importFromDbFile(live), throwsStateError);
+        ImportHooks.reset();
+        await LocalDb.close();
+        expect((await ImportJournal.resumeIfUnfinished()).resumed, isTrue);
+      } else {
+        await LocalDb.importFromDbFile(live);
+      }
+      db = await LocalDb.instance;
+      expect((await pulseRows(db, 'pulse_ep_episode')).single['status'], 'deleted');
+      expect(await pulseRows(db, 'pulse_ep_revision'), isEmpty);
+      expect(await pulseRows(db, 'pulse_ep_evidence'), isEmpty);
+      expect((await pulseRows(db, 'pulse_ep_outbox')).single['state'], 'deleted');
+    });
+  }
+
 }
