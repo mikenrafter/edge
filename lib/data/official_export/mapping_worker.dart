@@ -51,7 +51,11 @@ class MappingOutput {
 
 Future<MappingOutput> runMappingWorker(MappingInput input) {
   final dispatch = WorkerAudit.dispatched(Dispatcher.run, 'officialMappingHeavy.${input.operation}');
-  return Isolate.run(WorkerAudit.wrap(() => officialMappingHeavy(mappingWorkerInputs, input), dispatch));
+  final auditPort = WorkerAudit.auditPort;
+  return Isolate.run(() {
+    WorkerAudit.adopt(auditPort, dispatch);
+    return officialMappingHeavy(mappingWorkerInputs, input);
+  });
 }
 
 @heavy
