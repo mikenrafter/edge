@@ -7,7 +7,6 @@ import 'package:provider/provider.dart';
 
 import '../../gestures/gesture_settings.dart';
 import '../../l10n/app_localizations.dart';
-import '../../gestures/gesture_slots.dart';
 import '../../gestures/hardware_probe_runner.dart';
 import '../../gestures/hardware_probes.dart';
 import '../../gestures/imu_recording_store.dart';

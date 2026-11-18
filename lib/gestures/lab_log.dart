@@ -236,7 +236,7 @@ class DeviceLabLog extends ChangeNotifier {
   /// The tag for packets of the current (or last) session.
   String get sessionTag {
     final tap = _tapAt;
-    return tap == null ? 'none' : '${_method} ${labClock(tap)}';
+    return tap == null ? 'none' : '$_method ${labClock(tap)}';
   }
 
   /// Keep one ECG packet. [tag] defaults to the current session's.

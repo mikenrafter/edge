@@ -36,13 +36,11 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/platform/app_icon.dart';
 import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/ui2/profile/band_notifications.dart';
 import 'package:openstrap_edge/ui2/profile/device_lab.dart';
 import 'package:openstrap_edge/ui2/profile/devices.dart';
-import 'package:openstrap_edge/ui2/profile/gestures.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart';
 import 'package:openstrap_edge/ui2/profile/settings.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
@@ -389,12 +387,6 @@ void main() {
   });
 
   group('Gestures: the tuning controls of the method in force', () {
-    const supported = {
-      DeviceAction.none,
-      DeviceAction.markMoment,
-      DeviceAction.torch,
-    };
-
     testWidgets('the same controls remain in the Device lab', (t) async {
       await _pump(
           t,
