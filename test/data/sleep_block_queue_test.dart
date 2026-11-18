@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/health/health_nap_export.dart';
 import 'package:openstrap_edge/data/sleep_block_store.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/profile.dart';
@@ -36,6 +37,14 @@ Substrate napDay(int napStart) {
     rrTsMs:const [],rrMs:const [],ax:ax,ay:ay,az:az,
     spo2Red:List.filled(length,0),spo2Ir:List.filled(length,0),
     skinTemp:List.filled(length,0),skinContact:List.filled(length,0),deviceFamily:'gen4');
+}
+
+class _HealthNapWriter implements HealthKitNapWriter {
+  int replaces=0;
+  @override
+  Future<bool> replaceNap({required DateTime start,required DateTime end}) async { replaces++;return true; }
+  @override
+  Future<bool> deleteRange({required DateTime start,required DateTime end,List<Map<String,int>> protectWindows=const []}) async => true;
 }
 
 void main() {
@@ -123,6 +132,27 @@ void main() {
     final exports=(await db.query('sync_cursor',where:"name = 'health_nap_pending_exports'")).single;
     expect(jsonDecode(deletes['value'] as String),contains(containsPair('startTs',start)));
     expect(jsonDecode(exports['value'] as String),contains(containsPair('endTs',start+5400)));
+    // WHY: a retry names the assertion that created it, not a later block at
+    // the same legacy key. A removed id must never export that replacement.
+    final survivor=(await db.query('sleep_block',where: "state = 'live'")).single;
+    final id=survivor['id'] as String;
+    await db.update('sleep_block',{'state':'removed'},where:'id = ?',whereArgs:[id]);
+    await db.insert('sleep_block',{...survivor,'id':'replacement'});
+    await db.delete('sync_cursor');
+    Future<void> receipt() => LocalDb.setCursor('health_nap_pending_exports',jsonEncode([
+      {'blockId':id,'dayId':day,'startTs':start,'endTs':start+5400}]));
+    await receipt();
+    final writer=_HealthNapWriter();var naturalReads=0;
+    final exporter=HealthNapExporter(writer:writer,isApple:true,healthSyncEnabled:() async => true,
+      dayNapRows:(_) async => [],overlapsMainSleep:(_,_) async => false,
+      napRow:(_,_) async { naturalReads++;return {'source':'manual','end_ts':start+5400}; });
+    expect(await exporter.exportDayNaps(day),true);
+    expect(writer.replaces,0,reason:'the retry id was removed, despite a live replacement at its key');
+    expect(naturalReads,0);
+    await db.update('sleep_block',{'state':'live'},where:'id = ?',whereArgs:[id]);
+    await receipt();
+    expect(await exporter.exportDayNaps(day),true);expect(writer.replaces,1);
+    expect(naturalReads,0,reason:'positive control uses the same stored id');
   });
   test('Q8 putDayResult composes block truth without a nap projection and applies nap counter', () async {
     await block(); await db.transaction((tx)=>SleepEditStore.enqueue(tx,day,main:false));
