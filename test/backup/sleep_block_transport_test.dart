@@ -50,7 +50,7 @@ void main() {
     await clear();
     return path;
   }
-  Future<void> import(String path) async { await LocalDb.importFromDbFile(path); }
+  Future<void> restoreBackup(String path) async { await LocalDb.importFromDbFile(path); }
   Future<List<Map<String,Object?>>> rows() => db.query('sleep_block',orderBy:'id');
   Future<List<SleepImportEntry>> notes() => SleepImportReport.load();
   setUpAll(() { TestWidgetsFlutterBinding.ensureInitialized(); sqfliteFfiInit(); databaseFactory=databaseFactoryFfi; });
@@ -70,7 +70,7 @@ void main() {
     await src.execute('DROP TABLE sleep_block');
     await src.insert('sleep_nap',{'day_id':day,'start_ts':start,'end_ts':start+2400,
       'source':'manual','created_at':5});
-    await src.close(); await import(path);
+    await src.close(); await restoreBackup(path);
     expect((await rows()).single['id'],'legacy:nap:$day:$start');
     expect((await rows()).single['owner_rule'],0);
     expect((await rows()).single['history'],'unavailable');
@@ -80,12 +80,12 @@ void main() {
     final path=await backup([block('stable')]);
     final src=await databaseFactory.openDatabase(path);
     await src.update('sleep_nap',{'end_ts':start+9000}); await src.close();
-    await import(path);
+    await restoreBackup(path);
     expect((await rows()).single['id'],'stable');
     expect((await db.query('sleep_nap')).single['end_ts'],start+2400);
     await clear();
     final raw=await databaseFactory.openDatabase(path);
-    await raw.delete('sleep_block'); await raw.close(); await import(path);
+    await raw.delete('sleep_block'); await raw.close(); await restoreBackup(path);
     expect((await rows()).single['id'],'legacy:nap:$day:$start');
     expect((await rows()).single['end_ts'],start+9000);
   });
@@ -108,13 +108,13 @@ void main() {
   // catches: comparison ignores history, origin, merge target, or ownership rule.
   test('T4 identical is silent but every retained column participates', () async {
     final original=block('same'); final path=await backup([original]);
-    await db.insert('sleep_block',original); await import(path);
+    await db.insert('sleep_block',original); await restoreBackup(path);
     expect(await notes(),isEmpty);
     for(final change in [<String,Object?>{'history':'absent'},
       {'detected_start':123}, {'detected_end':456}, {'detected_day':otherDay},
       {'merged_into':'missing'}, {'owner_rule':0}]) {
       await db.update('sleep_block',{...original,...change});
-      await import(path);
+      await restoreBackup(path);
       expect((await notes()).where((e)=>e.refused),hasLength(1),reason:'$change');
       expect((await rows()).single,{...original,...change});
     }
@@ -123,18 +123,18 @@ void main() {
   test('T5 differing same id keeps the entire local row', () async {
     final path=await backup([block('same')]);
     final local=block('same',e:start+1200,rule:0);
-    await db.insert('sleep_block',local); await import(path);
+    await db.insert('sleep_block',local); await restoreBackup(path);
     expect(await rows(),[local]);
     expect((await notes()).single.kind,'refused');
   });
   // catches: unchanged imports rewrite projection rows and enqueue new work.
   test('T6 reimport projects and enqueues nothing', () async {
-    final path=await backup([block('same')]); await import(path);
+    final path=await backup([block('same')]); await restoreBackup(path);
     final before=<String,Object?>{for(final t in ['sleep_block','sleep_nap','sleep_edit_job','input_revision'])
       t:await db.query(t)};
     await db.execute('CREATE TEMP TABLE probe(n INTEGER)');
     await db.execute('CREATE TEMP TRIGGER nap_probe AFTER INSERT ON main.sleep_nap BEGIN INSERT INTO probe VALUES(1); END');
-    await import(path);
+    await restoreBackup(path);
     expect({for(final t in before.keys) t:await db.query(t)},before);
     expect(await db.query('probe'),isEmpty);
     await db.insert('sleep_nap',{'day_id':otherDay,'start_ts':1,'end_ts':2,'source':'manual','created_at':1});
@@ -144,7 +144,7 @@ void main() {
   test('T7 sleep stage rolls back then resume converges', () async {
     final path=await backup([block('a'),block('b',s:start+7200,e:start+9600)]);
     ImportHooks.chunk=(tx,c) async { if(c.table=='sleep_block') { throw StateError('C sleep kill'); } };
-    await expectLater(import(path),throwsA(isA<StateError>()));
+    await expectLater(restoreBackup(path),throwsA(isA<StateError>()));
     expect(await rows(),isEmpty); expect(await db.query('sleep_nap'),isEmpty);
     expect(await db.query('sleep_edit_job'),isEmpty);
     ImportHooks.reset();
@@ -166,7 +166,7 @@ void main() {
     final src=await databaseFactory.openDatabase(path);
     expect((await src.query('sleep_block',orderBy:'id')).map((r)=>r['id']),['overlap','owned','survivor']);
     expect(await src.query('day_result',where:'day_id = ?',whereArgs:[otherDay]),isEmpty);
-    await src.close(); await clear(); await import(path);
+    await src.close(); await clear(); await restoreBackup(path);
     expect((await rows()).map((r)=>r['id']),['overlap','owned','survivor']);
     expect((await notes()).where((e)=>e.day==otherDay && e.kind=='imported'),hasLength(2));
   });
@@ -216,7 +216,7 @@ void main() {
   // catches: interactive spacing incorrectly refuses historical source pairs.
   test('T13 source internal twenty minute pair imports whole', () async {
     final path=await backup([block('a'),block('b',s:start+3600,e:start+6000)]);
-    await import(path); expect(await rows(),hasLength(2));
+    await restoreBackup(path); expect(await rows(),hasLength(2));
     expect((await notes()).where((e)=>e.kind=='close-in-source'),hasLength(1));
     expect((await LocalDb.importFromDbFile(path)).sleepCloseReview,isEmpty,
       reason:'identical re-import has no newly imported historical pair');
@@ -224,14 +224,14 @@ void main() {
   // catches: close imported neighbors merge automatically or disappear.
   test('T14 close local pair remains live historical sleep', () async {
     final path=await backup([block('incoming',s:start+3600,e:start+6000)]);
-    await db.insert('sleep_block',block('local')); await import(path);
+    await db.insert('sleep_block',block('local')); await restoreBackup(path);
     expect((await rows()).map((r)=>r['state']),['live','live']);
     expect((await notes()).where((e)=>e.kind=='close-with-local'),hasLength(1));
   });
   // catches: report lives only in route memory.
   test('T15 report survives closing and reopening the database', () async {
     final path=await backup([block('same')]);
-    await db.insert('sleep_block',block('same',e:start+1200)); await import(path);
+    await db.insert('sleep_block',block('same',e:start+1200)); await restoreBackup(path);
     final before=(await notes()).map((e)=>e.toJson()).toList();
     await LocalDb.close(); db=await LocalDb.instance;
     expect((await notes()).map((e)=>e.toJson()).toList(),before);
@@ -240,7 +240,7 @@ void main() {
   test('T16 restore keeps local onset 100 and reports refusal', () async {
     final path=await backup([block('foreign-main',kind:'main',s:500,e:600)]);
     await db.insert('sleep_block',block('local-main',kind:'main',s:100,e:200));
-    await SleepBlockStore.projectForTest(db,{day}); await import(path);
+    await SleepBlockStore.projectForTest(db,{day}); await restoreBackup(path);
     expect((await db.query('sleep_override')).single['onset_ts'],100);
     expect((await notes()).single.other,'main_exists');
   });
@@ -249,7 +249,7 @@ void main() {
     final path=await backup([block('incoming'),block('participant',owner:otherDay,
       s:start+10000,e:start+11000,state:'merged',survivor:'incoming')]);
     await db.insert('sleep_block',block('local',s:start+600,e:start+1800,state:'removed'));
-    await import(path);
+    await restoreBackup(path);
     expect((await rows()).map((r)=>r['id']),['local','participant']);
     expect((await notes()).where((e)=>e.refused).single.other,'overlap');
     final entry=(await SleepBlockStore.read(db,otherDay)).entries.single;
@@ -262,7 +262,7 @@ void main() {
       'start_ts':start,'end_ts':start+2400,'details_json':'{}',
       'detection_start':start,'detection_end':start+2400,'status':'discarded',
       'linked_id':'incoming','created_at':5,'updated_at':5});
-    await import(path); expect(await rows(),isEmpty);
+    await restoreBackup(path); expect(await rows(),isEmpty);
     expect((await notes()).single.other,'decided_locally');
   });
   // catches: main uniqueness index silently ignores conflicts with non-live mains.
@@ -270,7 +270,7 @@ void main() {
     final path=await backup([block('foreign',kind:'main')]);
     for(final state in ['live','removed','merged']) {
       await clear(); await db.insert('sleep_block',block('local',kind:'main',state:state));
-      await import(path);
+      await restoreBackup(path);
       expect((await rows()).map((r)=>r['id']),['local']);
       expect((await notes()).single.other,'main_exists');
     }
