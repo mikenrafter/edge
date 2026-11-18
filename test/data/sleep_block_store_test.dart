@@ -124,15 +124,17 @@ void main() {
   });
   // catches: nap ownership uses the end/wake date or UTC date. The matrix pins
   // the expected local labels independently for UTC/Denver/Kolkata.
-  test('S11 nap ownership uses its start, and main ownership throws', () {
+  test('S11 nap ownership uses its start, and main ownership throws', () async {
     final s = DateTime(2026,10,31,23,30).millisecondsSinceEpoch ~/ 1000;
-    expect(SleepOwnership.dayOf(SleepBlockKind.nap,s,s+14400),'2026-10-31');
+    await expectLater(Future.sync(()=>SleepOwnership.dayOf(SleepBlockKind.nap,s,s+14400)),
+      completion('2026-10-31'));
     expect(()=>SleepOwnership.dayOf(SleepBlockKind.main,s,s+14400),throwsArgumentError);
   });
   // catches: a 24-hour walk duplicates/skips a date on the fall-back boundary.
-  test('S12 daysOf walks calendar midnights across the 25-hour day', () {
+  test('S12 daysOf walks calendar midnights across the 25-hour day', () async {
     final lo = localDayStartSec('2026-11-01')!, hi = localDayEndSec('2026-11-02')!;
-    expect(SleepOwnership.daysOf(lo,hi-1),['2026-11-01','2026-11-02']);
+    await expectLater(Future.sync(()=>SleepOwnership.daysOf(lo,hi-1).toList()),
+      completion(['2026-11-01','2026-11-02']));
     // The matrix's Denver run crosses 49 elapsed hours; enumeration must still
     // produce exactly these two calendar dates. No host-zone skip is used.
   });
