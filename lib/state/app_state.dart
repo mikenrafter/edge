@@ -4183,7 +4183,11 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     notifyListeners();
   }
 
+  @visibleForTesting
+  SleepEditQueue? debugSleepEditQueue;
+
   late final SleepEditRunner sleepEditRunner = SleepEditRunner(
+    queue:debugSleepEditQueue??const LocalSleepEditQueue(),
     effects: _AppSleepEditEffects(this),
   );
 
