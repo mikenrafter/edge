@@ -504,6 +504,7 @@ abstract final class SleepBlockStore {
             whereArgs: [day])).isNotEmpty) {
         refused('main_exists'); return false;
       }
+      if(importing) block['revision']=0;
       await tx.insert('sleep_block', block);
       inserted.add(block);
       return true;
@@ -539,6 +540,9 @@ abstract final class SleepBlockStore {
       for(final incoming in blocks) {
         final block=<String,Object?>{for(final e in incoming.entries) if(cols.contains(e.key)) e.key:e.value};
         block.putIfAbsent('owner_rule',()=>0);
+        if(block['merged_into'] is String && (block['merged_into'] as String).trim().isEmpty) {
+          block['merged_into']=null;
+        }
         await insertBlock(block);
       }
       return finish();
