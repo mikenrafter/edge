@@ -271,7 +271,7 @@ abstract final class SleepBlockStore {
           final w=await bind(target);if(w==null) break;
           final r=w.row;
           if(r['start_ts']==startTs && r['end_ts']==endTs && r['state']=='live' &&
-              (r['kind']=='nap' || r['source']=='manual')) break;
+              (r['kind']=='nap' || r['source']=='manual')) { break; }
           r['start_ts']=startTs;r['end_ts']=endTs;
           if(r['kind']=='nap') {
             r['owner_day']=SleepOwnership.dayOf(SleepBlockKind.nap,startTs,endTs);
@@ -605,9 +605,11 @@ abstract final class SleepBlockStore {
             'legacy', 'live', cutoff, history: 'known', detectedStart: start,
             detectedEnd: end, payload: payload))) {
           // Import projects the touched day once, after all blocks land.
-          if (!importing) await tx.rawInsert('INSERT INTO sleep_nap(day_id,start_ts,end_ts,source,created_at,payload_json) '
-            "SELECT ?,?,?,'legacy',?,? WHERE NOT EXISTS (SELECT 1 FROM sleep_nap WHERE day_id = ? AND start_ts = ?)",
-            [day, start, end, cutoff, payload, day, start]);
+          if (!importing) {
+            await tx.rawInsert('INSERT INTO sleep_nap(day_id,start_ts,end_ts,source,created_at,payload_json) '
+              "SELECT ?,?,?,'legacy',?,? WHERE NOT EXISTS (SELECT 1 FROM sleep_nap WHERE day_id = ? AND start_ts = ?)",
+              [day, start, end, cutoff, payload, day, start]);
+          }
         }
       }
     }

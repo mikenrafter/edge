@@ -88,7 +88,7 @@ class SleepImportReport {
       if (raw is! List) return const [];
       return [
         for (final j in raw)
-          if (SleepImportEntry.fromJson(j) case final e?) e,
+          ?SleepImportEntry.fromJson(j),
       ];
     } catch (_) {
       return const [];

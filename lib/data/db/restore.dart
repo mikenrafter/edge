@@ -1231,8 +1231,10 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
         for(final day in {for(final e in notes) if(e.other=='decided_locally') e.day}) {
           await ActivityStore.markDayChanged(tx,day);
         }
-        if(run!=null) await ImportJournal.advance(tx,run,index,order[index],1,
-          notes.where((e)=>e.kind=='imported').length);
+        if(run!=null) {
+          await ImportJournal.advance(tx,run,index,order[index],1,
+            notes.where((e)=>e.kind=='imported').length);
+        }
         final hook=ImportHooks.chunk;
         if(hook!=null) await hook.call(tx,const ImportChunk('sleep_block',0,0,1));
         return notes;
