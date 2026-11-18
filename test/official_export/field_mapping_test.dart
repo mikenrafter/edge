@@ -26,13 +26,25 @@ void main() {
   expect(mapped.rows[0]['hr_source'],'strap');expect(mapped.rows[1]['distance_m'],isNull);
   expect(mapped.rows[1]['planned_distance_m'],1000.0);
  });
- test('unsupported wake methods never become a different alarm',() async {
+ // WHY: spec §6.2 l.168 carries weekday/hour/minute/enabled; only the wake
+ // METHOD is an omission. A fork Natural/Gradual window must not become Smart
+ // Wake, so the row exports as a plain alarm (smart_window_minutes 0), which the
+ // tagged target rings at the set time. [P2 review F9; v0.12.2 alarm_schedule.dart:152-155]
+ test('unsupported wake methods export a plain alarm, never a different wake method',() async {
   final rows=await runMappingWorker(const MappingInput('page','alarm_schedule',[
    {'__export_rowid':1,'weekday':1,'hour':8,'minute':0,'enabled':1,'smart_window_minutes':0,'natural_window_minutes':30,'gradual_window_minutes':0},
-   {'__export_rowid':2,'weekday':2,'hour':8,'minute':0,'enabled':1,'smart_window_minutes':20,'natural_window_minutes':0,'gradual_window_minutes':0},
+   {'__export_rowid':2,'weekday':2,'hour':8,'minute':5,'enabled':1,'smart_window_minutes':20,'natural_window_minutes':0,'gradual_window_minutes':0},
+   {'__export_rowid':3,'weekday':3,'hour':7,'minute':15,'enabled':0,'smart_window_minutes':25,'natural_window_minutes':25,'gradual_window_minutes':0,'gradual_pattern':'ramp','gradual_cadence_sec':30},
+   {'__export_rowid':4,'weekday':4,'hour':6,'minute':45,'enabled':1,'smart_window_minutes':0,'natural_window_minutes':0,'gradual_window_minutes':15},
   ]));
-  expect(rows.rows.single['weekday'],2);expect(rows.rows.single['smart_window_minutes'],20);
-  expect(rows.notes.first['reason'],'Natural or Gradual wake choice unsupported');
+  expect(rows.rows.map((r)=>[r['weekday'],r['hour'],r['minute'],r['enabled'],r['smart_window_minutes']]).toList(),
+   [[1,8,0,1,0],[2,8,5,1,20],[3,7,15,0,0],[4,6,45,1,0]]);
+  expect(rows.notes.every((n)=>n['omitted']!=true),isTrue);
+  final n1=rows.notes[0]['columns'] as List,n3=rows.notes[2]['columns'] as List,n4=rows.notes[3]['columns'] as List;
+  expect(n1,contains('natural_window_minutes'));
+  expect(n3,containsAll(['natural_window_minutes','gradual_pattern','gradual_cadence_sec','smart_window_minutes']));
+  expect(n4,contains('gradual_window_minutes'));
+  expect(rows.notes[1]['columns'] as List,isNot(contains('smart_window_minutes')));
  });
  test('portable preference types and presence markers are closed',() async {
   final prefs=await runMappingWorker(const MappingInput('page','backup_prefs',[
