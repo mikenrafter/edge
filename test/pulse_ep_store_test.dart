@@ -531,4 +531,22 @@ void main() {
     expect((await pulseRows(db, 'pulse_ep_checkpoint')).single['through_ms'], 100000);
   });
 
+  // WHY/R3: retries cannot grow duplicate refusal history, and supported
+  // re-evaluation replaces the refusal only over the proven range.
+  // catches: blindly appending every refusal JSON list on each checkpoint.
+  test('R3 checkpoint refusals are idempotent and supported retries clear their range', () async {
+    var stamp = await PulseEpisodeStore.readStamp(db, source: 's', fromMs: 0, toMs: 300000);
+    const refused = '[{"start":0,"end":300000,"reason":"pending"}]';
+    await PulseEpisodeStore.advanceCheckpoint(db, source: 's', throughMs: 300000,
+        stamp: stamp, detector: 4, nowMs: 1, refusedJson: refused);
+    await PulseEpisodeStore.advanceCheckpoint(db, source: 's', throughMs: 300000,
+        stamp: stamp, detector: 4, nowMs: 2, refusedJson: refused);
+    expect((await pulseRows(db, 'pulse_ep_checkpoint')).single['refused_json'], refused);
+    stamp = await PulseEpisodeStore.readStamp(db, source: 's', fromMs: 100000, toMs: 200000);
+    await PulseEpisodeStore.advanceCheckpoint(db, source: 's', throughMs: 200000,
+        stamp: stamp, detector: 4, nowMs: 3);
+    expect((await pulseRows(db, 'pulse_ep_checkpoint')).single['refused_json'],
+        '[{"start":0,"end":100000,"reason":"pending"},{"start":200000,"end":300000,"reason":"pending"}]');
+  });
+
 }
