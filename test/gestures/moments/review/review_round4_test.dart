@@ -108,8 +108,8 @@ void main() {
       final now = s.queue.ranges.single;
       expect(now.choice, MomentChoice.workout);
       expect(now.inProgress, isFalse, reason: 'the new decision is untouched');
-      expect(const MomentReviewStore().load().ranges.single.choice,
-          MomentChoice.workout);
+      expect(const MomentReviewStore().load().ranges, isEmpty,
+          reason: 'an unstarted range is session-only, never stored');
     });
 
     test('a different workout TYPE counts as a replacement too', () async {

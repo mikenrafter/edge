@@ -6,6 +6,9 @@ import 'support/sleep_edit_effects.dart';
 // later days. Drives the production AppState runner and the real engine.
 // CLAIM(sleep-edit-fence), CLAIM(sleep-edit-masking) [F1 F2 F3 F15].
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/sleep_block_writer.dart';
+import 'package:openstrap_edge/data/sleep_editor.dart';
+import 'package:openstrap_edge/data/sleep_spacing.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/derive_prepare.dart';
 import 'package:openstrap_edge/compute/profile.dart';
@@ -319,7 +322,21 @@ void main() {
   Future<void> extendMain() async {
     final db = await LocalDb.instance;
     final wake = (await LocalDb.getSleepOverride(x))!['offset_ts'] as int;
-    await db.transaction((tx) => ActivityStore.applyNapExtension(tx, wake - 1800, wake + 1800));
+    // The approved merge of a nap reaching the main sleep: one transaction with
+    // the override and its job (the owner's explicit-merge rule).
+    await db.transaction((tx) async {
+      final merge = (await SleepBlockWriter.preflight(tx,
+          changes: [
+            BlockChange(
+                after: SleepBlock(
+                    kind: SleepBlockKind.nap,
+                    day: x,
+                    startTs: wake - 1800,
+                    endTs: wake + 1800)),
+          ],
+          editingDay: x))!;
+      await SleepBlockWriter.applyMerge(tx, merge);
+    });
   }
 
   test('activity review window change commits its sleep edit job in the same transaction', () async {

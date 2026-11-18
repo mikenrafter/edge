@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/sleep_editor.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
@@ -85,7 +86,7 @@ class _Repo extends LocalRepository {
     int? startTs,
     int? endTs,
     String? workoutType,
-    NapResolution? expected,
+    SleepMergeAuthorization? merge,
   }) async {
     if (confirmError case final e?) throw e;
     if (items.singleWhere((i) => i.id == s.id).revision != s.revision) {

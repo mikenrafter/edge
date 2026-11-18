@@ -115,6 +115,8 @@ const _mustStay = {
   'developer.load_timings.v1', 'developer.load_timings_enabled.v1',
   'import_reentry_pending', 'settings_recovery_journal_v1',
   'import_summary_v1', 'import_run_v1',
+  // Session choices never travel; only an in-progress Save is kept locally.
+  'moment_review.queue',
 
   'device_alerts.low_armed',
   'install_device_id', 'paired_remote_id', 'paired_serial', 'paired_generation',

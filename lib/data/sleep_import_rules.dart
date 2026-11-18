@@ -16,6 +16,7 @@ import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 
 import 'db.dart' show LocalDb;
+import 'json_payload_lane.dart';
 import 'sleep_editor.dart' show kMinSleepGapSec;
 
 enum SleepImportVerdict { copy, skipIdentical, refuseConflict, refuseOverlap }
@@ -234,7 +235,7 @@ class SleepImportReport {
     final row = await LocalDb.computeFreshness(key);
     if (row == null) return const [];
     try {
-      final raw = jsonDecode('${row['payload_json']}');
+      final raw = await JsonPayloadLane.shared.decodeUncached('${row['payload_json']}');
       if (raw is! List) return const [];
       return [
         for (final j in raw)

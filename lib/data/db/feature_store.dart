@@ -1399,7 +1399,7 @@ Future<Map<String, int>> _ldbApplyPendingActivityReviews() async {
     });
   }
 
-Future<NapResolution?> _ldbPutNapEdit({required String dayId, required int startTs, required int endTs, required String source, NapResolution? expected, Transaction? transaction, SleepMergeAuthorization? merge}) async {
+Future<NapResolution?> _ldbPutNapEdit({required String dayId, required int startTs, required int endTs, required String source, Transaction? transaction, SleepMergeAuthorization? merge}) async {
     Future<NapResolution?> write(Transaction tx) async {
       if (source == 'rejected') {
         // A pre-upgrade nap may still live only in its retained day result.

@@ -7397,10 +7397,9 @@ class LocalDb {
     required int startTs,
     required int endTs,
     required String source,
-    NapResolution? expected,
     Transaction? transaction,
     SleepMergeAuthorization? merge,
-  }) => _ldbPutNapEdit(dayId: dayId, startTs: startTs, endTs: endTs, source: source, expected: expected, transaction: transaction, merge: merge);
+  }) => _ldbPutNapEdit(dayId: dayId, startTs: startTs, endTs: endTs, source: source, transaction: transaction, merge: merge);
 
   static Future<void> deleteNapEdit(String dayId, int startTs, {SleepMergeAuthorization? merge}) => _ldbDeleteNapEdit(dayId, startTs, merge: merge);
 

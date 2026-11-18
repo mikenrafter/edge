@@ -687,7 +687,7 @@ class ActivityStore {
       Map<String, dynamic>? snapshot;
       if (row['payload_json'] is String) {
         snapshot = Map<String, dynamic>.from(
-          jsonDecode(row['payload_json'] as String) as Map,
+          await JsonPayloadLane.shared.decodeUncached(row['payload_json']) as Map,
         )..remove(kSleepEditKey);
         // An envelope-only payload (history without measurements) is no snapshot.
         if (snapshot.isEmpty) snapshot = null;
@@ -706,7 +706,7 @@ class ActivityStore {
     for (final row in await tx.rawQuery(
       "SELECT payload_json FROM sleep_nap WHERE payload_json LIKE '%\"suppressed\"%'",
     )) {
-      final doc = jsonDecode(row['payload_json'] as String);
+      final doc = await JsonPayloadLane.shared.decodeUncached(row['payload_json']);
       if (doc is! Map) continue;
       final env = doc[kSleepEditKey];
       if (env is! Map) continue;
