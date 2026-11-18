@@ -223,10 +223,20 @@ void main() {
     expect(entry.history,isA<DetectedUnavailable>());
     expect((await SleepBlockStore.napEdits(db,fixtureDay)).single.snapshot,isNull);
   });
-  // catches: a ladder changes served measurement output. The sole named delta
-  // is the pre-review nap's added legacy projection/nap-edit/track-feed row.
-  test('B10 existing readers preserve output except the named legacy capture', () async {
+  // catches: a ladder changes served measurement output. Named delta 1 is
+  // newly captured legacy projections. Delta 2 is the owner-approved exclusion
+  // of a pre-review nap inside a non-live main (no new assertion or projection).
+  test('B10 existing readers preserve output with the two named capture deltas', () async {
     var db = await reopen(); await seedLegacy(db);
+    await db.update('sleep_override',{'offset_ts':400},where:"day_id = '2026-10-30'");
+    await db.update('sleep_override',{'offset_ts':800},where:'day_id = ?',whereArgs:[fixtureDay]);
+    await db.update('day_result',{'payload_json':jsonEncode({'naps':{'value':[
+      {'start':70,'end':130,'duration_min':1}, // partly overlaps a live main
+      {'start':250,'end':310,'duration_min':1}, // contained in a live main
+    ]},'scalars':{}})},where:"day_id = '2026-10-30'");
+    final bundle=jsonDecode((await db.query('day_result',where:'day_id = ?',whereArgs:[fixtureDay])).single['payload_json'] as String) as Map;
+    (bundle['naps']['value'] as List).add({'start':600,'end':660,'duration_min':1});
+    await db.update('day_result',{'payload_json':jsonEncode(bundle)},where:'day_id = ?',whereArgs:[fixtureDay]);
     final repo = LocalRepositoryImpl(getProfileMap:()=>{});
     final before = await readerSnapshot(repo);
     final edits = await LocalDb.napEdits(fixtureDay);
@@ -238,8 +248,12 @@ void main() {
     final afterEdits = await LocalDb.napEdits(fixtureDay);
     expect(afterEdits.length,edits.length+1);
     expect(afterEdits.where((n)=>n['start_ts']==5000).single['source'],'legacy');
-    expect(await LocalDb.napEditDays(),editDays);
-    expect((await db.rawQuery("SELECT * FROM track_event_feed WHERE source_kind = 'nap'")).length,feed.length+1);
+    expect(await LocalDb.napEditDays(),{...editDays,'2026-10-30'});
+    expect((await db.rawQuery("SELECT * FROM track_event_feed WHERE source_kind = 'nap'")).length,feed.length+3);
+    expect((await db.query('sleep_block',where:"kind = 'nap' AND owner_day = '2026-10-30'",orderBy:'start_ts')).map((r)=>r['start_ts']),[70,250]);
+    expect(await db.query('sleep_block',where:"kind = 'nap' AND start_ts = 600"),isEmpty,
+      reason:'named delta 2: do not preserve a nap inside a rejected main');
+    expect(await db.query('sleep_nap',where:'start_ts = 600'),isEmpty);
   });
   // catches: a future/unknown source starts counting as sleep.
   test('B11 unknown source is retained as removed and reported', () async {
