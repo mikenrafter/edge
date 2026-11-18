@@ -26,8 +26,15 @@ class SleepBlock {
     required this.day,
     required this.startTs,
     required this.endTs,
+    this.id,
+    this.revision = 0,
+    this.provenance = SleepEntryProvenance.automatic,
   });
 
+  final String? id;
+  final int revision;
+  final SleepEntryProvenance provenance;
+  String get ownerDay => day;
   final SleepBlockKind kind;
 
   /// The `day_id` that owns the block (the wake date for a main sleep).
@@ -221,7 +228,7 @@ class EnvelopeUnavailable extends EnvelopeRead {
 
 // ── Editor read, plan, commands and outcome ─────────────────────────────────
 
-enum SleepEntryProvenance { automatic, manual, confirmed, retained, unknown }
+enum SleepEntryProvenance { automatic, manual, confirmed, retained, legacy, unknown }
 
 /// Names one entry. [expectedEndTs] and [expectedSource] pin the row the plan
 /// was built against, so a changed row is a stale refusal, not a lost edit.
@@ -355,7 +362,12 @@ class SleepEditorEntry {
     required this.provenance,
     required this.history,
     required this.removed,
+    this.id,
+    this.revision = 0,
+    this.mergedInto,
   });
+  final String? id, mergedInto;
+  final int revision;
   final SleepEntryRef ref;
   final int startTs, endTs;
   final SleepEntryProvenance provenance;
