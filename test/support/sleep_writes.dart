@@ -48,9 +48,13 @@ abstract final class TestSleepWrites {
       final c=source=='rejected'?RemoveBlock(existing?.ref??NoDetectionMainRef(dayId)):
         existing==null?AddMain(dayId,onsetTs,offsetTs):SetIntervals(existing.ref,onsetTs,offsetTs);
       requireSleepSaved(await SleepBlockStore.apply(await SleepBlockStore.plan(tx,dayId,[c]),tx:tx,merge:merge));
-      if(source=='confirmed') requireSleepSaved(await SleepBlockStore.apply(
-        await SleepBlockStore.plan(tx,dayId,[ConfirmMain(dayId,onsetTs,offsetTs)]),tx:tx));
+      if(source=='confirmed') { requireSleepSaved(await SleepBlockStore.apply(
+        await SleepBlockStore.plan(tx,dayId,[ConfirmMain(dayId,onsetTs,offsetTs)]),tx:tx)); }
     });
+  }
+  static Future<bool> napOverlapsMainSleep(int start,int end) async {
+    await absorbFixtures(await LocalDb.instance);
+    return (await SleepBlockStore.live(await LocalDb.instance,start,end)).any((b)=>b.kind==SleepBlockKind.main && b.startTs<end && b.endTs>start);
   }
   static Future<void> deleteNapEdit(String day,int startTs,{SleepMergeAuthorization? merge}) async {
     await absorbFixtures(await LocalDb.instance);

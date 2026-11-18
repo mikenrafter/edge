@@ -1,8 +1,9 @@
-import 'support/sleep_writes.dart';
 // E16 RED contracts. The standalone night/cardio payload uses format 2;
 // fork day/minute/awake accumulator formats and schema numbers do not transfer.
 @Timeout(Duration(minutes: 10))
 library;
+import 'support/sleep_writes.dart';
+
 
 import 'dart:convert';
 import 'dart:io';

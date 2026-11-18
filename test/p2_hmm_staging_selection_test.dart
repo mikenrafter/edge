@@ -50,7 +50,7 @@ SleepStagingInput _input({ana.StagingMethod? method}) {
     source: 'manual',
   );
   // Exercise the actual omitted default, independently of explicit cardio.
-  if (method == null)
+  if (method == null) {
     return SleepStagingInput(
       dayId: _day,
       searchSub: sub,
@@ -64,6 +64,7 @@ SleepStagingInput _input({ana.StagingMethod? method}) {
       rowsHiSec: _start + 600,
       nowSec: _start + 7200,
     );
+  }
   return SleepStagingInput(
     dayId: _day,
     searchSub: sub,

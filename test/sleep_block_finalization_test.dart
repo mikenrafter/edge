@@ -1,4 +1,3 @@
-import 'support/sleep_writes.dart';
 // Sleep block finalization (owner rule 2026-10-07, part of incremental 3b).
 //
 // A sleep block ends, and its night is FINAL, at the first DOUBLE wake
@@ -35,6 +34,8 @@ import 'support/sleep_writes.dart';
 // site, not one).
 @Timeout(Duration(minutes: 10))
 library;
+import 'support/sleep_writes.dart';
+
 
 import 'dart:convert';
 import 'dart:math' as math;

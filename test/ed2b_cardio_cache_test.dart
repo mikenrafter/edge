@@ -1,6 +1,7 @@
-import 'support/sleep_writes.dart';
 @Timeout(Duration(minutes: 10))
 library;
+import 'support/sleep_writes.dart';
+
 import 'support/test_callable.dart';
 
 import 'dart:convert';

@@ -760,7 +760,7 @@ Future<MomentAnswerChange> _ldbChangeMomentAnswer({required MomentLabel before, 
             };
         final tracks = {
           for (final t in [substance(priorField), substance(newField)])
-            if (t != null) t,
+            ?t,
         };
         final doseBefore = {
           for (final t in tracks) t: await LocalDb._trackDoseSummary(txn, date, t),
@@ -1305,7 +1305,7 @@ Future<void> _ldbRecomposeNaps(String day,int napRevision) async {
   await db.transaction((tx) async {
     final jobs=await tx.query('sleep_edit_job',where:'day_id = ?',whereArgs:[day]);
     if(jobs.isEmpty || jobs.single['nap_revision']!=napRevision ||
-        (jobs.single['nap_applied_revision'] as int)>=napRevision) return;
+        (jobs.single['nap_applied_revision'] as int)>=napRevision) { return; }
     final rows=await tx.rawQuery('SELECT r.* FROM day_result r ${LocalDb.servedDayJoinSql} WHERE r.day_id = ?',[day]);
     final edits=await SleepBlockStore.napEdits(tx,day);
     if(rows.isNotEmpty || edits.any((e)=>e.kind==NapEditKind.added)) {

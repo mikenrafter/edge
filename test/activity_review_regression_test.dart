@@ -84,7 +84,7 @@ void main() {
         },
       }),
     );
-    expect(await LocalDb.napOverlapsMainSleep(start, start + 1800), isTrue);
+    expect(await TestSleepWrites.napOverlapsMainSleep(start, start + 1800), isTrue);
     await expectLater(
       TestSleepWrites.putNapEdit(
         dayId: day,
@@ -96,7 +96,7 @@ void main() {
     );
     expect(await LocalDb.napEdits(day), isEmpty);
     // The part after getting up is still a nap.
-    expect(await LocalDb.napOverlapsMainSleep(start + 900, start + 1800),
+    expect(await TestSleepWrites.napOverlapsMainSleep(start + 900, start + 1800),
         isFalse);
     await TestSleepWrites.putNapEdit(
       dayId: day,
