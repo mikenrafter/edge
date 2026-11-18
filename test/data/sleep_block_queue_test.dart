@@ -17,6 +17,7 @@ import 'package:openstrap_edge/models/activity_suggestion.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/state/sleep_edit_runner.dart';
 import '../support/test_callable.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/sleep_edit_store.dart';
@@ -45,6 +46,10 @@ class _HealthNapWriter implements HealthKitNapWriter {
   Future<bool> replaceNap({required DateTime start,required DateTime end}) async { replaces++;return true; }
   @override
   Future<bool> deleteRange({required DateTime start,required DateTime end,List<Map<String,int>> protectWindows=const []}) async => true;
+}
+
+class _NoSleepJobs implements SleepEditQueue {
+  @override Future<List<SleepEditJob>> pending({bool retryFailed=false}) async => [];
 }
 
 void main() {
@@ -285,6 +290,27 @@ void main() {
     final status=(await SleepEditStore.status(day))!;
     expect(status['nap_applied_revision'],status['nap_revision']);
     expect(jsonDecode((await LocalDb.dayResult(day))!['payload_json'] as String)['scalars']['nap_min'],40);
+  });
+
+  // WHY B3: the actual Sleep-tab writer must retain exactly the typed wake.
+  test('B3 detected night edited through AppState is manual with exact staging bounds',() async {
+    await LocalDb.putDayResult(dayId:day,algoVersion:kAlgoVersion,payloadJson:'{}',
+      windowJson:jsonEncode({'onset_ms':start*1000,'offset_ms':(start+3600)*1000}),
+      finalized:false,source:'band');
+    final app=AppState.forTesting()..debugSleepEditQueue=_NoSleepJobs();
+    final typedOn=start+60, typedOff=start+2400;
+    try {
+      final out=await app.setSleepOverride(day,DateTime.fromMillisecondsSinceEpoch(typedOn*1000),
+        DateTime.fromMillisecondsSinceEpoch(typedOff*1000));
+      expect(out.success,isTrue,reason:out.error);
+      await app.sleepEditRunner.start();
+    } finally { app.dispose(); }
+    final ov=(await LocalDb.getSleepOverride(day))!;
+    expect(ov['source'],'manual');
+    final prepared=prepareDerivationPayloadHeavy(napDay(start),targetDay:day,
+      override:SleepWindowOverride(dayId:day,onsetSec:typedOn,offsetSec:typedOff,source:ov['source'] as String));
+    final d=prepared.days.single;
+    expect(d.sleepOnsetSec,typedOn); expect(d.sleepOffsetSec,typedOff);
   });
 
 }

@@ -175,7 +175,7 @@ void main() {
       await DerivationEngine().runDays(const Profile(), {_d2}, force: true);
       await expectBlank();
       final b = await _bundle(_d2);
-      expect(b['sleep_source'], 'confirmed',reason:'SetIntervals keeps the existing assertion provenance');
+      expect(b['sleep_source'], 'manual');
       final w = ((b['sleep'] as Map?)?['window'] as Map?)?['value'];
       expect(w, isA<Map>(), reason: 'the typed window is kept on the day');
       expect(((w as Map)['onset_ms'] as num) ~/ 1000, onset);

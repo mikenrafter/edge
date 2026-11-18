@@ -72,7 +72,7 @@ void main() {
     expect(await save([SetIntervals(DetectedMainRef(day,a,a+3600),a-600,a+3600)]),isA<SleepSaved>());
     final r=(await rows()).single;
     expect([r['kind'],r['source'],r['history'],r['detected_start'],r['detected_end'],r['detected_day'],r['owner_rule']],
-      ['main','detected','known',a,a+3600,day,1]); await parity();
+      ['main','manual','known',a,a+3600,day,1]); await parity();
   });
   test('W4 a second edit preserves the first snapshot and stable id',() async {
     await seed('n',a,a+2400);
