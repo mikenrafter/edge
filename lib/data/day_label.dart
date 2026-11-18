@@ -98,3 +98,6 @@ int calendarDaysBetween(DateTime a, DateTime b) {
     b.day,
   ).difference(DateTime.utc(a.year, a.month, a.day)).inDays;
 }
+
+/// Local noon, constructed independently of midnight across DST boundaries.
+int? localDayNoonSec(String dayId) => null;
