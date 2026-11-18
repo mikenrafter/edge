@@ -1,3 +1,4 @@
+import '../data/sleep_editor.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 
@@ -875,11 +876,16 @@ class SleepOperationResult {
   final bool success, metricsAvailable;
   final bool recalculating;
   final String? error;
+
+  /// Set when the write was refused because it would bring two sleep blocks
+  /// within 30 minutes: the route offers Merge or Cancel. Nothing was written.
+  final SleepMergeProposal? mergeProposal;
   const SleepOperationResult({
     required this.success,
     this.metricsAvailable = false,
     this.recalculating = false,
     this.error,
+    this.mergeProposal,
   });
 }
 

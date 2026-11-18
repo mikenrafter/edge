@@ -1,5 +1,6 @@
 import '../util/callable.dart';
 import 'json_payload_lane.dart';
+import 'sleep_editor.dart';
 import 'attach_copy.dart';
 // Local raw-first storage (SQLite via sqflite).
 //
@@ -1898,7 +1899,8 @@ class LocalDb {
     required int onsetTs,
     required int offsetTs,
     required String source,
-  }) => _ldbPutSleepOverride(dayId: dayId, onsetTs: onsetTs, offsetTs: offsetTs, source: source);
+    SleepMergeAuthorization? merge,
+  }) => _ldbPutSleepOverride(dayId: dayId, onsetTs: onsetTs, offsetTs: offsetTs, source: source, merge: merge);
 
   /// A sleep correction to the pinned day is the user's word, not drift: drop
   /// the morning pin so the re-derive pins the corrected readiness instead of
@@ -7385,7 +7387,8 @@ class LocalDb {
     required String source,
     NapResolution? expected,
     Transaction? transaction,
-  }) => _ldbPutNapEdit(dayId: dayId, startTs: startTs, endTs: endTs, source: source, expected: expected, transaction: transaction);
+    SleepMergeAuthorization? merge,
+  }) => _ldbPutNapEdit(dayId: dayId, startTs: startTs, endTs: endTs, source: source, expected: expected, transaction: transaction, merge: merge);
 
   static Future<void> deleteNapEdit(String dayId, int startTs) => _ldbDeleteNapEdit(dayId, startTs);
 

@@ -551,7 +551,7 @@ Future<List<VendorNight>> _ldbVendorSleepNights(int fromSec, int toSec) async {
     }, name: 'device nights');
   }
 
-Future<void> _ldbPutSleepOverride({required String dayId, required int onsetTs, required int offsetTs, required String source}) async {
+Future<void> _ldbPutSleepOverride({required String dayId, required int onsetTs, required int offsetTs, required String source, SleepMergeAuthorization? merge}) async {
     final db = await LocalDb.instance;
     // One transaction: a user window edit reopens the night, so the confirmation
     // goes with it (otherwise a crash between the two leaves an edit the next
@@ -1390,7 +1390,7 @@ Future<Map<String, int>> _ldbApplyPendingActivityReviews() async {
     });
   }
 
-Future<NapResolution?> _ldbPutNapEdit({required String dayId, required int startTs, required int endTs, required String source, NapResolution? expected, Transaction? transaction}) async {
+Future<NapResolution?> _ldbPutNapEdit({required String dayId, required int startTs, required int endTs, required String source, NapResolution? expected, Transaction? transaction, SleepMergeAuthorization? merge}) async {
     Future<NapResolution?> write(Transaction tx) async {
       String? snapshot;
       if (source != 'rejected') {

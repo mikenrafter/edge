@@ -12,6 +12,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../data/assumed_water.dart';
+import '../data/sleep_draft_fence.dart';
+import '../data/sleep_editor.dart';
 import 'moment_follow_ups.dart';
 import 'moment_review_apply.dart';
 import 'moment_review_queue.dart';
@@ -50,6 +52,25 @@ class MomentReviewService extends ChangeNotifier {
   /// True after a queue write the platform did not confirm: the choices are
   /// kept for this session but may be lost if the app closes.
   bool get persistFailed => _persistFailed;
+
+  // ── Session-only sleep editor drafts (phase 2 stubs) ─────────────────────
+
+  /// The staged editor plan for [dayId], if any, and the generation it must
+  /// still match. STUB: always empty.
+  SleepEditorDraftRead readSleepEditorDraft(String dayId) =>
+      SleepEditorDraftRead(null, 0);
+
+  /// STUB: keeps nothing.
+  void stageSleepEditorDraft(String dayId, SleepEditorPlan plan) {}
+
+  /// STUB: nothing to cancel.
+  void cancelSleepEditorDraft(String dayId) {}
+
+  /// STUB: clears nothing.
+  void clearDayDrafts(Set<String> dayIds) {}
+
+  /// STUB: clears nothing.
+  void clearAllDrafts() {}
 
   /// Re-reads the stored queue (unless a Save is running, whose in-memory
   /// queue is the newer truth). Quiet: it does not notify.
@@ -247,4 +268,11 @@ class MomentReviewService extends ChangeNotifier {
     }
     return q;
   }
+}
+
+/// A staged editor plan with the generation it was read under.
+class SleepEditorDraftRead {
+  const SleepEditorDraftRead(this.plan, this.generation);
+  final SleepEditorPlan? plan;
+  final int generation;
 }

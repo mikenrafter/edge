@@ -17,6 +17,7 @@ import '../models/activity_suggestion.dart';
 import '../compute/pulse_alert_record.dart';
 import '../wake/wake_timeline.dart';
 import '../gestures/moment_review_queue.dart';
+import 'sleep_editor.dart';
 import '../compute/manual_session.dart' show SessionSpan;
 import '../gps/route_models.dart';
 import 'journal_fields.dart';
@@ -265,6 +266,15 @@ abstract class LocalRepository {
   /// the same as a day with no naps, and reads differently).
   Future<Map<String, dynamic>> getDayNaps(String date) =>
       throw UnimplementedError('re-layer: getDayNaps');
+
+  /// The editor's checked read of [dayId]: every main and nap entry it may act
+  /// on, with their history state and the day revision plans are built on.
+  Future<SleepEditorRead> readSleepEditor(String dayId) =>
+      throw UnimplementedError('readSleepEditor');
+
+  /// Commits [plan] in one transaction; a typed outcome, never a bool.
+  Future<SleepEditorOutcome> saveSleepEditor(SleepEditorPlan plan) =>
+      throw UnimplementedError('saveSleepEditor');
   Future<Map<String, dynamic>> getDayHrv(String date) =>
       throw UnimplementedError('re-layer: getDayHrv');
 

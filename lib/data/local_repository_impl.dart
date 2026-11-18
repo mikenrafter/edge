@@ -15,6 +15,7 @@ import 'assumed_water.dart';
 import 'water_moment.dart';
 import '../gestures/moment_follow_ups.dart';
 import '../gestures/moment_review_queue.dart';
+import 'sleep_editor.dart';
 import '../gestures/moment_review_apply.dart';
 import '../gestures/moment_review_range.dart';
 import '../platform/tasker_moment_export.dart';
@@ -2135,6 +2136,14 @@ class LocalRepositoryImpl extends LocalRepository {
   });
 
   @override
+  @override
+  Future<SleepEditorRead> readSleepEditor(String dayId) async => SleepEditorRead(
+      dayId: dayId, entries: const [], revision: null, draftGeneration: 0);
+
+  @override
+  Future<SleepEditorOutcome> saveSleepEditor(SleepEditorPlan plan) async =>
+      const SleepRefused(SleepRefusalReason.unsupportedSource);
+
   Future<Map<String, dynamic>> getDayNaps(String date) => ReadPerf.reading('getDayNaps', () async {
     _focusCheck('getDayNaps');
     // THE EXACT DAY, never the latest-complete fallback: this list is editable,
