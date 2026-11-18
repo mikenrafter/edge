@@ -21,6 +21,11 @@ void main() {
         app.debugDeriveScheduler.setPowerHold(true);
         clock.flushMicrotasks();
         expect(queue.reads,0);
+        var finished=false;
+        app.sleepEditRunner.start().then((_) { finished=true; });
+        clock.flushMicrotasks();
+        expect(queue.reads,2,reason:'the probe observes acquisition and the final outstanding check');
+        expect(finished,true);
       } finally { app.dispose();clock.flushMicrotasks(); }
     });
   });

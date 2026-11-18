@@ -48,6 +48,7 @@ void main() {
     LocalDb.dbName = 'sleep_block_queue_test.db';
     await databaseFactory.deleteDatabase(p.join(await databaseFactory.getDatabasesPath(), LocalDb.dbName));
     db = await LocalDb.instance;
+    SharedPreferences.setMockInitialValues({});await Prefs.ensureLoaded();
   });
   tearDown(() async { DerivationEngine.debugSecondHalfHook=null;await LocalDb.close(); });
   test('Q1 nap receipt has only nap work and preserves the frozen headline', () async {
