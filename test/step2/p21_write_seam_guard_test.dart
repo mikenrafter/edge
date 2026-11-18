@@ -16,6 +16,9 @@
 // would fail here instead of letting the real scan pass vacuously.
 
 import 'dart:io';
+import 'package:analyzer/dart/analysis/utilities.dart';
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -256,7 +259,36 @@ Map<String, List<WriteSite>> _scanLib() {
 bool _isAllowed(String path, WriteSite s) =>
     (_allowed[s.table]?[path]?[s.member]?.contains(s.verb) ?? false);
 
+class _ReviewCalls extends RecursiveAstVisitor<void> {
+  final methods=<String,Set<String>>{};
+  String? current;
+  @override
+  void visitMethodDeclaration(MethodDeclaration node) {
+    final previous=current;current=node.name.lexeme;
+    methods.putIfAbsent(current!,()=>{});super.visitMethodDeclaration(node);current=previous;
+  }
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    if(current!=null) methods[current!]!.add(node.methodName.name);
+    super.visitMethodInvocation(node);
+  }
+}
+Map<String,Set<String>> reviewCalls(String source) {
+  final calls=_ReviewCalls();parseString(content:source).unit.accept(calls);return calls.methods;
+}
+
 void main() {
+  // WHY Q7: the runtime transaction spy exercises this post-day publisher.
+  // The AST backstop pins its production caller and keeps it out of compute.
+  test('Q7 compute returns review work; the per-day caller alone publishes it',() {
+    final positive=reviewCalls("extension X on Object { void _computePreparedDay() { store.autoLogNaps(); } }");
+    expect(positive['_computePreparedDay'],contains('autoLogNaps'));
+    final calls=reviewCalls(File('lib/compute/engine/day_compute.dart').readAsStringSync());
+    expect(calls['_computePreparedDay'],isNotNull);
+    expect(calls['_computePreparedDay']!.intersection({'autoLogNaps','confirm','apply','preserveLegacyNaps'}),isEmpty);
+    expect(calls['_derivePreparedDay'],containsAll(['_computePreparedDay','_publishDayReview']));
+    expect(calls['_publishDayReview'],containsAll(['reconcile','autoLogNaps','mayNotifyNew']));
+  });
   // WHY G1: a new direct nap writer must fail even inside ActivityStore.
   test('G1 sleep table writers require the exact owner member and file', () {
     final sites=scanWriters("class ActivityStore { void planted(db) { db.insert('sleep_nap', {}); db.rawUpdate('UPDATE sleep_block SET revision=2'); } }");
