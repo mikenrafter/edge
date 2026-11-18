@@ -172,6 +172,15 @@ const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   'notifications': (SliceKeep.all, null, 'in-app notifications'),
   'notif_fired': (SliceKeep.all, null, 'notification history'),
   'pulse_alert': (SliceKeep.all, null, 'pulse alert history'),
+  'pulse_ep_episode': (SliceKeep.all, null, 'pulse episode headers, small'),
+  'pulse_ep_revision': (SliceKeep.all, null, 'pulse episode revisions, digests and status'),
+  'pulse_ep_evidence': (SliceKeep.recent, 'created_ms', 'retained pulse recordings (up to 1 MiB each), recent only'),
+  'pulse_ep_outbox': (SliceKeep.all, null, 'pulse alert delivery state, one row per episode'),
+  'pulse_ep_admission': (SliceKeep.all, null, 'short-lived provenance of committed ranges'),
+  'pulse_ep_checkpoint': (SliceKeep.all, null, 'pulse evaluation watermark, diagnostic only'),
+  'pulse_ep_complete': (SliceKeep.all, null, 'pulse completeness certificates, diagnostic only'),
+  'pulse_ep_upgrade': (SliceKeep.all, null, 'pulse upgrade marker, one row'),
+  'pulse_ep_upgrade_record': (SliceKeep.none, null, 'upgrade membership keys can be a quarter million rows; omitted'),
   'notif_slots': (SliceKeep.all, null, 'notification slots'),
 };
 

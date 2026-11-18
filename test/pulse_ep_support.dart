@@ -1,6 +1,8 @@
 // Fixtures for the structural Pulse store tests (pulse_ep_*). Literal rows, no
 // production helpers: a test that derives its expectation from the code under
 // test proves nothing.
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/processing_context.dart';
 import 'package:openstrap_edge/data/db.dart';
@@ -122,8 +124,9 @@ Future<void> seedEpisode(
   });
   if (evidence) {
     await db.insert('pulse_ep_evidence', {
-      'episode_id': id, 'revision': revision, 'payload': payload,
+      'episode_id': id, 'revision': revision, 'payload': Uint8List.fromList(payload),
       'encoded_bytes': payload.length, 'expanded_bytes': payload.length,
+      'checksum': checksum,
       'retained_json': '[]', 'omitted_json': '[]', 'created_ms': createdMs,
     });
   }

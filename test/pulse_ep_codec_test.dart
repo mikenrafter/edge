@@ -1,6 +1,7 @@
 // Pulse evidence codec: literal fixtures first, round trip second, then the
 // bounds. CLAIM(pulse-evidence-atomic) CLAIM(pulse-no-fabricated-pairs)
 import 'dart:convert';
+import 'dart:io' show ZLibCodec;
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';

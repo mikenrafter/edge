@@ -118,6 +118,7 @@ void main() {
     Future<void> Function(Database db) source,
     Future<void> Function(Database db) local,
   ) async {
+    await env.wipe();
     final src = await LocalDb.instance;
     await env.seedData();
     await source(src);

@@ -282,13 +282,14 @@ void main() {
         'records': 1, 'novel': 1, 'origin': 'recentSync', 'admitted_ms': now, 'historical': 0,
       });
 
-  test('a checkpoint advances only forward and consumes the admission batches behind it', () async {
+  test('a checkpoint advances only forward and counts the batches it consumed', () async {
     await admit(100, 200);
     await admit(300, 400, digest: 'e');
     final stamp = await PulseEpisodeStore.readStamp(db, source: 's', fromMs: 0, toMs: 500000);
     expect(await PulseEpisodeStore.advanceCheckpoint(db,
         source: 's', throughMs: 250000, stamp: stamp, detector: 4, nowMs: 9), 1);
-    expect(await pulseRows(db, 'pulse_ep_admission'), hasLength(1));
+    expect(await pulseRows(db, 'pulse_ep_admission'), hasLength(2),
+        reason: 'consumed batches wait for decoded retention to prune them');
     expect((await pulseRows(db, 'pulse_ep_checkpoint')).single['through_ms'], 250000);
     await PulseEpisodeStore.advanceCheckpoint(db,
         source: 's', throughMs: 100000, stamp: stamp, detector: 4, nowMs: 10);
@@ -333,7 +334,7 @@ void main() {
     final stamp = await PulseEpisodeStore.readStamp(db, source: 's', fromMs: 0, toMs: 1);
     await PulseEpisodeStore.advanceCheckpoint(db,
         source: 's', throughMs: 250000, stamp: stamp, detector: 4, nowMs: 9);
-    await admit(100, 200, digest: 'late');
+    await admit(100, 200, digest: 'late', now: 20);
     await db.transaction((t) async {
       await PulseEpisodeStore.pruneAdmissions(t,
           cutoffMs: 1000000, hardFloorMs: 50000, holdEnabled: true);
@@ -377,7 +378,7 @@ void main() {
 
   // ---- upgrade capture (store-level) ----------------------------------------
   test('capture tolerates an absent decoded_rr and fails on a malformed one', () async {
-    final scratch = await openDatabase(inMemoryDatabasePath);
+    final scratch = await openDatabase(inMemoryDatabasePath, singleInstance: false);
     await scratch.execute('CREATE TABLE decoded_other(x INTEGER)');
     await scratch.transaction((t) async {
       await PulseEpisodeStore.createTables(t);
@@ -386,7 +387,7 @@ void main() {
     expect(await pulseRows(scratch, 'pulse_ep_upgrade'), hasLength(1));
     expect(await pulseRows(scratch, 'pulse_ep_upgrade_record'), isEmpty);
 
-    final broken = await openDatabase(inMemoryDatabasePath);
+    final broken = await openDatabase(inMemoryDatabasePath, singleInstance: false);
     await broken.execute('CREATE TABLE decoded_rr(unrelated INTEGER)');
     await expectLater(
       broken.transaction((t) async {
@@ -401,7 +402,7 @@ void main() {
   });
 
   test('capture is idempotent and never overwrites an initialized marker', () async {
-    final scratch = await openDatabase(inMemoryDatabasePath);
+    final scratch = await openDatabase(inMemoryDatabasePath, singleInstance: false);
     await scratch.execute('''CREATE TABLE decoded_rr(device_id TEXT NOT NULL DEFAULT '',
       ts_ms INTEGER NOT NULL DEFAULT 0, beat_index INTEGER NOT NULL,
       PRIMARY KEY(device_id, ts_ms, beat_index))''');

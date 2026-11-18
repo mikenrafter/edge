@@ -207,6 +207,9 @@ Future<Database> _ldbPrivOpen() async {
         await LocalDb._createWorkoutRoute(db);
         await LocalDb._createNotifFired(db);
         await LocalDb._createPulseAlert(db);
+        // Pulse episode storage and its (empty) upgrade boundary: a fresh install
+        // has no earlier records, so the capture is the marker alone.
+        await PulseEpisodeStore.initialize(db, nowMs: DateTime.now().millisecondsSinceEpoch);
         await LocalDb._createNotifSlots(db);
         await LocalDb._createAlarmSchedule(db);
         await LocalDb._createWakeTables(db);
@@ -1093,9 +1096,23 @@ Future<Database> _ldbPrivOpen() async {
           await LocalDb._createNightCheckpoint(db);
           await LocalDb._createDeriveFingerprint(db);
         }
+        // Rungs 93 and 94 belong to Sleep and land first; this rung does not
+        // depend on them. The Pulse tables are created and the upgrade boundary
+        // is snapshotted here, inside the upgrade transaction and before any
+        // sync can add a key: exact (device, record) membership copied
+        // server-side, no Dart rows, no detector. A failure propagates and rolls
+        // the whole step back; it is never read as an empty history.
+        if (oldV < 95) {
+          await PulseEpisodeStore.initialize(db, nowMs: DateTime.now().millisecondsSinceEpoch);
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);
+        // Same-version repair with a missing marker captures before the database
+        // is exposed to ingestion. Export copies use repair directly and never
+        // reach this line, so a copy cannot recapture the boundary.
+        await db.transaction((txn) => PulseEpisodeStore.captureUpgrade(
+            txn, nowMs: DateTime.now().millisecondsSinceEpoch));
         // Export copies use repair directly; only this phone adopts its window.
         try {
           await SubstrateArchive.keepLegacyWindowOnce(db);
@@ -1199,6 +1216,7 @@ Future<void> _ldbPrivRepairOpenSchema(Database db) async {
     await LocalDb._ensureDayResultPartialColumn(db);
     await LocalDb._createNotifFired(db);
     await LocalDb._createPulseAlert(db);
+    await PulseEpisodeStore.createTables(db);
     await LocalDb._createNotifSlots(db);
     await LocalDb._createAlarmSchedule(db);
     // CREATE TABLE IF NOT EXISTS on the every-open repair path, no schema

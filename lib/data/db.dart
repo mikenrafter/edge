@@ -35,6 +35,8 @@ import '../compute/pulse_alert_record.dart';
 import '../compute/substrate.dart' show beatTimesMs;
 import '../compute/groups/input_catalogue.dart' show InputKind, kInputCatalogue;
 import 'db/input_read_tracker.dart';
+import 'pulse_ep/pulse_ep_codec.dart' show kPulseEvidenceMaxBytes;
+import 'pulse_ep/pulse_ep_store.dart';
 import 'track_model.dart';
 import 'track_range_cut.dart';
 import 'db/group_row_store.dart';
@@ -455,6 +457,12 @@ class LocalDb {
     'water_moment',
     'notif_fired',
     'pulse_alert',
+    'pulse_ep_episode',
+    'pulse_ep_revision',
+    'pulse_ep_evidence',
+    'pulse_ep_outbox',
+    'pulse_ep_admission',
+    'pulse_ep_upgrade_record',
     'notif_slots',
     // The wearer's confirmed nights and wake settings, and the per-night
     // candidate a finalized day re-stages from once its raw is gone.
@@ -666,7 +674,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 92;
+  static const int schemaVersion = 95;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -4713,6 +4721,8 @@ class LocalDb {
       if (processingOrigin == ProcessingOrigin.recentSync) {
         try { pulseContext = await _ldbPrivPulseArrivalContext(txn, [raw], [sample]); } catch (_) {}
       }
+      await _ldbPrivPulseAdmit(txn, [raw], [sample],
+          deviceId: kPrimaryDeviceId, origin: processingOrigin);
       final batch = txn.batch();
       _queueDecodedOneHz(batch, raw, sample);
       await batch.commit(noResult: true);
@@ -6009,6 +6019,12 @@ class LocalDb {
       'water_moment',
       'notif_fired',
       'pulse_alert',
+      'pulse_ep_episode',
+      'pulse_ep_revision',
+      'pulse_ep_evidence',
+      'pulse_ep_outbox',
+      'pulse_ep_admission',
+      'pulse_ep_upgrade_record',
       'notif_slots',
       // Vendor-computed, typed-in and imported scalars. In the hand-entered
       // block because a third of it IS hand-entered and nothing regenerates
