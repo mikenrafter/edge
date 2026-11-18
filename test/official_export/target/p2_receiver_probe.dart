@@ -74,11 +74,16 @@ void main() {
     final watch=Stopwatch()..start();
     if(populated) {
       final incoming=await databaseFactoryFfi.openDatabase(path,options:OpenDatabaseOptions(readOnly:true));
-      final stop=(await incoming.rawQuery('SELECT rec_ts FROM decoded_onehz ORDER BY rowid LIMIT 1 OFFSET 10000')).single['rec_ts'];
+      final stop=(await incoming.rawQuery('SELECT device_id,ts_ms FROM decoded_onehz ORDER BY rowid LIMIT 1 OFFSET 10000')).single;
       await incoming.close();
-      await db.execute("CREATE TRIGGER p2_interrupt BEFORE INSERT ON decoded_onehz WHEN new.rec_ts=$stop BEGIN SELECT RAISE(ABORT,'p2 deliberate interruption'); END");
+      final stopDevice=(stop['device_id'] as String).replaceAll("'","''");
+      await db.execute("CREATE TRIGGER p2_interrupt BEFORE INSERT ON decoded_onehz WHEN new.device_id='$stopDevice' AND new.ts_ms=${stop['ts_ms']} BEGIN SELECT RAISE(ABORT,'p2 deliberate interruption'); END");
       Object? interrupted;
+      // Exercise the release's existing paged fallback. Normal ATTACH bulk
+      // import is table-atomic; the retry below uses that normal path again.
+      LocalDb.debugRowByRowMerge=true;
       try {await LocalDb.importFromDbFile(path);} catch(e) {interrupted=e;}
+      finally {LocalDb.debugRowByRowMerge=false;}
       expect(interrupted,isNotNull);
       final partial=await count(db,'decoded_onehz');
       expect(partial,greaterThan(0));

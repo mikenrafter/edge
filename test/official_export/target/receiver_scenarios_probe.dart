@@ -56,7 +56,7 @@ Future<T> _withFreshTarget<T>(
     return await body(db);
   } finally {
     await LocalDb.close();
-    
+
     await root.delete(recursive: true);
   }
 }

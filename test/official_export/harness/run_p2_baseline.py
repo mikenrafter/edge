@@ -8,7 +8,9 @@ import json, os, pathlib, subprocess, tarfile
 
 root=pathlib.Path(__file__).resolve().parents[3]
 out=root/'build/official_probe'
-current=json.loads((out/'graph-summary.json').read_text())['failures']
+gate=json.loads((out/'graph-summary.json').read_text())
+assert not gate['incomplete'],gate['incomplete']
+current=gate['failures']
 files=sorted({str(pathlib.Path(f['file']).relative_to(root)) for f in current})
 os.environ.update(TZ='UTC0',TZDIR='/usr/share/zoneinfo')
 saved={p:p.read_bytes() for p in (root/'lib').rglob('*') if p.is_file()}
@@ -28,7 +30,7 @@ finally:
 
 def signature(errors):
  text='\n'.join(errors)
- return [line.strip() for line in text.splitlines() if line.strip().startswith(('Expected:','Actual:','Which:'))] or [text.splitlines()[0] if text else '']
+ return [line.strip() for line in text.splitlines() if line.strip().startswith(('Expected:','Actual:','Which:'))] or [text]
 
 def key(test):return str(pathlib.Path(test['file']).relative_to(root)),test['name']
 baseline={};suites={};tests={};errors={}
