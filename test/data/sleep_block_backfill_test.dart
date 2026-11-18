@@ -6,6 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/activity_store.dart';
 import 'package:openstrap_edge/compute/nap_edits.dart';
+import 'package:openstrap_edge/compute/accepted_naps.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/sleep_block_store.dart';
 import 'package:openstrap_edge/data/sleep_editor.dart';
@@ -55,6 +56,24 @@ void main() {
     expect((await db.query('sleep_nap')).single['source'],'legacy');
     final edits=await SleepBlockStore.napEdits(db,fixtureDay);
     expect(edits.single.snapshot?['duration_min'],10);
+  });
+  // WHY F1 owner clarification: store fully contained naps, while a rejected
+  // night blocks legacy capture. B10's second named delta is that exclusion.
+  test('F1 contained live-main nap is retained; rejected-main nap is not captured', () async {
+    final db=await reopen(); await db.update('activity_review_meta',{'activated_at':20000});
+    for(final (owner,source,start) in [('2026-10-30','manual',1000),('2026-10-31','rejected',5000)]) {
+      await SleepBlockStore.absorb(db,overrides:[mainRow(owner,source,start,start+3000)],naps:[],
+        servedDayResults:[{'day_id':owner,'naps_json':'[{"start":${start+600},"end":${start+1200},"duration_min":10}]'}],
+        mode:AbsorbMode.backfill);
+    }
+    final naps=await db.query('sleep_block',where:"kind = 'nap'");
+    expect(naps,hasLength(1)); expect(naps.single['owner_day'],'2026-10-30');
+    expect(await db.query('sleep_nap',where:"day_id = '2026-10-31'"),isEmpty,
+      reason:'B10 named delta 2: a non-live main prevents legacy capture');
+    final bundle=<String,dynamic>{'sleep':{'window':{'value':{'onset_ms':1000000,'offset_ms':4000000}}},
+      'naps':{'value':[]},'scalars':<String,dynamic>{}};
+    composeAcceptedNaps(bundle,await SleepBlockStore.napEdits(db,'2026-10-30'));
+    expect((bundle['naps'] as Map)['value'],isEmpty,reason:'stored for a later correction, hidden from current totals');
   });
   // WHY F2: composition must use the same snapshots as the release reader,
   // including a NULL snapshot for an empty payload so manual minutes survive.
