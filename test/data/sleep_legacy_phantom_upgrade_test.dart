@@ -13,13 +13,17 @@ import 'package:openstrap_edge/compute/nap_overlap_cleanup.dart';
 import 'support/sleep_block_fixture.dart';
 
 void main() {
-  test('B4 v0.12.1 shape upgrade cannot capture a next-night phantom',() async {
+  for(final copied in [false,true]) {
+  test('B4 v0.12.1 shape upgrade cannot capture a next-night phantom${copied ? ' copied as a legacy edit' : ''}',() async {
     sqfliteFfiInit(); databaseFactory=databaseFactoryFfi;
     final temp=await Directory.systemTemp.createTemp('sleep-B4-');
     await LocalDb.close(); LocalDb.dbName=p.join(temp.path,'old.db');
     try {
       var db=await LocalDb.instance;
       await db.update('activity_review_meta',{'activated_at':20000});
+      // A release before cleanup v2 may already have copied the detection aside.
+      if(copied) { await db.insert('sleep_nap',napRow(5000,5600,'legacy',
+        payload:jsonEncode({'start':5000,'end':5600,'duration_min':10,'source':'legacy'}))); }
       await seedDay(db,fixtureDay,naps:[{'start':5000,'end':5600,'duration_min':10}],version:105);
       await seedDay(db,'2026-11-02',version:105,window:{'onset_ms':4500000,'offset_ms':6500000});
       await db.update('day_result',{'payload_json':jsonEncode({'sleep':{'window':{'value':
@@ -50,4 +54,5 @@ void main() {
       expect(await db.query('sleep_nap'),isEmpty);
     } finally { await LocalDb.close(); await temp.delete(recursive:true); }
   });
+  }
 }

@@ -80,12 +80,15 @@ void main() {
     final path=await backup([{...block('stable'),'revision':17,'merged_into':''}]);
     final src=await databaseFactory.openDatabase(path);
     await src.update('sleep_nap',{'end_ts':start+9000}); await src.close();
-    await restoreBackup(path);
+    final counts=await LocalDb.importFromDbFile(path);
     expect((await rows()).single['id'],'stable');
     expect((await rows()).single['revision'],0,reason:'foreign counters do not become local receipts');
     expect((await rows()).single['merged_into'],isNull);
     expect((await rows()).single['owner_rule'],1);
-    expect((await db.query('sleep_nap')).single['end_ts'],start+2400);
+    final projected=await db.query('sleep_nap');
+    expect(projected,hasLength(1),reason:'the imported block must regenerate its nap projection');
+    expect(projected.single['end_ts'],start+2400);
+    expect(counts['sleep_nap'],1,reason:'report the one nap projection regenerated from block truth');
     await clear();
     final raw=await databaseFactory.openDatabase(path);
     await raw.delete('sleep_block'); await raw.close(); await restoreBackup(path);
