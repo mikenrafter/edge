@@ -4,6 +4,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import 'profile.dart';
+import 'profile_target.dart';
 import 'schema_catalog.dart';
 
 /// What a candidate file contains, read once.
@@ -75,7 +76,8 @@ class PayloadViolation {
 /// [expectedPrunedBefore] is the carried cursor the exporter computed (null:
 /// the fork had none, so no row is expected). Kinds: `userVersion`,
 /// `unknownTable`, `layout`, `droppedTableHasRows`, `foreignCursor`,
-/// `foreignFreshnessKey`, `prunedBeforeMismatch`.
+/// `foreignFreshnessKey`, `prunedBeforeMismatch`, `prunedBeforeUnexpected`,
+/// `prunedBeforeInvalid`.
 List<PayloadViolation> checkPayload(
   PayloadInventory payload,
   OfficialProfile profile, {
@@ -101,14 +103,26 @@ List<PayloadViolation> checkPayload(
     final actual = payload.catalog.tables[t.name];
     if (actual == null) {
       out.add(PayloadViolation('layout', 'missing target table ${t.name}'));
-    } else if (!_sameNames(actual.columnNames, t.columnNames)) {
+    } else if (!_sameColumns(actual.columns, t.columns)) {
       out.add(
         PayloadViolation(
           'layout',
-          '${t.name} columns differ from the tagged release: '
+          '${t.name} column definitions differ from the tagged release; name differences: '
           '${(actual.columnNames.difference(t.columnNames).union(t.columnNames.difference(actual.columnNames)).toList()..sort())}',
         ),
       );
+    }
+  }
+  final expectedObjects = {
+    for (final o in officialTargetObjects)
+      if (o.type != 'table') (o.type, o.name): (o.table, o.sql),
+  };
+  final actualObjects = {
+    for (final o in payload.catalog.objects) (o.type, o.name): (o.table, o.sql),
+  };
+  for (final key in {...expectedObjects.keys, ...actualObjects.keys}) {
+    if (actualObjects[key] != expectedObjects[key]) {
+      out.add(PayloadViolation('layout', '${key.$1} ${key.$2} differs from the tagged release'));
     }
   }
   // A table that carries no rows by policy (R/D) or has no source at all
@@ -134,6 +148,15 @@ List<PayloadViolation> checkPayload(
       out.add(PayloadViolation('foreignFreshnessKey', 'compute_freshness:$k'));
     }
   }
+  final hasCursor = payload.syncCursorNames.contains('decoded_pruned_before');
+  if (hasCursor && expectedPrunedBefore == null) {
+    out.add(const PayloadViolation('prunedBeforeUnexpected',
+        'decoded_pruned_before row present, none expected'));
+  }
+  if (hasCursor && payload.prunedBefore == null) {
+    out.add(const PayloadViolation('prunedBeforeInvalid',
+        'decoded_pruned_before value is not an integer'));
+  }
   if (payload.prunedBefore != expectedPrunedBefore) {
     out.add(
       PayloadViolation(
@@ -145,5 +168,8 @@ List<PayloadViolation> checkPayload(
   return out;
 }
 
-bool _sameNames(Set<String> a, Set<String> b) =>
-    a.length == b.length && a.containsAll(b);
+bool _sameColumns(List<ColumnShape> a, List<ColumnShape> b) =>
+    a.length == b.length &&
+    Iterable<int>.generate(a.length).every((i) =>
+      (a[i].name, a[i].type, a[i].notNull, a[i].defaultValue, a[i].pk) ==
+      (b[i].name, b[i].type, b[i].notNull, b[i].defaultValue, b[i].pk));

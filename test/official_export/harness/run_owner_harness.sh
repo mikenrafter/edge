@@ -9,7 +9,7 @@ export OWNER_ORIGINAL="${OWNER_ORIGINAL:-/home/user/owner-rh/original.db}"
 export OWNER_WORK="${OWNER_WORK:-/home/user/owner-rh/work}"
 [ -f "$OWNER_ORIGINAL" ] || { echo "owner original missing: $OWNER_ORIGINAL" >&2; exit 2; }
 mkdir -p "$OWNER_WORK"
-bash "$(dirname "$0")/prepare_target.sh" >/dev/null
+bash "$(dirname "$0")/prepare_target.sh"
 used() { df -B1 --output=used /home | tail -1 | tr -d ' '; }
 base=$(used); peak=$base
 ( while true; do u=$(used); [ "$u" -gt "$(cat "$OUT_DIR/.peak" 2>/dev/null || echo 0)" ] && echo "$u" > "$OUT_DIR/.peak"; sleep 2; done ) &

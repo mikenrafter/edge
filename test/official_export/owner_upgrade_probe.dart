@@ -48,7 +48,10 @@ void main() {
     final out = Directory(Platform.environment['OFFICIAL_PROBE_OUT'] ?? 'build/official_probe')
       ..createSync(recursive: true);
     expect(DateTime.utc(2026, 7, 1).toLocal().timeZoneOffset, Duration.zero, reason: 'harness needs a UTC process zone');
-    final report = <String, Object?>{};
+    final report = <String, Object?>{
+      'fork_head': Platform.environment['OFFICIAL_FORK_HEAD'],
+      'fork_status_porcelain': Platform.environment['OFFICIAL_FORK_STATUS'],
+    };
     final watch = Stopwatch()..start();
     void lap(String what) {
       report['t:$what'] = watch.elapsedMilliseconds;
@@ -102,25 +105,32 @@ void main() {
     };
     lap('after');
 
-    // The fork cursor and the oldest exact second the candidate would carry.
+    // Capture the fork cursor now; query exact seconds from the mapped file below.
     final cursorRow = await db.rawQuery("SELECT value FROM sync_cursor WHERE name = 'decoded_pruned_before'");
     final forkCursor = cursorRow.isEmpty ? null : int.tryParse('${cursorRow.single['value']}');
-    final oldestMs = Sqflite.firstIntValue(await db.rawQuery(
-      'SELECT MIN(m) FROM (SELECT MIN(ts_ms) AS m FROM decoded_onehz UNION ALL SELECT MIN(ts_ms) FROM decoded_rr)',
-    ));
-    final oldest = oldestMs == null ? null : oldestMs ~/ 1000;
-    final choice = chooseDecodedPrunedBefore(forkCursorSec: forkCursor, oldestExactSec: oldest);
-    report['cursor'] = {
-      'fork': forkCursor, 'oldest_exact_sec': oldest,
-      'carried': choice.sec, 'reason': choice.reason.name,
-    };
     await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
     await LocalDb.close();
     lap('close');
 
     await naiveCopyFrom(copy, '${work.path}/naive.db');
     lap('naive_candidate');
-    await policyFrom(copy, '${work.path}/policy.db', expectedPrunedBefore: choice.sec);
+    final policyPath = await policyFrom(copy, '${work.path}/policy.db', expectedPrunedBefore: null);
+    final mapped = await databaseFactoryFfi.openDatabase(policyPath);
+    try {
+      final oldest = await oldestMappedExactSec(mapped);
+      final choice = chooseDecodedPrunedBefore(forkCursorSec: forkCursor, oldestExactSec: oldest);
+      report['cursor'] = {
+        'fork': forkCursor, 'oldest_exact_sec': oldest,
+        'carried': choice.sec, 'reason': choice.reason.name,
+      };
+      if (choice.sec != null) {
+        await mapped.insert('sync_cursor', {
+          'name': 'decoded_pruned_before', 'value': '${choice.sec}', 'updated_at': 1,
+        });
+      }
+    } finally {
+      await mapped.close();
+    }
     lap('policy_candidate');
 
     final shaAfter = await _sha(original);

@@ -1,6 +1,5 @@
 // GENERATED from the tagged v0.12.2 repaired runtime schema (fixtures/target_schema_62.json):
 // the create paths PLUS the on-open repair, never a hand-written downgrade.
-// The profile hash binds this list.
 
 /// (type, name, tbl_name, sql) of every object the tagged release creates.
 const List<({String type, String name, String table, String sql})>

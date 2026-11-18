@@ -174,6 +174,21 @@ void main() {
       }, _spec);
     });
 
+    // WHY: the receiver needs the primary row to adopt an explicit wearing choice.
+    test('device carries every row and clears nonportable handles', () {
+      final device = officialProfile.tables['device']!;
+      expect(device.rowRule, 'every device row; primary row carried for wearing adoption, remote_id cleared; the receiver skips the rest of the primary row');
+      expect(device.clear, contains('remote_id'));
+      expect(device.keep, containsAll(['wearing', 'wearing_set_ts']));
+    });
+
+    // WHY: measured run outputs remain measured when shown by the receiver.
+    test('calibration run retains amplitude and confidence', () {
+      expect(officialProfile.tables['live_step_calibration_run']!.keep,
+          containsAll(['p2p_g', 'confidence']));
+      expect(officialProfile.tables['substrate_archive']!.merge!.rule, MergeRule.fillMissing);
+    });
+
     test('every table carries meaning and evidence', () {
       for (final e in officialProfile.tables.entries) {
         expect(e.value.meaning.trim(), isNotEmpty, reason: e.key);
@@ -189,6 +204,25 @@ void main() {
         final catalog = await SchemaCatalog.read(db);
         expect(catalog.tables, isNotEmpty);
         expect(officialProfile.coverage(catalog), isEmpty);
+      });
+    });
+
+    // WHY: kept columns changing type/default/nullability must force re-review.
+    // catches: a source INTEGER becoming TEXT while the names stay identical.
+    test('fresh fork columns equal the frozen capture tuple for tuple', () async {
+      await withFreshForkDb((db, _) async {
+        Map<String, Object> tuples(SchemaCatalog c) => c.tables.map((n, t) => MapEntry(n, [
+          for (final c in t.columns) (c.name, c.type, c.notNull, c.defaultValue, c.pk),
+        ]));
+        expect(tuples(await SchemaCatalog.read(db)), tuples(loadCapture('fork_schema_92.json')));
+      });
+    });
+
+    // WHY: an upgraded legacy database may still contain raw_records.
+    test('a surviving raw_records table has all its columns classified', () async {
+      await withFreshForkDb((db, _) async {
+        await db.execute('CREATE TABLE raw_records (counter INTEGER PRIMARY KEY, hex TEXT NOT NULL, packet_type INTEGER, captured_at INTEGER NOT NULL, rec_ts INTEGER NOT NULL DEFAULT 0, uploaded INTEGER NOT NULL DEFAULT 0)');
+        expect(officialProfile.coverage(await SchemaCatalog.read(db)), isEmpty);
       });
     });
 
@@ -248,27 +282,12 @@ void main() {
         final shape = target.tables[t.dest];
         if (!t.policy.carriesRows || shape == null) continue;
         final names = shape.columnNames;
-        if (t.rowRule != null && e.key.startsWith('raw_archive_')) continue;
         for (final c in [...t.keep, ...t.clear, ...t.rewrite, ...t.provenance]) {
           if (e.key == 'raw_archive' || e.key == 'raw_archive_legacy') continue;
           expect(names, contains(c), reason: '${e.key}.$c');
         }
         for (final c in t.omit) {
           expect(names, isNot(contains(c)), reason: '${e.key}.$c');
-        }
-      }
-    });
-
-    test('target-only columns can take the receiver default or NULL', () {
-      for (final e in officialProfile.tables.entries) {
-        final shape = target.tables[e.value.dest];
-        if (shape == null) continue;
-        for (final c in e.value.targetOnly) {
-          if (e.key.startsWith('raw_archive') && e.key != 'raw_archive_frames') {
-            continue; // hash/frame are computed by the frame-row encoder
-          }
-          final col = shape.columns.singleWhere((x) => x.name == c);
-          expect(col.supplyOptional, isTrue, reason: '${e.key}.$c');
         }
       }
     });

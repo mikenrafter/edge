@@ -26,7 +26,7 @@ const officialProfile = OfficialProfile(
     'activity_suggestions': TableProfile(
       policy: TablePolicy.mapped,
       dest: 'activity_suggestions',
-      meaning: r'''Same table; supported decided nap/workout facts and corrected sport. No pending inference, meal/track enum or fork computed JSON.''',
+      meaning: r'''Same table; supported decided nap/workout facts; the user-corrected sport travels on linked sessions.type. No pending inference, meal/track enum or fork computed JSON.''',
       evidence: r'''`data/activity_store.dart:28`''',
       keep: ['id', 'kind', 'day_id', 'start_ts', 'end_ts', 'detection_start', 'detection_end', 'status', 'revision', 'linked_id', 'created_at', 'updated_at'],
       clear: ['details_json'],
@@ -214,12 +214,12 @@ const officialProfile = OfficialProfile(
     'device': TableProfile(
       policy: TablePolicy.mapped,
       dest: 'device',
-      meaning: r'''Same table; historical secondary attribution/wearing choice. No pairing credentials or live primary-device adoption. Report receiver skips.''',
+      meaning: r'''Same table; historical secondary attribution and wearing choice from every row, including primary. Clear remote_id; receiver adopts supported wearing choice and skips the rest of the primary row.''',
       evidence: r'''`schema.dart:1732`''',
       keep: ['id', 'adapter_id', 'label', 'tier', 'first_seen', 'last_seen', 'role', 'wearing', 'wearing_set_ts'],
       clear: ['remote_id', 'battery_pct', 'battery_ts'],
-      rowRule: r'''secondary devices only; the primary pairing row is skipped''',
-      merge: MergeKey(['id'], MergeRule.existingTargetWins, r'''primary row skipped'''),
+      rowRule: r'''every device row; primary row carried for wearing adoption, remote_id cleared; the receiver skips the rest of the primary row''',
+      merge: MergeKey(['id'], MergeRule.existingTargetWins, r'''primary row used only for wearing adoption; existing pairing stays local'''),
     ),
     'device_coverage': TableProfile(
       policy: TablePolicy.kept,
@@ -440,10 +440,10 @@ const officialProfile = OfficialProfile(
     'live_step_calibration_run': TableProfile(
       policy: TablePolicy.mapped,
       dest: 'live_step_calibration_run',
-      meaning: r'''Same table if present; only genuine recorded calibration observations, with target-supported counter/units. Derived-only fields cleared.''',
+      meaning: r'''Same table if present; genuine recorded calibration observations and measured run outputs, with target-supported counter/units.''',
       evidence: r'''`schema.dart:1663`''',
-      keep: ['category', 'run_ts', 'reference', 'expected_steps', 'raw_steps', 'cadence_spm', 'counter_version'],
-      clear: ['p2p_g', 'confidence'],
+      keep: ['category', 'run_ts', 'reference', 'expected_steps', 'raw_steps', 'cadence_spm', 'counter_version', 'p2p_g', 'confidence'],
+      rowRule: r'''recorded observations with target-supported category/reference and counter_version = 2 only''',
       merge: MergeKey(['category', 'run_ts'], MergeRule.plainReplace),
       optional: true,
     ),
@@ -575,7 +575,7 @@ const officialProfile = OfficialProfile(
       policy: TablePolicy.dropped,
       meaning: r'''Legacy only, dropped by current repair. Preserve if found in recovery; no unproven replay into decoded tables.''',
       evidence: r'''`data/db.dart:3693`, `:3986`''',
-      dropped: ['*'],
+      dropped: ['counter', 'hex', 'packet_type', 'captured_at', 'rec_ts', 'uploaded'],
       optional: true,
     ),
     'row_rev': TableProfile(
@@ -727,7 +727,7 @@ const officialProfile = OfficialProfile(
       evidence: r'''`schema.dart:3667`''',
       keep: ['device_id', 'utc_day', 'codec', 'from_ts', 'to_ts', 'onehz_rows', 'rr_rows', 'raw_bytes', 'fingerprint', 'tz_offset_min', 'blob', 'created_at', 'updated_at'],
       transforms: ['codec and fingerprint verified before expansion'],
-      merge: MergeKey(['device_id', 'utc_day'], MergeRule.adoptedByEmptyTargetOnly, r'''local wins; restore only adds'''),
+      merge: MergeKey(['device_id', 'utc_day'], MergeRule.fillMissing, r'''local wins by (device_id, utc_day); restore only adds missing archive rows'''),
     ),
     'symptom_entry': TableProfile(
       policy: TablePolicy.dropped,
@@ -738,7 +738,7 @@ const officialProfile = OfficialProfile(
     'sync_cursor': TableProfile(
       policy: TablePolicy.mapped,
       dest: 'sync_cursor',
-      meaning: r'''Only `decoded_pruned_before`: first local midnight at or after the oldest exact second in mapped decoded tables after expansion/deletion, capped at the fork cursor; no row if the fork has none. Drop all other cursors. See §4.3.''',
+      meaning: r'''Only `decoded_pruned_before`: compute MIN(rec_ts) WHERE rec_ts > 0 in mapped decoded tables after expansion/deletion. Carry the first local midnight at or after it, capped at the fork cursor; no row if the fork has none. NULL/non-positive rec_ts is not exact input. Drop all other cursors. See §4.3.''',
       evidence: r'''`data/db.dart:1160`''',
       keep: ['name', 'value', 'updated_at'],
       transforms: ['decoded_pruned_before recomputed from mapped exact input'],

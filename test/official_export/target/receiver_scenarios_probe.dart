@@ -60,6 +60,18 @@ Future<T> _withFreshTarget<T>(
 
 Future<BoundaryObservation> _boundary(String candidate) => _withFreshTarget((db) async {
   await LocalDb.importFromDbFile('$_dir/$candidate');
+  // WHY: a cursor verdict alone does not prove complete restored input exists.
+  // Hand-counted hourly fixture span, d4..d7 = 24 parents, d8 = one parent.
+  for (var day = 4; day <= 8; day++) {
+    final rows = await db.rawQuery(
+      "SELECT rec_ts, hr FROM decoded_onehz WHERE device_id = '' AND rec_ts >= ? AND rec_ts < ? ORDER BY rec_ts",
+      [dayStartEpoch(day), dayStartEpoch(day + 1)],
+    );
+    expect(rows.map((r) => r['rec_ts']).toList(), [
+      for (var hour = 0; hour < (day == 8 ? 1 : 24); hour++) dayStartEpoch(day) + hour * 3600,
+    ], reason: '$candidate d$day exact decoded rows');
+    expect(rows.map((r) => r['hr']).toSet(), {55});
+  }
   final cursor = await LocalDb.getCursorInt(LocalDb.kDecodedPrunedBeforeCursor);
   return BoundaryObservation(
     cursor: cursor,
@@ -97,7 +109,10 @@ Future<UnitObservation> _units(String candidate) => _withFreshTarget(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  final report = <String, Object?>{};
+  final report = <String, Object?>{
+    'fork_head': Platform.environment['OFFICIAL_FORK_HEAD'],
+    'fork_status_porcelain': Platform.environment['OFFICIAL_FORK_STATUS'],
+  };
   tearDownAll(() async {
     Directory(_out).createSync(recursive: true);
     File('$_out/receiver-scenarios.json').writeAsStringSync(
@@ -131,6 +146,38 @@ void main() {
       expect(boundaryViolations(o), contains('cut day $d3 is not labelled deleted'));
       expect(boundaryViolations(o), contains('boundary day $d4 does not abstain'));
     });
+  });
+
+  // WHY: primary rows carry the user's choice, while pairing belongs to this install.
+  // P2 must repeat these cases against the production mapper's output.
+  group('primary wearing adoption through the tagged receiver', () {
+    test('fresh unpaired target stashes the choice for pairing', () async {
+      await _withFreshTarget((db) async {
+        await LocalDb.importFromDbFile('$_dir/policy.db');
+        expect(await db.query('device', where: "id = ''"), isEmpty);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getStringList(LocalDb.kPendingWornOnPref), ['', '2', '1']);
+        report['wearing/fresh-unpaired'] = prefs.getStringList(LocalDb.kPendingWornOnPref);
+      });
+    });
+
+    for (final alreadyChosen in [false, true]) {
+      test('paired target ${alreadyChosen ? 'keeps its choice' : 'adopts an unset choice'}', () async {
+        await _withFreshTarget((db) async {
+          await LocalDb.importFromDbFile('$_dir/policy.db');
+          final primary = (await db.query('device', where: "id = ''")).single;
+          expect(primary['remote_id'], 'target-handle');
+          expect(primary['wearing'], alreadyChosen ? 1 : 2);
+          expect(primary['wearing_set_ts'], alreadyChosen ? 99 : 1);
+          report['wearing/paired/$alreadyChosen'] = primary;
+        }, populate: (db) async {
+          await LocalDb.upsertDevice(adapterId: 'whoop', remoteId: 'target-handle');
+          if (alreadyChosen) {
+            await db.update('device', {'wearing': 1, 'wearing_set_ts': 99}, where: "id = ''");
+          }
+        });
+      });
+    }
   });
 
   group('populated target, same-label different-unit custom definition', () {

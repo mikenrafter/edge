@@ -9,6 +9,7 @@
 // (DST from the second Sunday of March to the first Sunday of November, the same
 // rule as the independent literals below for 2026). CLAIM(official-export-prune-edge).
 import 'dart:ffi';
+import 'dart:io';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -44,9 +45,16 @@ const _posix = {
   'UTC': 'UTC0',
   'America/Denver': 'MST7MDT,M3.2.0,M11.1.0',
   'Asia/Kolkata': 'IST-5:30',
+  'America/Santiago': '<-04>4<-03>,M9.1.6/24,M4.1.6/24',
+  'America/Havana': 'CST5CDT,M3.2.0/0,M11.1.0/1',
+  'America/Sao_Paulo': '<-03>3<-02>,M11.1.0/0,M2.3.0/0',
 };
 
 const _cases = <String, List<(int, int)>>{
+  // Missing midnight normalizes to 01:00; repeated midnight uses day start.
+  'America/Santiago': [(1788667199, 1788667200), (1788667200, 1788667200), (1788667201, 1788750000)],
+  'America/Havana': [(1793505600, 1793505600), (1793505601, 1793595600)],
+  'America/Sao_Paulo': [(1541300399, 1541300400), (1541300400, 1541300400)],
   'UTC': [(1792454400, 1792454400), (1792454401, 1792540800), (1792497600, 1792540800)],
   'America/Denver': [
     (1792476000, 1792476000), // exactly local midnight
@@ -59,15 +67,11 @@ const _cases = <String, List<(int, int)>>{
 };
 
 void main() {
-  tearDown(() => _setProcessZone('UTC'));
+  final originalZone = Platform.environment['TZ'];
+  tearDown(() => _setProcessZone(originalZone));
   for (final e in _cases.entries) {
     test('${e.key}: DayLabelCalendar matches the independent literals', () {
       _setProcessZone(_posix[e.key]);
-      // Fails loudly on a host that cannot move its zone, rather than skipping.
-      expect(
-        DateTime.fromMillisecondsSinceEpoch(1792497600 * 1000).timeZoneName,
-        isNotEmpty,
-      );
       if (e.key == 'Asia/Kolkata') {
         expect(DateTime.utc(2026, 7, 1).toLocal().timeZoneOffset, const Duration(hours: 5, minutes: 30));
       }

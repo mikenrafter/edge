@@ -2,8 +2,8 @@
 """Focused mutation checks for P1 (run through boat-run). Each mutation edits one
 source file, runs the tests that must notice it, and REQUIRES a failing test.
 Every file is restored in `finally`, even when a run is interrupted.
-Usage: python3 -I run_mutations.py [unit|receiver]"""
-import pathlib, subprocess, sys
+Usage: python3 -I run_mutations.py [unit|receiver|harness|layout]"""
+import json, os, pathlib, re, subprocess, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 L = 'lib/data/official_export/'
@@ -26,8 +26,24 @@ UNIT = {
  'cursor: cap above the fork removed': (L+'prune_cursor.dart',
     "return edge > forkCursorSec\n      ? PrunedBeforeChoice(forkCursorSec, PrunedBeforeReason.cappedAtForkCursor)\n      : PrunedBeforeChoice(edge, PrunedBeforeReason.oldestExactMidnight);",
     "return PrunedBeforeChoice(edge, PrunedBeforeReason.oldestExactMidnight);", [T+'prune_cursor_test.dart']),
- 'cursor: exact midnight rounds up a day': (T+'prune_cursor_test.dart',
-    "start.millisecondsSinceEpoch >= sec * 1000", "start.millisecondsSinceEpoch > sec * 1000", [T+'prune_cursor_test.dart']),
+ 'cursor: exact midnight rounds up a day': (L+'prune_cursor.dart',
+    "return start >= sec ? start", "return start > sec ? start", [T+'prune_cursor_process_zone_test.dart']),
+ 'cursor: no fork cursor emits an input value': (L+'prune_cursor.dart',
+    "return const PrunedBeforeChoice(null, PrunedBeforeReason.noForkCursor);",
+    "return PrunedBeforeChoice(oldestExactSec, PrunedBeforeReason.noForkCursor);", [T+'prune_cursor_test.dart']),
+ 'cursor: no exact input drops the fork cursor': (L+'prune_cursor.dart',
+    "return PrunedBeforeChoice(forkCursorSec, PrunedBeforeReason.noExactInput);",
+    "return const PrunedBeforeChoice(null, PrunedBeforeReason.noExactInput);", [T+'prune_cursor_test.dart']),
+ 'profile: decoded_onehz.hr unclassified on real schema': (L+'profile_tables.dart',
+    "'rec_ts', 'counter', 'hr', 'ax'", "'rec_ts', 'counter', 'ax'", [T+'profile_coverage_test.dart']),
+ 'fork catalog: kept hr type drifts without renaming': ('lib/data/db/schema.dart',
+    "        hr INTEGER,\n        ax REAL,", "        hr TEXT,\n        ax REAL,", [T+'profile_coverage_test.dart']),
+ 'oldest exact: ts_ms used instead of rec_ts': (T+'candidate_stub.dart',
+    "SELECT rec_ts FROM decoded_onehz WHERE rec_ts > 0 UNION ALL ",
+    "SELECT ts_ms / 1000 AS rec_ts FROM decoded_onehz WHERE rec_ts > 0 UNION ALL ", [T+'payload_requirements_test.dart']),
+ 'oldest exact: invalid rec_ts included': (T+'candidate_stub.dart',
+    "SELECT rec_ts FROM decoded_onehz WHERE rec_ts > 0 UNION ALL ",
+    "SELECT rec_ts FROM decoded_onehz UNION ALL ", [T+'payload_requirements_test.dart']),
  'calendar: DST day treated as 24 h (flat +86400)': (L+'prune_cursor.dart',
     "return start >= sec ? start : localDayEndSec(label)!;", "return start >= sec ? start : start + 86400;", [T+'prune_cursor_process_zone_test.dart']),
  'payload: dropped-table rows not checked': (L+'payload_requirements.dart',
@@ -44,16 +60,33 @@ RECEIVER = {
     "  if (unit != 'mg') {", "  if (false) {", ['receiver']),
 }
 
+LAYOUT = {
+ 'payload: view objects ignored': (L+'payload_requirements.dart',
+    "for (final key in {...expectedObjects.keys, ...actualObjects.keys}) {",
+    "for (final key in {...expectedObjects.keys, ...actualObjects.keys}) { if (key.$1 == 'view') continue;",
+    [T+'payload_requirements_test.dart']),
+}
+HARNESS = {
+ 'receiver proof: pub-get lock comparison removed': (T+'harness/prepare_target.sh',
+    "cmp pubspec.lock \"$OUT_DIR/tagged-pubspec.lock\" || { echo 'pub get changed the tagged receiver lock' >&2; exit 1; }",
+    ": # mutated: accept a changed receiver lock", ['harness']),
+}
+
 def run(files):
-    if files == ['receiver']:
+    if files == ['harness']:
+        cmd = ['bash', T+'harness/check_target_integrity.sh']
+    elif files == ['receiver']:
         cmd = ['bash', T+'harness/run_receiver_scenarios.sh']
     else:
         cmd = ['flutter', 'test', '--concurrency=1', '-r', 'failures-only'] + files
     p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     return p.returncode, p.stdout + p.stderr
 
-table = UNIT if (sys.argv[1:] or ['unit'])[0] == 'unit' else RECEIVER
+table = {'unit': UNIT, 'receiver': RECEIVER, 'harness': HARNESS, 'layout': LAYOUT}[(sys.argv[1:] or ['unit'])[0]]
 bad = []
+results = []
+evidence = ROOT / 'build/official_probe/mutations'
+evidence.mkdir(parents=True, exist_ok=True)
 for name, (path, old, new, files) in table.items():
     f = ROOT / path
     original = f.read_text()
@@ -65,7 +98,16 @@ for name, (path, old, new, files) in table.items():
         compile_error = 'Error:' in out and 'Expected:' not in out
         killed = code != 0 and not compile_error
         print(f"{'KILLED' if killed else 'SURVIVED'}: {name} (exit {code}{', compile error' if compile_error else ''})", flush=True)
+        evidence.joinpath(re.sub(r'[^a-z0-9]+', '-', name.lower()) + '.log').write_text(
+            json.dumps({'fork_head': os.environ.get('OFFICIAL_FORK_HEAD'),
+                        'fork_status_porcelain': os.environ.get('OFFICIAL_FORK_STATUS')}) + '\n' + out)
+        results.append(dict(name=name, path=path, exit=code, killed=killed, compile_error=compile_error))
         if not killed: bad.append(name)
     finally:
         f.write_text(original)
+evidence.joinpath((sys.argv[1:] or ['unit'])[0] + '.json').write_text(json.dumps({
+    'fork_head': os.environ.get('OFFICIAL_FORK_HEAD'),
+    'fork_status_porcelain': os.environ.get('OFFICIAL_FORK_STATUS'),
+    'mutations': results,
+}, indent=2) + '\n')
 sys.exit(1 if bad else 0)

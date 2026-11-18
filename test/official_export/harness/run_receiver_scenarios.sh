@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fork side writes candidate files; the unchanged v0.12.2 package imports them.
 source "$(dirname "$0")/common.sh"
-bash "$(dirname "$0")/prepare_target.sh" >/dev/null
+bash "$(dirname "$0")/prepare_target.sh"
 export CANDIDATES_DIR="$OUT_DIR/candidates"
 rm -rf "$CANDIDATES_DIR"
 cd "$FORK_ROOT"

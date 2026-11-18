@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# P1 gate: analyzer on the new code, the new unit tests, and test/guards.
+# P1 focused gate. Also run the import-graph selection from the P1 fix brief.
 source "$(dirname "$0")/common.sh"
 cd "$FORK_ROOT"
 flutter gen-l10n >/dev/null

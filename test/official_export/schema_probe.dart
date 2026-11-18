@@ -86,6 +86,8 @@ void main() {
       await File('${out.path}/schema-${LocalDb.schemaVersion}-$label.json')
           .writeAsString(
             const JsonEncoder.withIndent('  ').convert({
+              'fork_head': Platform.environment['OFFICIAL_FORK_HEAD'],
+              'fork_status_porcelain': Platform.environment['OFFICIAL_FORK_STATUS'],
               'schemaVersion': LocalDb.schemaVersion,
               'opened': opened,
               'reopened': reopened,

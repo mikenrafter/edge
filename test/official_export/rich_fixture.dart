@@ -148,6 +148,17 @@ Map<String, List<Map<String, Object?>>> _specificRows() {
   ];
   return {
     'decoded_onehz': oneHz,
+    'device': [
+      {'id': '', 'adapter_id': 'whoop', 'remote_id': 'fork-primary-handle',
+       'role': 'primary', 'wearing': 2, 'wearing_set_ts': 1, 'first_seen': 1, 'last_seen': 1},
+      {'id': 'ring-A', 'remote_id': 'fork-secondary-handle',
+       'wearing': 1, 'wearing_set_ts': 1, 'first_seen': 1, 'last_seen': 1},
+    ],
+    'live_step_calibration_run': [
+      {'category': 'brisk', 'run_ts': 1, 'reference': 'wearerCount',
+       'expected_steps': 100, 'raw_steps': 97, 'cadence_spm': 98.0,
+       'p2p_g': 1.2, 'confidence': 0.83, 'counter_version': 2},
+    ],
     'observation': [
       {
         'device_id': 'vendor-A', 'ts_ms': (dayStart(5) + 60) * 1000,

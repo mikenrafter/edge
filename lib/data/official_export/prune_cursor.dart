@@ -56,9 +56,9 @@ class DayLabelCalendar implements LocalCalendar {
 ///
 /// [forkCursorSec] is the fork's `decoded_pruned_before`, null when it has none.
 /// [oldestExactSec] is the oldest exact second present in the MAPPED decoded
-/// tables (after archive expansion, live-winner resolution and deletion
-/// windows), null when none survives. Both are epoch seconds and must be
-/// positive: zero would otherwise read as "everything before 1970 was pruned".
+/// tables: MIN(rec_ts) WHERE rec_ts > 0 after archive expansion, live-winner
+/// resolution and deletion windows. NULL/non-positive input means no exact
+/// second survives. The fork cursor, when present, must be positive.
 PrunedBeforeChoice chooseDecodedPrunedBefore({
   required int? forkCursorSec,
   required int? oldestExactSec,
@@ -67,13 +67,10 @@ PrunedBeforeChoice chooseDecodedPrunedBefore({
   if (forkCursorSec != null && forkCursorSec <= 0) {
     throw ArgumentError.value(forkCursorSec, 'forkCursorSec', 'must be positive');
   }
-  if (oldestExactSec != null && oldestExactSec <= 0) {
-    throw ArgumentError.value(oldestExactSec, 'oldestExactSec', 'must be positive');
-  }
   if (forkCursorSec == null) {
     return const PrunedBeforeChoice(null, PrunedBeforeReason.noForkCursor);
   }
-  if (oldestExactSec == null) {
+  if (oldestExactSec == null || oldestExactSec <= 0) {
     return PrunedBeforeChoice(forkCursorSec, PrunedBeforeReason.noExactInput);
   }
   final edge = calendar.midnightAtOrAfter(oldestExactSec);

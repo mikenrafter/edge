@@ -101,7 +101,7 @@ class TableShape {
 
 /// Every table of one database file, by name.
 class SchemaCatalog {
-  SchemaCatalog(this.tables);
+  SchemaCatalog(this.tables, {this.objects = const []});
 
   /// Parses the probe's JSON shape (`tables` + `objects`); throws on a
   /// malformed document rather than guessing.
@@ -133,7 +133,13 @@ class SchemaCatalog {
         ],
       );
     }
-    return SchemaCatalog(tables);
+    return SchemaCatalog(tables, objects: [
+      for (final o in objects)
+        if (const ['index', 'trigger', 'view'].contains(o['type']) &&
+            !(o['name'] as String).startsWith('sqlite_'))
+          (type: o['type'] as String, name: o['name'] as String,
+           table: o['tbl_name'] as String, sql: o['sql'] as String?),
+    ]);
   }
 
   /// Reads a live connection. SQLite's own `sqlite_%` tables are not user data;
@@ -165,8 +171,20 @@ class SchemaCatalog {
         ],
       );
     }
-    return SchemaCatalog(tables);
+    final objects = await db.rawQuery(
+      "SELECT type, name, tbl_name, sql FROM sqlite_master "
+      "WHERE type IN ('index', 'trigger', 'view') "
+      "AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY type, name",
+    );
+    return SchemaCatalog(tables, objects: [
+      for (final o in objects)
+        (type: o['type'] as String, name: o['name'] as String,
+         table: o['tbl_name'] as String, sql: o['sql'] as String?),
+    ]);
   }
 
   final Map<String, TableShape> tables;
+
+  /// User indexes, triggers and views, excluding SQLite-owned autoindexes.
+  final List<({String type, String name, String table, String? sql})> objects;
 }

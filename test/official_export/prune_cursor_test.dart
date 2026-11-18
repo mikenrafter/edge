@@ -126,14 +126,15 @@ void main() {
         expect(c.reason, PrunedBeforeReason.oldestExactMidnight);
       });
 
-      test('non-positive instants are rejected, never treated as epoch zero',
+      test('invalid fork cursors reject; non-positive exact seconds are absent',
           () {
         expect(() => _choose(zone, fork: 0, oldest: 1), throwsArgumentError);
         expect(() => _choose(zone, fork: -5, oldest: null), throwsArgumentError);
-        expect(
-          () => _choose(zone, fork: t['d5'], oldest: 0),
-          throwsArgumentError,
-        );
+        for (final oldest in [null, 0, -1]) {
+          final c = _choose(zone, fork: t['d5'], oldest: oldest);
+          expect(c.sec, t['d5']);
+          expect(c.reason, PrunedBeforeReason.noExactInput);
+        }
       });
     });
   }

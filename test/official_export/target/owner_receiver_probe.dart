@@ -27,7 +27,10 @@ class _Paths extends PathProviderPlatform {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  final report = <String, Object?>{};
+  final report = <String, Object?>{
+    'fork_head': Platform.environment['OFFICIAL_FORK_HEAD'],
+    'fork_status_porcelain': Platform.environment['OFFICIAL_FORK_STATUS'],
+  };
   tearDownAll(() {
     final out = Directory(Platform.environment['OFFICIAL_PROBE_OUT'] ?? 'build/official_probe')
       ..createSync(recursive: true);
