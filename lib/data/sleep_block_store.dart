@@ -36,7 +36,9 @@ class _StoredBlock {
       },
     );
     final a = row['detected_start'], b = row['detected_end'], day = row['detected_day'];
-    history = switch (row['history']) {
+    history = kind == null || source == null || rawState == null
+        ? const DetectedUnavailable('unknown stored block shape')
+        : switch (row['history']) {
       'absent' => const DetectedAbsent(),
       'known' when a is int && b is int && b > a && day is String =>
         DetectedKnown(startTs: a, endTs: b, sourceDay: day),
@@ -284,7 +286,7 @@ abstract final class SleepBlockStore {
 
   static Future<List<NapEdit>> napEdits(DatabaseExecutor tx, String day) async {
     InputReads.note('sleep_nap', day);
-    final rows = await tx.query('sleep_block',where: "kind = 'nap' AND owner_day = ? OR history = 'known' AND detected_day = ? AND owner_day <> ?",
+    final rows = await tx.query('sleep_block',where: "kind = 'nap' AND (owner_day = ? OR history = 'known' AND detected_day = ? AND owner_day <> ?)",
       whereArgs:[day,day,day],orderBy:'start_ts, id');
     final out = <NapEdit>[];
     for (final row in rows) {
