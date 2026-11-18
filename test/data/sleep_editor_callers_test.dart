@@ -525,6 +525,12 @@ void main() {
       await expectLater(store.confirm(next,startTs:next.startTs,endTs:next.endTs,auto:auto),throwsA(isA<DatabaseException>()));
       expect(await _everything(db),before);
       await db.execute('DROP TRIGGER crash_suggestion');
+      final kept=(await store.get(s.id))!;
+      await store.discard(kept);
+      expect((await store.get(s.id))!.status,ActivityReviewStatus.discarded);
+      expect((await db.query('sleep_block',where:'id = ?',whereArgs:[block['id']])).single['state'],'removed');
+      expect(await db.query('activity_review_days'),isEmpty);
+
     }
   });
   // WHY: repository read/save must expose typed references, not natural keys.
@@ -537,6 +543,13 @@ void main() {
       commands:[SetIntervals(ref,_a0+60,_a0+2400)],expectedRevisions:{_day:read.revision},draftGeneration:read.draftGeneration)),isA<SleepSaved>());
     final after=await repo.readSleepEditor(_day);
     expect(after.entries.single.id,ref.id);expect(after.entries.single.revision,ref.expectedRevision+1);
+    await db.execute("CREATE TRIGGER fail_block BEFORE INSERT ON sleep_block BEGIN SELECT RAISE(ABORT,'storage failure'); END");
+    final before=await _everything(db);
+    await expectLater(repo.putNap(dayId:_day,startTs:_a0+18000,endTs:_a0+20400,source:'manual'),
+      completion(isA<SleepFailed>()));
+    expect(await _everything(db),before);
+    await db.execute('DROP TRIGGER fail_block');
+
   });
   test('C23 editor preflight and Save carry the same merge authorization',() async {
     await rawNap(_a0,_a0+2400);
