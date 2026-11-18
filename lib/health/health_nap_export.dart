@@ -329,7 +329,7 @@ class HealthNapExporter {
       if (!written) {
         await _recordPending(_kPendingNapExports, {
           'dayId': dayId,
-          if(blockId!=null) 'blockId':blockId,
+          'blockId': ?blockId,
           'startTs': startTs,
           'endTs': endTs,
         });
@@ -341,7 +341,7 @@ class HealthNapExporter {
       debugPrintSynchronously('[health] exportNap $dayId $startTs-$endTs: $e');
       await _recordPending(_kPendingNapExports, {
         'dayId': dayId,
-          if(blockId!=null) 'blockId':blockId,
+          'blockId': ?blockId,
         'startTs': startTs,
         'endTs': endTs,
       });
