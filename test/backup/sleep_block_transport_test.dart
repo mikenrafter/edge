@@ -216,6 +216,8 @@ void main() {
     final path=await backup([block('a'),block('b',s:start+3600,e:start+6000)]);
     await import(path); expect(await rows(),hasLength(2));
     expect((await notes()).where((e)=>e.kind=='close-in-source'),hasLength(1));
+    expect((await LocalDb.importFromDbFile(path)).sleepCloseReview,isEmpty,
+      reason:'identical re-import has no newly imported historical pair');
   });
   // catches: close imported neighbors merge automatically or disappear.
   test('T14 close local pair remains live historical sleep', () async {
