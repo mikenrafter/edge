@@ -117,15 +117,17 @@ PulsePrepared preparePulseEvidenceHeavy(PulsePrepareInput input) {
 
 @SendableShape('Compressed bytes and a checksum string; sendable_decodePulseEvidenceHeavy_test')
 class PulseDecodeInput {
-  const PulseDecodeInput(this.bytes, this.checksum);
+  const PulseDecodeInput(this.bytes, this.checksum, {this.importMeta});
   final List<int> bytes;
   final String checksum;
+  final Map<String, Object?>? importMeta;
 }
 
 @SendableShape('A sealed read result; sendable_decodePulseEvidenceHeavy_test')
 class PulseDecoded {
-  const PulseDecoded(this.read);
+  const PulseDecoded(this.read, {this.imported});
   final PulseEvidenceRead read;
+  final PulseImportedRecording? imported;
 }
 
 @heavy
@@ -133,7 +135,39 @@ PulseDecoded decodePulseEvidenceHeavy(PulseDecodeInput input) {
   WorkerInit.ensure(_kPulseWorker);
   assertWorker();
   WorkerAudit.entered('decodePulseEvidenceHeavy');
-  return PulseDecoded(decodePulseEvidence(input.bytes, checksum: input.checksum));
+  final meta = input.importMeta;
+  var read = decodePulseEvidence(input.bytes, checksum: input.checksum,
+      expectedExpandedBytes: meta == null ? null : (meta['expanded_bytes'] as num?)?.toInt() ?? -1);
+  if (meta == null) return PulseDecoded(read);
+  if (meta['encoded_bytes'] != input.bytes.length) {
+    read = const PulseEvidenceCorrupt('encoded size mismatch');
+  }
+  final evidence = switch (read) {
+    PulseEvidenceAvailable(:final evidence) || PulseEvidencePartial(:final evidence) => evidence,
+    _ => null,
+  };
+  if (evidence != null && evidence.episodeId != meta['episode_id']) {
+    read = const PulseEvidenceCorrupt('recording identity mismatch');
+  }
+  final status = switch (read) {
+    PulseEvidenceAvailable() => PulseEvidenceStatus.available,
+    PulseEvidencePartial() => PulseEvidenceStatus.partial,
+    PulseEvidenceUnsupported() => PulseEvidenceStatus.unsupported,
+    _ => PulseEvidenceStatus.corrupt,
+  };
+  final reason = switch (read) {
+    PulseEvidenceCorrupt(:final reason) || PulseEvidenceUnsupported(:final reason) => reason,
+    _ => null,
+  };
+  return PulseDecoded(read, imported: PulseImportedRecording({
+    ...meta,
+    if (reason == null) ...{
+      'payload': input.bytes,
+      'encoded_bytes': input.bytes.length,
+      'retained_json': jsonEncode([[evidence!.startMs, evidence.endMs]]),
+      'omitted_json': jsonEncode([for (final r in evidence.omitted) [r.startMs, r.endMs, r.reason]]),
+    },
+  }, status, reason));
 }
 
 /// Beat id convention shared with [PulseEpisodeWorker]: `source:recordTsMs:beatIndex`.
@@ -256,6 +290,14 @@ class PulseEpisodeWorker {
   static Future<PulseEvidenceRead> decode(List<int> bytes, String checksum) async {
     final input = PulseDecodeInput(bytes, checksum);
     return (await Isolate.run(() => decodePulseEvidenceHeavy(input))).read;
+  }
+
+  /// Import validation stays in the registered decoder entry, before a main
+  /// database transaction is opened. Invalid bytes never become stored evidence.
+  static Future<PulseImportedRecording> prepareImportedRecording(
+      Map<String, Object?> row, List<int> bytes) async {
+    final input = PulseDecodeInput(bytes, row['checksum'] as String? ?? '', importMeta: row);
+    return (await Isolate.run(() => decodePulseEvidenceHeavy(input))).imported!;
   }
 
   /// Detect, prepare, publish and advance the checkpoint for one range. The

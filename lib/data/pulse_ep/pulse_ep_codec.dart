@@ -148,6 +148,16 @@ final class PulseEvidenceCorrupt extends PulseEvidenceRead {
 }
 
 
+/// Worker-validated import contribution. Unavailable recordings carry a typed
+/// status/reason and no payload; only canonical rows may reach the write lock.
+class PulseImportedRecording {
+  const PulseImportedRecording(this.row, this.status, this.reason);
+  final Map<String, Object?> row;
+  final PulseEvidenceStatus status;
+  final String? reason;
+  bool get available => status == PulseEvidenceStatus.available || status == PulseEvidenceStatus.partial;
+}
+
 const _labelSets = 'labelSets';
 
 class _TooBig implements Exception {
@@ -320,8 +330,11 @@ PulseEncodeResult encodePulseEvidence(PulseEvidence evidence) {
   return const PulseEncodeRefused('evidence does not fit the 1 MiB envelope');
 }
 
-PulseEvidenceRead decodePulseEvidence(List<int> bytes, {required String checksum}) {
+PulseEvidenceRead decodePulseEvidence(List<int> bytes, {
+  required String checksum, int? expectedExpandedBytes,
+}) {
   if (bytes.isEmpty) return const PulseEvidenceCorrupt('blank recording');
+  if (bytes.length > kPulseEvidenceMaxBytes) return const PulseEvidenceCorrupt('encoded size exceeds the 1 MiB cap');
   final Uint8List expanded;
   try {
     final sink = _CappedSink();
@@ -333,6 +346,9 @@ PulseEvidenceRead decodePulseEvidence(List<int> bytes, {required String checksum
     return const PulseEvidenceCorrupt('expanded size exceeds the 1 MiB cap');
   } catch (_) {
     return const PulseEvidenceCorrupt('not a valid compressed recording');
+  }
+  if (expectedExpandedBytes != null && expanded.length != expectedExpandedBytes) {
+    return const PulseEvidenceCorrupt('expanded size mismatch');
   }
   if (sha256.convert(expanded).toString() != checksum) {
     return const PulseEvidenceCorrupt('checksum mismatch');

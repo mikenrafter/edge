@@ -880,8 +880,9 @@ class PulseEpisodeStore {
   static Future<bool> mergeImportedRow(
     DatabaseExecutor txn,
     String table,
-    Map<String, Object?> row,
-  ) async {
+    Map<String, Object?> row, {
+    PulseImportedRecording? recording,
+  }) async {
     switch (table) {
       case 'pulse_ep_episode':
         final changed = (await txn.insert('pulse_ep_episode', row,
@@ -909,15 +910,23 @@ class PulseEpisodeStore {
         if (local.isEmpty || sum is! String || sum.isEmpty || local.first['checksum'] != sum) {
           return false;
         }
-        final size = (row['encoded_bytes'] as num?)?.toInt() ?? 0;
-        if (size <= 0 || size > kPulseEvidenceMaxBytes) return false;
-        // The blob was read from the import source BEFORE this main transaction
-        // opened (a source read inside it can hit SQLITE_BUSY on Android).
-        final payload = row['payload'];
-        if (payload is! List<int> || payload.length != size) return false;
-        return (await txn.insert('pulse_ep_evidence', row,
-                conflictAlgorithm: ConflictAlgorithm.ignore)) >
-            0;
+        if (recording == null) return false;
+        if (!recording.available) {
+          // Preserve valid local content if the foreign contribution is corrupt.
+          final present = await txn.rawQuery(
+              'SELECT 1 FROM pulse_ep_evidence WHERE episode_id = ? AND revision = ?', [id, rev]);
+          if (present.isEmpty) {
+            await txn.update('pulse_ep_revision', {'evidence_status': recording.status.wire},
+                where: 'episode_id = ? AND revision = ?', whereArgs: [id, rev]);
+            await txn.update('pulse_ep_episode', {'refusal': recording.reason},
+                where: 'id = ? AND revision = ?', whereArgs: [id, rev]);
+          }
+          return false;
+        }
+        await txn.update('pulse_ep_revision', {'evidence_status': recording.status.wire},
+            where: 'episode_id = ? AND revision = ?', whereArgs: [id, rev]);
+        return (await txn.insert('pulse_ep_evidence', recording.row,
+                conflictAlgorithm: ConflictAlgorithm.ignore)) > 0;
       case 'pulse_ep_outbox':
         return _mergeOutbox(txn, row);
       case 'pulse_ep_admission':
@@ -937,8 +946,17 @@ class PulseEpisodeStore {
     var theirs = PulseDelivery.parse(row['state']);
     // A foreign pending claim may have shown an alert: unknown, never retried.
     if (theirs == PulseDelivery.pending) theirs = PulseDelivery.unknown;
+    final usable = (await txn.rawQuery(
+      'SELECT 1 FROM pulse_ep_revision r JOIN pulse_ep_evidence v '
+      'ON v.episode_id = r.episode_id AND v.revision = r.revision '
+      "WHERE r.episode_id = ? AND r.revision = ? AND r.evidence_status IN ('available','partial')",
+      [row['episode_id'], row['revision']],
+    )).isNotEmpty;
+    final unavailable = !theirs.consumed && !usable;
+    if (unavailable) theirs = PulseDelivery.notSent;
     final imported = {
       ...row,
+      if (unavailable) 'reason': 'evidence unavailable',
       'state': theirs.wire,
       'token': null,
       'claim_ms': null,

@@ -2015,7 +2015,9 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                       'retained_json, omitted_json, created_ms'
                   : '*';
           var sourceQueryMs = 0;
+          final pulseRecordings = <(Object?, Object?), PulseImportedRecording>{};
           Future<List<Map<String, Object?>>> nextPage() async {
+            pulseRecordings.clear();
             final queryWatch = Stopwatch()..start();
             final rows = await src.rawQuery(
               'SELECT rowid AS $rowidKey, $projection FROM $t '
@@ -2026,13 +2028,13 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
               final withBlobs = <Map<String, Object?>>[];
               for (final r in rows) {
                 final size = (r['encoded_bytes'] as num?)?.toInt() ?? 0;
-                withBlobs.add({
-                  ...r,
-                  'payload': size <= 0 || size > kPulseEvidenceMaxBytes
-                      ? null
-                      : await PulseEpisodeStore.readPayload(src,
-                          r['episode_id'] as String, (r['revision'] as num).toInt(), size),
-                });
+                final payload = size <= 0 || size > kPulseEvidenceMaxBytes ? <int>[] :
+                    await PulseEpisodeStore.readPayload(src,
+                        r['episode_id'] as String, (r['revision'] as num).toInt(), size);
+                final metadata = Map<String, Object?>.of(r)..remove(rowidKey);
+                final recording = await PulseEpisodeWorker.prepareImportedRecording(metadata, payload);
+                pulseRecordings[(r['episode_id'], r['revision'])] = recording;
+                withBlobs.add(r);
               }
               sourceQueryMs += queryWatch.elapsedMilliseconds;
               return withBlobs;
@@ -2535,7 +2537,13 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                 }
                 if (t.startsWith('pulse_ep_')) {
                   // Stable-identity merge, never REPLACE (see mergeImportedRow).
-                  if (await PulseEpisodeStore.mergeImportedRow(txn, t, row)) {
+                  final recording = t == 'pulse_ep_evidence'
+                      ? pulseRecordings[(row['episode_id'], row['revision'])] : null;
+                  if (recording != null && !recording.available) {
+                    final key = '_pulse_evidence_${recording.status.wire}';
+                    counts[key] = (counts[key] ?? 0) + 1;
+                  }
+                  if (await PulseEpisodeStore.mergeImportedRow(txn, t, row, recording: recording)) {
                     copied++;
                   }
                   continue;

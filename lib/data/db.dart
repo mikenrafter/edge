@@ -31,11 +31,12 @@ import 'package:sqflite/sqflite.dart';
 
 import 'home_snapshot_store.dart';
 import '../compute/processing_context.dart';
+import '../compute/pulse_ep_worker.dart' show PulseEpisodeWorker;
 import '../compute/pulse_alert_record.dart';
 import '../compute/substrate.dart' show beatTimesMs;
 import '../compute/groups/input_catalogue.dart' show InputKind, kInputCatalogue;
 import 'db/input_read_tracker.dart';
-import 'pulse_ep/pulse_ep_codec.dart' show kPulseEvidenceMaxBytes;
+import 'pulse_ep/pulse_ep_codec.dart' show kPulseEvidenceMaxBytes, PulseImportedRecording;
 import 'pulse_ep/pulse_ep_store.dart';
 import 'track_model.dart';
 import 'track_range_cut.dart';

@@ -41,7 +41,9 @@ enum PulseEvidenceStatus {
   available('available'),
   partial('partial'),
   expired('expired'),
-  omitted('omitted');
+  omitted('omitted'),
+  corrupt('corrupt'),
+  unsupported('unsupported');
 
   const PulseEvidenceStatus(this.wire);
   final String wire;
