@@ -1,6 +1,7 @@
 // Owner: SleepBlockStore owns sleep assertions and their legacy projections.
 // Callers supply the executor and transaction. Storage errors propagate, so a
 // failed write never leaves a half-written projection. Commands land in slice B.
+import 'dart:collection';
 import 'package:flutter/foundation.dart' show visibleForTesting, mapEquals;
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
@@ -67,6 +68,13 @@ class _PreparedSleep {
   final deleted=<String>{},stageDays=<String>{},mergedNapDays=<String>{},stageMainDays=<String>{};
   SleepRefused? refusal;
   SleepMergeProposal? merge;
+}
+
+/// The historical report-list API plus the regenerated projection counts.
+/// Counts belong to absorption: callers must not count unrelated local rows.
+class SleepAbsorbReport extends UnmodifiableListView<SleepImportEntry> {
+  SleepAbsorbReport(super.source, this.projectionRows);
+  final Map<String,int> projectionRows;
 }
 
 abstract final class SleepBlockStore {
@@ -437,8 +445,9 @@ abstract final class SleepBlockStore {
 
   /// Absorbs release/upstream shapes only. It never interprets pilot envelopes.
   /// Backfill writes blocks, plus missing pre-review legacy-nap projections;
-  /// it never enqueues or rewrites existing projections [spec §2.2; B5/B6/B15].
-  static Future<List<SleepImportEntry>> absorb(DatabaseExecutor tx, {
+  /// it never enqueues. Only an invalid next-night legacy projection is removed
+  /// [B4; spec §2.2; B5/B6/B15 preserve every valid legacy row].
+  static Future<SleepAbsorbReport> absorb(DatabaseExecutor tx, {
     required List<Map<String, Object?>> overrides,
     required List<Map<String, Object?>> naps,
     Iterable<Map<String, Object?>> servedDayResults = const [],
@@ -453,6 +462,16 @@ abstract final class SleepBlockStore {
       where: "status <> 'pending'") : <Map<String,Object?>>[];
     final inserted = <Map<String,Object?>>[];
     final report = <SleepImportEntry>[];
+    final legacyPhantomDays=<String>{};
+    final servedByDay={for(final r in servedDayResults) r['day_id']:r};
+    bool overlapsNextNight(String day,int start,int end) {
+      final nextStart=servedByDay[day]?['next_start'], nextEnd=servedByDay[day]?['next_end'];
+      return nextStart is int && nextEnd is int && nextEnd>nextStart && start<nextEnd && end>nextStart;
+    }
+    SleepAbsorbReport result() => SleepAbsorbReport(report,Map.unmodifiable({
+      'sleep_override':{for(final r in inserted) if(r['kind']=='main') r['owner_day']}.length,
+      'sleep_nap':{for(final r in inserted) if(r['kind']!='main') (r['owner_day'],r['start_ts'])}.length,
+    }));
     void note(String kind, String table, String day, int start, int end) {
       report.add(SleepImportEntry(kind: kind, table: table, day: day,
         startTs: start, endTs: end));
@@ -509,8 +528,13 @@ abstract final class SleepBlockStore {
       inserted.add(block);
       return true;
     }
-    Future<List<SleepImportEntry>> finish() async {
-      if(!importing) return report;
+    Future<SleepAbsorbReport> finish() async {
+      if(!importing) {
+        // Rung 94 precedes cleanup v2. An old copied detection is not a wearer
+        // decision; omit its block and let the owner rebuild its projection.
+        if(legacyPhantomDays.isNotEmpty) { await _project(tx,legacyPhantomDays); }
+        return result();
+      }
       int gap(Map<String,Object?> a, Map<String,Object?> b) {
         final s=(a['start_ts'] as int)>(b['start_ts'] as int)?a['start_ts'] as int:b['start_ts'] as int;
         final e=(a['end_ts'] as int)<(b['end_ts'] as int)?a['end_ts'] as int:b['end_ts'] as int;
@@ -533,7 +557,7 @@ abstract final class SleepBlockStore {
       for(final day in days) {
         await SleepEditStore.enqueue(tx,day,main:inserted.any((r)=>r['owner_day']==day && r['kind']=='main'));
       }
-      return report;
+      return result();
     }
     if(importing && blocks.isNotEmpty) {
       final cols={for(final r in await tx.rawQuery('PRAGMA table_info(sleep_block)')) r['name']};
@@ -559,6 +583,11 @@ abstract final class SleepBlockStore {
     for (final legacy in naps) {
       final day = legacy['day_id'] as String, start = legacy['start_ts'] as int;
       final end = legacy['end_ts'] as int, source = legacy['source'];
+      if(source=='legacy' && overlapsNextNight(day,start,end)) {
+        if(!importing) { legacyPhantomDays.add(day); }
+        note('next-night-phantom','sleep_nap',day,start,end);
+        continue;
+      }
       final raw = legacy['payload_json'] as String?;
       final payload = await _payload(raw);
       if (raw != null && raw.trim().isNotEmpty && payload == null) note('malformed_payload', 'sleep_nap', day, start, end);
@@ -591,10 +620,9 @@ abstract final class SleepBlockStore {
           continue;
         }
         final start = a.toInt(), end = b.toInt();
-        final nextStart=served['next_start'], nextEnd=served['next_end'];
         // Do not turn a pre-v106 next-night phantom into a durable assertion
         // before the raw-free cleanup runs [B4; legacy phantom upgrade test].
-        if(nextStart is int && nextEnd is int && start<nextEnd && end>nextStart) continue;
+        if(overlapsNextNight(day,start,end)) continue;
         if ((await tx.query('sleep_block', columns: ['id'],
             where: "(kind = 'nap' OR state <> 'live') AND start_ts < ? AND end_ts > ?", whereArgs: [end, start])).isNotEmpty) {
           continue;

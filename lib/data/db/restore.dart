@@ -1236,12 +1236,13 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
             notes.where((e)=>e.kind=='imported').length);
         }
         final hook=ImportHooks.chunk;
-        if(hook!=null) await hook.call(tx,const ImportChunk('sleep_block',0,0,1));
+        if(hook!=null) { await Zone.current.runBinary(hook,tx,const ImportChunk('sleep_block',0,0,1)); }
         return notes;
       });
       pageCommitted();
       sleepNotes.addAll(notes);
       counts['sleep_block']=notes.where((e)=>e.kind=='imported').length;
+      counts.addAll(notes.projectionRows);
       // Keep the report outside the page transaction: its persistence helper
       // acquires the main connection [phase2 hang fix a6afc9365].
       await SleepImportReport.save(sleepNotes,unionWithStored:resumed);
