@@ -1,6 +1,8 @@
 // Pulse structural phase 2: schema rung 95, the exact upgrade boundary and the
 // admission hook, through the real LocalDb ladder and the real sync commit.
 // CLAIM(pulse-upgrade-membership) CLAIM(pulse-admission-bound)
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/processing_context.dart';
 import 'package:openstrap_edge/ble/adapters/_registry.dart' show TimeAnchor;
@@ -183,4 +185,35 @@ void main() {
     final left = await pulseRows(db, 'pulse_ep_admission');
     expect([for (final r in left) r['start_ms']], [900000000]);
   });
+  // WHY/R2: a rollout membership failure must preserve the live file, rather
+  // than replacing it via the general quarantine/salvage recovery path.
+  // catches: treating a failed capture as an ordinary unopenable database.
+  test('R2 capture failure escapes LocalDb.instance without rebuilding', () async {
+    final db = await LocalDb.instance;
+    final path = db.path;
+    final beforeRebuild = LocalDb.lastRebuild;
+    for (final t in kPulseEpTables.reversed) {
+      await db.execute('DROP TABLE IF EXISTS $t');
+    }
+    await db.execute('DROP TABLE decoded_rr');
+    await db.execute('CREATE TABLE decoded_rr (sentinel TEXT)');
+    await db.insert('decoded_rr', {'sentinel': 'original unreadable history'});
+    await db.setVersion(92);
+    await LocalDb.close();
+    await expectLater(LocalDb.instance, throwsA(anything));
+    expect(LocalDb.lastRebuild, beforeRebuild);
+    final raw = await openDatabase(path, singleInstance: false);
+    try {
+      expect(await raw.getVersion(), 92);
+      expect(await raw.query('decoded_rr'), [
+        {'sentinel': 'original unreadable history'},
+      ]);
+      expect(await pulseEpTablesPresent(raw), isEmpty);
+      expect(Directory(env.dbDir).listSync().where((f) =>
+          f.path.contains('${LocalDb.dbName}.unopenable-')), isEmpty);
+    } finally {
+      await raw.close();
+    }
+  });
+
 }
