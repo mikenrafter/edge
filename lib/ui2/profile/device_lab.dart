@@ -1,30 +1,5 @@
-// Device lab — a bench for the gestures the firmware does not report.
-//
-// The band sends a double tap and nothing else. Anything beyond it (ECG on a
-// double tap, 3–5 taps counted as touches of the ECG sensor, or as more double
-// taps in a row) is exploration, so this screen shows the evidence instead of
-// hiding it: every band event with the band's own time, the phone's receipt
-// time, the delay between them and whether it was live or late, plus the step
-// by step trace of each counting session, with the time of every line, the time
-// since the tap and the time since the line before.
-//
-// ECG needs a WHOOP MG. On any other band the switch is shown, disabled, with
-// the reason. While a lab switch is on, normal double-tap actions are suspended
-// and this screen's counter takes over (GestureDispatcher). "Save lab log file"
-// at the bottom saves everything on this screen as a plain text file through
-// the share sheet, plus the kept ECG packets (raw, for replay off the band).
-// Never the clipboard: a big pasted log locked up a second device.
-//
-// Hardware probes: a buzz-spacing probe and a cued ECG touch probe, each
-// started only here, bounded and stoppable ([HardwareProbePanel]).
-//
-// Laid out as sub-tabs like Haptics and Gestures, each tab a set of
-// accordions: Taps (the tap tools, behind FeatureFlag.tapClassifiers), Probes,
-// Motion (the IMU recorder, developer mode only), Live (the live streams of each
-// connected device) and Logs (sessions, steps, band events, and the save
-// button). The tab used last is remembered ([kDeviceLabTabPref]); a tab with
-// nothing to show is not offered.
-
+// Device lab owns its tab selection. GestureSettings owns tap choices;
+// probe runners and the IMU recorder own their sessions. Logs are shared files.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -56,9 +31,10 @@ import 'dev_logs_page.dart'
 
 export '../../gestures/lab_log.dart' show DeviceLabEntry, labClock;
 
-/// The note said on this screen and on Gestures (developer mode): what
-/// extended gestures need, and where to see every step of them. Never names a
-/// single tap.
+/// Remembered Device lab tab id, shared by the tab host and settings backup.
+const String kDeviceLabTabPref = 'ui.device_lab_tab';
+
+/// The lab tabs in display order.
 enum LabTab {
   taps('taps', 'Taps'),
   probes('probes', 'Probes'),

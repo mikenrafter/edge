@@ -29,7 +29,7 @@ import 'support/double_tap_repeat_rig.dart' show repTap;
 
 const _channel = MethodChannel('openstrap/device_actions');
 
-Future<GestureSettings> _boot({bool three = false, bool ecg = false}) async {
+Future<GestureSettings> _boot({bool three = false}) async {
   SharedPreferences.setMockInitialValues({});
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(_channel, (call) async {
@@ -45,7 +45,7 @@ Future<GestureSettings> _boot({bool three = false, bool ecg = false}) async {
 }
 
 class _Rig {
-  _Rig(this.settings, {this.mg = false, this.open = false}) {
+  _Rig(this.settings, {this.open = false}) {
     repeat = DoubleTapRepeatSession(
       maxTaps: () => settings.repeatTapMax,
       window: () => settings.repeatTapWindow,
@@ -80,7 +80,6 @@ class _Rig {
   }
 
   final GestureSettings settings;
-  final bool mg;
 
   /// What the gate answers; change it between taps.
   bool open;

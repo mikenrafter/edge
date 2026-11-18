@@ -20,7 +20,7 @@ import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart'
-    show SwitchRow, SettingsAccordion;
+    show SwitchRow;
 import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

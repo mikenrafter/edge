@@ -16,7 +16,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/gestures/gesture_failures.dart';
-import 'package:openstrap_edge/gestures/gesture_settings.dart';
 
 import 'support/app_state_gesture_harness.dart';
 

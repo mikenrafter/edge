@@ -24,14 +24,6 @@ const _channel = MethodChannel('openstrap/device_actions');
 const _globalKey = 'gesture_time_buzz_mode';
 String _slotKey(String slot) => 'gesture_slot_options_$slot';
 
-// The exact texts the UI shows; pinned literally so a reword is a decision.
-const _turnOthersOff =
-    "ECG takes over the band while it records, so it can't share a gesture "
-    'with other actions. Turn the others off first.';
-const _turnEcgOff =
-    "ECG takes over the band while it records, so it can't share a gesture "
-    'with other actions. Turn ECG off first.';
-
 Future<GestureSettings> _boot([Map<String, Object> stored = const {}]) async {
   SharedPreferences.setMockInitialValues({...stored});
   final s = GestureSettings();
@@ -44,10 +36,6 @@ Future<GestureSettings> _restart() async {
   await s.bootstrap();
   return s;
 }
-
-Matcher _refused(String reason) => isA<ActionToggleRefusedExclusive>()
-    .having((r) => r.reason, 'reason', reason)
-    .having((r) => r.ok, 'ok', isFalse);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

@@ -5,7 +5,6 @@
 // and never two actions or two buzzes for one tap.
 
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/services.dart';
@@ -18,7 +17,6 @@ import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_edge/gestures/tap_ack.dart';
 import 'package:openstrap_edge/notify/alert_dispatcher.dart';
 import 'package:openstrap_edge/notify/alert_rule.dart';
-import 'package:openstrap_protocol/openstrap_protocol.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final DateTime _t0 = DateTime.utc(2026, 10, 2, 8);

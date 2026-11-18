@@ -231,7 +231,7 @@ class GestureDispatcher {
 
   /// Take the once-ever claim (or the receipt debounce) for the repeat session of
   /// this tap, under `...:rep`. Null: skip, this tap already has one.
-  Future<({String? claimKey, String debounceKey})?> _takeRepeatTap(
+  Future<({String? claimKey, String debounceKey})?> _takeEcgTap(
       StrapEvent e, [String kind = 'rep']) async {
     final debounceKey = '${e.identity}:$kind';
     String? claimKey;
@@ -240,12 +240,12 @@ class GestureDispatcher {
       try {
         if (!await _claim(claimKey)) return null;
       } catch (err) {
-        log?.call('[gesture] rep: claim failed: $err');
+        log?.call('[gesture] ecg: claim failed: $err');
         return null;
       }
       // Disposed while the claim was pending: start nothing, give it back.
       if (_disposed) {
-        await _giveBackRepeatTap((claimKey: claimKey, debounceKey: debounceKey));
+        await _giveBackEcgTap((claimKey: claimKey, debounceKey: debounceKey));
         return null;
       }
     } else {
@@ -260,14 +260,14 @@ class GestureDispatcher {
     return (claimKey: claimKey, debounceKey: debounceKey);
   }
 
-  Future<void> _giveBackRepeatTap(
+  Future<void> _giveBackEcgTap(
       ({String? claimKey, String debounceKey}) taken) async {
     final claimKey = taken.claimKey;
     if (claimKey != null) {
       try {
         await _release(claimKey);
       } catch (relErr) {
-        log?.call('[gesture] rep: claim release failed: $relErr');
+        log?.call('[gesture] ecg: claim release failed: $relErr');
       }
     } else {
       _lastAccepted.remove(taken.debounceKey);
@@ -293,7 +293,7 @@ class GestureDispatcher {
       return null;
     }
     if (_disposed) {
-      await _giveBackRepeatTap((claimKey: claimKey, debounceKey: debounceKey));
+      await _giveBackEcgTap((claimKey: claimKey, debounceKey: debounceKey));
       return null;
     }
     return (claimKey: claimKey, debounceKey: debounceKey);
@@ -310,7 +310,7 @@ class GestureDispatcher {
       StrapEvent e, DoubleTapRepeatSession session,
       {bool lab = false}) async {
     final taken =
-        session.open ? await _takeMember(e) : await _takeRepeatTap(e, 'rep');
+        session.open ? await _takeMember(e) : await _takeEcgTap(e, 'rep');
     if (taken == null) return const [];
     if (session.open) {
       // A member, or another tap opened the window while this one took its
@@ -326,7 +326,7 @@ class GestureDispatcher {
       count = await session.begin(e);
     } catch (err) {
       log?.call('[gesture] double-tap window did not open: $err');
-      await _giveBackRepeatTap(taken);
+      await _giveBackEcgTap(taken);
       return lab ? const [] : _runActions(e, settings.doubleTapActions);
     }
     log?.call('[gesture] counted $count double taps');

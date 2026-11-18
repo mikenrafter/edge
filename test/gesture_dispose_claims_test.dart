@@ -43,7 +43,7 @@ Future<GestureSettings> _settings() async {
 }
 
 class _Rig {
-  _Rig(this.settings, {this.mg = false}) {
+  _Rig(this.settings) {
     repeat = DoubleTapRepeatSession(
       maxTaps: () => settings.repeatTapMax,
       window: () => settings.repeatTapWindow,
@@ -76,7 +76,6 @@ class _Rig {
   }
 
   final GestureSettings settings;
-  final bool mg;
   late final DoubleTapRepeatSession repeat;
   late final GestureDispatcher dispatcher;
   final gate = Completer<void>();

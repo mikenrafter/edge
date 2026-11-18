@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/recent_slice.dart';
-import 'package:openstrap_edge/data/official_export/profile.dart';
+import 'package:openstrap_edge/data/official_export/profile_tables.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 

@@ -147,7 +147,7 @@ import '../health/health_export.dart';
 import '../health/phone_pedometer.dart';
 import '../import/noop_import.dart';
 import '../import/whoop_import.dart';
-import '../gestures/ecg_probe_begin.dart';
+import '../gestures/ecg_tap_begin.dart';
 import '../gestures/alarm_slot_probe.dart';
 import '../gestures/termination_probe.dart';
 import '../gestures/hardware_probe_runner.dart';
@@ -870,7 +870,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
 
   /// The ECG touch probe's stream: the gesture's start path (wrist, guard,
   /// generation checks), persist off, with its own "still wanted" test.
-  Future<bool> _beginEcgForProbe() => beginEcgProbeStream(
+  Future<bool> _beginEcgForProbe() => beginEcgForTap(
         isCurrent: () => hardwareProbes.running == ProbeKind.ecg,
         isCapturing: () => ecg.isCapturing,
         lookupWrist: () async {

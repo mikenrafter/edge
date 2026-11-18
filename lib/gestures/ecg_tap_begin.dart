@@ -1,26 +1,26 @@
-// ecg_probe_begin.dart — start the ECG stream for a hardware probe without ever
-// outliving the probe or touching an ECG the probe did not start (review
+// ecg_tap_begin.dart — start the ECG stream for a tap gesture without ever
+// outliving the gesture or touching an ECG the gesture did not start (review
 // finding G).
 //
 // Future.timeout() abandons the wait, not the work. The session gives up on a
 // slow start (beginTimeout) and finishes, but the start can still be awaiting
 // the wrist lookup or the controller's own begin(), and would then switch the
-// band's raw ECG on for a probe that no longer exists, unconsumed until the
+// band's raw ECG on for a gesture that no longer exists, unconsumed until the
 // controller's capture limit. So:
 //  * [isCurrent] (the session generation) is checked after EVERY await;
 //  * the capture is identified by the controller's capture epoch, read in the
 //    same synchronous step that starts it, so a capture that was cancelled and
 //    replaced (the user opened the ECG screen) is never mistaken for ours;
-//  * a start that completes for a dead probe stops the capture it started,
+//  * a start that completes for a dead gesture stops the capture it started,
 //    and only that one.
 // Pure: every effect is injected, so the ordering is testable without a band.
 
 import '../ecg/ecg_models.dart' show EcgWrist;
 
-/// True when THIS call started a capture and the probe is still current.
+/// True when THIS call started a capture and the gesture is still current.
 /// False (with a line for the Device lab) in every other case; throws only what
 /// [begin] throws.
-Future<bool> beginEcgProbeStream({
+Future<bool> beginEcgForTap({
   required bool Function() isCurrent,
   required bool Function() isCapturing,
   required Future<EcgWrist?> Function() lookupWrist,
@@ -34,7 +34,7 @@ Future<bool> beginEcgProbeStream({
   final wrist = await lookupWrist();
   note?.call('ECG start: wrist looked up (${looking.elapsedMilliseconds} ms).');
   if (!isCurrent()) {
-    note?.call('The probe ended while the wrist was being looked up. '
+    note?.call('The gesture ended while the wrist was being looked up. '
         'No ECG stream was started.');
     return false;
   }
@@ -56,12 +56,12 @@ Future<bool> beginEcgProbeStream({
   final ours = isCapturing() && captureEpoch() == epoch;
   if (!isCurrent()) {
     if (ours) {
-      note?.call('The probe ended before the ECG stream finished starting. '
+      note?.call('The gesture ended before the ECG stream finished starting. '
           'The late stream was stopped.');
       await cancel();
     } else {
-      note?.call('The probe ended while the ECG stream was starting; the '
-          'capture is not this probe\'s, so it was left alone.');
+      note?.call('The gesture ended while the ECG stream was starting; the '
+          'capture is not this gesture\'s, so it was left alone.');
     }
     return false;
   }

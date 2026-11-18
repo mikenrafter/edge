@@ -14,7 +14,6 @@ import 'package:openstrap_edge/ui2/ui2.dart';
 
 import 'support/settings_sections.dart' show isDimmed;
 
-const _switchLabel = 'Toggle ECG recording on double tap';
 
 final _strapAt = DateTime(2026, 10, 2, 9, 15, 3, 250);
 

@@ -8,7 +8,6 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
-import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/ecg/ecg_models.dart';
 
 import 'support/app_state_gesture_harness.dart';

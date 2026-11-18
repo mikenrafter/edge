@@ -7,7 +7,6 @@
 // stops notifying its own store) fails here.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/gestures/gesture_settings.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
 

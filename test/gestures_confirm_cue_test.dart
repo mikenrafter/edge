@@ -188,7 +188,6 @@ void main() {
     // The cue loading lives in the gesture controller; the ack
     // path in AppState._onLiveEvent calls it.
     final src = File('lib/state/gesture_controller.dart').readAsStringSync();
-    final appSrc = File('lib/state/app_state.dart').readAsStringSync();
 
     test('the gesture controller reads the cues through resolveCuePatterns',
         () {

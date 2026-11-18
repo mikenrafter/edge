@@ -395,23 +395,6 @@ void main() {
       DeviceAction.torch,
     };
 
-    Widget view(
-            {bool ecg = true,
-            bool dev = false,
-
-            bool extraTaps = true}) =>
-        BandGesturesView(
-          chosen: const {},
-          supported: supported,
-
-          devMode: dev,
-
-          repeatWindowMs: 2500,
-          onRepeatWindowMs: (_) {},
-
-          extraTaps: extraTaps,
-        );
-
     testWidgets('the same controls remain in the Device lab', (t) async {
       await _pump(
           t,

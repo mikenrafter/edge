@@ -1,14 +1,4 @@
-// The Gestures screen carries the timing settings of the counting mode in
-// force, and the ECG gesture options are developer-mode only.
-//
-//  * repeated double taps: the pause between them (the same adjuster and the
-//    same stored value as the Device lab);
-//  * ECG touches: start, gap and confirm (developer mode on a WHOOP MG only);
-//  * without developer mode a stored ECG choice shows as the double-tap chain,
-//    and the same fallback is what the dispatcher uses (see
-//    app_state_gesture_dispatch_test.dart).
-// Nothing here is marked draft.
-
+// Gestures and the Device lab edit the same repeated-double-tap pause.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -17,7 +7,6 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
-import 'package:openstrap_edge/gestures/gesture_settings.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/capabilities.dart';
 import 'package:openstrap_edge/state/feature_flags.dart';

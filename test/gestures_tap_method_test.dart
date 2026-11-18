@@ -1,15 +1,7 @@
-// "Count extra taps with": the per-band choice between ECG sensor touches and
-// more double taps (developer mode only, since ECG touches are), the tab names
-// that follow it, and the pause adjuster (on Gestures and in the Device lab).
-// One mapping store serves both: the 3-tap slot is "Double tap + 1 ECG tap" for ECG and
-// "2 double taps" for repeats. ECG is disabled and dimmed (never hidden) on a
-// band without the sensor.
-
+// Repeated-double-tap names and shared pause controls.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
-import 'package:openstrap_edge/gestures/gesture_settings.dart';
 import 'package:openstrap_edge/ui2/profile/device_lab.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart' show SwitchRow;
@@ -22,11 +14,6 @@ const _supported = {
   DeviceAction.workoutToggle,
   DeviceAction.torch,
 };
-
-final _forbidden =
-    RegExp(r'one tap|single tap|\b1 tap', caseSensitive: false);
-
-Finder _option(String id) => find.byKey(ValueKey('tap-method:$id'));
 
 void main() {
 

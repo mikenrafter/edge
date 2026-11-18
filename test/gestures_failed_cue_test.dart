@@ -29,7 +29,6 @@
 // fixed engine call.
 
 import 'support/band_handoff.dart';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,7 +41,6 @@ import 'package:openstrap_edge/haptics/pattern_store.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
 
 import 'support/haptics_screen_support.dart';
-import 'support/dart_source_lexical.dart';
 import 'support/virtual_mg.dart';
 
 const String _key = 'gesture.failed';

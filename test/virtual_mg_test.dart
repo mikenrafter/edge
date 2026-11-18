@@ -2,7 +2,6 @@
 // model shows what the lab logs showed; then gesture ideas tried on it.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/gestures/strap_event.dart';
 
 import 'support/ecg_trace.dart';
 import 'support/virtual_mg.dart';
