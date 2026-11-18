@@ -127,9 +127,17 @@ Future<void> verifyConservation(String sourcePath,OfficialMapReport report,
    final literal=literalOmitted[e.key] ?? const <int>{};
    final literalSql=literal.isEmpty ? '0':'s.rowid IN (${literal.join(',')})';
    var mapped=0;
-   final allLocal=[for(final p in (_localPredicates()[e.key] ?? const <String,String>{}).values) '(${p.replaceAll('{s}','s')})',
+   final omissionPredicates=[for(final p in (_localPredicates()[e.key] ?? const <String,String>{}).values) '(${p.replaceAll('{s}','s')})',
      for(final rule in officialProfile.enums.where((r)=>r.table==e.key))
-       "(s.${rule.column} IS NOT NULL AND s.${rule.column} NOT IN (${[for(final v in rule.targetValues) "'$v'"].join(',')}))"];
+       "(s.${rule.column} IS NOT NULL AND s.${rule.column} NOT IN (${[for(final v in rule.targetValues) "'$v'"].join(',')}))",
+     for(final reason in [
+       if(_parentLinks.containsKey(e.key)) 'omitted or missing parent',
+       if({'workout_route','session_sensor'}.contains(e.key)) 'omitted or missing workout parent',
+       if(e.key=='decoded_rr') 'orphan live beat',
+       if({'decoded_onehz','decoded_rr','samples'}.contains(e.key))
+         ...['deleted input window','unknown instant under deletion windows'],
+     ])
+       if(predicate(reason) case final p?) '(${p.replaceAll('{s}','s')})'];
    for(final g in groups.entries) {
     final reason=(g.key as String).split(';').first;
     final isMapped=reason=='mapped';
@@ -137,8 +145,8 @@ Future<void> verifyConservation(String sourcePath,OfficialMapReport report,
      final rows=Sqflite.firstIntValue(await out.rawQuery('SELECT count(*) FROM $from'))!;
      if(isMapped) {
       mapped+=rows;
-      if(allLocal.isNotEmpty) {
-       expect(Sqflite.firstIntValue(await out.rawQuery('SELECT count(*) FROM $from WHERE ${allLocal.join(' OR ')}'))!,0,
+      if(omissionPredicates.isNotEmpty) {
+       expect(Sqflite.firstIntValue(await out.rawQuery('SELECT count(*) FROM $from WHERE ${omissionPredicates.join(' OR ')}'))!,0,
         reason:'${e.key}: rows the mapper kept that an independent rule says must be omitted');
       }
      } else {
