@@ -14,6 +14,7 @@ import 'package:openstrap_edge/data/official_export/space_budget.dart';
 import 'package:openstrap_edge/data/substrate_archive_codec.dart';
 import 'package:openstrap_edge/util/worker_audit.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqflite/sqflite.dart' show Sqflite;
 import 'archive_fixture.dart';
 import 'support.dart';
 
