@@ -270,13 +270,14 @@ abstract final class SleepBlockStore {
         case SetIntervals(:final target,:final startTs,:final endTs):
           final w=await bind(target);if(w==null) break;
           final r=w.row;
-          if(r['start_ts']==startTs && r['end_ts']==endTs && r['state']=='live') break;
+          if(r['start_ts']==startTs && r['end_ts']==endTs && r['state']=='live' &&
+              (r['kind']=='nap' || r['source']=='manual')) break;
           r['start_ts']=startTs;r['end_ts']=endTs;
           if(r['kind']=='nap') {
             r['owner_day']=SleepOwnership.dayOf(SleepBlockKind.nap,startTs,endTs);
             r['owner_rule']=SleepOwnership.currentRule;
             r['payload_json']=null;r['source']='manual';
-          } else if(r['state']!='live') { r['source']='manual'; }
+          } else { r['source']='manual'; }
           r['state']='live';r['merged_into']=null;
         case RemoveBlock(:final target):
           final w=await bind(target);if(w==null) break;
