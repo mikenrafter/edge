@@ -8,6 +8,7 @@ import 'package:openstrap_edge/compute/processing_context.dart';
 import 'package:openstrap_edge/ble/adapters/_registry.dart' show TimeAnchor;
 import 'package:openstrap_edge/ble/adapters/adapter.dart' show NeutralSample;
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/pulse_ep/pulse_ep_store.dart' show PulseUpgradeCaptureFailed;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -212,6 +213,40 @@ void main() {
         {'sentinel': 'original unreadable history'},
       ]);
       expect(await pulseEpTablesPresent(raw), isEmpty);
+      expect(Directory(env.dbDir).listSync().where((f) =>
+          f.path.contains('${LocalDb.dbName}.unopenable-'))
+          .map((f) => f.path).toSet(), quarantines);
+    } finally {
+      await raw.close();
+    }
+  });
+
+  // WHY/N1: the same-version open with the marker missing is the other
+  // spec-named capture path (spec 4.4): a malformed decoded_rr must surface, not
+  // quarantine the file and rebuild around the input whose keys we need.
+  // catches: only the upgrade rung wrapping capture failures.
+  test('N1 same-version open with a missing marker and malformed decoded_rr exposes the failure', () async {
+    final db = await LocalDb.instance;
+    final path = db.path;
+    final beforeRebuild = LocalDb.lastRebuild;
+    final quarantines = Directory(env.dbDir).listSync()
+        .where((f) => f.path.contains('${LocalDb.dbName}.unopenable-'))
+        .map((f) => f.path).toSet();
+    await db.execute('DROP TABLE decoded_rr');
+    await db.execute('CREATE TABLE decoded_rr (sentinel TEXT)');
+    await db.insert('decoded_rr', {'sentinel': 'original unreadable history'});
+    await db.execute('DELETE FROM pulse_ep_upgrade');
+    expect(await db.getVersion(), 95);
+    await LocalDb.close();
+    await expectLater(LocalDb.instance, throwsA(isA<PulseUpgradeCaptureFailed>()));
+    expect(LocalDb.lastRebuild, beforeRebuild);
+    final raw = await openDatabase(path, singleInstance: false);
+    try {
+      expect(await raw.getVersion(), 95);
+      expect(await raw.query('decoded_rr'), [
+        {'sentinel': 'original unreadable history'},
+      ]);
+      expect(await raw.query('pulse_ep_upgrade'), isEmpty);
       expect(Directory(env.dbDir).listSync().where((f) =>
           f.path.contains('${LocalDb.dbName}.unopenable-'))
           .map((f) => f.path).toSet(), quarantines);

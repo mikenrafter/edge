@@ -365,6 +365,57 @@ void main() {
     expect(result['_pulse_evidence_budget_refused'], 1);
   });
 
+  // WHY/N2: retention keeps the newest. An import may evict only recordings OLDER
+  // than the one it brings, and refuses without deleting anything when that is
+  // not enough room (an owed alert must not be cancelled by an old backup).
+  // catches: evicting newer local evidence for older imported evidence, and
+  // evicting before checking that the incoming recording fits at all.
+  for (final pinned in [false, true]) {
+    test('N2 import never evicts newer local evidence${pinned ? '; pinned evidence blocks the fit and nothing is deleted' : ''}', () async {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      const hour = 3600000;
+      var db = await LocalDb.instance;
+      // The imported recording: older than every local one in case one, newer
+      // than both local ones in case two.
+      await seedPortableEpisode(db, id: 'imp', startMs: _t0, endMs: _t0 + 600000,
+          startDay: _day, createdMs: pinned ? now - hour : now - 2 * hour);
+      final file = await LocalDb.exportCopy();
+      final size = (await pulseRows(db, 'pulse_ep_evidence')).single['encoded_bytes'] as int;
+      await env.wipe();
+      db = await LocalDb.instance;
+      final local = pinned ? ['pin', 'old'] : ['new'];
+      for (final id in local) {
+        await seedPortableEpisode(db, id: id, startMs: _t0 + 1000000, endMs: _t0 + 1600000,
+            startDay: _day, createdMs: pinned ? (id == 'pin' ? now - 3 * hour : now - 2 * hour - 1000) : now);
+      }
+      if (pinned) {
+        // The unpinned blob is too small to make room: evicting it frees 1 byte.
+        await db.update('pulse_ep_evidence', {'encoded_bytes': 1},
+            where: 'episode_id = ?', whereArgs: ['old']);
+        await db.update('pulse_ep_outbox', {'state': 'pending', 'token': 'local-claim'},
+            where: 'episode_id = ?', whereArgs: ['pin']);
+      }
+      final locals = (await pulseRows(db, 'pulse_ep_evidence')).fold<int>(
+          0, (sum, r) => sum + (r['encoded_bytes'] as int));
+      // The store is exactly full. Case one: only newer evidence could make
+      // room. Case two: the only older unpinned evidence is too small to.
+      expect(locals, pinned ? size + 1 : size);
+      PulseEpisodeStore.importBudgetBytesForTest = locals;
+      final result = await LocalDb.importFromDbFile(file);
+      db = await LocalDb.instance;
+      expect((await pulseRows(db, 'pulse_ep_evidence')).map((r) => r['episode_id']).toSet(),
+          local.toSet());
+      for (final id in local) {
+        final debt = (await pulseRows(db, 'pulse_ep_outbox', where: 'episode_id = ?', whereArgs: [id])).single;
+        expect(debt['state'], id == 'pin' ? 'pending' : 'owed', reason: id);
+        final header = (await pulseRows(db, 'pulse_ep_revision', where: 'episode_id = ?', whereArgs: [id])).single;
+        expect(header['evidence_status'], isNot('expired'), reason: id);
+      }
+      expect((await pulseRows(db, 'pulse_ep_outbox', where: 'episode_id = ?', whereArgs: ['imp'])).single['state'], 'not_sent');
+      expect(result['_pulse_evidence_budget_refused'], 1);
+    });
+  }
+
   // WHY/R7: current and actually delivered evidence are the only retained
   // revisions. Reconciliation must also run after copied-table resume markers.
   // catches: accumulating every imported revision and skipping final resume repair.
