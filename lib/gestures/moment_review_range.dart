@@ -16,6 +16,8 @@ import '../compute/manual_session.dart';
 import '../compute/nap_edits.dart';
 import '../data/day_label.dart' show dayLabelOf;
 import '../data/db.dart';
+import '../data/sleep_block_store.dart';
+import '../data/sleep_editor.dart';
 import '../data/local_repository.dart';
 import '../health/health_export.dart';
 import '../state/app_state.dart';
@@ -172,13 +174,11 @@ class ReviewRangeWriter {
   /// START's local day label. Keyed on (day, start): writing it twice is one row.
   Future<void> logNap(
       {required String dayId, required int startSec, required int endSec}) async {
-    final r = await LocalDb.putNapEdit(
-        dayId: dayId, startTs: startSec, endTs: endSec, source: 'manual', transaction: transaction);
-    // A main sleep the nap extended is re-derived like any sleep edit.
-    final main = r?.extended.where((b) => b.kind == 'main_sleep').lastOrNull;
-    if (main != null) {
-      if (transaction != null) { reopened?.add(main.day); }
-      else { await app?.sleepOperations.recalculate(main.day); }
+    final tx=transaction;
+    if(tx==null) {
+      requireSleepSaved(await _repo().putNap(dayId:dayId,startTs:startSec,endTs:endSec,source:'manual'));
+    } else {
+      requireSleepSaved(await SleepBlockStore.apply(await SleepBlockStore.plan(tx,dayId,[AddNap(startSec,endSec)]),tx:tx));
     }
   }
 

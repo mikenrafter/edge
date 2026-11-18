@@ -9,17 +9,35 @@ import '../compute/nap_edits.dart';
 import '../models/activity_suggestion.dart';
 import 'day_label.dart';
 import 'db.dart' show LocalDb;
-import 'sleep_block_writer.dart';
-import 'sleep_edit_codec.dart' show kSleepEditKey;
+import 'sleep_block_store.dart';
+import 'sleep_ownership.dart';
 import 'sleep_editor.dart';
-import 'sleep_spacing.dart';
-import 'nap_resolution.dart';
+
+
 import 'track_activity.dart';
-import 'db/input_read_tracker.dart';
 
 
 
 
+
+
+typedef NapBlock = ({String kind, String day, int startTs, int endTs});
+
+/// The bounds a kept nap ends up with (the union with every block it overlaps,
+/// transitively; touching counts, a gap never does) and the blocks it extends.
+typedef NapResolution = ({int startTs, int endTs, List<NapBlock> extended});
+
+/// Told after a kept nap rewrote a main sleep (its override is committed), so
+/// the owner of derivation can re-derive that night as a sleep edit does.
+abstract class MainSleepExtendedListener {
+  Future<void> mainSleepExtended(String day);
+}
+
+/// Told after an activity suggestion was answered, so the pending count and
+/// queue are re-read.
+abstract class ActivitiesChangedListener {
+  Future<void> activitiesChanged();
+}
 
 /// The single persistence seam for proposals and review decisions. Computing a
 /// proposal never writes a session or credits sleep. All actions are atomic.
@@ -327,49 +345,9 @@ class ActivityStore {
     whereArgs: [e, DateTime.now().millisecondsSinceEpoch ~/ 1000, s],
   );
 
-  static Future<bool> _overlapsSleep(DatabaseExecutor tx, int s, int e) async {
-    final naps = await tx.query(
-      'sleep_nap',
-      where: "source != 'rejected' AND start_ts < ? AND end_ts > ?",
-      whereArgs: [e, s],
-    );
-    if (naps.isNotEmpty) return true;
-    final day = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(s * 1000));
-    final end = DateTime.fromMillisecondsSinceEpoch(e * 1000);
-    // An evening interval can overlap the main sleep owned by tomorrow's
-    // wake date. Walk calendar dates rather than adding a fixed 24 hours.
-    final next = dayLabelOf(DateTime(end.year, end.month, end.day + 1));
-    // Only the two parts of the bundle that are read, never the whole row.
-    final nights = await tx.rawQuery(
-      '''SELECT CASE WHEN json_type(d.payload_json, '\$.naps.value') = 'array'
-          THEN json_extract(d.payload_json, '\$.naps.value') END AS naps,
-        json_extract(d.payload_json, '\$.sleep.window.value.onset_ms') AS on_ms,
-        json_extract(d.payload_json, '\$.sleep.window.value.offset_ms') AS off_ms
-      FROM day_result d
-      WHERE d.day_id BETWEEN ? AND ? AND d.algo_version =
-        (SELECT MAX(r.algo_version) FROM day_result r WHERE r.day_id = d.day_id AND r.algo_version <= ?)''',
-      [day, next, kAlgoVersion],
-    );
-    for (final r in nights) {
-      // Before its first recompute, a pre-upgrade nap still lives only in the
-      // day bundle. It is already logged and takes precedence just as a nap
-      // that has been copied into the accepted-record table does.
-      final napsJson = r['naps'] as String?;
-      final legacy = napsJson == null ? null : jsonDecode(napsJson);
-      if (legacy is List) {
-        for (final nap in legacy.whereType<Map>()) {
-          final ns = nap['start'] as num?, ne = nap['end'] as num?;
-          if (ns != null && ne != null && s < ne && e > ns) return true;
-        }
-      }
-      // Absent metric envelopes store '—', which has no onset_ms: NULL here.
-      final ns = r['on_ms'] as num?, ne = r['off_ms'] as num?;
-      if (ns != null && ne != null && s * 1000 < ne && e * 1000 > ns) {
-        return true;
-      }
-    }
-    return (await _overlappingSessions(tx, s, e)).isNotEmpty;
-  }
+  static Future<bool> _overlapsSleep(DatabaseExecutor tx,int s,int e) async =>
+    (await SleepBlockStore.live(tx,s,e)).any((b)=>b.startTs<e && b.endTs>s) ||
+    (await _overlappingSessions(tx,s,e)).isNotEmpty;
 
   static Future<void> supersede(
     DatabaseExecutor tx,
@@ -474,7 +452,7 @@ class ActivityStore {
     if (endTs > now ~/ 1000 && !expected.isPrompt) {
       throw const ActivityReviewException('The end time is in the future.');
     }
-    final day = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(startTs * 1000));
+    final day = SleepOwnership.dayOf(SleepBlockKind.nap,startTs,endTs);
     String linked;
     NapResolution? resolution;
     if (expected.kind == ActivityKind.meal) {
@@ -527,67 +505,24 @@ class ActivityStore {
           'A nap must last between 5 minutes and 3 hours.',
         );
       }
-      // CLAIM(sleep-block-separation): a nap within 30 minutes of another block
-      // is a merge proposal, never a silent union or a second nearby block.
-      final proposal = await SleepBlockWriter.guard(
-        tx,
-        changes: [
-          BlockChange(
-            after: SleepBlock(
-              kind: SleepBlockKind.nap,
-              day: day,
-              startTs: startTs,
-              endTs: endTs,
-            ),
-          ),
-        ],
-        editingDay: day,
-        merge: merge,
-      );
-      if (proposal != null) {
-        await SleepBlockWriter.applyMerge(tx, proposal);
-        linked = '${proposal.survivor.day}:${proposal.startTs}';
-        resolution = (
-          startTs: proposal.startTs,
-          endTs: proposal.endTs,
-          extended: [
-            for (final b in proposal.participants)
-              (
-                kind: b.kind == SleepBlockKind.main ? 'main_sleep' : 'nap',
-                day: b.day,
-                startTs: b.startTs,
-                endTs: b.endTs,
-              ),
-          ],
-        );
-      } else {
-        linked = '$day:$startTs';
-        await SleepBlockWriter.putNapRow(
-          tx,
-          day: day,
-          startTs: startTs,
-          endTs: endTs,
-          source: edited ? 'manual' : 'confirmed',
-          retained: edited
-              ? const {}
-              : {
-                  ...expected.details,
-                  'start': startTs,
-                  'end': endTs,
-                  'source': 'confirmed',
-                  if (auto) 'auto_logged': true,
-                },
-          createdAt: now ~/ 1000,
-        );
+      final command=auto
+        ? AutoLogNap(expected.id,startTs,endTs,jsonEncode({...expected.details,
+            'start':startTs,'end':endTs,'source':'confirmed','auto_logged':true}))
+        : AddNap(startTs,endTs,source:edited?'manual':'confirmed',suggestionId:expected.id,
+            payload:edited?null:jsonEncode({...expected.details,'start':startTs,'end':endTs,'source':'confirmed'}));
+      final plan=await SleepBlockStore.plan(tx,day,[command]);
+      final proposal=await SleepBlockStore.preflight(tx,plan);
+      final outcome=await SleepBlockStore.apply(plan,tx:tx,merge:merge);
+      requireSleepSaved(outcome);
+      if(proposal is SleepProposalMergeRequired) {
+        final p=proposal.proposal;
+        resolution=(startTs:p.startTs,endTs:p.endTs,extended:[for(final b in p.participants)
+          (kind:b.kind==SleepBlockKind.main?'main_sleep':'nap',day:b.day,startTs:b.startTs,endTs:b.endTs)]);
       }
-      await _changed(tx, day);
+      return resolution;
     }
-    await tx.update(
-      'activity_suggestions',
-      {'status': 'confirmed', 'linked_id': linked, 'updated_at': now},
-      where: 'id = ?',
-      whereArgs: [expected.id],
-    );
+    await tx.update('activity_suggestions',{'status':'confirmed','linked_id':linked,'updated_at':now},
+      where:'id = ?',whereArgs:[expected.id]);
     await _changed(tx, row['day_id'] as String);
     return resolution;
     }
@@ -633,164 +568,7 @@ class ActivityStore {
   static Future<void> markDayChanged(DatabaseExecutor tx, String day) =>
       _changed(tx, day);
 
-  /// Capture only previously LOGGED pre-upgrade naps, never newly detected old
-  /// history. Called before replacing a day's result, outside the migration.
-  static Future<void> preserveLegacyNaps(
-    DatabaseExecutor tx,
-    String day,
-    Map<String, dynamic> bundle,
-  ) async {
-    await _ensureMeta(tx);
-    final cutoff =
-        (await tx.query('activity_review_meta')).single['activated_at'] as int;
-    final naps = (bundle['naps'] as Map?)?['value'];
-    if (naps is! List) return;
-    for (final n in naps.whereType<Map>()) {
-      final s = (n['start'] as num?)?.toInt(), e = (n['end'] as num?)?.toInt();
-      if (s == null ||
-          e == null ||
-          s >= cutoff ||
-          e <= s ||
-          n['source'] == 'manual' ||
-          n['source'] == 'confirmed') {
-        continue;
-      }
-      if ((await tx.query(
-        'sleep_nap',
-        where: 'start_ts < ? AND end_ts > ?',
-        whereArgs: [e, s],
-      )).isNotEmpty) {
-        continue;
-      }
-      await tx.insert('sleep_nap', {
-        'day_id': day,
-        'start_ts': s,
-        'end_ts': e,
-        'source': 'legacy',
-        'created_at': cutoff,
-        'payload_json': jsonEncode({...n, 'source': 'legacy'}),
-      }, conflictAlgorithm: ConflictAlgorithm.ignore);
-    }
-  }
-
-  static Future<List<NapEdit>> napEdits(
-    DatabaseExecutor tx,
-    String day,
-  ) async {
-    InputReads.note('sleep_nap', day);
-    final out = <NapEdit>[];
-    for (final row in await tx.query(
-      'sleep_nap',
-      where: 'day_id = ?',
-      whereArgs: [day],
-    )) {
-      Map<String, dynamic>? snapshot;
-      if (row['payload_json'] is String) {
-        snapshot = Map<String, dynamic>.from(
-          await JsonPayloadLane.shared.decodeUncached(row['payload_json']) as Map,
-        )..remove(kSleepEditKey);
-        // An envelope-only payload (history without measurements) is no snapshot.
-        if (snapshot.isEmpty) snapshot = null;
-      }
-      out.add(NapEdit(
-        kind: row['source'] == 'rejected'
-            ? NapEditKind.rejected
-            : NapEditKind.added,
-        startSec: row['start_ts'] as int,
-        endSec: row['end_ts'] as int,
-        snapshot: snapshot,
-      ));
-    }
-    // An entry that moved or replaced a detection keeps that window suppressed
-    // under its origin, whichever day now owns the entry.
-    for (final row in await tx.rawQuery(
-      "SELECT payload_json FROM sleep_nap WHERE payload_json LIKE '%\"suppressed\"%'",
-    )) {
-      final doc = await JsonPayloadLane.shared.decodeUncached(row['payload_json']);
-      if (doc is! Map) continue;
-      final env = doc[kSleepEditKey];
-      if (env is! Map) continue;
-      final origin = env['origin'];
-      if (origin is! Map) continue;
-      final list = origin['suppressed'];
-      if (list is! List) continue;
-      for (final s in list.whereType<Map>()) {
-        final a = s['start'], b = s['end'];
-        if (s['day'] == day && a is int && b is int && b > a) {
-          out.add(NapEdit(
-              kind: NapEditKind.rejected, startSec: a, endSec: b));
-        }
-      }
-    }
-    return out;
-  }
-
-
-  /// Whether [s, e) overlaps a main sleep the derived history already holds —
-  /// the night that ends on [s]'s date, or the one that begins that evening
-  /// and belongs to tomorrow. A nap logged inside one is time the night's TST
-  /// already counts, and every reader sums naps on top of it.
-  static Future<bool> overlapsMainSleep(
-    DatabaseExecutor tx,
-    int s,
-    int e,
-  ) async {
-    for (final b in await _nightsAround(tx, s, e)) {
-      if (_mainSleepOverlaps(b, s, e)) return true;
-    }
-    return false;
-  }
-
-  /// The main-sleep windows (epoch ms) of the nights around [s, e) — the
-  /// night ending on [s]'s date and the one beginning that evening. Used to
-  /// PROTECT night samples when a nap window is deleted from the health
-  /// store after the night shifted onto it.
-  static Future<List<({int onsetMs, int offsetMs})>> mainSleepWindowsAround(
-    DatabaseExecutor tx,
-    int s,
-    int e,
-  ) async {
-    final out = <({int onsetMs, int offsetMs})>[];
-    for (final b in await _nightsAround(tx, s, e)) {
-      final w = ((b['sleep'] as Map?)?['window'] as Map?)?['value'];
-      if (w is Map) {
-        final on = w['onset_ms'], off = w['offset_ms'];
-        if (on is num && off is num && off > on) {
-          out.add((onsetMs: on.toInt(), offsetMs: off.toInt()));
-        }
-      }
-    }
-    return out;
-  }
-
-  static Future<List<Map>> _nightsAround(
-    DatabaseExecutor tx,
-    int s,
-    int e,
-  ) async {
-    final day = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(s * 1000));
-    final end = DateTime.fromMillisecondsSinceEpoch(e * 1000);
-    // An evening interval can overlap the main sleep owned by tomorrow's
-    // wake date. Walk calendar dates rather than adding a fixed 24 hours.
-    final next = dayLabelOf(DateTime(end.year, end.month, end.day + 1));
-    final nights = await tx.rawQuery(
-      '''SELECT d.* FROM day_result d
-      WHERE d.day_id BETWEEN ? AND ? AND d.algo_version =
-        (SELECT MAX(r.algo_version) FROM day_result r WHERE r.day_id = d.day_id AND r.algo_version <= ?)''',
-      [day, next, kAlgoVersion],
-    );
-    return [
-      for (final r in nights) (await JsonPayloadLane.shared.decodeUncached(r['payload_json'])) as Map,
-    ];
-  }
-
-  static bool _mainSleepOverlaps(Map bundle, int s, int e) {
-    final value = ((bundle['sleep'] as Map?)?['window'] as Map?)?['value'];
-    // Absent metric envelopes store '—', not a window object.
-    final w = value is Map ? value : null;
-    final ns = w?['onset_ms'] as num?, ne = w?['offset_ms'] as num?;
-    return ns != null && ne != null && s * 1000 < ne && e * 1000 > ns;
-  }
+  static Future<List<NapEdit>> napEdits(DatabaseExecutor tx,String day) => SleepBlockStore.napEdits(tx,day);
 
   /// The bar for logging a nap without asking (#625). The detector's
   /// confidence is a composite of HR coverage, HR dip, stillness and wear,

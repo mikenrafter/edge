@@ -683,11 +683,6 @@ extension _EngineDayCompute on DerivationEngine {
       // sendable object (never `this`, `day`, or `bundle`).
       // Read HERE, on the main isolate — the worker has no database.
       final reviewDb = await LocalDb.instance;
-      final previousDay = await LocalDb.dayResult(day.date);
-      if (previousDay != null) {
-        await reviewDb.transaction((tx) => ActivityStore.preserveLegacyNaps(tx, day.date,
-          Map<String, dynamic>.from(jsonDecode(previousDay['payload_json'] as String) as Map)));
-      }
       // WHOOP 4 ambient check: how closely the night's skin temp moves with
       // the band's ambient channel. Read here (the isolate has no DB) and
       // stored, so the illness watch can leave ambient-driven nights out.

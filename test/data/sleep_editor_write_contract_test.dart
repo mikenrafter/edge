@@ -174,7 +174,7 @@ void main() {
   });
   test('W14 ClearMain reveals detection; dangling merged participants become restorable',() async {
     await detection(); await seed('m',a,a+3600,kind:SleepBlockKind.main);
-    await seed('n',a+4200,a+5400,state:SleepBlockState.merged);
+    await seed('n',a+6000,a+7200,state:SleepBlockState.merged);
     await db.update('sleep_block',{'merged_into':'m'},where:"id='n'");
     expect(await save([const ClearMain(day)]),isA<SleepSaved>());
     final read=await SleepBlockStore.read(db,day);
@@ -195,6 +195,8 @@ void main() {
   });
   test('W17 removing a bundle-only nap snapshots it before tombstoning',() async {
     await detection(nap:true);
+    // A served detector proposal exists before an assertion is made.
+    await db.update('day_result',{'payload_json':jsonEncode({'naps':{'value':[{'start':a,'end':a+3600,'duration_min':47}]}})});
     expect(await save([RemoveBlock(DetectedNapRef(day,a,a+3600))]),isA<SleepSaved>());
     final r=(await rows()).single;
     expect([r['kind'],r['source'],r['state'],r['history'],r['detected_day']],['nap','detected','removed','known',day]); await parity();

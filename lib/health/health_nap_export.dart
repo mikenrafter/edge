@@ -1,3 +1,4 @@
+import 'package:sqflite/sqflite.dart';
 import 'package:flutter/foundation.dart';
 // health_nap_export.dart — write a user-confirmed nap to Apple Health
 // (HealthKit) on iOS.
@@ -44,7 +45,9 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../compute/nap_edits.dart' show manualNapWindowIsValid;
-import '../data/activity_store.dart';
+import '../data/sleep_block_store.dart';
+import '../data/sleep_editor.dart';
+import '../data/day_label.dart';
 import '../data/db.dart';
 import 'health_export.dart' show HealthExporter, kHealthSyncPref;
 
@@ -186,6 +189,28 @@ class HealthNapExporter {
 
   /// Process-wide exporter; call sites use the static wrappers below.
   static final HealthNapExporter shared = HealthNapExporter();
+
+  /// Durable Health intent shares the block receipt; no nested connection.
+  static Future<void> queueInTx(DatabaseExecutor tx, {
+    List<Map<String,dynamic>> deletes=const [], List<Map<String,dynamic>> exports=const [],
+  }) async {
+    for(final (key,entries) in [(_kPendingNapDeletes,deletes),(_kPendingNapExports,exports)]) {
+      if(entries.isEmpty) continue;
+      final rows=await tx.query('sync_cursor',columns:['value'],where:'name = ?',whereArgs:[key]);
+      final list=<Map<String,dynamic>>[];
+      try {
+        final raw=rows.firstOrNull?['value'];
+        final decoded=raw is String?jsonDecode(raw):null;
+        if(decoded is List) list.addAll(decoded.whereType<Map>().map((r)=>Map<String,dynamic>.from(r)));
+      } catch (_) { /* Corrupt retry state is replaced by this durable receipt. */ }
+      for(final entry in entries) {
+        list.removeWhere((r)=>r['blockId']==entry['blockId'] && r['startTs']==entry['startTs']);
+        list.add(entry);
+      }
+      await tx.insert('sync_cursor',{'name':key,'value':jsonEncode(list),
+        'updated_at':DateTime.now().millisecondsSinceEpoch},conflictAlgorithm:ConflictAlgorithm.replace);
+    }
+  }
 
   Future<void> _lockTail = Future<void>.value();
 
@@ -573,24 +598,22 @@ class HealthNapExporter {
     String dayId,
     int startTs,
   ) async {
-    final db = await LocalDb.instance;
-    final rows = await db.query(
-      'sleep_nap',
-      where: 'day_id = ? AND start_ts = ?',
-      whereArgs: [dayId, startTs],
-    );
-    return rows.isEmpty ? null : rows.single;
+    final blocks=await SleepBlockStore.live(await LocalDb.instance,startTs,startTs);
+    final b=blocks.where((b)=>b.kind==SleepBlockKind.nap && b.day==dayId && b.startTs==startTs).firstOrNull;
+    return b==null?null:{'id':b.id,'day_id':b.day,'start_ts':b.startTs,'end_ts':b.endTs,
+      'source':b.provenance==SleepEntryProvenance.automatic?'confirmed':b.provenance.name};
   }
 
-  static Future<List<Map<String, dynamic>>> _defaultDayNapRows(String dayId) =>
-      LocalDb.napEdits(dayId);
+  static Future<List<Map<String,dynamic>>> _defaultDayNapRows(String dayId) async => [
+    for(final b in await SleepBlockStore.live(await LocalDb.instance,localDayStartSec(dayId)!,localDayEndSec(dayId)!))
+      if(b.kind==SleepBlockKind.nap && b.day==dayId)
+        {'id':b.id,'day_id':b.day,'start_ts':b.startTs,'end_ts':b.endTs,'source':b.provenance.name},
+  ];
+  static Future<bool> _defaultOverlapsMainSleep(int startTs,int endTs) async =>
+    (await SleepBlockStore.live(await LocalDb.instance,startTs,endTs)).any((b)=>b.kind==SleepBlockKind.main && b.startTs<endTs && b.endTs>startTs);
+  static Future<List<({int onsetMs,int offsetMs})>> _defaultMainSleepWindows(int startTs,int endTs) async => [
+    for(final b in await SleepBlockStore.live(await LocalDb.instance,startTs,endTs))
+      if(b.kind==SleepBlockKind.main) (onsetMs:b.startTs*1000,offsetMs:b.endTs*1000),
+  ];
 
-  static Future<bool> _defaultOverlapsMainSleep(int startTs, int endTs) async =>
-      ActivityStore.overlapsMainSleep(await LocalDb.instance, startTs, endTs);
-
-  static Future<List<({int onsetMs, int offsetMs})>> _defaultMainSleepWindows(
-    int startTs,
-    int endTs,
-  ) async =>
-      ActivityStore.mainSleepWindowsAround(await LocalDb.instance, startTs, endTs);
 }

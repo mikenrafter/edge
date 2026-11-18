@@ -1,8 +1,12 @@
 // Owner: SleepBlockStore owns sleep assertions and their legacy projections.
 // Callers supply the executor and transaction. Storage errors propagate, so a
 // failed write never leaves a half-written projection. Commands land in slice B.
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show visibleForTesting, mapEquals;
 import 'package:sqflite/sqflite.dart';
+import 'package:uuid/uuid.dart';
+import '../health/health_nap_export.dart';
+import 'sleep_edit_store.dart';
+import 'sleep_spacing.dart';
 import '../compute/nap_edits.dart';
 import 'db.dart';
 import 'db/input_read_tracker.dart';
@@ -51,13 +55,323 @@ class _StoredBlock {
   late final DetectedHistory history;
 }
 
+class _SleepWork {
+  _SleepWork(this.row,this.original,{this.beforeKey});
+  final Map<String,Object?> row;
+  final Map<String,Object?>? original;
+  final String? beforeKey;
+  bool get dirty => original==null || !mapEquals(row,original);
+}
+class _PreparedSleep {
+  final work= <String,_SleepWork>{};
+  final deleted=<String>{},stageDays=<String>{};
+  SleepRefused? refusal;
+  SleepMergeProposal? merge;
+}
+
 abstract final class SleepBlockStore {
-  static Future<SleepEditorProposal> preflight(DatabaseExecutor tx, SleepEditorPlan plan) async =>
-    const SleepProposalInvalid(SleepRefusalReason.unsupportedSource);
+  static Future<SleepEditorPlan> plan(DatabaseExecutor tx,String day,List<SleepEditorCommand> commands) async {
+    final current=await read(tx,day);
+    return SleepEditorPlan(dayId:day,commands:commands,expectedRevisions:{day:current.revision},draftGeneration:current.draftGeneration);
+  }
+
+  // Preparation is read-only. Refusals cannot leak even when the caller commits
+  // its transaction. The same prepared proposal powers preflight and Save.
+  static Future<SleepEditorProposal> preflight(DatabaseExecutor tx, SleepEditorPlan plan) async {
+    final p = await _prepare(tx, plan);
+    if (p.refusal case final r?) return SleepProposalInvalid(r.reason, target:r.target);
+    return p.merge == null ? const SleepProposalClear() : SleepProposalMergeRequired(p.merge!);
+  }
 
   static Future<SleepEditorOutcome> apply(SleepEditorPlan plan, {
     required Transaction tx, SleepMergeAuthorization? merge,
-  }) async => const SleepRefused(SleepRefusalReason.unsupportedSource);
+  }) async {
+    final p = await _prepare(tx, plan);
+    if (p.refusal case final r?) return r;
+    final proposal = p.merge;
+    final approved = merge ?? plan.commands.whereType<MergeBlocks>().firstOrNull?.proposal.authorization;
+    if (proposal != null && proposal.authorization != approved) {
+      return SleepRefused(SleepRefusalReason.mergeRequired, proposal:proposal);
+    }
+    if (proposal != null) await _mergeRows(tx, p, proposal);
+    final changed = p.work.values.where((w)=>w.dirty).toList();
+    if (changed.isEmpty && p.deleted.isEmpty && p.stageDays.isEmpty) return const SleepNoChange();
+    final days = <String>{...p.stageDays};
+    final mainDays = <String>{...p.stageDays};
+    final deletes = <Map<String,dynamic>>[], exports = <Map<String,dynamic>>[];
+    for (final day in p.deleted) {
+      final old = await tx.query('sleep_block',where:"kind = 'main' AND owner_day = ?",whereArgs:[day]);
+      if (old.isEmpty) continue;
+      await _clearMain(tx,day); days.add(day); mainDays.add(day);
+    }
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    // Demote absorbed mains before promoting a survivor, to respect the index.
+    changed.sort((a,b)=>(a.row['state']=='live'?1:0).compareTo(b.row['state']=='live'?1:0));
+    for (final w in changed) {
+      final row = w.row;
+      final id = row['id'] as String;
+      if (id.startsWith('new:')) row['id'] = const Uuid().v4();
+      row['updated_at'] = now;
+      if (w.original == null) {
+        row['created_at'] = now;
+        await tx.insert('sleep_block',row);
+      } else {
+        row['revision'] = (w.original!['revision'] as int)+1;
+        await tx.update('sleep_block',row,where:'id = ?',whereArgs:[id]);
+      }
+      final day = row['owner_day'] as String;
+      days.add(day);
+      if (w.original != null) days.add(w.original!['owner_day'] as String);
+      if (row['kind']=='main') {
+        mainDays.add(day);
+      } else {
+        if (w.original != null && w.original!['state']=='live') deletes.add(_healthEntry(w.original!));
+        if (row['state']=='live') exports.add(_healthEntry(row));
+      }
+    }
+    await _project(tx,days);
+    for (final day in days) {
+      await SleepEditStore.enqueue(tx,day,main:mainDays.contains(day));
+      if (mainDays.contains(day)) await tx.delete('wake_confirmation',where:'day_id = ?',whereArgs:[day]);
+    }
+    // Keep/auto-log and its suggestion are one receipt. Supersede excludes it.
+    final confirmed = <String>{};
+    for (final c in plan.commands.whereType<AddNap>()) {
+      if (c.suggestionId == null) continue;
+      final survivorId = proposal == null
+          ? changed.where((w)=>w.row['state']=='live' && w.row['kind']=='nap' &&
+              w.row['start_ts']==c.startTs).firstOrNull?.row['id']
+          : p.work[proposal.survivor.key]?.row['id'];
+      if (survivorId == null) throw StateError('confirmed nap has no block');
+      final count=await tx.update('activity_suggestions',{'status':'confirmed',
+        'linked_id':survivorId,'updated_at':now*1000},where:"id = ? AND status = 'pending'",whereArgs:[c.suggestionId]);
+      if (count != 1) throw StateError('nap suggestion changed before commit');
+      confirmed.add(c.suggestionId!);
+    }
+    for (final w in changed.where((w)=>w.row['kind']=='nap' && w.row['state']=='live')) {
+      final candidates=await tx.query('activity_suggestions',columns:['id'],
+        where:"kind = 'nap' AND status = 'pending' AND start_ts < ? AND end_ts > ?",
+        whereArgs:[w.row['end_ts'],w.row['start_ts']]);
+      for(final s in candidates) {
+        if(confirmed.contains(s['id'])) continue;
+        await tx.update('activity_suggestions',{'status':'superseded','updated_at':now*1000},where:'id = ?',whereArgs:[s['id']]);
+      }
+    }
+    await HealthNapExporter.queueInTx(tx,deletes:deletes,exports:exports);
+    return SleepSaved(days);
+  }
+
+  static Map<String,dynamic> _healthEntry(Map<String,Object?> r) => {
+    'blockId':r['id'],'dayId':r['owner_day'],'startTs':r['start_ts'],'endTs':r['end_ts'],
+  };
+  static Future<void> _clearMain(DatabaseExecutor tx,String day) async {
+    await tx.delete('sleep_block',where:"kind = 'main' AND owner_day = ?",whereArgs:[day]);
+  }
+
+  static Future<_PreparedSleep> _prepare(DatabaseExecutor tx,SleepEditorPlan plan) async {
+    final p = _PreparedSleep();
+    void refuse(SleepRefusalReason reason,[SleepBlockRef? target]) { p.refusal=SleepRefused(reason,target:target); }
+    if(plan.draftGeneration!=SleepDraftFence.shared.generationOf(plan.dayId)) {
+      refuse(SleepRefusalReason.staleDraft); return p;
+    }
+    for(final e in plan.expectedRevisions.entries) {
+      final r=await tx.query('sleep_edit_job',columns:['revision'],where:'day_id = ?',whereArgs:[e.key]);
+      if(r.firstOrNull?['revision']!=e.value) { refuse(SleepRefusalReason.staleEntry); return p; }
+    }
+    Future<_SleepWork?> bind(SleepBlockRef ref) async {
+      if(ref is StoredBlockRef) {
+        final cached=p.work[ref.id];
+        if(cached!=null) {
+          if(cached.original?['revision']!=ref.expectedRevision) refuse(SleepRefusalReason.staleEntry,ref);
+          return p.refusal==null?cached:null;
+        }
+        final rows=await tx.query('sleep_block',where:'id = ?',whereArgs:[ref.id]);
+        if(rows.isEmpty || rows.single['revision']!=ref.expectedRevision) { refuse(SleepRefusalReason.staleEntry,ref); return null; }
+        return p.work[ref.id]=_SleepWork(Map.of(rows.single),Map.of(rows.single),beforeKey:ref.id);
+      }
+      final String day;
+      final int start,end;
+      final SleepBlockKind kind;
+      switch(ref) {
+        case DetectedMainRef(): day=ref.day;start=ref.expectedStartTs;end=ref.expectedEndTs!;kind=SleepBlockKind.main;
+        case DetectedNapRef(): day=ref.day;start=ref.expectedStartTs;end=ref.expectedEndTs!;kind=SleepBlockKind.nap;
+        case NoDetectionMainRef():
+          day=ref.day;start=localDayStartSec(day)!;end=start+1;kind=SleepBlockKind.main;
+        default: refuse(SleepRefusalReason.staleEntry,ref);return null;
+      }
+      final key='${kind.name}:$day:$start';
+      final fresh=p.work.values.where((w)=>w.original==null && w.row['owner_day']==day &&
+          w.row['kind']==kind.name && w.row['start_ts']==start && w.row['end_ts']==end).firstOrNull;
+      if(fresh!=null) return fresh;
+      final asserted=await tx.query('sleep_block',where:kind==SleepBlockKind.main?
+        "kind = 'main' AND owner_day = ?":"kind = 'nap' AND start_ts < ? AND end_ts > ?",
+        whereArgs:kind==SleepBlockKind.main?[day]:[end,start]);
+      if(asserted.isNotEmpty) { refuse(SleepRefusalReason.staleEntry,ref);return null; }
+      String? payload;
+      if(kind==SleepBlockKind.main) {
+        final windows=await detectedMainWindows(tx,day,day);
+        final match=windows.where((r)=>r['on_ms']==start*1000 && r['off_ms']==end*1000).isNotEmpty;
+        final any=windows.any((r)=>r['on_ms'] is num && r['off_ms'] is num && (r['off_ms'] as num)>(r['on_ms'] as num));
+        if(ref is NoDetectionMainRef ? any : !match) { refuse(SleepRefusalReason.staleEntry,ref);return null; }
+      } else {
+        final rows=await tx.rawQuery('SELECT r.payload_json FROM day_result r ${LocalDb.servedDayJoinSql} WHERE r.day_id = ? AND r.skipped = 0',[day]);
+        final bundle=await _payload(rows.firstOrNull?['payload_json']);
+        final nap=((bundle?['naps'] as Map?)?['value'] as List?)?.whereType<Map>().where((n)=>n['start']==start && n['end']==end).firstOrNull;
+        if(nap==null) { refuse(SleepRefusalReason.staleEntry,ref);return null; }
+        payload=await JsonPayloadLane.shared.encode(nap);
+      }
+      final row=encodeBlock(SleepBlock(id:'new:$key',kind:kind,day:day,startTs:start,endTs:end),
+        source:SleepBlockSource.detected,state:SleepBlockState.live,createdAt:0,payload:payload,
+        history:ref is NoDetectionMainRef?const DetectedAbsent():DetectedKnown(startTs:start,endTs:end,sourceDay:day));
+      return p.work['new:$key']=_SleepWork(row,null,beforeKey:kind==SleepBlockKind.main && ref is! NoDetectionMainRef?'main:$day':null);
+    }
+    Future<_SleepWork> add(SleepBlockKind kind,String day,int start,int end,String source,{String? payload}) async {
+      final id='new:${kind.name}:$day:$start:${p.work.length}';
+      final row=encodeBlock(SleepBlock(id:id,kind:kind,day:day,startTs:start,endTs:end),
+        source:SleepBlockSource.values.byName(source),state:SleepBlockState.live,createdAt:0,payload:payload,
+        history:source=='confirmed'?DetectedKnown(startTs:start,endTs:end,sourceDay:day):const DetectedAbsent());
+      return p.work[id]=_SleepWork(row,null);
+    }
+    for(final c in plan.commands) {
+      if(p.refusal!=null) break;
+      switch(c) {
+        case AddMain(:final day,:final startTs,:final endTs):
+          if((await tx.query('sleep_block',columns:['id'],where:"kind = 'main' AND owner_day = ?",whereArgs:[day])).isNotEmpty ||
+              p.work.values.any((w)=>w.row['kind']=='main' && w.row['owner_day']==day)) {
+            refuse(SleepRefusalReason.mainExists);break;
+          }
+          await add(SleepBlockKind.main,day,startTs,endTs,'manual');
+        case ConfirmMain(:final day,:final startTs,:final endTs):
+          final existing=(await read(tx,day)).entries.where((e)=>e.ref.kind==SleepBlockKind.main).firstOrNull;
+          if(existing==null) { refuse(SleepRefusalReason.staleEntry);break; }
+          final w=await bind(existing.ref);
+          if(w!=null) { w.row['start_ts']=startTs;w.row['end_ts']=endTs;w.row['source']='confirmed';w.row['state']='live'; }
+        case AddNap():
+          if(!{'manual','confirmed'}.contains(c.source)) { refuse(SleepRefusalReason.unsupportedSource);break; }
+          if(!manualNapWindowIsValid(c.startTs,c.endTs)) { refuse(SleepRefusalReason.invalidInterval);break; }
+          if(c.suggestionId!=null && (await tx.query('activity_suggestions',columns:['id'],where:"id = ? AND status = 'pending'",whereArgs:[c.suggestionId])).isEmpty) {
+            refuse(SleepRefusalReason.staleEntry);break;
+          }
+          await add(SleepBlockKind.nap,SleepOwnership.dayOf(SleepBlockKind.nap,c.startTs,c.endTs),c.startTs,c.endTs,c.source,payload:c.payload);
+        case ClearMain(:final day): p.deleted.add(day);
+        case MergeBlocks(): break;
+        case SetIntervals(:final target,:final startTs,:final endTs):
+          final w=await bind(target);if(w==null) break;
+          final r=w.row;
+          if(r['start_ts']==startTs && r['end_ts']==endTs && r['state']=='live') break;
+          r['start_ts']=startTs;r['end_ts']=endTs;
+          if(r['kind']=='nap') {
+            r['owner_day']=SleepOwnership.dayOf(SleepBlockKind.nap,startTs,endTs);
+            r['owner_rule']=SleepOwnership.currentRule;
+            r['payload_json']=null;r['source']='manual';
+          } else if(r['state']!='live') { r['source']='manual'; }
+          r['state']='live';r['merged_into']=null;
+        case RemoveBlock(:final target):
+          final w=await bind(target);if(w==null) break;
+          if(w.original==null && w.row['source']!='detected') { p.work.removeWhere((k,v)=>identical(v,w));break; }
+          if(w.row['state']=='live') w.row['state']='removed';
+        case RestoreRemoved(:final target):
+          final w=await bind(target);if(w==null) break;
+          if(w.row['state']=='merged') {
+            final survivor=w.row['merged_into'];
+            if((await tx.query('sleep_block',columns:['id'],where:'id = ?',whereArgs:[survivor])).isNotEmpty) {
+              refuse(SleepRefusalReason.staleEntry,target);break;
+            }
+          } else if(w.row['state']!='removed') { refuse(SleepRefusalReason.staleEntry,target);break; }
+          w.row['state']='live';w.row['merged_into']=null;
+        case ResetToDetected(:final target):
+          final w=await bind(target);if(w==null) break;
+          if(_StoredBlock(w.row).history case DetectedKnown(:final startTs,:final endTs)) {
+            w.row['start_ts']=startTs;w.row['end_ts']=endTs;
+            if(w.row['kind']=='nap') { w.row['owner_day']=SleepOwnership.dayOf(SleepBlockKind.nap,startTs,endTs);w.row['owner_rule']=SleepOwnership.currentRule; }
+          } else { refuse(SleepRefusalReason.missingHistory,target); }
+        case ResetBoundary(:final target,:final boundary):
+          final w=await bind(target);if(w==null) break;
+          if(_StoredBlock(w.row).history case DetectedKnown(:final startTs,:final endTs)) {
+            w.row[boundary==SleepBoundary.start?'start_ts':'end_ts']=boundary==SleepBoundary.start?startTs:endTs;
+            if(w.row['kind']=='nap') { w.row['owner_day']=SleepOwnership.dayOf(SleepBlockKind.nap,w.row['start_ts'] as int,w.row['end_ts'] as int);w.row['owner_rule']=SleepOwnership.currentRule; }
+          } else { refuse(SleepRefusalReason.missingHistory,target); }
+        case CalculateStages(:final target):
+          final w=await bind(target);if(w!=null) p.stageDays.add(w.row['owner_day'] as String);
+      }
+    }
+    if(p.refusal!=null) return p;
+    final dirty=p.work.values.where((w)=>w.dirty).toList();
+    for(final w in dirty) {
+      if((w.row['end_ts'] as int)<=(w.row['start_ts'] as int)) { refuse(SleepRefusalReason.invalidInterval);return p; }
+    }
+    final mains=<String,String>{};
+    for(final r in await tx.query('sleep_block',where:"kind = 'main' AND state = 'live'")) {
+      if(!p.deleted.contains(r['owner_day'])) mains[r['owner_day'] as String]=r['id'] as String;
+    }
+    for(final w in dirty.where((w)=>w.row['kind']=='main')) {
+      if(w.row['state']!='live') { mains.remove(w.row['owner_day']);continue; }
+      final day=w.row['owner_day'] as String,id=w.row['id'] as String;
+      if(mains.containsKey(day) && mains[day]!=id) { refuse(SleepRefusalReason.mainExists);return p; }
+      mains[day]=id;
+    }
+    final afters=dirty.where((w)=>w.row['state']=='live').toList();
+    if(afters.isEmpty) return p;
+    var lo=afters.map((w)=>w.row['start_ts'] as int).reduce((a,b)=>a<b?a:b);
+    var hi=afters.map((w)=>w.row['end_ts'] as int).reduce((a,b)=>a>b?a:b);
+    List<SleepBlock> stored;
+    while(true) {
+      stored=await live(tx,lo-kMinSleepGapSec,hi+kMinSleepGapSec);
+      var nextLo=lo,nextHi=hi;
+      for(final b in stored) { if(b.startTs<nextLo) nextLo=b.startTs;if(b.endTs>nextHi) nextHi=b.endTs; }
+      if(nextLo==lo && nextHi==hi) break;lo=nextLo;hi=nextHi;
+    }
+    p.merge=SleepSpacing.evaluate(stored:stored,editingDay:plan.dayId,changes:[
+      for(final w in dirty) BlockChange(beforeKey:w.beforeKey,
+        after:w.row['state']=='live'?_StoredBlock(w.row).block:null),
+      for(final b in stored) if(p.deleted.contains(b.day) && b.kind==SleepBlockKind.main) BlockChange(beforeKey:b.key),
+    ]);
+    return p;
+  }
+
+  static Future<void> _mergeRows(DatabaseExecutor tx,_PreparedSleep p,SleepMergeProposal proposal) async {
+    final participants=<_SleepWork>[];
+    for(final b in proposal.participants) {
+      var w=p.work[b.key] ?? p.work.values.where((w)=>w.beforeKey==b.key).firstOrNull;
+      if(w==null) {
+        final stored=b.id==null?null:(await tx.query('sleep_block',where:'id = ?',whereArgs:[b.id])).firstOrNull;
+        final row=stored==null?encodeBlock(SleepBlock(id:'new:${b.key}',kind:b.kind,day:b.day,startTs:b.startTs,endTs:b.endTs),
+          source:SleepBlockSource.detected,state:SleepBlockState.live,createdAt:0,
+          history:DetectedKnown(startTs:b.startTs,endTs:b.endTs,sourceDay:b.day)):Map<String,Object?>.from(stored);
+        w=_SleepWork(row,stored==null?null:Map.of(stored),beforeKey:b.key);p.work[b.key]=w;
+      }
+      participants.add(w);
+    }
+    final survivor=participants.first;
+    // Include new nap ranges: they carry an explicit absence of measured history.
+    final incoming=p.work.values.where((w)=>w.original==null && !participants.contains(w) &&
+      w.row['state']=='live' && (w.row['start_ts'] as int)>=proposal.startTs && (w.row['end_ts'] as int)<=proposal.endTs).toList();
+    final measures=participants.map((w)=>w.original??w.row).toList()..sort((a,b)=>(a['start_ts'] as int).compareTo(b['start_ts'] as int));
+    final known=participants.every((w)=>w.row['history']=='known') && incoming.every((w)=>w.row['history']=='known');
+    final r=survivor.row;
+    if(known) {
+      r['history']='known';
+      r['detected_start']=participants.map((w)=>w.row['detected_start'] as int).reduce((a,b)=>a<b?a:b);
+      r['detected_end']=participants.map((w)=>w.row['detected_end'] as int).reduce((a,b)=>a>b?a:b);
+      r['detected_day']=r['owner_day'];
+    } else { r['history']='unavailable';r['detected_start']=null;r['detected_end']=null;r['detected_day']=null; }
+    var disjoint=true;
+    for(var i=1;i<measures.length;i++) { if((measures[i-1]['end_ts'] as int)>(measures[i]['start_ts'] as int)) disjoint=false; }
+    final payloads=[for(final m in measures) await _payload(m['payload_json'])];
+    num? sum(String key)=>known && disjoint && incoming.isEmpty && payloads.every((m)=>m?[key] is num)
+      ? payloads.fold<num>(0,(v,m)=>v+(m![key] as num)):null;
+    r['payload_json']=await JsonPayloadLane.shared.encode({'duration_min':sum('duration_min'),
+      'in_bed_min':sum('in_bed_min'),'source':'manual','confidence':null});
+    r['start_ts']=proposal.startTs;r['end_ts']=proposal.endTs;r['state']='live';r['source']='manual';r['merged_into']=null;
+    if(r['kind']=='nap') { r['owner_day']=SleepOwnership.dayOf(SleepBlockKind.nap,proposal.startTs,proposal.endTs);r['owner_rule']=SleepOwnership.currentRule; }
+    for(final w in participants.skip(1)) { w.row['state']='merged';w.row['merged_into']=r['id']; }
+    for(final w in incoming) { p.work.removeWhere((k,v)=>identical(v,w)); }
+    // A materialized automatic survivor needs its new id before participants link.
+    if((r['id'] as String).startsWith('new:')) {
+      r['id']=const Uuid().v4();
+      for(final w in participants.skip(1)) { w.row['merged_into']=r['id']; }
+    }
+  }
 
   /// Shared row codec for absorption and new assertions. Callers choose the
   /// owner day through SleepOwnership; an existing block retains its rule.
@@ -265,8 +579,7 @@ abstract final class SleepBlockStore {
         (await tx.query('sleep_block', columns: ['id'], where: 'id = ?', whereArgs: [survivor])).isNotEmpty;
       entries.add(SleepEditorEntry(id: b.id, revision: b.revision, ownerRule: b.ownerRule,
         mergedInto: attached ? survivor : null,
-        ref: SleepEntryRef(kind: b.kind, day: day, startTs: b.kind == SleepBlockKind.nap ? b.startTs : null,
-          expectedEndTs: b.endTs, expectedSource: r.row['source'] as String),
+        ref: StoredBlockRef(b.id!,b.revision,kind:b.kind,day:day),
         startTs: b.startTs, endTs: b.endTs, provenance: b.provenance,
         history: r.history, removed: r.state != SleepBlockState.live));
     }
@@ -275,8 +588,7 @@ abstract final class SleepBlockStore {
         final on = r['on_ms'], off = r['off_ms'];
         if (on is! num || off is! num || off <= on) continue;
         final start = on.toInt() ~/ 1000, end = off.toInt() ~/ 1000;
-        entries.add(SleepEditorEntry(ref: SleepEntryRef(kind: SleepBlockKind.main, day: day,
-          expectedEndTs: end, expectedSource: 'automatic'), startTs: start, endTs: end,
+        entries.add(SleepEditorEntry(ref: DetectedMainRef(day,start,end), startTs: start, endTs: end,
           provenance: SleepEntryProvenance.automatic,
           history: DetectedKnown(startTs: start,endTs: end,sourceDay: day),removed: false));
       }

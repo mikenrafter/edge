@@ -4661,6 +4661,16 @@ class DerivationEngine {
     await _settled();
   }
 
+  Future<bool> refreshNapEdits(Profile profile,String day,int napRevision) async {
+    if(_running) return false;
+    _running=true;beginWearableDayIndexPass();
+    try {
+      await LocalDb.recomposeNaps(day,napRevision);
+      if(!await _runCrossDay(profile)) return false;
+      await _settled();return true;
+    } finally { endWearableDayIndexPass();_running=false; }
+  }
+
   /// Durable review jobs outlive a busy derive or a terminated process.
   Future<bool> refreshActivityReviews(Profile profile) async {
     if (_running) return false;

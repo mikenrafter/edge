@@ -208,14 +208,8 @@ Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, 
       var reviewedPayload = payloadJson;
       var reviewedSeries = series;
       if (source == 'band') {
-        final previous = await txn.query('day_result', where: 'day_id = ? AND algo_version <= ?',
-          whereArgs: [dayId, kAlgoVersion], orderBy: 'algo_version DESC', limit: 1);
-        if (previous.isNotEmpty) {
-          await ActivityStore.preserveLegacyNaps(txn, dayId,
-            Map<String, dynamic>.from(jsonDecode(previous.single['payload_json'] as String) as Map));
-        }
         final bundle = Map<String, dynamic>.from(jsonDecode(payloadJson) as Map);
-        composeAcceptedNaps(bundle, await ActivityStore.napEdits(txn, dayId));
+        composeAcceptedNaps(bundle, await SleepBlockStore.napEdits(txn, dayId));
         reviewedPayload = jsonEncode(bundle);
         reviewedSeries = {...series, 'nap_min': ((bundle['scalars'] as Map?)?['nap_min'] as num?)?.toDouble()};
       }
@@ -311,6 +305,7 @@ Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, 
       if (sleepEditGeneration != null && !partial) {
         await txn.rawUpdate('UPDATE sleep_edit_job SET applied_revision = revision WHERE day_id = ?', [dayId]);
       }
+      await txn.rawUpdate('UPDATE sleep_edit_job SET nap_applied_revision = nap_revision WHERE day_id = ?', [dayId]);
       return true;
     }));
     // Shadow group rows: AFTER the commit, in their own small transaction.

@@ -1,11 +1,8 @@
 import '../util/callable.dart';
 import 'json_payload_lane.dart';
-import 'sleep_block_writer.dart';
 import 'sleep_block_store.dart';
-import 'sleep_edit_codec.dart';
 import 'sleep_editor.dart';
 import 'sleep_import_rules.dart';
-import 'sleep_spacing.dart';
 import 'attach_copy.dart';
 // Local raw-first storage (SQLite via sqflite).
 //
@@ -78,7 +75,6 @@ import 'day_label.dart';
 import 'activity_store.dart';
 import 'load_timings.dart';
 import 'sleep_edit_store.dart';
-import 'nap_resolution.dart';
 import '../models/activity_suggestion.dart';
 import '../compute/accepted_naps.dart';
 import '../compute/nap_edits.dart' show NapEditKind;
@@ -1910,14 +1906,6 @@ class LocalDb {
 
   /// Upsert the user's sleep window for [dayId] (local date label). [source] is
   /// 'manual' or 'confirmed'. Replaces any prior override for that day.
-  static Future<void> putSleepOverride({
-    required String dayId,
-    required int onsetTs,
-    required int offsetTs,
-    required String source,
-    SleepMergeAuthorization? merge,
-  }) => _ldbPutSleepOverride(dayId: dayId, onsetTs: onsetTs, offsetTs: offsetTs, source: source, merge: merge);
-
   /// A sleep correction to the pinned day is the user's word, not drift: drop
   /// the morning pin so the re-derive pins the corrected readiness instead of
   /// holding the old night's value until midnight.
@@ -2379,15 +2367,6 @@ class LocalDb {
   }
 
   /// Remove the override for [dayId] (revert to auto detection).
-  static Future<void> deleteSleepOverride(String dayId) async {
-    final db = await instance;
-    await timedTransaction(db, 'sleep edit receipt',InlineTransactionWork( (tx) async {
-      await tx.delete('sleep_override', where: 'day_id = ?', whereArgs: [dayId]);
-      await tx.delete('wake_confirmation', where: 'day_id = ?', whereArgs: [dayId]);
-      await SleepEditStore.enqueue(tx, dayId);
-    }));
-  }
-
   /// Every day that currently has a user override — these must be force-derived
   /// even when finalized, so an edit to a locked day actually takes effect.
   static Future<Set<String>> sleepOverrideDays() async {
@@ -7399,7 +7378,7 @@ class LocalDb {
   /// throw is the race/programmatic-caller backstop.
   static Future<void> putJournalFieldDef(JournalFieldSpec spec) => _ldbPutJournalFieldDef(spec);
 
-  static Future<void> recomposeNaps(String day, int napRevision) async {}
+  static Future<void> recomposeNaps(String day, int napRevision) => _ldbRecomposeNaps(day,napRevision);
 
   static Future<Map<String, int>> applyPendingActivityReviews() => _ldbApplyPendingActivityReviews();
 
@@ -7415,17 +7394,6 @@ class LocalDb {
   // ── nap edits ─────────────────────────────────────────────────────────────
 
   /// Log a nap the detector missed, or suppress one it invented.
-  static Future<NapResolution?> putNapEdit({
-    required String dayId,
-    required int startTs,
-    required int endTs,
-    required String source,
-    Transaction? transaction,
-    SleepMergeAuthorization? merge,
-  }) => _ldbPutNapEdit(dayId: dayId, startTs: startTs, endTs: endTs, source: source, transaction: transaction, merge: merge);
-
-  static Future<void> deleteNapEdit(String dayId, int startTs, {SleepMergeAuthorization? merge}) => _ldbDeleteNapEdit(dayId, startTs, merge: merge);
-
   static Future<List<Map<String, dynamic>>> napEdits(String dayId) async {
     final db = await instance;
     return db.query(
@@ -10076,22 +10044,6 @@ class LocalDb {
       'decoded_onehz': oneHz,
       'decoded_rr': rr,
     };
-  }
-
-  /// Whether [startTs, endTs) overlaps a main sleep already derived — the
-  /// check [putNapEdit] enforces for a logged nap, readable ahead of the write
-  /// so the entry screen can say why in the user's language.
-  static Future<bool> napOverlapsMainSleep(int startTs, int endTs) async =>
-      ActivityStore.overlapsMainSleep(await instance, startTs, endTs);
-
-  /// Drops [dayId]'s `legacy` nap edits overlapping [startSec, endSec). Logged,
-  /// confirmed and rejected edits are left alone.
-  static Future<int> deleteLegacyNapsOverlapping(
-      String dayId, int startSec, int endSec) async {
-    final db = await instance;
-    return db.delete('sleep_nap',
-        where: "day_id = ? AND source = 'legacy' AND start_ts < ? AND end_ts > ?",
-        whereArgs: [dayId, endSec, startSec]);
   }
 
   /// Move a session's window. Not `putSession`: the row's type correction,

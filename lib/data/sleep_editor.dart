@@ -269,16 +269,24 @@ sealed class SleepBlockRef {
   String get key => throw UnsupportedError('legacy ref');
 }
 final class StoredBlockRef extends SleepBlockRef {
-  const StoredBlockRef(this.id, this.expectedRevision);
+  const StoredBlockRef(this.id, this.expectedRevision, {this.kind=SleepBlockKind.nap,this.day=''});
+  @override
+  final SleepBlockKind kind;
+  @override
+  final String day;
   final String id;
   final int expectedRevision;
 }
 final class DetectedMainRef extends SleepBlockRef {
+  @override
+  SleepBlockKind get kind => SleepBlockKind.main;
   const DetectedMainRef(this.day, this.expectedStartTs, this.expectedEndTs);
   final String day;
   final int expectedStartTs, expectedEndTs;
 }
 final class NoDetectionMainRef extends SleepBlockRef {
+  @override
+  SleepBlockKind get kind => SleepBlockKind.main;
   const NoDetectionMainRef(this.day);
   final String day;
 }
@@ -431,7 +439,7 @@ class SleepEditorEntry {
   final String? id, mergedInto;
   final int revision;
   final int? ownerRule;
-  final SleepEntryRef ref;
+  final SleepBlockRef ref;
   final int startTs, endTs;
   final SleepEntryProvenance provenance;
   final DetectedHistory history;
@@ -485,4 +493,15 @@ class SleepProposalInvalid extends SleepEditorProposal {
   const SleepProposalInvalid(this.reason, {this.target});
   final SleepRefusalReason reason;
   final SleepBlockRef? target;
+}
+
+/// Legacy UI actions throw their typed refusal before any follow-up work.
+void requireSleepSaved(SleepEditorOutcome outcome) {
+  switch(outcome) {
+    case SleepSaved() || SleepNoChange(): return;
+    case SleepRefused(:final proposal) when proposal!=null:
+      throw SleepMergeRequiredException(proposal!);
+    case SleepRefused(:final reason): throw ActivityReviewException('Sleep change refused: ${reason.name}.');
+    case SleepFailed(:final error): throw error;
+  }
 }

@@ -551,34 +551,6 @@ Future<List<VendorNight>> _ldbVendorSleepNights(int fromSec, int toSec) async {
     }, name: 'device nights');
   }
 
-Future<void> _ldbPutSleepOverride({required String dayId, required int onsetTs, required int offsetTs, required String source, SleepMergeAuthorization? merge}) async {
-    final db = await LocalDb.instance;
-    // One transaction: a user window edit reopens the night, so the confirmation
-    // goes with it (otherwise a crash between the two leaves an edit the next
-    // pass would still truncate).
-    await LocalDb.timedTransaction(db, 'sleep edit receipt',InlineTransactionWork( (txn) async {
-      if (source != 'rejected') {
-        // CLAIM(sleep-block-separation): a main edit near a nap (or another
-        // night) needs an explicit merge approval; a rejection only removes.
-        final proposal = await SleepBlockWriter.guard(txn,
-          changes: [
-            BlockChange(
-              beforeKey: 'main:$dayId',
-              after: SleepBlock(kind: SleepBlockKind.main, day: dayId, startTs: onsetTs, endTs: offsetTs),
-            ),
-          ],
-          editingDay: dayId, merge: merge);
-        if (proposal != null) {
-          await SleepBlockWriter.applyMerge(txn, proposal);
-          return;
-        }
-      }
-      await SleepBlockWriter.putMainRow(txn,
-        day: dayId, onsetTs: onsetTs, offsetTs: offsetTs, source: source);
-      await SleepEditStore.enqueue(txn, dayId);
-    }));
-  }
-
 Future<List<MomentLabel>> _ldbMomentLabels({required String? date, required String? sinceDate}) async {
     return LocalDb.readerRun((db) async {
     final rows = await db.query(
@@ -1328,230 +1300,38 @@ Future<void> _ldbPutJournalFieldDef(JournalFieldSpec spec) async {
     });
   }
 
-Future<Map<String, int>> _ldbApplyPendingActivityReviews() async {
-    final db = await LocalDb.instance;
-    return db.transaction((tx) async {
-      final pending = await tx.query(
-        'activity_review_days', orderBy: 'day_id', limit: 25,
-      );
-      final revisions = <String, int>{};
-      for (final job in pending) {
-        final day = job['day_id'] as String;
-        revisions[day] = job['revision'] as int;
-        final rows = await tx.query(
-          'day_result',
-          where: 'day_id = ? AND algo_version <= ?',
-          whereArgs: [day, kAlgoVersion],
-          orderBy: 'algo_version DESC',
-          limit: 1,
-        );
-        final edits = await ActivityStore.napEdits(tx, day);
-        if (rows.isEmpty && edits.every((e) => e.kind == NapEditKind.rejected)) {
-          continue;
-        }
-        // An accepted snapshot remains useful even if no day bundle survived.
-        // It does not make that day fully derived or invent other metrics.
-        final row = rows.isEmpty
-            ? <String, Object?>{
-                'day_id': day,
-                'algo_version': kAlgoVersion,
-                'payload_json': '{}',
-                'window_json': '{}',
-                'partial': 1,
-              }
-            : Map<String, Object?>.from(rows.single);
-        final bundle = Map<String, dynamic>.from(
-          jsonDecode(row['payload_json'] as String) as Map,
-        );
-        await ActivityStore.preserveLegacyNaps(tx, day, bundle);
-        final acceptedEdits = await ActivityStore.napEdits(tx, day);
-        if ((row['skipped'] == 1 || bundle['skipped'] == true) &&
-            acceptedEdits.any((e) => e.kind == NapEditKind.added)) {
-          // This day now has accepted information for navigation and summaries,
-          // but still needs derivation before it can be finalized or pruned.
-          row['skipped'] = 0;
-          row['partial'] = 1;
-          row['finalized'] = 0;
-          bundle.remove('skipped');
-          bundle.remove('reason');
-        }
-        composeAcceptedNaps(bundle, acceptedEdits);
-        // Editing naps does not recompute the retained metrics. Keep their
-        // version so scheduling and pruning still require a current derivation.
-        await tx.insert('day_result', {
-          ...row,
-          'payload_json': jsonEncode(bundle),
-          'computed_at': DateTime.now().millisecondsSinceEpoch,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
-        await tx.insert('metric_series', {
-          'date': day,
-          'key': 'nap_min',
-          'value': (bundle['scalars'] as Map?)?['nap_min'],
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
+Future<void> _ldbRecomposeNaps(String day,int napRevision) async {
+  final db=await LocalDb.instance;
+  await db.transaction((tx) async {
+    final jobs=await tx.query('sleep_edit_job',where:'day_id = ?',whereArgs:[day]);
+    if(jobs.isEmpty || jobs.single['nap_revision']!=napRevision ||
+        (jobs.single['nap_applied_revision'] as int)>=napRevision) return;
+    final rows=await tx.rawQuery('SELECT r.* FROM day_result r ${LocalDb.servedDayJoinSql} WHERE r.day_id = ?',[day]);
+    final edits=await SleepBlockStore.napEdits(tx,day);
+    if(rows.isNotEmpty || edits.any((e)=>e.kind==NapEditKind.added)) {
+      final row=rows.isEmpty?<String,Object?>{'day_id':day,'algo_version':kAlgoVersion,
+        'payload_json':'{}','window_json':'{}','partial':1,'skipped':0,'finalized':0}:Map<String,Object?>.of(rows.single);
+      final decoded=await JsonPayloadLane.shared.decodeUncached(row['payload_json']);
+      final bundle=decoded is Map?Map<String,dynamic>.from(decoded):<String,dynamic>{};
+      if((row['skipped']==1 || bundle['skipped']==true) && edits.any((e)=>e.kind==NapEditKind.added)) {
+        row['skipped']=0;row['partial']=1;row['finalized']=0;bundle.remove('skipped');bundle.remove('reason');
       }
-      if (revisions.isNotEmpty) {
-        // Each batch changes the rollup's inputs, even without another review.
-        // Advance in this transaction so cached or in-flight calculations from
-        // before these day writes cannot be published as current.
-        await tx.rawUpdate('UPDATE activity_review_meta SET revision = revision + 1');
-      }
-      return revisions;
-    });
-  }
-
-Future<NapResolution?> _ldbPutNapEdit({required String dayId, required int startTs, required int endTs, required String source, Transaction? transaction, SleepMergeAuthorization? merge}) async {
-    Future<NapResolution?> write(Transaction tx) async {
-      if (source == 'rejected') {
-        // A pre-upgrade nap may still live only in its retained day result.
-        // Capture it before replacing that result with the user's rejection.
-        final days = await tx.query('day_result',
-          where: 'day_id = ? AND algo_version <= ?',
-          whereArgs: [dayId, kAlgoVersion], orderBy: 'algo_version DESC', limit: 1);
-        if (days.isNotEmpty) {
-          await ActivityStore.preserveLegacyNaps(tx, dayId,
-            Map<String, dynamic>.from(jsonDecode(days.single['payload_json'] as String) as Map));
-        }
-        // Removal only widens gaps, so it is never refused for spacing. The
-        // tombstone keeps the pre-removal bounds and the prior payload plus the
-        // detected snapshot (CLAIM(sleep-editor-nap-key)).
-        await SleepBlockWriter.tombstoneNap(tx, day: dayId, startTs: startTs, endTs: endTs);
-        await ActivityStore.supersede(tx, ActivityKind.nap, startTs, endTs);
-        await ActivityStore.markDayChanged(tx, dayId);
-        return null;
-      }
-      // CLAIM(sleep-block-separation): the writer itself refuses a change that
-      // creates or narrows a gap under 30 minutes unless the caller carries an
-      // explicit approval of exactly that merge.
-      final existing = await SleepBlockWriter.napRow(tx, dayId, startTs);
-      final live = existing != null && existing.source != 'rejected';
-      final proposal = await SleepBlockWriter.guard(tx,
-        changes: [
-          BlockChange(
-            beforeKey: live ? 'nap:$dayId:$startTs' : null,
-            after: SleepBlock(kind: SleepBlockKind.nap, day: dayId, startTs: startTs, endTs: endTs),
-          ),
-        ],
-        editingDay: dayId, merge: merge);
-      if (proposal != null) {
-        await SleepBlockWriter.applyMerge(tx, proposal);
-        await ActivityStore.supersede(tx, ActivityKind.nap, proposal.startTs, proposal.endTs);
-        return (
-          startTs: proposal.startTs,
-          endTs: proposal.endTs,
-          extended: [
-            for (final b in proposal.participants)
-              (kind: b.kind == SleepBlockKind.main ? 'main_sleep' : 'nap', day: b.day, startTs: b.startTs, endTs: b.endTs),
-          ],
-        );
-      }
-      // Legacy official rows can carry the night only in payload_json. If
-      // the resolver could not identify a block, keep main's refusal rather
-      // than credit overlapping minutes again as a separate nap.
-      if (source == 'manual' &&
-          await ActivityStore.overlapsMainSleep(tx, startTs, endTs)) {
-        throw const ActivityReviewException(
-          'That overlaps your main sleep, which already counts that time.',
-        );
-      }
-      await SleepBlockWriter.putNapRow(tx, day: dayId, startTs: startTs, endTs: endTs, source: source);
-      // Derivation drops any detection under an edit, so a pending one here
-      // would never be reconciled again and could only fail to confirm.
-      await ActivityStore.supersede(tx, ActivityKind.nap, startTs, endTs);
-      await ActivityStore.markDayChanged(tx, dayId);
-      return null;
+      composeAcceptedNaps(bundle,edits);
+      await tx.insert('day_result',{...row,'payload_json':await JsonPayloadLane.shared.encode(bundle),
+        'computed_at':DateTime.now().millisecondsSinceEpoch},conflictAlgorithm:ConflictAlgorithm.replace);
+      await tx.insert('metric_series',{'date':day,'key':'nap_min','value':(bundle['scalars'] as Map?)?['nap_min']},conflictAlgorithm:ConflictAlgorithm.replace);
+      // The crossday cache is keyed by this revision, including raw-free edits.
+      await tx.rawUpdate('UPDATE activity_review_meta SET revision = revision + 1');
     }
-    final res = transaction == null ? await (await LocalDb.instance).transaction(write) : await write(transaction);
-    final main = res?.extended.where((b) => b.kind == 'main_sleep').lastOrNull;
-    if (main != null && transaction == null) await LocalDb.releaseFrozenHeadline(main.day);
-    return res;
-  }
+    await tx.rawUpdate('UPDATE sleep_edit_job SET nap_applied_revision = ? WHERE day_id = ? AND nap_revision = ?',
+      [napRevision,day,napRevision]);
+  });
+}
 
-Future<void> _ldbDeleteNapEdit(String dayId, int startTs, {SleepMergeAuthorization? merge}) async {
-    final db = await LocalDb.instance;
-    await db.transaction((tx) async {
-      final rows = await tx.query('sleep_nap',
-        where: 'day_id = ? AND start_ts = ?', whereArgs: [dayId, startTs]);
-      await ActivityStore.markDayChanged(tx, dayId);
-      String? restoreSource, restorePayload;
-      if (rows.isNotEmpty && rows.single['source'] == 'rejected') {
-        final payload = rows.single['payload_json'];
-        if (payload is String) {
-          final read = await SleepEditCodec.read(payload);
-          final source = read.retained['source'];
-          if (source == 'confirmed' || source == 'legacy') {
-            restoreSource = source as String;
-          } else if (read is EnvelopeOk && read.envelope.origin.mergedInto == null) {
-            // A removed manual (or edited) block: Restore brings back its own
-            // bounds as the person's entry. An absorbed block never restores on
-            // its own while its survivor contains it.
-            restoreSource = 'manual';
-          }
-        } else {
-          // A rejection from before activity review has no snapshot, and a
-          // detection that old is never offered for review again. Put the
-          // window back as a legacy nap so it is not lost for good; with no
-          // measured split, asleep and in-bed are the whole window.
-          final cutoff = (await tx.query('activity_review_meta')).single['activated_at'] as int;
-          if (startTs < cutoff) {
-            final min = (((rows.single['end_ts'] as int) - startTs) / 60).round();
-            restoreSource = 'legacy';
-            restorePayload = await JsonPayloadLane.shared.encode({
-              'duration_min': min, 'in_bed_min': min,
-              'confidence': null, 'source': 'legacy',
-            });
-          }
-        }
-      }
-      if (restoreSource != null) {
-        // Restoring creates a block: the same 30-minute rule applies.
-        final proposal = await SleepBlockWriter.guard(tx,
-          changes: [
-            BlockChange(
-              after: SleepBlock(kind: SleepBlockKind.nap, day: dayId, startTs: startTs, endTs: rows.single['end_ts'] as int),
-            ),
-          ],
-          editingDay: dayId, merge: merge);
-        if (proposal != null) {
-          await SleepBlockWriter.applyMerge(tx, proposal);
-          return;
-        }
-        if (restoreSource == 'manual') {
-          await tx.update('sleep_nap', {
-            'source': 'manual',
-            'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-          }, where: 'day_id = ? AND start_ts = ?', whereArgs: [dayId, startTs]);
-          return;
-        }
-        // Removing a rejection means "Put it back". Keep its original asleep
-        // minutes and confidence even after raw recordings have expired.
-        // This is now an explicit decision, even for a legacy snapshot: a
-        // later main-window correction must not suppress it as old detection.
-        restoreSource = 'confirmed';
-        final restored = Map<String, dynamic>.from((await JsonPayloadLane.shared.decodeUncached(
-          restorePayload ?? rows.single['payload_json'] as String)) as Map);
-        restored['source'] = restoreSource;
-        restorePayload = (await JsonPayloadLane.shared.encode(restored))!;
-        await tx.update('sleep_nap', {
-          'source': restoreSource,
-          'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-          'payload_json': restorePayload,
-        }, where: 'day_id = ? AND start_ts = ?', whereArgs: [dayId, startTs]);
-      } else if (rows.isNotEmpty && rows.single['source'] != 'rejected') {
-        // Deleting a LIVE row keeps what it remembers: a block that carries a
-        // detected snapshot or a suppression becomes a tombstone, never a gap
-        // in the suppression chain.
-        final row = (await SleepBlockWriter.napRow(tx, dayId, startTs))!;
-        final h = await SleepBlockWriter.historyOf(row);
-        if (h.envelope.detected is DetectedKnown || h.envelope.origin.suppressed.isNotEmpty) {
-          await SleepBlockWriter.tombstoneNap(tx, day: dayId, startTs: startTs);
-        } else {
-          await tx.delete('sleep_nap', where: 'day_id = ? AND start_ts = ?', whereArgs: [dayId, startTs]);
-        }
-      } else {
-        await tx.delete('sleep_nap', where: 'day_id = ? AND start_ts = ?', whereArgs: [dayId, startTs]);
-      }
-    });
-  }
+Future<Map<String,int>> _ldbApplyPendingActivityReviews() async => {
+  for(final r in await (await LocalDb.instance).query('activity_review_days',orderBy:'day_id',limit:25))
+    r['day_id'] as String:r['revision'] as int,
+};
 
 Future<void> _ldbUpdateBreathingWindows({required int startedAt, required double? preRmssd, required double? postRmssd}) async {
     final db = await LocalDb.instance;

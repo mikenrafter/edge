@@ -58,9 +58,11 @@ class SleepEditView {
 }
 
 class SleepEditJob {
-  const SleepEditJob(this.day, this.revision);
+  const SleepEditJob(this.day, this.revision, {this.napRevision=0, this.mainPending=true});
   final String day;
   final int revision;
+  final int napRevision;
+  final bool mainPending;
 }
 
 /// Publication of an applied night must complete before dependent work starts.
@@ -82,15 +84,16 @@ class SleepEditStore {
       'WHERE NOT EXISTS (SELECT 1 FROM sleep_edit_job WHERE day_id = ?)',
       [day, day],
     );
-    await tx.rawUpdate(
-      "UPDATE sleep_edit_job SET revision = revision + 1, phase = 'queued', error = NULL WHERE day_id = ?",
-      [day],
-    );
-    // Pin release belongs to the receipt too. No post-commit writer round trip.
-    await tx.rawDelete(
-      'DELETE FROM sync_cursor WHERE name = ? AND CASE WHEN json_valid(value) THEN json_extract(value, \'\$.day\') END = ?',
-      [LocalDb.kFrozenHeadlineCursor, day],
-    );
+    if (main) {
+      await tx.rawUpdate(
+        "UPDATE sleep_edit_job SET revision = revision + 1, phase = 'queued', error = NULL WHERE day_id = ?",[day]);
+      await tx.rawDelete(
+        'DELETE FROM sync_cursor WHERE name = ? AND CASE WHEN json_valid(value) THEN json_extract(value, \'\$.day\') END = ?',
+        [LocalDb.kFrozenHeadlineCursor,day]);
+    } else {
+      await tx.rawUpdate("UPDATE sleep_edit_job SET nap_revision = nap_revision + 1, "
+        "phase = CASE WHEN phase = 'done' THEN 'queued' ELSE phase END WHERE day_id = ?",[day]);
+    }
   }
 
   static Future<bool> hasOutstandingOn(DatabaseExecutor db) async =>
@@ -101,7 +104,7 @@ class SleepEditStore {
   static Future<void> cancel(DatabaseExecutor tx, String day) async {
     await tx.rawUpdate(
       "UPDATE sleep_edit_job SET revision = revision + 1, "
-      "applied_revision = revision + 1, phase = 'done', error = NULL WHERE day_id = ?",
+      "applied_revision = revision + 1, nap_applied_revision = nap_revision, phase = 'done', error = NULL WHERE day_id = ?",
       [day],
     );
   }
@@ -168,9 +171,9 @@ class SleepEditStore {
   /// CLAIM(sleep-edit-masking) [responsiveness_sleep_fix_test].
   static Future<SleepEditView> viewOn(DatabaseExecutor db, String day) async {
     final rows = await db.rawQuery(
-      'SELECT day_id, phase, applied_revision, revision FROM sleep_edit_job '
+      'SELECT day_id, phase, applied_revision, revision, nap_revision, nap_applied_revision FROM sleep_edit_job '
       "WHERE day_id = ? AND (applied_revision < revision OR phase != 'done') "
-      "OR day_id < ? AND phase != 'done' ORDER BY day_id",
+      "OR day_id < ? AND (applied_revision < revision OR phase = 'dependents') AND phase != 'done' ORDER BY day_id",
       [day, day],
     );
     return _viewFor(rows, day);
@@ -182,7 +185,8 @@ class SleepEditStore {
     final own = jobs.where((j) => j['day_id'] == day &&
         (j['applied_revision'] != j['revision'] || j['phase'] != 'done')).firstOrNull;
     final earlier = jobs.where((j) =>
-        (j['day_id'] as String).compareTo(day) < 0 && j['phase'] != 'done');
+        (j['day_id'] as String).compareTo(day) < 0 && j['phase'] != 'done' &&
+        (j['applied_revision'] != j['revision'] || j['phase'] == 'dependents'));
     final dependency = earlier.where((j) => j['phase'] == 'failed').firstOrNull ??
         earlier.firstOrNull;
     return SleepEditView(
@@ -219,7 +223,8 @@ class SleepEditStore {
                 : "phase NOT IN ('done', 'failed')",
             orderBy: 'day_id ASC',
           ))
-            SleepEditJob(r['day_id'] as String, r['revision'] as int),
+            SleepEditJob(r['day_id'] as String, r['revision'] as int,
+              napRevision:r['nap_revision'] as int,mainPending:(r['applied_revision'] as int)<(r['revision'] as int)),
         ],
         name: 'sleep edit jobs',
       );
@@ -322,8 +327,8 @@ class SleepEditStore {
       await (await LocalDb.instance).update(
             'sleep_edit_job',
             {'phase': phase.name, 'error': error},
-            where: 'day_id = ? AND revision = ?',
-            whereArgs: [job.day, job.revision],
+            where: 'day_id = ? AND revision = ? AND nap_revision = ?',
+            whereArgs: [job.day, job.revision, job.napRevision],
           ) ==
           1
       ? SleepEditAdvance.applied
@@ -332,6 +337,6 @@ class SleepEditStore {
   static Future<void> recalculate(String day) async => LocalDb.timedTransaction(
     await LocalDb.instance,
     'sleep edit receipt',
-    InlineTransactionWork((tx) => enqueue(tx, day)),
+    InlineTransactionWork((tx) => enqueue(tx, day, main:true)),
   );
 }

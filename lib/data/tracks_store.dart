@@ -16,6 +16,8 @@ import '../util/worker_audit.dart';
 import '../util/worker_entries.dart' show Dispatcher;
 import 'activity_store.dart';
 import 'db.dart';
+import 'local_repository_impl.dart';
+import 'sleep_editor.dart';
 import '../compute/manual_session.dart'
     show validateManualWindow, ManualWindowException, SessionSpan;
 import '../compute/nap_edits.dart' show manualNapWindowIsValid;
@@ -450,12 +452,12 @@ class TracksStore {
             end > DateTime.now().millisecondsSinceEpoch ~/ 1000) {
           throw ArgumentError('nap_time_duration');
         }
-        await LocalDb.putNapEdit(
+        requireSleepSaved(await LocalRepositoryImpl(getProfileMap:()=>{}).putNap(
           dayId: event.date,
           startTs: at ~/ 1000,
           endTs: at ~/ 1000 + (event.amount! * 60).round(),
           source: 'manual',
-        );
+        ));
       case 'moment':
         await LocalDb.editTrackMoment(event.sourceId, amount: event.amount);
       case 'journal':
@@ -507,7 +509,7 @@ class TracksStore {
           taken: false,
         );
       case 'nap':
-        await LocalDb.deleteNapEdit(event.date, event.atMs! ~/ 1000);
+        requireSleepSaved(await LocalRepositoryImpl(getProfileMap:()=>{}).deleteNap(event.date, event.atMs! ~/ 1000));
       case 'moment':
         await LocalDb.editTrackMoment(event.sourceId, delete: true);
       case 'journal':
