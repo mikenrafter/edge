@@ -130,7 +130,7 @@ class SleepEditorWrite {
     SleepMergeProposal? approved;
     final stageDays = <String>{};
 
-    Future<SleepEditorOutcome?> bind(SleepEntryRef t, {bool add = false}) async {
+    Future<SleepEditorOutcome?> bind(SleepBlockRef t, {bool add = false}) async {
       if (add) return null;
       if (work.containsKey(t.key)) return null;
       final StoredSleepRow? row = t.kind == SleepBlockKind.main

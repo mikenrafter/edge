@@ -76,7 +76,7 @@ class SleepEditStore {
       applied_revision INTEGER NOT NULL DEFAULT 0)
   ''');
 
-  static Future<void> enqueue(DatabaseExecutor tx, String day) async {
+  static Future<void> enqueue(DatabaseExecutor tx, String day, {bool main = true}) async {
     await tx.rawInsert(
       'INSERT INTO sleep_edit_job(day_id, revision) SELECT ?, 0 '
       'WHERE NOT EXISTS (SELECT 1 FROM sleep_edit_job WHERE day_id = ?)',

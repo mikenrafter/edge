@@ -52,6 +52,13 @@ class _StoredBlock {
 }
 
 abstract final class SleepBlockStore {
+  static Future<SleepEditorProposal> preflight(DatabaseExecutor tx, SleepEditorPlan plan) async =>
+    const SleepProposalInvalid(SleepRefusalReason.unsupportedSource);
+
+  static Future<SleepEditorOutcome> apply(SleepEditorPlan plan, {
+    required Transaction tx, SleepMergeAuthorization? merge,
+  }) async => const SleepRefused(SleepRefusalReason.unsupportedSource);
+
   /// Shared row codec for absorption and new assertions. Callers choose the
   /// owner day through SleepOwnership; an existing block retains its rule.
   /// CLAIM(sleep-block-owner-rule): new assertions use rule 1; absorption

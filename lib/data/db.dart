@@ -7399,6 +7399,8 @@ class LocalDb {
   /// throw is the race/programmatic-caller backstop.
   static Future<void> putJournalFieldDef(JournalFieldSpec spec) => _ldbPutJournalFieldDef(spec);
 
+  static Future<void> recomposeNaps(String day, int napRevision) async {}
+
   static Future<Map<String, int>> applyPendingActivityReviews() => _ldbApplyPendingActivityReviews();
 
   static Future<void> finishActivityReviews(Map<String, int> revisions) async {

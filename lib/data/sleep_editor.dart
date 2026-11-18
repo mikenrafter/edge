@@ -239,7 +239,7 @@ enum SleepEntryProvenance { automatic, manual, confirmed, retained, legacy, unkn
 /// Names one entry. [expectedEndTs] and [expectedSource] pin the row the plan
 /// was built against, so a changed row is a stale refusal, not a lost edit.
 @immutable
-class SleepEntryRef {
+class SleepEntryRef extends SleepBlockRef {
   const SleepEntryRef({
     required this.kind,
     required this.day,
@@ -259,6 +259,35 @@ class SleepEntryRef {
   String get key => kind == SleepBlockKind.main ? 'main:$day' : 'nap:$day:$startTs';
 }
 
+sealed class SleepBlockRef {
+  const SleepBlockRef();
+  SleepBlockKind get kind => throw UnsupportedError('legacy ref');
+  String get day => throw UnsupportedError('legacy ref');
+  int? get startTs => null;
+  int? get expectedEndTs => null;
+  String? get expectedSource => null;
+  String get key => throw UnsupportedError('legacy ref');
+}
+final class StoredBlockRef extends SleepBlockRef {
+  const StoredBlockRef(this.id, this.expectedRevision);
+  final String id;
+  final int expectedRevision;
+}
+final class DetectedMainRef extends SleepBlockRef {
+  const DetectedMainRef(this.day, this.expectedStartTs, this.expectedEndTs);
+  final String day;
+  final int expectedStartTs, expectedEndTs;
+}
+final class NoDetectionMainRef extends SleepBlockRef {
+  const NoDetectionMainRef(this.day);
+  final String day;
+}
+final class DetectedNapRef extends SleepBlockRef {
+  const DetectedNapRef(this.day, this.expectedStartTs, this.expectedEndTs);
+  final String day;
+  final int expectedStartTs, expectedEndTs;
+}
+
 sealed class SleepEditorCommand {
   const SleepEditorCommand();
 }
@@ -267,36 +296,61 @@ sealed class SleepEditorCommand {
 /// Add; [startTs]/[endTs] are the new bounds.
 class SetIntervals extends SleepEditorCommand {
   const SetIntervals(this.target, this.startTs, this.endTs);
-  final SleepEntryRef target;
+  final SleepBlockRef target;
   final int startTs, endTs;
 }
 
 class CalculateStages extends SleepEditorCommand {
   const CalculateStages(this.target);
-  final SleepEntryRef target;
+  final SleepBlockRef target;
 }
 
 class ResetToDetected extends SleepEditorCommand {
   const ResetToDetected(this.target);
-  final SleepEntryRef target;
+  final SleepBlockRef target;
 }
 
 enum SleepBoundary { start, end }
 
 class ResetBoundary extends SleepEditorCommand {
   const ResetBoundary(this.target, this.boundary);
-  final SleepEntryRef target;
+  final SleepBlockRef target;
   final SleepBoundary boundary;
 }
 
 class RemoveBlock extends SleepEditorCommand {
   const RemoveBlock(this.target);
-  final SleepEntryRef target;
+  final SleepBlockRef target;
 }
 
 class RestoreRemoved extends SleepEditorCommand {
   const RestoreRemoved(this.target);
-  final SleepEntryRef target;
+  final SleepBlockRef target;
+}
+
+class AddMain extends SleepEditorCommand {
+  const AddMain(this.day, this.startTs, this.endTs);
+  final String day;
+  final int startTs, endTs;
+}
+class AddNap extends SleepEditorCommand {
+  const AddNap(this.startTs, this.endTs, {this.source = 'manual', this.payload, this.suggestionId});
+  final int startTs, endTs;
+  final String source;
+  final String? payload, suggestionId;
+}
+class ConfirmMain extends SleepEditorCommand {
+  const ConfirmMain(this.day, this.startTs, this.endTs);
+  final String day;
+  final int startTs, endTs;
+}
+class ClearMain extends SleepEditorCommand {
+  const ClearMain(this.day);
+  final String day;
+}
+class AutoLogNap extends AddNap {
+  const AutoLogNap(String suggestionId, int startTs, int endTs, String payload)
+    : super(startTs, endTs, source: 'confirmed', payload: payload, suggestionId: suggestionId);
 }
 
 /// Explicit merge: the approved set from a [SleepMergeProposal].
@@ -335,6 +389,7 @@ enum SleepRefusalReason {
   invalidInterval,
   unsupportedSource,
   importPaused,
+  mainExists,
 }
 
 /// The editor's read model for one day: the entries it may act on.
@@ -403,7 +458,7 @@ class SleepSaved extends SleepEditorOutcome {
 class SleepRefused extends SleepEditorOutcome {
   const SleepRefused(this.reason, {this.target, this.proposal});
   final SleepRefusalReason reason;
-  final SleepEntryRef? target;
+  final SleepBlockRef? target;
   final SleepMergeProposal? proposal;
 }
 
@@ -429,5 +484,5 @@ class SleepProposalMergeRequired extends SleepEditorProposal {
 class SleepProposalInvalid extends SleepEditorProposal {
   const SleepProposalInvalid(this.reason, {this.target});
   final SleepRefusalReason reason;
-  final SleepEntryRef? target;
+  final SleepBlockRef? target;
 }
