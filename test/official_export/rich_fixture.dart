@@ -25,20 +25,12 @@ import 'package:sqflite/sqflite.dart' show Sqflite;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'support.dart';
+import 'target/scenario.dart';
 
-const d1 = 1792454400; // 2026-10-20T00:00:00Z
-const day = 86400;
-int dayStart(int n) => d1 + (n - 1) * day;
-
-/// The fork's live prune cursor: everything below d9 was pruned from live rows.
-final int forkCursor = dayStart(9);
-
-/// Oldest exact second in the mapped decoded rows: d3 12:00 (an archive-
-/// restored, partial first day).
-final int oldestExact = dayStart(3) + 12 * 3600;
-
-/// First UTC midnight at or after [oldestExact], below the fork cursor: d4.
-final int edgeD4 = dayStart(4);
+int dayStart(int n) => dayStartEpoch(n);
+final int forkCursor = fixtureForkCursor;
+final int oldestExact = fixtureOldestExact;
+final int edgeD4 = fixtureExpectedCursor;
 
 class RichFixture {
   RichFixture._(this._root, this.forkPath, this.unfilled);
@@ -141,6 +133,13 @@ Map<String, List<Map<String, Object?>>> _specificRows() {
   ];
   return {
     'decoded_onehz': oneHz,
+    'observation': [
+      {
+        'device_id': 'vendor-A', 'ts_ms': (dayStart(5) + 60) * 1000,
+        'date': '2026-10-24', 'source_kind': 'vendor', 'vendor_key': 'oura',
+        'key': 'readiness', 'value': 71.0, 'unit': 'score', 'attribution': 'original vendor',
+      },
+    ],
     'day_result': [
       for (final v in [120, 124, 125])
         {

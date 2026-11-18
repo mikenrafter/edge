@@ -18,13 +18,22 @@ import 'rich_fixture.dart';
 Future<Database> _createTargetShaped(String path, {int userVersion = 62}) async {
   await databaseFactoryFfi.deleteDatabase(path);
   final db = await databaseFactoryFfi.openDatabase(path);
-  for (final type in const ['table', 'index', 'view', 'trigger']) {
+  // Tables only: indexes, views and triggers come after the rows, so a target
+  // trigger (it maintains the receiver-owned input/session counters) never
+  // fires on the copy. The production exporter follows the same order.
+  for (final o in officialTargetObjects.where((o) => o.type == 'table')) {
+    await db.execute(o.sql);
+  }
+  await db.execute('PRAGMA user_version = $userVersion');
+  return db;
+}
+
+Future<void> _finishTargetShaped(Database db) async {
+  for (final type in const ['index', 'view', 'trigger']) {
     for (final o in officialTargetObjects.where((o) => o.type == type)) {
       await db.execute(o.sql);
     }
   }
-  await db.execute('PRAGMA user_version = $userVersion');
-  return db;
 }
 
 Future<List<String>> _commonColumns(Database db, String table) async {
@@ -37,8 +46,8 @@ Future<List<String>> _commonColumns(Database db, String table) async {
   return [for (final c in target) if (source.contains(c)) c];
 }
 
-Future<String> naiveCopyCandidate(RichFixture fx) async {
-  final out = '${File(fx.forkPath).parent.path}/naive.db';
+Future<String> naiveCopyCandidate(RichFixture fx, {String name = 'naive.db'}) async {
+  final out = '${File(fx.forkPath).parent.path}/$name';
   final db = await _createTargetShaped(out);
   try {
     await db.execute('ATTACH DATABASE ? AS src', [fx.forkPath]);
@@ -55,6 +64,7 @@ Future<String> naiveCopyCandidate(RichFixture fx) async {
       await db.execute('INSERT OR REPLACE INTO main."$t"($list) SELECT $list FROM src."$t"');
     }
     await db.execute('DETACH DATABASE src');
+    await _finishTargetShaped(db);
   } finally {
     await db.close();
   }
@@ -63,11 +73,14 @@ Future<String> naiveCopyCandidate(RichFixture fx) async {
 
 Future<String> policyCandidate(
   RichFixture fx, {
+  String name = 'policy.db',
   int userVersion = 62,
   bool extraTable = false,
   bool dropImported = false,
+  bool withCursor = true,
+  bool unitKeyControl = false,
 }) async {
-  final out = '${File(fx.forkPath).parent.path}/policy.db';
+  final out = '${File(fx.forkPath).parent.path}/$name';
   final db = await _createTargetShaped(out, userVersion: userVersion);
   try {
     await db.execute('ATTACH DATABASE ? AS src', [fx.forkPath]);
@@ -85,16 +98,26 @@ Future<String> policyCandidate(
           if (t.keep.contains(c) || t.rewrite.contains(c) || t.provenance.contains(c)) c,
       ];
       if (cols.isEmpty) continue;
-      final list = cols.map((c) => '"$c"').join(',');
-      await db.execute('INSERT OR REPLACE INTO main."${t.dest}"($list) SELECT $list FROM src."${e.key}"');
+      final list = [...cols, ...t.emptyConstants.keys].map((c) => '"$c"').join(',');
+      final values = [...cols.map((c) => '"$c"'), ...t.emptyConstants.values].join(',');
+      await db.execute('INSERT OR REPLACE INTO main."${t.dest}"($list) SELECT $values FROM src."${e.key}"');
     }
-    await db.execute(
-      "INSERT INTO main.sync_cursor(name,value,updated_at) VALUES('decoded_pruned_before','${fx.expectedPrunedBefore}',1)",
-    );
+    if (withCursor) {
+      await db.execute(
+        "INSERT INTO main.sync_cursor(name,value,updated_at) VALUES('decoded_pruned_before','${fx.expectedPrunedBefore}',1)",
+      );
+    }
     await db.execute(
       "INSERT INTO main.compute_freshness SELECT * FROM src.compute_freshness WHERE key='substrate_archive_policy'",
     );
     await db.execute('DETACH DATABASE src');
+    if (unitKeyControl) {
+      // Control only: a literal qualified key so the receiver proof is
+      // satisfiable. P2 supplies the real injective unit-key encoding.
+      await db.execute("UPDATE journal_field_def SET key='custom_caffeine~g' WHERE key='custom_caffeine'");
+      await db.execute("UPDATE journal_metric SET field='custom_caffeine~g' WHERE field='custom_caffeine'");
+    }
+    await _finishTargetShaped(db);
     if (extraTable) await db.execute('CREATE TABLE fork_only_table(x INTEGER)');
     if (dropImported) await db.execute('ALTER TABLE day_result DROP COLUMN imported');
   } finally {

@@ -18,6 +18,8 @@ String _kinds(List<PayloadViolation> v) => (v.map((x) => x.kind).toSet().toList(
 
 void main() {
   late RichFixture fx;
+  // Each candidate build creates ~80 tables and their triggers: seconds, not ms.
+  const slow = Timeout(Duration(minutes: 3));
   setUpAll(() async => fx = await RichFixture.build());
   tearDownAll(() => fx.dispose());
 

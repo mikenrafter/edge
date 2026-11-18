@@ -264,7 +264,7 @@ void main() {
         final shape = target.tables[e.value.dest];
         if (shape == null) continue;
         for (final c in e.value.targetOnly) {
-          if (e.key.startsWith('raw_archive_') && e.key != 'raw_archive_frames') {
+          if (e.key.startsWith('raw_archive') && e.key != 'raw_archive_frames') {
             continue; // hash/frame are computed by the frame-row encoder
           }
           final col = shape.columns.singleWhere((x) => x.name == c);
@@ -273,13 +273,18 @@ void main() {
       }
     });
 
-    test('a cleared column can actually be NULL or defaulted in the target', () {
+    test('a cleared column is NULL/defaulted in the target, or has a declared '
+        'empty constant', () {
       for (final e in officialProfile.tables.entries) {
         final shape = target.tables[e.value.dest];
         if (shape == null) continue;
         for (final c in e.value.clear) {
           final col = shape.columns.singleWhere((x) => x.name == c);
-          expect(col.supplyOptional, isTrue, reason: '${e.key}.$c');
+          expect(
+            col.supplyOptional || e.value.emptyConstants.containsKey(c),
+            isTrue,
+            reason: '${e.key}.$c is NOT NULL with no default and no constant',
+          );
         }
       }
     });
@@ -311,7 +316,8 @@ void main() {
         final unique = _uniqueIndexColumns(shape);
         final key = m.columns.toSet();
         expect(
-          key == pk || unique.any((u) => u.length == key.length && u.containsAll(key)),
+          (key.length == pk.length && key.containsAll(pk)) ||
+              unique.any((u) => u.length == key.length && u.containsAll(key)),
           isTrue,
           reason: '${e.key} key ${m.columns} vs pk $pk unique $unique',
         );
@@ -368,18 +374,24 @@ List<Set<String>> _uniqueIndexColumns(TableShape shape) {
 final Map<(String, String), Set<String>> _indexColumns = _readIndexColumns();
 
 Map<(String, String), Set<String>> _readIndexColumns() {
-  final json = readCaptureObjects('target_schema_62.json');
   final out = <(String, String), Set<String>>{};
-  for (final o in json) {
+  for (final o in readCaptureObjects('target_schema_62.json')) {
     if (o['type'] != 'index' || o['sql'] == null) continue;
-    final m = RegExp(r'\((.*)\)').firstMatch((o['sql'] as String).split('WHERE').first);
+    // COALESCE(a, b) is one key part made of two columns: join it so the comma
+    // does not split it, then split the column list on commas.
+    final sql = (o['sql'] as String)
+        .split('WHERE')
+        .first
+        .replaceAllMapped(
+          RegExp(r'COALESCE\(\s*(\w+)\s*,\s*(\w+)\s*\)'),
+          (m) => '${m[1]}|${m[2]}',
+        );
+    final m = RegExp(r'\((.*)\)').firstMatch(sql);
     if (m == null) continue;
-    final cols = m.group(1)!.split(',').map((c) {
-      final t = c.trim().split(RegExp(r'\s+')).first;
-      final f = RegExp(r'COALESCE\((\w+),(\w+)\)').firstMatch(c.replaceAll(' ', ''));
-      return f != null ? [f.group(1)!, f.group(2)!] : [t];
-    }).expand((x) => x).toSet();
-    out[(o['tbl_name'] as String, o['name'] as String)] = cols;
+    out[(o['tbl_name'] as String, o['name'] as String)] = {
+      for (final part in m.group(1)!.split(','))
+        ...part.trim().split(RegExp(r'\s+')).first.split('|'),
+    };
   }
   return out;
 }

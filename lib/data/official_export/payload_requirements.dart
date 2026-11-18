@@ -1,8 +1,6 @@
 // Requirements any candidate official file must meet, checked from a read of
 // its catalog and counts. P1 uses it to reject a naive copy; P2's mapper output
 // and the runtime validator must satisfy it with no violation.
-//
-// STUB for the red phase: reports nothing.
 import 'package:sqflite/sqflite.dart';
 
 import 'profile.dart';
@@ -71,9 +69,81 @@ class PayloadViolation {
   String toString() => '$kind: $text';
 }
 
+/// Every broken requirement of [payload] against [profile] and the captured
+/// [target] layout. Empty means the file may go to the receiver.
+///
+/// [expectedPrunedBefore] is the carried cursor the exporter computed (null:
+/// the fork had none, so no row is expected). Kinds: `userVersion`,
+/// `unknownTable`, `layout`, `droppedTableHasRows`, `foreignCursor`,
+/// `foreignFreshnessKey`, `prunedBeforeMismatch`.
 List<PayloadViolation> checkPayload(
   PayloadInventory payload,
   OfficialProfile profile, {
   required SchemaCatalog target,
   required int? expectedPrunedBefore,
-}) => const [];
+}) {
+  final out = <PayloadViolation>[];
+  if (payload.userVersion != officialTargetSchema) {
+    out.add(
+      PayloadViolation(
+        'userVersion',
+        'user_version ${payload.userVersion}, expected $officialTargetSchema',
+      ),
+    );
+  }
+  final carrierNames = {for (final c in profile.carriers) c.name};
+  for (final name in payload.catalog.tables.keys) {
+    if (!target.tables.containsKey(name) && !carrierNames.contains(name)) {
+      out.add(PayloadViolation('unknownTable', name));
+    }
+  }
+  for (final t in target.tables.values) {
+    final actual = payload.catalog.tables[t.name];
+    if (actual == null) {
+      out.add(PayloadViolation('layout', 'missing target table ${t.name}'));
+    } else if (!_sameNames(actual.columnNames, t.columnNames)) {
+      out.add(
+        PayloadViolation(
+          'layout',
+          '${t.name} columns differ from the tagged release: '
+          '${(actual.columnNames.difference(t.columnNames).union(t.columnNames.difference(actual.columnNames)).toList()..sort())}',
+        ),
+      );
+    }
+  }
+  // A table that carries no rows by policy (R/D) or has no source at all
+  // (target-only, such as a receiver cache) must be empty; so must any fork
+  // computation sitting in a target table of the same name.
+  final carrying = {
+    for (final e in profile.tables.entries)
+      if (e.value.policy.carriesRows) e.value.dest!,
+  };
+  for (final e in payload.rowCounts.entries) {
+    if (e.value == 0) continue;
+    if (!carrying.contains(e.key) && !carrierNames.contains(e.key)) {
+      out.add(PayloadViolation('droppedTableHasRows', e.key));
+    }
+  }
+  for (final n in payload.syncCursorNames) {
+    if (n != 'decoded_pruned_before') {
+      out.add(PayloadViolation('foreignCursor', 'sync_cursor:$n'));
+    }
+  }
+  for (final k in payload.freshnessKeys) {
+    if (k != 'substrate_archive_policy') {
+      out.add(PayloadViolation('foreignFreshnessKey', 'compute_freshness:$k'));
+    }
+  }
+  if (payload.prunedBefore != expectedPrunedBefore) {
+    out.add(
+      PayloadViolation(
+        'prunedBeforeMismatch',
+        'decoded_pruned_before ${payload.prunedBefore}, expected $expectedPrunedBefore',
+      ),
+    );
+  }
+  return out;
+}
+
+bool _sameNames(Set<String> a, Set<String> b) =>
+    a.length == b.length && a.containsAll(b);

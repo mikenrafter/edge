@@ -127,6 +127,7 @@ class TableProfile {
     this.dropped = const [],
     this.provenance = const [],
     this.targetOnly = const [],
+    this.emptyConstants = const {},
     this.transforms = const [],
     this.rowRule,
   });
@@ -146,6 +147,10 @@ class TableProfile {
 
   /// Target columns the source has no value for: the target default applies.
   final List<String> targetOnly;
+
+  /// A cleared column the target declares NOT NULL without a default gets this
+  /// SQL literal instead of NULL (a valid empty value, never a made-up one).
+  final Map<String, String> emptyConstants;
 
   /// Named whole-table transformations (archive expansion, re-encoding).
   final List<String> transforms;
@@ -307,6 +312,9 @@ class OfficialProfile {
           out.add('${e.key}: ${t.policy.code} dest needs createsEmptyDest');
         }
       }
+      for (final c in t.emptyConstants.keys) {
+        if (!t.clear.contains(c)) out.add('${e.key}.$c: empty constant on a column that is not cleared');
+      }
       if (t.policy == TablePolicy.mapped &&
           t.clear.isEmpty &&
           t.omit.isEmpty &&
@@ -323,5 +331,51 @@ class OfficialProfile {
 
   /// Compares an actual database's tables/columns with the profile.
   /// [source] is the fork snapshot's catalog. Every gap is returned.
-  List<CoverageGap> coverage(SchemaCatalog source) => const []; // red-phase stub
+  List<CoverageGap> coverage(SchemaCatalog source) {
+    final gaps = <CoverageGap>[];
+    for (final shape in source.tables.values) {
+      final t = tables[shape.name];
+      if (t == null) {
+        gaps.add(UnclassifiedTable(shape.name));
+        continue;
+      }
+      final profiled = t.columns;
+      for (final c in shape.columnNames) {
+        if (!profiled.containsKey(c)) {
+          gaps.add(UnclassifiedColumn(shape.name, c));
+        }
+      }
+      for (final c in profiled.keys) {
+        if (!shape.columnNames.contains(c)) gaps.add(StaleColumn(shape.name, c));
+      }
+      if (t.policy.carriesRows) {
+        if (shape.rowidAlias == null) {
+          gaps.add(
+            UnsupportedShape(
+              shape.name,
+              shape.withoutRowid
+                  ? 'WITHOUT ROWID has no rowid to page by'
+                  : shape.virtualTable
+                  ? 'virtual table'
+                  : 'every rowid alias is shadowed by a column',
+            ),
+          );
+        }
+        if (shape.nonPlainColumns.isNotEmpty) {
+          gaps.add(
+            UnsupportedShape(
+              shape.name,
+              'generated or hidden columns ${shape.nonPlainColumns}',
+            ),
+          );
+        }
+      }
+    }
+    for (final e in tables.entries) {
+      if (!e.value.optional && !source.tables.containsKey(e.key)) {
+        gaps.add(MissingRequiredTable(e.key));
+      }
+    }
+    return gaps;
+  }
 }

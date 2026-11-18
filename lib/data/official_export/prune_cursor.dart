@@ -1,8 +1,12 @@
 // The one carried prune-safety cursor of the official export (profile row
 // `sync_cursor`, name `decoded_pruned_before`). Pure: no database, no clock.
 //
-// STUB for the red phase: `chooseDecodedPrunedBefore` returns the fork's cursor
-// unchanged, which is the "obsolete fork-live cursor" the tests must reject.
+// The fork's live cursor says "decoded rows below here were deleted". The
+// official file carries a recomputed one so that (a) a mapped history starting
+// mid-day marks its oldest partial day deleted, and (b) complete days restored
+// from the exact archive well below the fork's live edge stay eligible. It never
+// rises above the fork's value. Not `LocalDb._reconcilePrunedCursor`: its first
+// two-hour-gap stop would turn an ordinary band-off night into a permanent edge.
 import '../day_label.dart';
 
 /// Why the exporter emits (or omits) the cursor row.
@@ -48,9 +52,32 @@ class DayLabelCalendar implements LocalCalendar {
   }
 }
 
-/// First local midnight at or after [oldestExactSec], capped at [forkCursorSec].
+/// The cursor row for the official file (spec §4.3).
+///
+/// [forkCursorSec] is the fork's `decoded_pruned_before`, null when it has none.
+/// [oldestExactSec] is the oldest exact second present in the MAPPED decoded
+/// tables (after archive expansion, live-winner resolution and deletion
+/// windows), null when none survives. Both are epoch seconds and must be
+/// positive: zero would otherwise read as "everything before 1970 was pruned".
 PrunedBeforeChoice chooseDecodedPrunedBefore({
   required int? forkCursorSec,
   required int? oldestExactSec,
   LocalCalendar calendar = const DayLabelCalendar(),
-}) => PrunedBeforeChoice(forkCursorSec, PrunedBeforeReason.noForkCursor);
+}) {
+  if (forkCursorSec != null && forkCursorSec <= 0) {
+    throw ArgumentError.value(forkCursorSec, 'forkCursorSec', 'must be positive');
+  }
+  if (oldestExactSec != null && oldestExactSec <= 0) {
+    throw ArgumentError.value(oldestExactSec, 'oldestExactSec', 'must be positive');
+  }
+  if (forkCursorSec == null) {
+    return const PrunedBeforeChoice(null, PrunedBeforeReason.noForkCursor);
+  }
+  if (oldestExactSec == null) {
+    return PrunedBeforeChoice(forkCursorSec, PrunedBeforeReason.noExactInput);
+  }
+  final edge = calendar.midnightAtOrAfter(oldestExactSec);
+  return edge > forkCursorSec
+      ? PrunedBeforeChoice(forkCursorSec, PrunedBeforeReason.cappedAtForkCursor)
+      : PrunedBeforeChoice(edge, PrunedBeforeReason.oldestExactMidnight);
+}
