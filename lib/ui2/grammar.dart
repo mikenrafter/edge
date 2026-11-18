@@ -263,6 +263,17 @@ class _RenderHitOverhang extends RenderShiftedBox {
 /// [describe], so the position is spoken rather than only drawn; and a tap
 /// anywhere on the strip that jumps straight there, which is the whole gesture
 /// for anyone who cannot hold a drag steady.
+/// A chart with two range handles captures the grabbed handle at drag start.
+/// Scrubber retains the shared slider semantics and owns its gesture arena.
+abstract interface class ScrubGestureDelegate {
+  void scrubTapped(TapUpDetails details);
+  void scrubDoubleTapDown(TapDownDetails details);
+  void scrubDoubleTapped();
+  void scrubDragStarted(DragStartDetails details);
+  void scrubDragUpdated(DragUpdateDetails details);
+  void scrubDragEnded();
+}
+
 class Scrubber extends StatelessWidget {
   /// 0…1 along the strip. Null means nothing has been placed yet.
   final double? value;
@@ -286,6 +297,7 @@ class Scrubber extends StatelessWidget {
   /// tappable card: a tap still opens the card, a hold reads a value, and
   /// [onEnd] fires when the finger lifts so the readout can go away.
   final bool hold;
+  final ScrubGestureDelegate? gestureDelegate;
   final VoidCallback? onEnd;
 
   const Scrubber({
@@ -298,6 +310,7 @@ class Scrubber extends StatelessWidget {
     this.step = .05,
     this.hold = false,
     this.onEnd,
+    this.gestureDelegate,
   });
 
   @override
@@ -329,6 +342,20 @@ class Scrubber extends StatelessWidget {
           final w = box.maxWidth;
           void set(Offset o) =>
               onChanged(w <= 0 ? 0 : (o.dx / w).clamp(0.0, 1.0));
+          final delegate=gestureDelegate;
+          if(delegate!=null) {
+            return ConstrainedBox(constraints:const BoxConstraints(minWidth:48,minHeight:48),
+              child:GuideUnitMark(component:c,child:GestureDetector(
+                behavior:HitTestBehavior.opaque,
+                onTapUp:delegate.scrubTapped,
+                onDoubleTapDown:delegate.scrubDoubleTapDown,
+                onDoubleTap:delegate.scrubDoubleTapped,
+                onHorizontalDragStart:delegate.scrubDragStarted,
+                onHorizontalDragUpdate:delegate.scrubDragUpdated,
+                onHorizontalDragEnd:(_)=>delegate.scrubDragEnded(),
+                onHorizontalDragCancel:delegate.scrubDragEnded,
+                child:child)));
+          }
           if (hold) {
             return GestureDetector(
               behavior: HitTestBehavior.opaque,

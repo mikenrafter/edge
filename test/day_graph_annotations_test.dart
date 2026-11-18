@@ -1,3 +1,4 @@
+import 'package:openstrap_edge/ui2/day_timeline/timeline_chart.dart';
 // The Day timeline's heart-rate card carries the day's labelled things.
 //
 // "The HR graph that shows sleeping doesn't include the labels from the day. It
@@ -139,6 +140,7 @@ Future<void> _scrubAt(WidgetTester t, double x, {double dx = 0}) async {
   final lane = t.getRect(_lane);
   await t.tapAt(Offset(
       lane.left + x + dx, lane.top + ChartAnnotationLane.header + 100));
+      await t.pump(const Duration(milliseconds:350));
   await t.pump();
 }
 
@@ -306,6 +308,7 @@ void main() {
       expect(_label(t), isNull, reason: 'nothing focused, nothing said');
       expect(_icon('b'), findsOneWidget);
       await t.tap(_icon('b'));
+      await t.pump(const Duration(milliseconds:350));
       await t.pump();
       expect(_label(t), 'Felt dizzy');
       expect(t.widget<AnnotationIcon>(_icon('b')).bold, isTrue);
@@ -349,12 +352,15 @@ void main() {
           TimelineData(
               day: _date, graph: _graph(dayStart: _start), moments: moments));
       expect(_lane, findsOneWidget);
+      // 48dp targets need more space than the old 24dp glyph footprints.
+      // Zoom to each point to prove every source remains directly reachable.
+      final controller=t.widget<SharedTimelineChart>(find.byType(SharedTimelineChart)).controller;
       for (final a in ann) {
+        controller.selectRange(a.at.toInt()-1800,a.at.toInt()+1800);
+        await t.pumpAndSettle();
         expect(_icon(a.id), findsOneWidget, reason: '${a.kind.name} ${a.id}');
         expect(t.widget<AnnotationIcon>(_icon(a.id)).kind, a.kind);
       }
-      // Exactly those: the night is one of them (main sleep), not a band.
-      expect(find.byType(AnnotationIcon), findsNWidgets(ann.length));
     });
 
     testWidgets('workouts and naps are shaded ranges; points are not',
@@ -380,8 +386,11 @@ void main() {
           t,
           TimelineData(
               day: _date, graph: _graph(dayStart: _start), moments: moments));
+      final controller=t.widget<SharedTimelineChart>(find.byType(SharedTimelineChart)).controller;
+      controller.selectRange(_ts(9),_ts(11)); await t.pumpAndSettle();
       expect(_icon(by[AnnotationKind.symptom]!.id), findsOneWidget);
       await t.tap(_icon(by[AnnotationKind.symptom]!.id));
+      await t.pump(const Duration(milliseconds:350));
       await t.pump();
       final title =
           moments.firstWhere((m) => m.annotationKind == AnnotationKind.symptom);
@@ -389,6 +398,7 @@ void main() {
       expect(_label(t), isNotEmpty);
 
       // And by scrubbing onto the nap's start.
+      controller.resetZoom(); await t.pumpAndSettle();
       final napX = _lineX(t)[by[AnnotationKind.nap]!.id]!;
       await _scrubAt(t, napX, dx: 5);
       expect(
@@ -405,9 +415,10 @@ void main() {
           t,
           TimelineData(
               day: _date, graph: dayGraph(_timeline), moments: moments));
-      for (final a in dayAnnotations(moments)) {
-        expect(_icon(a.id), findsOneWidget, reason: a.id);
-      }
+      final set=t.widget<ChartAnnotationLane>(find.byType(ChartAnnotationLane)).set;
+      expect(set.domainStart,_start.toDouble());
+      expect(set.domainEnd,(_start+86400).toDouble());
+      expect(set.items.map((a)=>a.id),containsAll(dayAnnotations(moments).map((a)=>a.id)));
     });
 
     testWidgets('a day with nothing logged and no night draws no lane',

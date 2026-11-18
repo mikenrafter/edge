@@ -1,3 +1,8 @@
+import '../day_timeline/day_graph.dart';
+export '../day_timeline/day_graph.dart' show DayGraph, kDayMinutes;
+import '../day_timeline/timeline_chart.dart';
+import '../day_timeline/timeline_filter.dart';
+import '../day_timeline/timeline_filter_button.dart';
 import 'detected_activities.dart' show NapAutoLogRow;
 import 'review_read_label.dart';
 import '../../l10n/presentation_text.dart';
@@ -101,7 +106,10 @@ class Moment {
     this.eventGroup,
     this.wakeGroup,
     this.wakeKind,
+    this.timelineKind,
   });
+
+  final DayTimelineKind? timelineKind;
 
   final int? wakeGroup;
   final WakeNightEventKind? wakeKind;
@@ -570,6 +578,7 @@ List<Moment> dayMoments({
   for (final a in wakeAnnotations(wakeTimeline, l: l)) {
     out.add(Moment(
       at: a.at.toInt(),
+      until:a.until?.toInt(),
       title: a.label,
       icon: a.icon ?? annotationIcon(a.kind),
       wakeGroup: a.groupId,
@@ -598,11 +607,11 @@ List<(ChartAnnotation, Moment)> annotatedMoments(List<Moment> moments) {
   for (final m in moments) {
     final kind = m.annotationKind;
     if (kind == null) continue;
-    final base = '${kind.name}:${m.at}';
+    final base = m.identity ?? '${kind.name}:${m.at}';
     final n = used[base] = (used[base] ?? -1) + 1;
     final end = m.until;
     out.add((ChartAnnotation(
-      id: n == 0 ? base : '$base#$n',
+      id: m.identity ?? (n == 0 ? base : '$base#$n'),
       kind: kind,
       at: m.at.toDouble(),
       until: end != null && end > m.at ? end.toDouble() : null,
@@ -699,105 +708,6 @@ List<DayNote> dayNotes({
 // minute with nothing in it breaks the curve AND changes the ground behind it,
 // so an empty stretch reads as absent rather than as flat.
 
-/// One slot per minute. A sample's index IS its clock time, which is what
-/// makes every lane share one axis without any of them being resampled.
-const int kDayMinutes = 1440;
-
-/// The day, drawn. All four lanes on one time base, built once.
-@immutable
-class DayGraph {
-  const DayGraph({
-    this.hr = const [],
-    this.movement = const [],
-    this.rest = const [],
-    this.work = const [],
-    this.dayStart,
-  });
-
-  /// Epoch second of slot 0 — local midnight for a whole day, the window's
-  /// first minute for a [window]. The annotation domain runs `dayStart` ..
-  /// `dayStart + slots * 60`. Null for a graph built without a day.
-  final int? dayStart;
-
-  /// Beats per minute, one slot per minute of the day, `null` where nothing
-  /// was recorded.
-  final List<double?> hr;
-
-  /// Share of each minute spent moving, 0…1, `null` where nothing was
-  /// recorded. Note the difference from a zero: 0 is a minute we watched you
-  /// sit still, `null` is a minute we were not there for.
-  final List<double?> movement;
-
-  /// Asleep and naps, as (from, to) minute of the day. NOT drawn: the night is
-  /// a chart annotation and a nap is its own annotation. Kept because a known
-  /// night or nap is measured time ([unmeasured]) and the card's emptiness test.
-  final List<(int, int, Color)> rest;
-
-  /// Workouts, same units.
-  final List<(int, int, Color)> work;
-
-  int get slots => hr.length > movement.length ? hr.length : movement.length;
-
-  bool get hasCurve => hr.any((v) => v != null);
-
-  /// Minutes [lo, hi) of this graph, re-based so slot 0 is minute [lo]. Spans
-  /// are clipped to the window, not dropped — a night that runs past the
-  /// window's edge was still a night inside it.
-  DayGraph window(int lo, int hi) {
-    List<double?> cut(List<double?> l) =>
-        l.sublist(lo.clamp(0, l.length), hi.clamp(0, l.length));
-    List<(int, int, Color)> clip(List<(int, int, Color)> spans) => [
-      for (final (a, b, col) in spans)
-        if (b > lo && a < hi) (a.clamp(lo, hi) - lo, b.clamp(lo, hi) - lo, col),
-    ];
-    return DayGraph(
-      hr: cut(hr),
-      movement: cut(movement),
-      rest: clip(rest),
-      work: clip(work),
-      dayStart: dayStart == null ? null : dayStart! + lo * 60,
-    );
-  }
-
-  bool get isEmpty =>
-      !hasCurve &&
-      rest.isEmpty &&
-      work.isEmpty &&
-      !movement.any((v) => v != null);
-
-  /// The stretches with nothing measured in them, as (from, to) minutes.
-  ///
-  /// EVERY lane has to be empty. A minute with movement but no heart rate was
-  /// still a minute we were there for, and so was a minute inside a night or a
-  /// workout — the span itself is the measurement, even where no curve was
-  /// drawn over it. Marking those as unrecorded would put the two claims on
-  /// top of each other and let the ground contradict the band.
-  List<(int, int)> get unmeasured {
-    final n = slots;
-    final known = List<bool>.filled(n, false);
-    for (final (a, b, _) in [...rest, ...work]) {
-      for (var i = a; i < b && i < n; i++) {
-        known[i] = true;
-      }
-    }
-    final out = <(int, int)>[];
-    int? from;
-    for (var i = 0; i < n; i++) {
-      final has = known[i] ||
-          (i < hr.length && hr[i] != null) ||
-          (i < movement.length && movement[i] != null);
-      if (has) {
-        if (from != null) out.add((from, i));
-        from = null;
-      } else {
-        from ??= i;
-      }
-    }
-    if (from != null) out.add((from, n));
-    return out;
-  }
-}
-
 /// THE JOIN, for the picture. Pure, like [dayMoments] — the placement rules
 /// are the thing worth testing and they need neither a database nor a frame.
 ///
@@ -877,6 +787,35 @@ DayGraph dayGraph(Map<String, dynamic> timeline, {List<Object?>? hrOverride}) {
       hr: hr, movement: movement, rest: rest, work: work, dayStart: dayStart);
 }
 
+// The existing durable proposal rows supply the Discarded view. This read
+// does not restore or stage them; those actions belong to phase 3b.
+Future<List<Moment>> _discardedMoments(String day, AppLocalizations? l) async {
+  final start = localDayStartSec(day), end = localDayEndSec(day);
+  if (start == null || end == null) return const [];
+  final rows = await LocalDb.readerRun((db) => db.query('activity_suggestions',
+    where: "status = 'discarded' AND start_ts >= ? AND start_ts < ?",
+    whereArgs: [start, end], orderBy: 'start_ts, id'));
+  return [for (final row in rows)
+    for (final a in [ActivitySuggestion.fromRow(row)])
+      Moment(at: a.startTs, until: a.endTs, identity: 'activity:${a.id}',
+        timelineKind: DayTimelineKind.discarded,
+        title: '${switch(a.kind) {
+          ActivityKind.nap => l?.activityPossibleNap ?? 'Possible nap',
+          ActivityKind.workout => l?.activityPossibleWorkout ?? 'Possible workout',
+          ActivityKind.meal => l?.activityPossibleMeal ?? 'Possible meal',
+          ActivityKind.track => l?.activityPossibleTrack(a.details['track_name'] as String? ?? a.trackId ?? '') ?? a.trackId ?? '',
+        }} · ${l?.dayActivitiesDiscarded ?? 'Discarded'}',
+        detail: _span(a.startTs, a.endTs),
+        icon: switch(a.kind) {
+          ActivityKind.nap => LucideIcons.bedDouble, ActivityKind.workout => LucideIcons.dumbbell,
+          ActivityKind.meal => LucideIcons.utensils, ActivityKind.track => LucideIcons.tag,
+        },
+        annotationKind: switch(a.kind) {
+          ActivityKind.nap => AnnotationKind.nap, ActivityKind.workout => AnnotationKind.workout,
+          ActivityKind.meal || ActivityKind.track => AnnotationKind.journal,
+        })];
+}
+
 // ═══════════════════ the screen ═══════════════════
 
 class TimelineData {
@@ -891,6 +830,7 @@ class TimelineData {
     this.readMillis = const {},
     this.loadMillis = 0,
     this.rhrMarks = const [],
+    this.discarded = const [],
   });
 
   /// When the day's result was calculated (epoch ms), or null when unknown.
@@ -898,6 +838,7 @@ class TimelineData {
   final Map<String, int> readMillis;
   final int loadMillis;
   final List<ChartAnnotation> rhrMarks;
+  final List<Moment> discarded;
 
   final String? day;
 
@@ -1012,13 +953,14 @@ class TimelineData {
     // for a result newer than the Save. Unknown (no result) reads as not newer.
     final computedAtMs = (hrv['computed_at'] as num?)?.toInt();
 
-    await primary;
+    unawaited(primary);
     LoadTimings.shared.record('Review', 'all details ready', elapsed.elapsedMicroseconds, route: route);
     return TimelineData(
       day: day,
       days: days,
       computedAtMs: computedAtMs,
       rhrMarks: await flagsRead,
+      discarded: await _discardedMoments(day, l),
       readMillis: Map.unmodifiable(costs),
       loadMillis: elapsed.elapsedMilliseconds,
       graph: dayGraph(timeline),
@@ -1123,6 +1065,62 @@ class DayTimelineScreen extends StatefulWidget {
 class _DayTimelineScreenState extends State<DayTimelineScreen>
     implements EdgeSwipeListener, AnnotationListener, NerdStatsListener,
         DayRowEditListener {
+  final _filter = TimelineFilter();
+  TimelineController? _chart;
+  List<({String id, Moment moment})> _visibleRows = const [];
+  bool _programmaticScroll = false;
+  void _filterChanged() {
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_visibleRows.any((r) => r.id == _highlight)) {
+        if (_visibleRows.isEmpty) { setState(() => _highlight = null); }
+        else { _scrubRow(_chart?.scrub ?? _visibleRows.first.moment.at.toDouble()); }
+      }
+    });
+  }
+  TimelineController _chartFor(DayGraph graph) {
+    final start = graph.dayStart ?? localDayStartSec(_day ?? todayLabel())!;
+    final end = graph.slots > 0 ? start + graph.slots * 60 : localDayEndSec(_day ?? todayLabel())!;
+    if (_chart?.home != TimelineView(start.toDouble(),end.toDouble())) {
+      final old = _chart;
+      _chart = TimelineController(homeStartSec:start,homeEndSec:end);
+      if (old != null) WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+    }
+    return _chart!;
+  }
+  void _scrubRow(double at) {
+    if (_visibleRows.isEmpty) return;
+    var nearest = _visibleRows.first;
+    for (final row in _visibleRows.skip(1)) {
+      final distance=(row.moment.at-at).abs();
+      final best=(nearest.moment.at-at).abs();
+      if (distance < best || (distance == best && row.id == _highlight)) { nearest = row; }
+    }
+    if (_highlight != nearest.id) _reveal(nearest.id);
+  }
+  void _listScrolled() {
+    if (_programmaticScroll || !_listController.hasClients ||
+        _listController.position.userScrollDirection == ScrollDirection.idle) { return; }
+    final viewport = _listController.position.context.storageContext.findRenderObject();
+    if (viewport is! RenderBox || !viewport.hasSize) return;
+    final center = viewport.localToGlobal(Offset(0,viewport.size.height/2)).dy;
+    ({String id, Moment moment})? closest;
+    double distance = double.infinity;
+    for (final row in _visibleRows) {
+      final box = _rowKeys[row.id]?.currentContext?.findRenderObject();
+      if (box is! RenderBox || !box.hasSize) continue;
+      final delta = (box.localToGlobal(Offset(0,box.size.height/2)).dy-center).abs();
+      if (delta < distance) { distance=delta; closest=row; }
+    }
+    if (closest != null) {
+      _chart?.reveal(closest.moment.at.toDouble());
+      if (_highlight != closest.id) setState(() => _highlight=closest!.id);
+    }
+  }
+  void _selectRow(String id, Moment m) {
+    _chart?.reveal(m.at.toDouble());
+    _reveal(id);
+  }
   DayReviewController? _review;
   final _rowKeys = <String, GlobalKey>{};
   final _listController = ScrollController();
@@ -1134,6 +1132,9 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   @override
   void dispose() {
     _highlightTimer?.cancel();
+    _chart?.dispose();
+    _filter.removeListener(_filterChanged);
+    _filter.dispose();
     _listController.dispose();
     _review?.removeListener(_onReview);
     _review?.dispose();
@@ -1225,22 +1226,16 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   /// from (two rows can share a minute).
   @override
   void annotationTapped(String id) {
-    final moments = _d?.moments ?? const <Moment>[];
-    final hit = annotatedMoments(moments)
-        .where((e) => e.$1.id == id).map((e) => e.$2).firstOrNull;
+    final hit = _visibleRows.where((r) => r.id == id ||
+      dayAnnotations([r.moment]).any((a) => a.id == id)).firstOrNull;
     if (hit == null) return;
-    final group = groupRepeatedEvents(moments)
-        .where((g) => g.moments.contains(hit)).first;
-    final target = group.isWake ? group.first : hit;
-    final i = moments.indexWhere((m) => identical(m, target));
-    final own = target.identity ?? 'event:$i:${target.at}';
-    final groupState = _rowKeys[own]?.currentState;
-    if (groupState is _MomentGroupRowState) groupState.expand();
-    if (_rowKeys.containsKey(own)) return _reveal(own);
-    // A pending review row at the same instant stands in for it.
-    final pending = _review?.pendingRows(context)
-        .where((r) => r.moment.at == hit.at).firstOrNull;
-    _reveal(pending?.id ?? own);
+    final group = groupRepeatedEvents([for (final row in _visibleRows) row.moment])
+        .where((g) => g.moments.contains(hit.moment)).first;
+    final target = group.isWake ? group.first : hit.moment;
+    final row = _visibleRows.firstWhere((r) => identical(r.moment,target));
+    final state = _rowKeys[row.id]?.currentState;
+    if (state is _MomentGroupRowState) state.expand();
+    _selectRow(row.id,row.moment);
   }
 
   /// Opens the editor of a saved row (a nap, a workout) and reloads after.
@@ -1274,8 +1269,11 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     void scroll() {
       final row = _rowKeys[id]?.currentContext;
       if (row != null) {
+        _programmaticScroll = true;
         Scrollable.ensureVisible(row,
-            duration: motion(context, Motion.slow), alignment: 0);
+            duration: motion(context, Motion.slow), alignment: 0).whenComplete(() {
+          _programmaticScroll = false;
+        });
       }
     }
     // Rows are built eagerly, so a marker tap scrolls at once: an animation
@@ -1288,9 +1286,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         if (mounted) scroll();
       });
     }
-    _highlightTimer = Timer(Motion.slow * 4, () {
-      if (mounted) setState(() => _highlight = null);
-    });
+
   }
 
   TimelineData? _d;
@@ -1332,6 +1328,8 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   @override
   void initState() {
     super.initState();
+    _filter.addListener(_filterChanged);
+    _listController.addListener(_listScrolled);
     _day = widget.day;
     if (widget.data != null) {
       _d = widget.data;
@@ -1396,16 +1394,18 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     final releasePrefetch = ReadPrefetch.shared.visibleRead('review-day');
     try {
       final reviewRead = _day != null && _review?.day != _day ? _readReview(_day!) : Future<void>.value();
+      var completeRead = false;
       final d = await TimelineData.load(repo, want: _day, l: l, onPrimary: (primary) async {
         await reviewRead;
         if (mounted && token == _loadToken && _review?.day != primary.day && primary.day != null) {
           await _readReview(primary.day!);
         }
-        if (mounted && token == _loadToken) setState(() { _d = primary; _loading = false; });
+        if (mounted && token == _loadToken && !completeRead) setState(() { _d = primary; _loading = false; });
         releasePrefetch();
       }, onPending: (reads) {
         if (mounted && token == _loadToken) setState(() => _pendingReads = reads);
       });
+      completeRead = true;
       // A device's own HR curve needs HR of either cadence: a ring's 5-minute
       // history draws as well as a band's 1 Hz stream.
       final candidates = mounted
@@ -1482,6 +1482,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
           days: d.days,
           graph: dayGraph(d.raw!),
           moments: d.moments,
+          discarded: d.discarded,
           rhrMarks: d.rhrMarks,
           notes: d.notes,
           raw: d.raw,
@@ -1517,6 +1518,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
             ? const DayGraph()
             : dayGraph(d.raw!, hrOverride: c['points'] as List?),
         moments: d.moments,
+        discarded: d.discarded,
         rhrMarks: d.rhrMarks,
         notes: d.notes,
         raw: d.raw,
@@ -1561,7 +1563,10 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         out.add(MomentGroupRow(g, key: _rowKeys.putIfAbsent(row.id, GlobalKey.new)));
         continue;
       }
-      out.add(Container(
+      out.add(Semantics(selected:_highlight==row.id,
+        onTap:()=>_selectRow(row.id,row.moment),child:Pressable(
+        onTap: () => _selectRow(row.id,row.moment),
+        child: Container(
         key: _rowKeys.putIfAbsent(row.id, GlobalKey.new),
         child: Container(
           key: ValueKey('apk2-day-row:${row.id}'),
@@ -1572,13 +1577,14 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                   margin: const EdgeInsets.symmetric(vertical: S.x1),
                   padding: const EdgeInsets.symmetric(horizontal: S.x3),
                   decoration: BoxDecoration(color: p.card2,
+                      border:review?.needsReview(row.id)==true ? Border.all(color:p.on(C.blue)) : null,
                       borderRadius: BorderRadius.circular(R.md)),
                   child: MomentRow(row.moment,
                       below: DayReviewActions(controller: review, id: row.id,
                           moment: row.moment, editor: this)))
               : MomentRow(row.moment),
         ),
-      ));
+      ))));
     }
     return out;
   }
@@ -1616,7 +1622,14 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     final review = _review;
     final byId = <String, Moment>{
       if (review != null)
-        for (final row in review.pendingRows(c)) row.id: row.moment,
+        for (final row in review.pendingRows(c)) row.id: Moment(
+          at:row.moment.at,until:row.moment.until,title:row.moment.title,
+          detail:row.moment.detail,icon:row.moment.icon,color:row.moment.color,
+          identity:row.id,timelineKind:review.needsReview(row.id) ? DayTimelineKind.pending : DayTimelineKind.saved,
+          annotationKind:row.moment.icon==LucideIcons.bedDouble ? AnnotationKind.nap :
+            row.moment.icon==LucideIcons.utensils || row.moment.icon==LucideIcons.tag || row.moment.icon==LucideIcons.circleHelp
+              ? AnnotationKind.journal : row.id.startsWith('activity:') ? AnnotationKind.workout : AnnotationKind.moment),
+      for (final m in d.discarded) m.identity!: m,
       for (var i = 0; i < d.moments.length; i++)
         d.moments[i].identity ?? 'event:$i:${d.moments[i].at}': d.moments[i],
     };
@@ -1633,7 +1646,15 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     ]..sort((a, b) => a.row.moment.at != b.row.moment.at
           ? a.row.moment.at.compareTo(b.row.moment.at)
           : a.rank.compareTo(b.rank));
-    final rows = [for (final e in ranked) e.row];
+    bool visible(Moment m) {
+      if (m.annotationKind == AnnotationKind.mainSleep || m.annotationKind == AnnotationKind.wake ||
+          (m.annotationKind == null && m.timelineKind == null)) { return true; }
+      return _filter.kinds.contains(m.timelineKind ?? DayTimelineKind.saved);
+    }
+    final rows = [for (final e in ranked) if (visible(e.row.moment)) e.row];
+    _visibleRows = rows;
+    final chart = _chartFor(d.graph);
+    final annotations = [...dayAnnotations([for (final row in rows) row.moment]),...d.rhrMarks];
     final title = widget.reviewEntry
         ? (l?.homeReviewActivities ?? 'Review activities')
         : (l?.dayTimelineTitle ?? 'Breakdown of your day');
@@ -1694,12 +1715,10 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                                         ),
                                 ),
                 if (_loading) ...[
-                  if (_d == null || d.graph.hasCurve) PendingContent(pending: true,
-                    child: KeyedSubtree(key: const ValueKey('apk2-day-chart'),
-                      child: _DayGraphZoom(d.graph.hasCurve ? d.graph : DayGraph(
-                        hr: const [0, 0], movement: const [0, 0], dayStart: localDayStartSec(_day ?? todayLabel())),
-                        annotations: [...dayAnnotations(d.moments), ...d.rhrMarks],
-                        nerdStats: this, fineDetail: false))),
+                  KeyedSubtree(key: const ValueKey('apk2-day-chart'),
+                    child: _DayGraphZoom(d.graph, key:ValueKey(_day ?? d.day ?? todayLabel()), pending: true,
+                      controller: chart, controls: TimelineFilterButton(filter:_filter),
+                      annotations: annotations,nerdStats:this,fineDetail:false)),
                   if (_d != null && !d.graph.hasCurve && rows.isEmpty && d.notes.isEmpty)
                     StatusCard(l?.dayTimelineNothingRecordedTitle ?? 'Nothing was recorded on this day',
                       l?.dayTimelineNothingRecordedBody ?? 'Nothing recorded. The band was probably off.', icon: LucideIcons.circleSlash),
@@ -1714,22 +1733,26 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                     Text(l?.dayTimelineDeviceBounded(_deviceOldest ?? '') ??
                         'Per-device detail is kept for recent days only.',
                         style: F.cap.copyWith(color: p.ink2)),
-                  if (d.graph.hasCurve)
+                  if (!_deviceBounded)
                     KeyedSubtree(key: const ValueKey('apk2-day-chart'),
                       child: _DayGraphZoom(d.graph,
                           fineDetail: _device == null,
                           owners: coverageFromJson(d.raw?['hr_owner']),
-                          annotations: [...dayAnnotations(d.moments), ...d.rhrMarks],
+                          controller: chart, controls: TimelineFilterButton(filter:_filter),
+                          onScrub: _scrubRow, emphasis: review?.reviewing == true ? review!.ids.toSet() : null,
+                          annotations: annotations,
                           listener: this,
                           nerdStats: this,
-                          key: ValueKey(d.day)))
-                  else if (rows.isEmpty && d.notes.isEmpty)
+                          key: ValueKey(_day ?? d.day ?? todayLabel()))),
+                  if (rows.isEmpty && d.notes.isEmpty && byId.isEmpty && !d.graph.hasCurve)
                     StatusCard(
                       l?.dayTimelineNothingRecordedTitle ??
                           'Nothing was recorded on this day',
                       l?.dayTimelineNothingRecordedBody ??
                           'Nothing recorded. The band was probably off.',
                       icon: LucideIcons.circleSlash),
+                  if (rows.isEmpty && byId.isNotEmpty)
+                    Text(l!.timelineNoMatches,style:F.body.copyWith(color:p.ink2)),
                   if (rows.isNotEmpty)
                     Section(
                       l?.dayTimelineWhatHappenedSection ?? 'What happened',
@@ -1815,11 +1838,6 @@ class _VisibleDayListRender extends RenderProxyBox {
 /// orientation changed by more than 5 degrees between consecutive readings
 /// (0…1, shown as a percentage). It is a share of time, not a count of steps or
 /// an acceleration, so the unit is "% of time moving".
-const _movementLabel = 'Movement (% of time moving)';
-const _hrLabel = 'Heart rate (bpm)';
-const _movementNote = 'Movement is the share of each 5 minutes in which your '
-    'wrist turned more than 5° between readings. It is not steps or effort.';
-
 /// The graph, or nothing.
 ///
 /// NOTHING when there is no heart-rate curve: the curve is what the y axis is
@@ -1835,169 +1853,12 @@ const _movementNote = 'Movement is the share of each 5 minutes in which your '
 /// day's labelled moments, marked over the plot on `g.dayStart` ..
 /// `g.dayStart + g.slots * 60`.
 Widget? dayGraphCard(BuildContext c, DayGraph g,
-    {bool zoomed = false,
-    List<double?>? fine,
-    String? footnote,
-    List<ChartAnnotation> annotations = const [],
-    AnnotationListener? listener,
+    {bool zoomed = false, List<double?>? fine, String? footnote,
+    List<ChartAnnotation> annotations = const [], AnnotationListener? listener,
     NerdStatsListener? nerdStats}) {
   if (!g.hasCurve && !zoomed) return null;
-  final p = P.of(c);
-  final l = AppLocalizations.of(c);
-  final n = g.slots;
-  double at(int m) => n <= 0 ? 0 : m / n;
-  final curve = fine ?? g.hr;
-  final axis = AxisSpec.of([for (final v in curve) ?v], ticks: 3);
-  if (axis == null && !zoomed) return null;
-  // Slot 0's instant: local midnight for the whole day, the window's first
-  // minute when zoomed.
-  final start = g.dayStart;
-
-  final workout = p.on(C.orange);
-  final hrInk = p.on(C.red), moveInk = p.on(C.domMove);
-  final hasMovement = g.movement.any((v) => v != null);
-  final workoutLabel = l?.dayTimelineWorkout ?? 'Workout';
-  final gaps = g.unmeasured;
-  // The card marks the same labelled moments as the list beneath it, on the
-  // real local-day domain: dayStart + slots * 60 follows a 23 h or 25 h day,
-  // never a flat 86400, and a zoomed window's own span. No day start or
-  // nothing logged: no lane, nothing invented.
-  final marks = start == null || annotations.isEmpty
-      ? null
-      : AnnotationSet(
-          items: annotations,
-          domainStart: start.toDouble(),
-          domainEnd: (start + n * 60).toDouble(),
-          reach: 48,
-          listener: listener);
-
-  bool present(double? v) => v != null && v.isFinite;
-  // A lane, one slot per sample of its own list (a minute, or a second for a
-  // [fine] curve); the lane's own holes read null.
-  ChartKey lane(String label, Color ink, List<double?> d,
-      String Function(double v) say) {
-    final last = d.lastIndexWhere(present);
-    return ChartKey(
-      label,
-      ink,
-      (at) {
-        final i = ChartScrub.slotAt(d.length, at);
-        return i < d.length && present(d[i]) ? say(d[i]!) : null;
-      },
-      latest: last < 0 || d.length < 2 ? null : last / (d.length - 1),
-      slots: d.length,
-    );
-  }
-
-  // A shaded stretch: whether the finger is inside one. It never sets the
-  // "latest" point — a night does not make the last minute of the day.
-  ChartKey shade(String label, Color ink, List<(int, int, Color)> spans) =>
-      ChartKey(
-        label,
-        ink,
-        (at) {
-          final m = ChartScrub.slotAt(n, at);
-          return spans.any((x) => m >= x.$1 && m < x.$2) ? 'Yes' : 'No';
-        },
-        latest: null,
-        data: false,
-        slots: n,
-      );
-
-  // The readout's time is the instant under the finger, read off the same
-  // slots the heart-rate line draws: seconds for a [fine] curve, minutes
-  // otherwise, counted from the window's own start when zoomed.
-  String time(double at) {
-    final f = fine;
-    if (start == null) return ChartScrub.clock(ChartScrub.slotAt(n, at));
-    if (f != null) return clockOfTs(start + ChartScrub.slotAt(f.length, at));
-    return clockOfTs(start + ChartScrub.slotAt(n, at) * 60);
-  }
-
-  final notes = [if (hasMovement) _movementNote, ?footnote];
-  return Surface(
-    child: ChartFrame(
-      nerdStats: nerdStats,
-      title: l?.dayTimelineHeartRateTitle ?? 'Heart rate',
-      unit: 'bpm',
-      height: 200,
-      yAxis: axis,
-      annotations: marks,
-      // Three, and only three, because ChartFrame lays the first flush left,
-      // the last flush right and the rest centred — which puts a middle label
-      // exactly on the middle of the plot and a five-label row 5 % out.
-      xLabels: zoomed && start != null
-          ? [
-              clockOfTs(start),
-              clockOfTs(start + n * 30),
-              clockOfTs(start + n * 60),
-            ]
-          : [
-              l?.dayTimelineMidnight ?? 'Midnight',
-              l?.dayTimelineNoon ?? 'Noon',
-              l?.dayTimelineMidnight ?? 'Midnight',
-            ],
-      // The movement note says what the grey lane is (not steps, not effort);
-      // a caller's note (the zoom hint) adds to it rather than replacing it.
-      footnote: notes.isEmpty ? null : notes.join(' '),
-      empty: axis == null
-          ? NoData(
-              message: l?.dayTimelineZoomNoHr ?? 'No heart rate in this stretch')
-          : null,
-      // The keys this chart is read by, in the order they are read: the
-      // heart rate (the titled metric: it owns the panel's caption colour),
-      // the movement stat, and (only when the day has a hole in it)
-      // "Not recorded", which ChartScrub appends. Workout names its shaded
-      // stretch and appears only when the day has one. The night is not a key:
-      // it is the main-sleep annotation above the plot.
-      legend: [
-        (_hrLabel, hrInk),
-        if (hasMovement) (_movementLabel, moveInk),
-        if (g.work.isNotEmpty) (workoutLabel, workout),
-      ],
-      series: curve,
-      // The row under the chart is the slot under the finger (or the latest
-      // one) for each lane, with "—" for a lane that has nothing there: a
-      // minute with movement but no heart rate shows the movement and a dash,
-      // never a 0.
-      child: ChartScrub(
-        label: l?.dayTimelineHeartRateTitle ?? 'Heart rate',
-        gaps: gaps.isNotEmpty,
-        time: time,
-        keys: [
-          lane(_hrLabel, hrInk, curve, (v) => '${v.round()} bpm'),
-          if (hasMovement)
-            lane(_movementLabel, moveInk, g.movement,
-                (v) => '${(v * 100).round()}%'),
-          if (g.work.isNotEmpty) shade(workoutLabel, workout, g.work),
-        ],
-        child: Stack(children: [
-          Positioned.fill(
-            child: CustomPaint(
-              size: Size.infinite,
-              painter: DayLanes(
-                p: p,
-                gaps: [for (final (a, b) in gaps) (at(a), at(b))],
-                work: [
-                  for (final (a, b, _) in g.work) (at(a), at(b), workout),
-                ],
-                movement: g.movement,
-              ),
-            ),
-          ),
-          Positioned.fill(
-            child: CustomPaint(
-              size: Size.infinite,
-              // No fill under the line: the area would swallow the bands behind
-              // it, and the bands are the half of this picture the curve cannot
-              // say on its own.
-              painter: LineChart(curve, hrInk, fill: false, axis: axis),
-            ),
-          ),
-        ]),
-      ),
-    ),
-  );
+  return _DayGraphZoom(g, fineDetail:false,annotations:annotations,fineCurve:fine,footnote:footnote,
+    listener:listener,nerdStats:nerdStats);
 }
 
 /// Per-second rows longer than this are not fetched: the chart is a few
@@ -2041,8 +1902,15 @@ class _DayGraphZoom extends StatefulWidget {
       this.owners = const [],
       this.annotations = const [],
       this.listener,
-      this.nerdStats});
+      this.nerdStats, this.controller, this.controls, this.onScrub, this.emphasis, this.pending=false, this.fineCurve, this.footnote});
 
+  final bool pending;
+  final List<double?>? fineCurve;
+  final String? footnote;
+  final TimelineController? controller;
+  final Set<String>? emphasis;
+  final Widget? controls;
+  final ValueChanged<double>? onScrub;
   final AnnotationListener? listener;
   final NerdStatsListener? nerdStats;
 
@@ -2061,151 +1929,87 @@ class _DayGraphZoom extends StatefulWidget {
 }
 
 class _ZoomState extends State<_DayGraphZoom> {
-  RangeValues? _range;
+  late TimelineController _controller;
   List<double?>? _fine;
-
-  /// Set once a fine read for the current range came back empty.
-  bool _fineMissing = false;
-  int _token = 0;
-
+  bool _fineMissing=false, _fineFailed=false;
+  int? _fineStart;
+  int _token=0;
+  Timer? _readTimer;
+  TimelineController _makeController() {
+    final start=widget.graph.dayStart??0;
+    return widget.controller ?? TimelineController(homeStartSec:start,
+      homeEndSec:start+(widget.graph.slots>0?widget.graph.slots:1)*60);
+  }
+  @override
+  void initState() { super.initState(); _controller=_makeController(); _controller.range.addListener(_rangeChanged); }
   @override
   void didUpdateWidget(_DayGraphZoom old) {
     super.didUpdateWidget(old);
-    if (!identical(old.graph, widget.graph) ||
-        old.fineDetail != widget.fineDetail) {
-      _range = null;
-      _fine = null;
-      _fineMissing = false;
-      _token++;
+    if (!identical(old.controller,widget.controller) ||
+        (widget.controller==null && (old.graph.dayStart!=widget.graph.dayStart || old.graph.slots!=widget.graph.slots))) {
+      _controller.range.removeListener(_rangeChanged);
+      if(old.controller==null) _controller.dispose();
+      _controller=_makeController(); _controller.range.addListener(_rangeChanged);
+      _token++; _fine=null; _fineMissing=false; _fineFailed=false;
+    } else if (!identical(old.graph,widget.graph) || old.fineDetail!=widget.fineDetail) {
+      _token++; _fine=null; _fineMissing=false; _fineFailed=false;
     }
   }
-
-  (int, int) _bounds() {
-    final n = widget.graph.slots;
-    final r = _range;
-    if (r == null) return (0, n);
-    return (r.start.round().clamp(0, n), r.end.round().clamp(0, n));
+  @override
+  void dispose() {
+    _token++; _readTimer?.cancel(); _controller.range.removeListener(_rangeChanged);
+    if(widget.controller==null) _controller.dispose();
+    super.dispose();
   }
-
+  void _rangeChanged() {
+    _token++; _readTimer?.cancel();
+    if(_fine!=null || _fineMissing || _fineFailed) {
+      setState(() { _fine=null; _fineMissing=false; _fineFailed=false; });
+    }
+    if(!_controller.animating) _readTimer=Timer(Motion.fast,_readFine);
+  }
   Future<void> _readFine() async {
-    final token = ++_token;
-    final (lo, hi) = _bounds();
-    final start = widget.graph.dayStart;
-    if (!widget.fineDetail ||
-        start == null ||
-        hi - lo > kFineWindowMinutes ||
-        hi <= lo) {
-      return;
-    }
-    final from = start + lo * 60, to = start + hi * 60;
-    List<double?>? fine;
+    final from=_controller.view.start.floor(),to=_controller.view.end.ceil();
+    if(!widget.fineDetail || to-from>kFineWindowMinutes*60 || to<=from || !_controller.zoomed) return;
+    final token=++_token;
     try {
-      final db = await LocalDb.instance;
-      final rows = await db.rawQuery(
+      final db=await LocalDb.instance;
+      final rows=await db.rawQuery(
         'SELECT rec_ts, hr, device_id FROM decoded_onehz '
         'WHERE rec_ts >= ? AND rec_ts < ? AND hr > 0 AND ${derivableSourceSql()} '
-        'ORDER BY rec_ts ASC',
-        [from, to],
-      );
-      final s = perSecondHr(rows, from, to, owners: widget.owners);
-      if (s.any((v) => v != null)) fine = s;
+        'ORDER BY rec_ts ASC',[from,to]);
+      final curve=perSecondHr(rows,from,to,owners:widget.owners);
+      if(!mounted || token!=_token) return;
+      setState(() { _fineStart=from; _fine=curve.any((v)=>v!=null)?curve:null; _fineMissing=_fine==null; });
     } catch (_) {
-      // No per-second rows is the same answer as pruned ones: minutes it is.
+      if(mounted && token==_token) setState(()=>_fineFailed=true);
     }
-    if (!mounted || token != _token) return;
-    setState(() {
-      _fine = fine;
-      _fineMissing = fine == null;
-    });
   }
-
   @override
   Widget build(BuildContext c) {
-    final l = AppLocalizations.of(c);
-    final n = widget.graph.slots;
-    final (lo, hi) = _bounds();
-    final zoomed = lo > 0 || hi < n;
-    final g = zoomed ? widget.graph.window(lo, hi) : widget.graph;
-    final String note;
-    if (_fine != null) {
-      note = l?.dayTimelineZoomPerSecond ??
-          'Every second the band recorded. Second-by-second readings are kept '
-              'for recent days only.';
-    } else if (_fineMissing) {
-      note = l?.dayTimelineZoomPerMinuteOnly ??
-          '1-minute averages. Second-by-second readings are no longer kept '
-              'for this stretch.';
-    } else {
-      note = l?.dayTimelineZoomPerMinute ??
-          '1-minute averages. Zoom in to two hours or less for per-second '
-              'data, where kept.';
-    }
-    final plot = dayGraphCard(
-      c,
-      g,
-      zoomed: zoomed,
-      fine: _fine,
-      footnote: note,
-      annotations: widget.annotations
-          .where((a) => a.kind != AnnotationKind.rhrShift)
-          .toList(),
-      listener: widget.listener,
-      nerdStats: widget.nerdStats,
-    );
-    final card = plot == null
-        ? null
-        : Column(
-            children: [
-              plot,
-              DayRhrNotice(
-                widget.annotations,
-                g.dayStart == null
-                    ? null
-                    : dayLabelOf(
-                        DateTime.fromMillisecondsSinceEpoch(g.dayStart! * 1000),
-                      ),
-              ),
-            ],
-          );
-    if (card == null || n < 2) return card ?? const SizedBox.shrink();
-    // Smaller thumbs and the theme's own colour: the same control as the app's
-    // other sliders, not a red bar.
-    final control = SliderTheme(
-      data: SliderTheme.of(c).copyWith(
-          rangeThumbShape:
-              const RoundRangeSliderThumbShape(enabledThumbRadius: 7),
-          overlayShape: const RoundSliderOverlayShape(overlayRadius: 18)),
-      child: RangeSlider(
-      values: RangeValues(lo.toDouble(), hi.toDouble()),
-      min: 0,
-      max: n.toDouble(),
-      // Quarter-hour steps: fine enough to land on a workout, coarse
-      // enough that a thumb can hit a two-hour window.
-      divisions: n ~/ 15 > 0 ? n ~/ 15 : null,
-      labels: widget.graph.dayStart == null
-          ? null
-          : RangeLabels(
-              clockOfTs(widget.graph.dayStart! + lo * 60),
-              clockOfTs(widget.graph.dayStart! + hi * 60),
-            ),
-      semanticFormatterCallback: (v) => widget.graph.dayStart == null
-          ? '${v.round()}'
-          : clockOfTs(widget.graph.dayStart! + v.round() * 60),
-      onChanged: (r) {
-        if (r.end - r.start < 15) return;
-        _token++;
-        setState(() {
-          _range = r;
-          _fine = null;
-          _fineMissing = false;
-        });
-      },
-      onChangeEnd: (_) => _readFine(),
-    ));
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [card, control],
-    );
+    final l=AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));
+    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      Surface(child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        PendingContent(pending:widget.pending,child:SharedTimelineChart(controller:_controller,graph:widget.graph,
+          fine:_fine??widget.fineCurve,fineStartSec:_fineStart??widget.graph.dayStart,nerdStats:widget.nerdStats,emphasis:widget.emphasis,
+          annotations:widget.annotations.where((a)=>a.kind!=AnnotationKind.rhrShift).toList(),
+          onAnnotationSelected:(id)=>widget.listener?.annotationTapped(id),onScrub:widget.onScrub)),
+        if(_fineFailed) TextButton(onPressed:_readFine,child:Text(l.homeTryAgain)),
+        Text(_fineFailed ? l.wellnessLoadFailedTitle : _fine!=null ? l.dayTimelineZoomPerSecond :
+          _fineMissing ? l.dayTimelineZoomPerMinuteOnly : l.dayTimelineZoomPerMinute,style:F.cap.copyWith(color:P.of(c).ink3)),
+        if(widget.footnote!=null) Text(widget.footnote!,style:F.cap.copyWith(color:P.of(c).ink3)),
+        const SizedBox(height:S.x2),
+        LayoutBuilder(builder:(c,box) {
+          final zoom=TimelineZoomControls(controller:_controller);
+          return MediaQuery.textScalerOf(c).scale(1)>1.5 || box.maxWidth<300
+            ? Wrap(alignment:WrapAlignment.spaceBetween,crossAxisAlignment:WrapCrossAlignment.center,
+                children:[zoom,if(widget.controls!=null) widget.controls!])
+            : Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[Flexible(child:zoom),if(widget.controls!=null) widget.controls!]);
+        }),
+      ])),
+      DayRhrNotice(widget.annotations,widget.graph.dayStart==null?null:
+        dayLabelOf(DateTime.fromMillisecondsSinceEpoch(widget.graph.dayStart!*1000))),
+    ]);
   }
 }
 
