@@ -50,7 +50,8 @@ void main() {
   // catches: a reader that supports only the new bare writer shape.
   test('S3 live includes envelope windows and ignores absent/malformed ones', () async {
     await detected(envelope:true);
-    expect((await live()).single.endTs,start+7200);
+    final rows = await live(); expect(rows,hasLength(1));
+    expect(rows.single.endTs,start+7200);
     await db.update('day_result',{'window_json':'—'}); expect(await live(),isEmpty);
     await db.update('day_result',{'window_json':'{}'}); expect(await live(),isEmpty);
   });
@@ -78,7 +79,8 @@ void main() {
   test('S7 served older version survives a declined current and future sibling', () async {
     await detected(version:kAlgoVersion-1,shift:60);
     await detected(version:kAlgoVersion+1,shift:120);
-    expect((await live()).single.startTs,start+60);
+    final rows = await live(); expect(rows,hasLength(1));
+    expect(rows.single.startTs,start+60);
     await detected(version:kAlgoVersion,skipped:1,shift:180);
     expect(await live(),isEmpty,reason:'the selected skipped sibling suppresses the older one, like the screens');
   });

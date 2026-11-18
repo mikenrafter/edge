@@ -140,7 +140,8 @@ void main() {
   // capturing user-authored or post-review detections, and repeat capture.
   test('B8 pre-review bundle detection is captured exactly once', () async {
     var db = await reopen(); await seedLegacy(db); await rewind(92); db = await reopen();
-    final r = (await db.query('sleep_block',where:'start_ts = 5000')).single;
+    final captured = await db.query('sleep_block',where:'start_ts = 5000');
+    expect(captured,hasLength(1)); final r = captured.single;
     expect((r['id'],r['owner_day'],r['source'],r['history'],r['detected_start'],r['detected_end'],r['detected_day']),
       ('legacy:nap:2026-11-01:5000',fixtureDay,'legacy','known',5000,5600,fixtureDay));
     expect((await db.query('sleep_nap',where:'start_ts = 5000')).single['payload_json'],
@@ -218,6 +219,7 @@ void main() {
   test('B16 missing table reabsorbs, present empty table never reabsorbs', () async {
     var db = await reopen(); await seedLegacy(db); await rewind(93); db = await reopen();
     final rows = await db.query('sleep_block',orderBy:'id');
+    expect(rows,hasLength(10));
     await rewind(LocalDb.schemaVersion); db = await reopen();
     expect(await db.query('sleep_block',orderBy:'id'),rows);
     await db.delete('sleep_block'); db = await reopen();
