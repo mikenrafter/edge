@@ -19,6 +19,15 @@ abstract final class TestSleepWrites {
       if(!existing.any((b)=>b['kind']=='main' && b['owner_day']==n['day_id'])) n];
     await SleepBlockStore.absorb(tx,overrides:mains,naps:naps,mode:AbsorbMode.backfill);
   }
+  // A fixture for an already stored legacy assertion, not a command receipt.
+  static Future<void> seedLegacyMain({required String dayId,required int onsetTs,
+    required int offsetTs,required String source}) async {
+    await (await LocalDb.instance).transaction((tx) async {
+      await SleepBlockStore.absorb(tx,overrides:[{'day_id':dayId,'onset_ts':onsetTs,
+        'offset_ts':offsetTs,'source':source,'created_at':1}],naps:[],mode:AbsorbMode.backfill);
+      await SleepBlockStore.projectForTest(tx,{dayId});
+    });
+  }
   static Future<NapResolution?> putNapEdit({required String dayId,required int startTs,
       required int endTs,required String source,Transaction? transaction,SleepMergeAuthorization? merge}) async {
     Future<NapResolution?> write(Transaction tx) async {

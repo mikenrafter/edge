@@ -175,7 +175,7 @@ void main() {
       await DerivationEngine().runDays(const Profile(), {_d2}, force: true);
       await expectBlank();
       final b = await _bundle(_d2);
-      expect(b['sleep_source'], 'manual');
+      expect(b['sleep_source'], 'confirmed',reason:'SetIntervals keeps the existing assertion provenance');
       final w = ((b['sleep'] as Map?)?['window'] as Map?)?['value'];
       expect(w, isA<Map>(), reason: 'the typed window is kept on the day');
       expect(((w as Map)['onset_ms'] as num) ~/ 1000, onset);
@@ -426,8 +426,14 @@ void main() {
         await seedDay();
         // Review began before this fixed 2025 day, so its bouts are proposed.
         await _db.update('activity_review_meta', {'activated_at': 1});
-        await _override(
-            _d2, _sec(2025, 9, 4, 23, 0), _sec(2025, 9, 5, 5, 30), source);
+        if(source=='rejected') {
+          // This case tests a real-bounds historical rejection; an empty-night
+          // Reject command has placeholder bounds and is covered by W16.
+          await TestSleepWrites.seedLegacyMain(dayId:_d2,onsetTs:_sec(2025,9,4,23,0),
+            offsetTs:_sec(2025,9,5,5,30),source:source);
+        } else {
+          await _override(_d2,_sec(2025,9,4,23,0),_sec(2025,9,5,5,30),source);
+        }
         await _derive(_d2);
         final bundle = await _bundle(_d2);
         final starts = await napStarts(bundle);

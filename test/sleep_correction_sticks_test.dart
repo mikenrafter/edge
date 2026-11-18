@@ -85,7 +85,7 @@ void main() {
     expect(await DerivationEngine().runDays(_profile, {_dayId}, force: true), 1);
 
     final b = await _payload();
-    expect(b['sleep_source'], 'manual');
+    expect(b['sleep_source'], 'confirmed',reason:'a detected-origin assertion projects as confirmed');
     final w = _window(b);
     expect(w, isNotNull, reason: 'a typed window is staged, not blanked');
     expect((w!['onset_ms'] as num) ~/ 1000, onset);
@@ -98,7 +98,8 @@ void main() {
     final ov = (await LocalDb.getSleepOverride(_dayId))!;
     expect(ov['onset_ts'], onset);
     expect(ov['offset_ts'], offset);
-    expect(ov['source'], 'manual');
+    expect(ov['source'], 'confirmed');
+    expect((await (await LocalDb.instance).query('sleep_block')).single['source'],'detected');
 
     final r = _ranges(b);
     expect(r, isNotNull, reason: 'sleep.stage_ranges.value');

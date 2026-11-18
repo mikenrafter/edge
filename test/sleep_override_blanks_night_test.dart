@@ -372,7 +372,7 @@ void main() {
       final repo = LocalRepositoryImpl(getProfileMap: () => {});
       final n = await repo.getDaySleep(_d2);
       expect(n['has_sleep'], isFalse);
-      expect(n['sleep_source'], 'manual');
+      expect(n['sleep_source'], 'confirmed',reason:'the detected-origin block keeps its provenance');
       expect(n['onset_ts'], onset);
       expect(n['wake_ts'], wake);
     });
@@ -395,7 +395,7 @@ void main() {
       final repo = LocalRepositoryImpl(getProfileMap: () => {});
       final n = await repo.getDaySleep(_d2);
       expect(n['has_sleep'], isTrue);
-      expect(n['sleep_source'], 'manual');
+      expect(n['sleep_source'], 'confirmed',reason:'the detected-origin block keeps its provenance');
       expect(n['onset_ts'], onset);
       expect(n['wake_ts'], wake);
     });

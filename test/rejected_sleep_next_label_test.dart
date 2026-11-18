@@ -29,7 +29,7 @@ void main() {
   test('a reject stored under the next calendar day is read', () async {
     final on = DateTime(2026, 3, 4, 22).millisecondsSinceEpoch ~/ 1000;
     final off = DateTime(2026, 3, 5, 6).millisecondsSinceEpoch ~/ 1000;
-    await TestSleepWrites.putSleepOverride(
+    await TestSleepWrites.seedLegacyMain(
       dayId: '2026-03-05',
       onsetTs: on,
       offsetTs: off,
