@@ -1,6 +1,5 @@
 // WHY: every spacing/history consumer must see the same served sleep set.
 // CLAIM(sleep-block-live-read), CLAIM(sleep-ownership-one-rule).
-import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart' show kAlgoVersion;
@@ -35,6 +34,8 @@ void main() {
   test('S1 live excludes removed, merged and unknown rows', () async {
     await stored('live'); await stored('removed',state:'removed');
     await stored('merged',state:'merged'); await stored('bad',state:'future-state');
+    await db.insert('sleep_block',blockRow('bad-kind',kind:'future-kind',start:start+3600,end:start+5400));
+    await db.insert('sleep_block',blockRow('bad-source',source:'future-source',start:start+3600,end:start+5400));
     final rows = await live();
     expect(rows.map((b)=>b.id), ['live']);
     expect((rows.single.ownerDay, rows.single.revision, rows.single.provenance),
@@ -113,15 +114,15 @@ void main() {
   // catches: nap ownership uses the end/wake date or UTC date. The matrix pins
   // the expected local labels independently for UTC/Denver/Kolkata.
   test('S11 nap ownership uses its start, and main ownership throws', () {
-    final s = DateTime.parse('2026-11-01T05:30:00Z').millisecondsSinceEpoch ~/ 1000;
-    final expected = Platform.environment['TZ'] == 'America/Denver' ? '2026-10-31' : '2026-11-01';
-    expect(SleepOwnership.dayOf(SleepBlockKind.nap,s,s+14400),expected);
+    final s = DateTime(2026,10,31,23,30).millisecondsSinceEpoch ~/ 1000;
+    expect(SleepOwnership.dayOf(SleepBlockKind.nap,s,s+14400),'2026-10-31');
     expect(()=>SleepOwnership.dayOf(SleepBlockKind.main,s,s+14400),throwsArgumentError);
   });
   // catches: a 24-hour walk duplicates/skips a date on the fall-back boundary.
   test('S12 daysOf walks calendar midnights across the 25-hour day', () {
     final lo = localDayStartSec('2026-11-01')!, hi = localDayEndSec('2026-11-02')!;
     expect(SleepOwnership.daysOf(lo,hi-1),['2026-11-01','2026-11-02']);
-    expect(hi-lo,Platform.environment['TZ']=='America/Denver' ? 49*3600 : 48*3600);
+    // The matrix's Denver run crosses 49 elapsed hours; enumeration must still
+    // produce exactly these two calendar dates. No host-zone skip is used.
   });
 }

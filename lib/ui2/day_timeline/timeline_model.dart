@@ -1,6 +1,6 @@
 // Shared elapsed-time chart math. Based on pilot/day-timeline's TimelineView.
 import 'dart:math' as math;
-import '../../data/day_label.dart';
+import '../../data/sleep_ownership.dart';
 import '../charts.dart' show SleepStage;
 
 class TimelineView {
@@ -58,31 +58,8 @@ TimelineView timelineHome(
   ({int start, int end})? main,
   List<({int start, int end})> entries = const [],
 }) {
-  var start = localDayStartSec(dayId)!;
-  var end = localDayEndSec(dayId)!;
-  if (main != null) {
-    final mainDay = dayLabelOf(
-      DateTime.fromMillisecondsSinceEpoch(main.start * 1000),
-    );
-    final noon = localDayNoonSec(mainDay)!;
-    final noonDay = main.start < noon ? dayLabelBefore(mainDay, 1)! : mainDay;
-    start = localDayNoonSec(noonDay)!;
-    end = localDayNoonSec(dayLabelBefore(noonDay, -1)!)!;
-    if (main.end > end) {
-      final midnightEnd = localDayEndSec(mainDay)!;
-      if (main.end <= midnightEnd) {
-        start = localDayStartSec(mainDay)!;
-        end = midnightEnd;
-      } else {
-        end = main.end;
-      }
-    }
-  }
-  for (final entry in [?main, ...entries]) {
-    start = math.min(start, entry.start);
-    end = math.max(end, entry.end);
-  }
-  return TimelineView(start.toDouble(), end.toDouble());
+  final span = SleepOwnership.framingSpan(dayId, main: main, entries: entries);
+  return TimelineView(span.start.toDouble(), span.end.toDouble());
 }
 
 int stageDepth(SleepStage s) => switch (s) {

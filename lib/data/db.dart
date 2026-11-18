@@ -451,6 +451,7 @@ class LocalDb {
     'cycle_log',
     'cycle_symptom',
     'sleep_override',
+    'sleep_block',
     'sleep_edit_job',
     'sleep_nap',
     // Typed or answered by hand; notif_fired keeps old alerts from firing again.
@@ -5225,6 +5226,9 @@ class LocalDb {
   /// be on all of them or it is on none of them.
   static const String _servedDayJoin = 'JOIN ($_servedVersions) m $_servedOn';
 
+  /// Shared SQL for the sleep owner; keep version selection identical to screens.
+  static const String servedDayJoinSql = _servedDayJoin;
+
   /// The result row for one day_id at the highest version this build serves
   /// (see [_servedAlgoCeiling]), with a normalized `date` alias for callers.
   /// Null if absent.
@@ -5563,18 +5567,7 @@ class LocalDb {
     DatabaseExecutor executor,
     String first,
     String last,
-  ) => executor.rawQuery(
-    '''SELECT r.day_id AS day_id,
-      CASE WHEN json_valid(r.window_json) THEN COALESCE(
-        json_extract(r.window_json, '\$.value.onset_ms'),
-        json_extract(r.window_json, '\$.onset_ms')) END AS on_ms,
-      CASE WHEN json_valid(r.window_json) THEN COALESCE(
-        json_extract(r.window_json, '\$.value.offset_ms'),
-        json_extract(r.window_json, '\$.offset_ms')) END AS off_ms
-    FROM day_result r $_servedDayJoin
-    WHERE r.skipped = 0 AND r.day_id BETWEEN ? AND ?''',
-    [first, last],
-  );
+  ) => SleepBlockStore.detectedMainWindows(executor, first, last);
 
   /// Small SQL projections of detected naps for reminder eligibility. Nap
   /// starts/ends are absolute epoch seconds; no guessed schedule or duration.
@@ -6063,6 +6056,7 @@ class LocalDb {
       // skipped these would silently reinstate every nap the user had deleted
       // and lose every one they logged.
       'sleep_override',
+      'sleep_block',
       'sleep_edit_job',
       'sleep_nap',
       // A night the wearer confirmed awake (it makes that night final), the

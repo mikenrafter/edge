@@ -27,6 +27,9 @@ Future<void> rewind(int version) async {
   await LocalDb.close();
   final db = await databaseFactory.openDatabase(await dbPath());
   await db.execute('DROP TABLE IF EXISTS sleep_block');
+  if (version == 92) {
+    await db.execute('ALTER TABLE sleep_override DROP COLUMN payload_json');
+  }
   await db.execute('PRAGMA user_version = $version');
   await db.close();
 }
@@ -49,6 +52,11 @@ void main() {
       var db = await reopen();
       await seedLegacy(db);
       await rewind(version);
+      if (version == 93) {
+        final raw = await databaseFactory.openDatabase(await dbPath());
+        await raw.execute('DROP TABLE sleep_edit_job');
+        await raw.close();
+      }
       db = await reopen();
       await expectBlockTable(db);
       final expected = <Map<String,Object?>>[

@@ -193,3 +193,11 @@ in the same change that introduces it (AGENTS.md §6).
 - **Sleep receipt failure**: a night and operation-specific failed save retained by `SleepCoordinator` until acknowledged or superseded by a later successful save. App-level presentation survives route disposal.
 - **Withheld night**: while a night's own edit is unapplied, only its sleep-derived numbers are withheld. Its other measurements, and every later day, keep their values; later days carry a `sleep_edit` mark.
 - **Load timing**: an opt-in (Developer, off by default), bounded local diagnostic sample identifying a stored read, reader acquisition, writer queue, transaction or decode span. Elapsed parallel reads overlap and are never summed into load time.
+
+## Sleep ownership
+
+- **Sleep block**: an interval of main sleep or a nap the wearer can act on, stored with a stable id in `sleep_block`.
+- **Owner day**: the local day label that owns a block. Main sleep keeps the caller's day; a new nap uses `SleepOwnership.dayOf`.
+- **Projection**: legacy `sleep_nap` and `sleep_override` rows written from sleep blocks for existing readers and exports.
+- **Absorb**: turn legacy sleep rows into blocks while retaining their stored owner days.
+- **Range read**: `SleepBlockStore.live`, the sleep blocks that count as sleep and intersect an interval.

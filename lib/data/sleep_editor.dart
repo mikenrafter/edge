@@ -41,22 +41,24 @@ class SleepBlock {
   final String day;
   final int startTs, endTs;
 
-  /// Stable identity while the block exists. A main is one per day; a nap is
-  /// the `(day, start)` key the table enforces.
-  String get key => kind == SleepBlockKind.main
+  /// Stored blocks keep their id after a move; automatic windows use a day key.
+  String get key => id ?? (kind == SleepBlockKind.main
       ? 'main:$day'
-      : 'nap:$day:$startTs';
+      : 'nap:$day:$startTs');
 
   @override
   bool operator ==(Object other) =>
       other is SleepBlock &&
+      other.id == id &&
+      other.revision == revision &&
+      other.provenance == provenance &&
       other.kind == kind &&
       other.day == day &&
       other.startTs == startTs &&
       other.endTs == endTs;
 
   @override
-  int get hashCode => Object.hash(kind, day, startTs, endTs);
+  int get hashCode => Object.hash(id, revision, provenance, kind, day, startTs, endTs);
 
   @override
   String toString() => '$key..$endTs';

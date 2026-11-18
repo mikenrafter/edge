@@ -116,6 +116,7 @@ const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   'spectral_archive_status': (SliceKeep.all, null, 'sample archive outcome per day'),
   'wake_meta': (SliceKeep.all, null, 'wake detection settings'),
   'wake_confirmation': (SliceKeep.all, null, 'confirmed wake times'),
+  'sleep_block': (SliceKeep.all, null, 'sleep blocks'),
   'sleep_nap': (SliceKeep.all, null, 'naps'),
   'sleep_override': (SliceKeep.all, null, 'sleep times the user edited'),
   // Workouts and activity: one row each.
