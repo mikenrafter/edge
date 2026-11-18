@@ -209,6 +209,8 @@ void main() {
     await LocalDb.deleteDays({'2026-11-10'});
     final out = (await pulseRows(db, 'pulse_ep_outbox')).single;
     expect(out['state'], 'deleted');
+    expect((await pulseRows(db, 'pulse_ep_upgrade')).single['generation'], 1,
+        reason: 'a deletion fences any preparation still in flight');
   });
 
   // WHY: a selected-day export claims only what those days depend on.

@@ -163,6 +163,7 @@ void main() {
     final o = await outbox('s:0');
     expect(o['state'], 'sent');
     expect(o['debt_ms'], 5000, reason: 'debt creation time is never renewed');
+    expect(o['revision'], 1, reason: 'the delivered revision stays the one that was announced');
   });
 
   // WHY: shrink then regrow must not reset the consumed outcome.
@@ -173,6 +174,10 @@ void main() {
     await publish(_pub(end: 25, sum: 'c', now: 7000));
     expect((await outbox('s:0'))['state'], 'sent');
     expect(await pulseRows(db, 'pulse_ep_episode'), hasLength(1));
+    // Even a later pass that finds the recording poor cannot rewrite what was sent.
+    await publish(_pub(end: 25, sum: 'd', eligible: false, now: 8000));
+    final o = await outbox('s:0');
+    expect((o['state'], o['reason'], o['revision']), ('sent', null, 1));
   });
 
   // WHY/CLAIM(pulse-no-realert): an algorithm-only regrouping of handled input
@@ -461,5 +466,18 @@ void main() {
     await PulseEpisodeStore.certifyComplete(db,
         source: 's', startMs: p.startMs, endMs: p.endMs, holes: const [], nowMs: 7);
     expect(await PulseEpisodeStore.publish(db, p, expected: stamp), isA<PulseRefused>());
+  });
+
+  // WHY (checklist 2): a hand-edited or newer-version state string degrades to
+  // unknown, which is consumed: it can never become a second alert.
+  test('an unknown stored delivery state is consumed and never owed', () {
+    expect(PulseDelivery.parse('from-a-newer-build'), PulseDelivery.unknown);
+    expect(PulseDelivery.parse(null), PulseDelivery.unknown);
+    expect(PulseDelivery.parse('from-a-newer-build').consumed, isTrue);
+    expect(PulseDelivery.parse('owed'), PulseDelivery.owed);
+    expect(PulseDelivery.owed.consumed, isFalse);
+    expect(PulseDelivery.held.consumed, isFalse);
+    expect(PulseDelivery.notSent.consumed, isFalse);
+    expect(PulseDelivery.pending.consumed, isTrue);
   });
 }
