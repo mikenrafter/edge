@@ -289,6 +289,15 @@ void main() {
     expect(calls['_derivePreparedDay'],containsAll(['_computePreparedDay','_publishDayReview']));
     expect(calls['_publishDayReview'],containsAll(['reconcile','autoLogNaps','mayNotifyNew']));
   });
+  test('G1 real sleep writes are confined to the block and queue owners',() {
+    final offenders=<String>[];
+    _scanLib().forEach((path,sites) {
+      for(final site in sites.where((s)=>s.table.startsWith('sleep_'))) {
+        if(!_isAllowed(path,site)) offenders.add('$path: $site');
+      }
+    });
+    expect(offenders,isEmpty);
+  });
   // WHY G1: a new direct nap writer must fail even inside ActivityStore.
   test('G1 sleep table writers require the exact owner member and file', () {
     final sites=scanWriters("class ActivityStore { void planted(db) { db.insert('sleep_nap', {}); db.rawUpdate('UPDATE sleep_block SET revision=2'); } }");

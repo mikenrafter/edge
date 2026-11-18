@@ -125,8 +125,10 @@ void main() {
     expect((await rows()).where((r)=>r['state']=='live'),hasLength(2)); await parity();
   });
   test('W10 authorized transitive merge keeps one live survivor and links participants',() async {
+    for(final allKnown in [true,false]) {
+    for(final t in ['sleep_block','sleep_nap','sleep_edit_job','sync_cursor']) { await db.delete(t); }
     for(final (id,s,e) in [('a',a,a+1200),('b',a+3000,a+4200),('c',a+5400,a+6600)]) {
-      await seed(id,s,e);
+      await seed(id,s,e,history:!allKnown && id=='b'?const DetectedUnavailable('lost snapshot'):null);
     }
     final commands=[SetIntervals(const StoredBlockRef('a',0),a,a+1801)];
     final pre=await SleepBlockStore.preflight(db,plan(commands));
@@ -139,11 +141,14 @@ void main() {
     expect(all.where((r)=>r['state']=='merged').map((r)=>r['merged_into']).toSet(),{'a'});
     final survivor=all.singleWhere((r)=>r['id']=='a');
     expect([survivor['start_ts'],survivor['end_ts'],survivor['history'],survivor['detected_start'],survivor['detected_end']],
-      [a,a+6600,'known',a,a+6600]); await parity();
+      [a,a+6600,allKnown?'known':'unavailable',allKnown?a:null,allKnown?a+6600:null]); await parity();
+    }
   });
   test('W11 stale row revision day revision and draft generation refuse atomically',() async {
     await seed('n',a,a+2400); final before=await snapshot();
-    expect((await save([SetIntervals(const StoredBlockRef('n',7),a,a+2500)]) as SleepRefused).reason,SleepRefusalReason.staleEntry);
+    final stale=await save([SetIntervals(const StoredBlockRef('n',7),a,a+2500)]);
+    expect(stale,isA<SleepRefused>());
+    expect((stale as SleepRefused).reason,SleepRefusalReason.staleEntry);
     expect((await db.transaction((tx)=>SleepBlockStore.apply(plan([AddNap(a+7200,a+9600)],revisions:{day:9}),tx:tx)) as SleepRefused).reason,SleepRefusalReason.staleEntry);
     final stale=plan([AddNap(a+7200,a+9600)]); SleepDraftFence.shared.advanceDays({day});
     expect((await db.transaction((tx)=>SleepBlockStore.apply(stale,tx:tx)) as SleepRefused).reason,SleepRefusalReason.staleDraft);
@@ -166,6 +171,7 @@ void main() {
       await seed('b',a+(overlap?1200:3600),a+6000,payload:jsonEncode({'duration_min':35,'in_bed_min':40}));
       final commands=[SetIntervals(const StoredBlockRef('a',0),a,a+3000)];
       final pre=await SleepBlockStore.preflight(db,plan(commands));
+      expect(pre,isA<SleepProposalMergeRequired>());
       final proposal=(pre as SleepProposalMergeRequired).proposal;
       expect(await save(commands,merge:proposal.authorization),isA<SleepSaved>());
       final payload=jsonDecode((await rows()).singleWhere((r)=>r['state']=='live')['payload_json'] as String) as Map;
