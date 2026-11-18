@@ -15,7 +15,10 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
+import 'package:openstrap_edge/data/hyrox_store.dart';
+import 'package:openstrap_edge/ecg/ecg_models.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/sync/dev_log.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -54,6 +57,7 @@ Future<T> _withFreshTarget<T>(
     return await body(db);
   } finally {
     await LocalDb.close();
+    await DevLog.instance.flush();
     await root.delete(recursive: true);
   }
 }
@@ -193,4 +197,62 @@ void main() {
       expect(unitViolations(o), contains('$unitKeyCollision is g, the populated target had mg'));
     });
   });
+  // Independent values and literal qualified keys; no mapper code is imported
+  // into this release package.
+  for (final localStamp in [0,1,2]) {
+    test('strict edit precedence and whole-date journal set, local stamp $localStamp',() async {
+      await _withFreshTarget((db) async {
+        await LocalDb.importFromDbFile('$_dir/policy.db');
+        final note=(await db.query('journal',where:"date='2026-10-21'")).single;
+        expect(note['note'],localStamp<1 ? 'Fork journal':'Local journal');
+        final metrics=await db.query('journal_metric',where:"date='2026-10-21'");
+        expect(metrics.single['field'],localStamp<1 ? 'custom_u1_637573746f6d5f6361666665696e65_67':'water_ml');
+        expect(metrics.single['value'],localStamp<1 ? 0.2:1000.0);
+        final labDefs=await db.query('lab_marker_def');
+        expect(labDefs.singleWhere((r)=>r['key']=='custom_iron')['unit'],'mg');
+        expect(labDefs.singleWhere((r)=>r['key']=='custom_u1_637573746f6d5f69726f6e_67')['unit'],'g');
+        expect((await db.query('lab_result',where:"marker='custom_iron'")).single['value'],20.0);
+        expect((await db.query('lab_result',where:"marker='custom_u1_637573746f6d5f69726f6e_67'")).single['value'],0.02);
+        final race=await HyroxDb.byId(db,'hy-1');
+        expect(race,isNotNull);expect(race!.plan,isNotNull);
+        expect(race.segments.single.workoutId,'w${dayStartEpoch(6)*1000}');
+        expect(race.segments.single.distanceM,900.0);
+        expect(EcgReading.fromRow((await db.query('ecg_reading',where:"id='ecg-1'")).single),isNotNull);
+        // A later official edit must survive another import of the same file.
+        await db.update('journal',{'note':'Later official edit','updated_at':100},where:"date='2026-10-21'");
+        await LocalDb.importFromDbFile('$_dir/policy.db');
+        expect((await db.query('journal',where:"date='2026-10-21'")).single['note'],'Later official edit');
+        report['edits/$localStamp']={'journal':note,'metric_set':metrics,'lab_definitions':labDefs,'race_plan_read':true};
+        if(localStamp==0) {
+          final exported=await LocalDb.exportCopy(includePrefs:false);
+          File(exported).copySync('$_dir/official-return.db');
+          report['return_file']='official-return.db';
+        }
+      },populate:(db) async {
+        await db.insert('journal_field_def',{'key':'custom_caffeine','label':'Caffeine','kind':'dose','unit':'mg','max_value':1000.0,'step':10.0,'has_time':0,'created_at':1});
+        await db.insert('journal_metric',{'date':'2026-10-22','field':'custom_caffeine','value':200.0,'updated_at':1});
+        await db.insert('journal',{'date':'2026-10-21','tags_json':'[]','note':'Local journal','updated_at':localStamp});
+        await db.insert('journal_metric',{'date':'2026-10-21','field':'water_ml','value':1000.0,'updated_at':localStamp});
+        await db.insert('lab_marker_def',{'key':'custom_iron','label':'Iron','unit':'mg','category':'blood','decimals':1,'created_at':1});
+        await db.insert('lab_result',{'marker':'custom_iron','taken_on':'2026-10-22','value':20.0,'unit':'mg','note':'Target lab note','updated_at':2});
+      });
+    });
+  }
+
+  for(final setup in ['defaults','onboarded','populated']) {
+    test('portable setting precedence on $setup target',() async {
+      await _withFreshTarget((db) async {
+        await LocalDb.importFromDbFile('$_dir/policy.db');
+        final prefs=await SharedPreferences.getInstance();
+        expect(prefs.getString('clock_format'),setup=='defaults' ? '24h':'12h');
+        report['settings/$setup']={'clock_format':prefs.getString('clock_format')};
+      },populate:(db) async {
+        final prefs=await SharedPreferences.getInstance();
+        await prefs.setString('clock_format',setup=='defaults' ? 'system':'12h');
+        if(setup=='onboarded') {await prefs.setBool('onboard.completed',true);}
+        if(setup=='populated') {await db.insert('journal',{'date':'2001-01-01','note':'own data','tags_json':'[]','updated_at':1});}
+      });
+    });
+  }
+
 }

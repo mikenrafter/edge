@@ -12,9 +12,9 @@ ArchiveTable table(List<Map<String,Object?>> rows) {
   final b = ArchiveTableBuilder()..addRows(rows); return b.build();
 }
 Future<void> bucket(Database db, int day, List<Map<String,Object?>> parents,
-    List<Map<String,Object?>> beats, {bool corrupt = false}) async {
+    List<Map<String,Object?>> beats, {bool corrupt = false,String device=''}) async {
   final w = SubstrateArchiveCodec.encodeMergeVerify(ArchiveBucket(table(parents),table(beats)));
-  await db.insert('substrate_archive', {'device_id':'', 'utc_day':day,
+  await db.insert('substrate_archive', {'device_id':device, 'utc_day':day,
     'codec':1, 'from_ts':w.fromTs ?? 1, 'to_ts':w.toTs ?? 1, 'onehz_rows':parents.length,
     'rr_rows':beats.length,'raw_bytes':w.rawBytes,'fingerprint':corrupt ? 1 : w.fingerprint,
     'blob':w.blob,'created_at':1,'updated_at':1});
@@ -29,8 +29,9 @@ void main() {
    const a=1792670400, b=1792756800, c=1792843200, d=1792929600, e=1793016000, f=1793102400, g=1793188800;
    await db.insert('decoded_onehz',parent(b,72));
    await db.insert('decoded_onehz',{...parent(f,60),'hr':'unsupported'}); // deliberately EMPTY live beats
+   await bucket(db,0,[{...parent(a,70),'device_id':'ring-A'}],[],device:'ring-A');
    await bucket(db,1,[parent(a,55),parent(b,56),parent(c,57),parent(d,58),parent(f,59)],
-       [beat(a,0),beat(b,0),beat(c,0),beat(d,0),beat(e,0),beat(f,0)]);
+       [beat(a,0),{...beat(a,1),'device_id':'ring-A'},beat(b,0),beat(c,0),beat(d,0),beat(e,0),beat(f,0)]);
    await bucket(db,2,[parent(c,99)],[beat(c,0)]); // contradictory exact claim
    await bucket(db,3,[parent(e,80)],[],corrupt:true);
    // A verified codec does not make a malformed parent admissible. Its beats
@@ -44,7 +45,10 @@ void main() {
    expect(report.cursor.sec,1792713600); // first UTC midnight after a
    final out=await databaseFactoryFfi.openDatabase(report.path);
    try {
-    expect((await out.query('decoded_onehz',orderBy:'rec_ts')).map((r)=>[r['rec_ts'],r['hr']]).toList(),[[a,55],[b,72]]);
+    expect((await out.query('decoded_onehz',where:"device_id=''",orderBy:'rec_ts')).map((r)=>[r['rec_ts'],r['hr']]).toList(),[[a,55],[b,72]]);
+    expect((await out.query('decoded_onehz',where:"device_id='ring-A'")).single['hr'],70);
+    expect(await out.query('decoded_rr',where:"device_id='ring-A'"),isEmpty,
+      reason:'a foreign-device beat in another bucket cannot replace this parent\'s empty set');
     expect((await out.query('decoded_rr')).map((r)=>r['rec_ts']).toList(),[a]);
     expect(await out.query('day_result'),isEmpty);
     expect(await out.query('substrate_archive'),isEmpty);

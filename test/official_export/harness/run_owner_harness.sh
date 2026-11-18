@@ -1,22 +1,30 @@
 #!/usr/bin/env bash
 # Owner-DB proof harness (Boat only). Upgrades a DISPOSABLE COPY of the owner's
-# schema-89 database to the current fork schema, writes the naive and policy
-# candidate files, then runs the unchanged v0.12.2 receiver
-# (LocalDb.importFromDbFile) on each. Samples disk use every 2 s for the peak.
-#   OWNER_ORIGINAL  default /home/user/owner-rh/original.db (never modified)
+# schema-89 database to the current fork schema, maps a verified policy file,
+# then exercises unchanged v0.12.2 fresh/populated receivers. Samples disk use
+# every 2 s. All owner-derived files stay in this run's build/owner-p2 directory.
 source "$(dirname "$0")/common.sh"
 export TZ='MST7MDT,M3.2.0,M11.1.0'
 export TZDIR=/usr/share/zoneinfo
-export OWNER_ORIGINAL="${OWNER_ORIGINAL:-$FORK_ROOT/build/owner-p2/original.db}"
-export OWNER_WORK="${OWNER_WORK:-$FORK_ROOT/build/owner-p2/work}"
+case "$FORK_ROOT" in /home/user/runs/*) ;; *) echo 'owner proof is Boat-only' >&2; exit 2 ;; esac
+export OWNER_ROOT="$FORK_ROOT/build/owner-p2"
+export OWNER_ORIGINAL="$OWNER_ROOT/original.db"
+export OWNER_WORK="$OWNER_ROOT/work"
+export TMPDIR="$OWNER_ROOT/tmp" SQLITE_TMPDIR="$OWNER_ROOT/tmp"
+mkdir -p "$TMPDIR"
+cleanup() {
+  if [ -n "${sampler:-}" ]; then kill "$sampler" 2>/dev/null || true; wait "$sampler" 2>/dev/null || true; fi
+  rm -rf "$OWNER_ROOT"
+}
+trap cleanup EXIT
 [ -f "$OWNER_ORIGINAL" ] || { echo "owner original missing: $OWNER_ORIGINAL" >&2; exit 2; }
+echo "2b853726b715c70b3cbded2c317a2e7eab5015787f2ce8a8a55afd47716ee075  $OWNER_ORIGINAL" | sha256sum --check
 mkdir -p "$OWNER_WORK"
 bash "$(dirname "$0")/prepare_target.sh"
 used() { df -B1 --output=used /home | tail -1 | tr -d ' '; }
 base=$(used); peak=$base
 ( while true; do u=$(used); [ "$u" -gt "$(cat "$OUT_DIR/.peak" 2>/dev/null || echo 0)" ] && echo "$u" > "$OUT_DIR/.peak"; sleep 2; done ) &
 sampler=$!
-trap 'kill $sampler 2>/dev/null' EXIT
 echo "$base" > "$OUT_DIR/.peak"
 cd "$FORK_ROOT"
 flutter gen-l10n >/dev/null

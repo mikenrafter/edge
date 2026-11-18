@@ -4,7 +4,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/sync/dev_log.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/compute/step_calibration_fit.dart';
@@ -47,7 +49,7 @@ void main() {
     await LocalDb.close();
    }
    report['file_open_reopen']='passed';
-  } finally {await LocalDb.close();await dir.delete(recursive:true);}
+  } finally {await LocalDb.close();await DevLog.instance.flush();await dir.delete(recursive:true);}
  },timeout:const Timeout(Duration(minutes:10)));
  for(final populated in [false,true]) {
   test('production owner file, ${populated ? 'populated' : 'fresh'} receiver',() async {
@@ -68,6 +70,7 @@ void main() {
      await db.insert('day_result',{'day_id':'2001-01-01','algo_version':124,'payload_json':'{"target":true}',
       'computed_at':1,'finalized':1,'rhr':66.0});
      await db.insert('compute_freshness',{'key':'substrate_archive_policy','payload_json':'{"keep_days":365}','updated_at':1});
+     await db.insert('sync_cursor',{'name':'decoded_pruned_before','value':'1794294000','updated_at':1});
     }
     final watch=Stopwatch()..start();
     if(populated) {
@@ -110,12 +113,26 @@ void main() {
     r['per_day_device_before']=await db.rawQuery('SELECT device_id,rec_ts/86400 AS utc_day,count(*) AS parents FROM decoded_onehz GROUP BY device_id,rec_ts/86400 ORDER BY device_id,utc_day');
     r['beats_before']=await count(db,'decoded_rr');
     r['cursor']=await LocalDb.getCursorInt(LocalDb.kDecodedPrunedBeforeCursor);
+    final incomingCursor=await db.rawQuery("SELECT value FROM payload.sync_cursor WHERE name='decoded_pruned_before'");
+    final expectedCursor=incomingCursor.isEmpty ? null:int.parse(incomingCursor.single['value'] as String);
+    expect(r['cursor'],populated ? 1794294000:expectedCursor);
     r['policy']=await db.query('compute_freshness',where:"key='substrate_archive_policy'");
     await db.execute('DETACH DATABASE payload');
     final before=await count(db,'decoded_onehz');
     // Repeat import proves receiver idempotence after a committed-page retry.
     await LocalDb.importFromDbFile(path);
     expect(await count(db,'decoded_onehz'),before);
+    final oldSessions=await db.rawQuery('SELECT id,start_ts,end_ts FROM sessions WHERE end_ts IS NOT NULL ORDER BY start_ts LIMIT 1');
+    final repository=LocalRepositoryImpl(getProfileMap:()=>{'age':40,'weight_kg':75.0,'height_cm':175.0,'sex':'m'});
+    Future<void> readOldWorkout(String stage) async {
+      if(oldSessions.isEmpty) {r['workout/$stage']='no supported completed source workout';return;}
+      final stored=oldSessions.single;
+      final detail=await repository.getWorkout(stored['id'] as String);
+      expect(detail,isNotEmpty);expect(detail['id'],stored['id']);
+      expect(detail['start_ts'],stored['start_ts']);expect(detail['end_ts'],stored['end_ts']);
+      r['workout/$stage']={for(final key in ['id','start_ts','end_ts','calories','strain','avg_hr','hrr_bpm']) key:detail[key]};
+    }
+    await readOldWorkout('before_reanalysis');
     if(populated) {
       expect((await db.query('device',where:"id=''")).single['remote_id'],'target-handle');
       expect((await db.query('device',where:"id=''")).single['wearing'],1);
@@ -146,12 +163,13 @@ void main() {
       try {await engine.run(const Profile(ageYears:40,weightKg:75,heightCm:175,sex:'m'));}
       finally {engine.dispose();}
       r['per_day_device_after_maintenance']=await db.rawQuery('SELECT device_id,rec_ts/86400 AS utc_day,count(*) AS parents FROM decoded_onehz GROUP BY device_id,rec_ts/86400 ORDER BY device_id,utc_day');
+      await readOldWorkout('after_maintenance');
     }
     await LocalDb.close();db=await LocalDb.instance;
     expect((await db.rawQuery('PRAGMA integrity_check')).single.values.single,'ok');
     expect(LocalDb.lastRebuild,isNull);
     r['reopened_results']=await count(db,'day_result');
-   } finally {await LocalDb.close();await root.delete(recursive:true);}
+   } finally {await LocalDb.close();await DevLog.instance.flush();await root.delete(recursive:true);}
   },timeout:const Timeout(Duration(minutes:60)));
  }
 }

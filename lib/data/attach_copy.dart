@@ -65,28 +65,35 @@ class PrivateExportFile {
   Future<void> discard() => factory.deleteDatabase(path);
 }
 
-class ExportFileStatement {
+sealed class ExportFileOperation {
+  const ExportFileOperation();
+}
+
+class ExportFileStatement extends ExportFileOperation {
   const ExportFileStatement(this.sql,this.arguments);
   final String sql;
   final List<Object?> arguments;
 }
 
+class ExportFileRow extends ExportFileOperation {
+  ExportFileRow(this.table,Map<String,Object?> row):row=Map.unmodifiable(row);
+  final String table;
+  final Map<String,Object?> row;
+}
+
 /// One queued native batch. This can name only the private file capability.
 class ExportFileWrite {
-  const ExportFileWrite(this.file,this.statements);
+  const ExportFileWrite(this.file,this.operations);
   final PrivateExportFile file;
-  final List<ExportFileStatement> statements;
+  final List<ExportFileOperation> operations;
 }
 
 class PrivateExportBatch {
   PrivateExportBatch(this.file);
   final PrivateExportFile file;
-  final List<ExportFileStatement> _statements=[];
+  final List<ExportFileOperation> _statements=[];
   void writeRow(String table,Map<String,Object?> row) {
-    String quote(String s) => '"${s.replaceAll('"','""')}"';
-    _statements.add(ExportFileStatement(
-      'INSERT INTO ${quote(table)} (${row.keys.map(quote).join(',')}) VALUES (${List.filled(row.length,'?').join(',')})',
-      row.values.toList()));
+    _statements.add(ExportFileRow(table,row));
   }
   Future<void> flush() async {
     await LocalDb.exportCopy(privateWrite: ExportFileWrite(file,List.unmodifiable(_statements)));

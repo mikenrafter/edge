@@ -15,3 +15,8 @@ cp test/official_export/target/scenario.dart test/official_export/target/receive
 cp test/official_export/target/receiver_scenarios_probe.dart "$TARGET_DIR/test/official_export/receiver_scenarios_test.dart"
 cd "$TARGET_DIR"
 OFFICIAL_PROBE_OUT="$OUT_DIR/target" flutter test --concurrency=1 test/official_export/receiver_scenarios_test.dart
+
+cd "$FORK_ROOT"
+cp test/official_export/return_fork_probe.dart test/official_export/return_fork_test.dart
+trap 'rm -f "$FORK_ROOT/test/official_export/return_fork_test.dart"' EXIT
+OFFICIAL_PROBE_OUT="$OUT_DIR" flutter test --concurrency=1 test/official_export/return_fork_test.dart

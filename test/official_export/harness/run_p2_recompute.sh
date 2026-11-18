@@ -3,6 +3,7 @@ source "$(dirname "$0")/common.sh"
 export TZ=UTC0 TZDIR=/usr/share/zoneinfo
 bash "$(dirname "$0")/prepare_target.sh"
 export CANDIDATES_DIR="$OUT_DIR/recompute-candidates"
+rm -rf "$CANDIDATES_DIR"
 mkdir -p "$CANDIDATES_DIR"
 cd "$FORK_ROOT"
 cp test/official_export/write_recompute_probe.dart test/official_export/write_recompute_test.dart

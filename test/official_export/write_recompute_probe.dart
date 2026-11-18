@@ -22,18 +22,18 @@ void main() {
      final hour=(sec%86400)~/3600;
      p.add({'device_id':'','ts_ms':sec*1000,'rec_ts':sec,'counter':sec-from,
       'hr':hour<8||hour>=23 ? 60:80,'ax':0.0,'ay':0.0,'az':1.0,
-      'skin_temp_raw':3300,'device_family':'gen4','source':'band'});
+      'skin_temp_raw':3300,'device_family':'gen4'});
      b.add({'device_id':'','ts_ms':sec*1000,'rec_ts':sec,'beat_index':0,
-      'rr_ts_ms':sec*1000,'beat_ts_ms':sec*1000,'rr_ms':1000.0+(sec%3-1)*20,
-      'device_family':'gen4','source':'band'});
+      'rr_ts_ms':sec*1000,'beat_ts_ms':sec*1000,'rr_ms':1000+(sec%3-1)*20,
+      'device_family':'gen4'});
     }
     final w=SubstrateArchiveCodec.encodeMergeVerify(ArchiveBucket(rows(p),rows(b)));
     await db.insert('substrate_archive',{'device_id':'','utc_day':day,'codec':1,
       'from_ts':lo,'to_ts':hi-1,'onehz_rows':p.length,'rr_rows':b.length,
       'raw_bytes':w.rawBytes,'fingerprint':w.fingerprint,'blob':w.blob,'created_at':1,'updated_at':1});
    }
-   await db.insert('decoded_onehz',{'device_id':'','ts_ms':1793145600000,'rec_ts':1793145600,'counter':999999,'hr':80,'device_family':'gen4','source':'band'});
-   await db.insert('sync_cursor',{'name':'decoded_pruned_before','value':'1793145600','updated_at':1});
+   await db.insert('decoded_onehz',{'device_id':'','ts_ms':1794096000000,'rec_ts':1794096000,'counter':999999,'hr':80,'device_family':'gen4'});
+   await db.insert('sync_cursor',{'name':'decoded_pruned_before','value':'1794096000','updated_at':1});
    await db.insert('compute_freshness',{'key':'substrate_archive_policy','payload_json':'{"keep_days":-1}','updated_at':1});
    await db.insert('sleep_override',{'day_id':'2026-10-24','onset_ts':1792796400,'offset_ts':1792825200,'source':'manual','created_at':1});
    await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)'); await LocalDb.close();

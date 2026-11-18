@@ -52,8 +52,13 @@ Future<String> _ldbExportCopy({required bool includeSubstrateArchive, required B
       // No live-store handle enters this branch. Keep dynamic file SQL at the
       // existing export seam rather than creating a second unrestricted writer.
       final batch = privateWrite.file.read.batch();
-      for (final statement in privateWrite.statements) {
-        batch.execute(statement.sql, statement.arguments);
+      for (final operation in privateWrite.operations) {
+        switch (operation) {
+          case ExportFileStatement(:final sql,:final arguments):
+            batch.execute(sql,arguments);
+          case ExportFileRow(:final table,:final row):
+            batch.insert(table,row);
+        }
       }
       await batch.commit(noResult: true);
       return privateWrite.file.path;

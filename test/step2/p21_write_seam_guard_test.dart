@@ -266,6 +266,18 @@ class LocalDb {
       expect({for (final s in sites) s.member}, {'LocalDb.a'});
     });
 
+    // WHY: target DDL catalogs describe schema, while executing a catalog
+    // value is still a dynamic write that needs the guarded owner.
+    test('inert const SQL catalogs are data; execution remains guarded', () {
+      const catalog = "const ddl = [(sql: 'CREATE TRIGGER t AFTER INSERT ON x BEGIN UPDATE day_result SET imported=1; END')];";
+      expect(scanWriters(catalog),isEmpty);
+      const executing = "import 'package:sqflite/sqflite.dart'; "
+          "$catalog Future<void> install(Database db) async { await db.execute(ddl.first.sql); }";
+      expect(scanWriters(executing),isEmpty);
+      expect(scanDynamicWriters(executing).single.member,'install');
+      expect(scanWriters("class A {void install(Database db) { db.execute('CREATE TRIGGER t AFTER INSERT ON x BEGIN UPDATE day_result SET imported=1; END');}}"),hasLength(1));
+    });
+
     test('statements split across adjacent string literals are one statement',
         () {
       const src = '''

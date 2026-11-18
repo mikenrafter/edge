@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/official_export/mapping_worker.dart';
 import 'package:openstrap_edge/util/worker_init.dart';
+import 'package:openstrap_edge/util/raw_readers.dart';
 
 void main() {
   test('actual projection inputs and outputs cross the registered worker', () async {
@@ -25,5 +26,8 @@ void main() {
     final frame = await Isolate.run(() => officialMappingHeavy(mappingWorkerInputs, raw));
     expect(frame.rows.single['frame'], Uint8List.fromList([0xaa, 1]));
     expect(frame.rows.single['rec_ts'], isNull);
+    final metadataInput=MappingInput('keys','',const [],batch:RowBatch<Map<String,Object?>>.wrap([{'cursor':-1,'device_id':'ring','ts_ms':1234}]));
+    final metadata=await Isolate.run(()=>officialMappingHeavy(mappingWorkerInputs,metadataInput));
+    expect(metadata.rows,[{'cursor':-1,'device_id':'ring','ts_ms':1234}]);
   });
 }

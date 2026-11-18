@@ -16,6 +16,7 @@ import 'space_budget.dart';
 import '../json_payload_lane.dart';
 import '../day_label.dart';
 import '../attach_copy.dart';
+import '../db.dart' show LocalDb;
 import '../substrate_archive.dart';
 
 const pilotPulseOmissions = {
@@ -72,6 +73,7 @@ Future<OfficialMapReport> mapOfficialSnapshot({
     final target = await SchemaCatalog.read(dst);
     final builder = _Mapper(src, targetFile, catalog, target, space);
     await builder.readExclusions();
+    await builder.prepareLiveOwnership();
     // Parents precede dependent rows. No source ID allocation or generic remap.
     final names = catalog.tables.keys.toList()..sort();
     for (final name in const ['device', 'journal_field_def', 'lab_marker_def', 'sessions',
@@ -173,6 +175,7 @@ class _Mapper {
   final keyMaps = <String, Map<String, String>>{};
   List<(int, int)> windows = [];
   bool unknownExclusions = false;
+  bool unknownLiveOwnership = false;
 
   Future<void> readExclusions() async {
     if (!source.tables.containsKey('compute_freshness')) { return; }
@@ -196,6 +199,28 @@ class _Mapper {
     if (windows.isNotEmpty && (sec is! num || sec <= 0)) { return 'unknown instant under deletion windows'; }
     if (sec is num && windows.any((w) => sec >= w.$1 && sec < w.$2)) { return 'deleted input window'; }
     return null;
+  }
+
+  Future<void> prepareLiveOwnership() async {
+    await file.applySql('CREATE TEMP TABLE live_parent(device_id TEXT NOT NULL,ts_ms INTEGER NOT NULL,PRIMARY KEY(device_id,ts_ms))');
+    final shape=source.tables['decoded_onehz'];
+    if (shape==null) {return;}
+    if (shape.rowidAlias==null || !shape.columnNames.containsAll(['device_id','ts_ms'])) {
+      unknownLiveOwnership=true;return;
+    }
+    int? after;
+    while (true) {
+      final rawPage=await LocalDb.exportParentKeys(src,shape.rowidAlias!,after);
+      final page=(await runMappingWorker(MappingInput('keys','',const [],batch:rawPage))).rows;
+      if (page.isEmpty) {break;}
+      final batch=file.beginBatch();
+      for (final row in page) {
+        if (row['device_id'] is! String || row['ts_ms'] is! int) {unknownLiveOwnership=true;continue;}
+        batch.writeRow('live_parent',{'device_id':row['device_id'],'ts_ms':row['ts_ms']});
+      }
+      await space?.requireAvailable(page.length*1024+65536);
+      await batch.flush();after=page.last['cursor'] as int;
+    }
   }
 
   Future<bool> parentExists(String table, String key, Object? id) async =>
@@ -252,7 +277,7 @@ class _Mapper {
       // backup_files is D and never reaches SELECT *, so an oversized attached
       // recording cannot overflow Android's CursorWindow.
       final projection=[for (final c in shape.columns)
-        if (policy.clear.contains(c.name) || policy.omit.contains(c.name))
+        if (policy.clear.contains(c.name) || (policy.omit.contains(c.name) && name!='alarm_schedule'))
           'CASE WHEN ${_q(c.name)} IS NULL THEN NULL ELSE 1 END AS ${_q(c.name)}'
         else _q(c.name)].join(',');
       final page = await src.rawQuery('SELECT ${_q(shape.rowidAlias!)} AS __export_rowid,$projection FROM ${_q(name)} '
@@ -260,15 +285,21 @@ class _Mapper {
           [?after]);
       if (page.isEmpty) { break; }
       after = page.last['__export_rowid'] as int;
-      final liveBeatParents = name == 'decoded_rr' ? {
-        for (final r in await dst.rawQuery('SELECT device_id,ts_ms FROM decoded_onehz WHERE (device_id,ts_ms) IN (${List.filled(page.length, '(?,?)').join(',')})', [for (final r in page) ...[r['device_id'],r['ts_ms']]]))
-          (r['device_id'],r['ts_ms']),
-      } : null;
+      Set<(Object?,Object?)>? liveBeatParents;
+      if(name=='decoded_rr') {
+        final matches=await LocalDb.exportMatchingParents(dst,[
+          for(final row in page)
+            if(row['device_id'] is String && row['ts_ms'] is int) (row['device_id'] as String,row['ts_ms'] as int),
+        ]);
+        final metadata=await runMappingWorker(MappingInput('keys','',const [],batch:matches));
+        liveBeatParents={for(final row in metadata.rows) (row['device_id'],row['ts_ms'])};
+      }
       final projected = await runMappingWorker(MappingInput('page', name, page));
       final originals = {for (final row in page) row['__export_rowid']: row};
       final notes = {for (final n in projected.notes) n['rowid'] as int: n};
       final batch = file.beginBatch();
       final decisions = <int, (String, List, Object?)>{};
+      final queuedFrames=<(Object?,String),Map<String,Object?>>{};
       var written = 0;
       for (final row in projected.rows) {
         final id = row.remove('__export_rowid') as int;
@@ -286,18 +317,24 @@ class _Mapper {
         if (name == 'journal_metric' || name == 'lab_result') {
           final field = name == 'journal_metric' ? 'field' : 'marker';
           final definitions = name == 'journal_metric' ? 'journal_field_def' : 'lab_marker_def';
+          if (row[field] is! String) {
+            decisions[id] = ('unsupported reference storage type', const [], null); continue;
+          }
           row[field] = keyMaps[definitions]?[row[field]] ?? row[field];
           if ((row[field] as String).startsWith('custom_') && !await parentExists(definitions, 'key', row[field])) {
             decisions[id] = ('unsupported or missing custom definition', const [], null); continue;
           }
         }
         if (name.startsWith('raw_archive')) {
-          final existing = await dst.query('raw_archive_frames', where: 'device_id=? AND hash=?',
-              whereArgs: [row['device_id'], row['hash']]);
+          final identity=(row['device_id'],'${row['hash']}');
+          final queued=queuedFrames[identity];
+          final existing = queued==null ? await dst.query('raw_archive_frames', where: 'device_id=? AND hash=?',
+              whereArgs: [row['device_id'], row['hash']]) : [queued];
           if (existing.isNotEmpty) {
             decisions[id] = (sameRawFrame(existing.single, row) ? 'exact frame overlap' : 'frame hash collision; withheld incoming frame', const [], null);
             continue;
           }
+          queuedFrames[identity]=row;
         }
         final lostLink = (name == 'hyrox_segment' || name == 'triathlon_segment') &&
             row['workout_id'] != null && !await parentExists('sessions','id',row['workout_id']);
@@ -331,11 +368,9 @@ class _Mapper {
   Future<Set<String>> observedDays(Database db) async {
     if (identical(db,src) && !(source.tables['decoded_onehz']?.columnNames.contains('rec_ts') ?? false)) { return {}; }
     final labels=<String>{};
-    for (final row in await db.rawQuery("SELECT MIN(rec_ts) AS lo,MAX(rec_ts) AS hi FROM decoded_onehz WHERE typeof(rec_ts)='integer' AND rec_ts>0 GROUP BY rec_ts/86400")) {
-      for (final key in ['lo','hi']) {
-        labels.add(dayLabelOf(DateTime.fromMillisecondsSinceEpoch((row[key] as int)*1000)));
-      }
-    }
+    final rawBounds=await LocalDb.exportDayBounds(db);
+    final metadata=await runMappingWorker(MappingInput('bounds','',const [],batch:rawBounds));
+    labels.addAll([for(final row in metadata.rows) row['day'] as String]);
     return labels;
   }
 
@@ -343,10 +378,8 @@ class _Mapper {
     if (identical(db,src) && (!(source.tables['decoded_onehz']?.columnNames.containsAll(['rec_ts','device_id']) ?? false) ||
         !(source.tables['decoded_rr']?.columnNames.containsAll(['rec_ts','device_id']) ?? false))) { return {}; }
     final lo=localDayStartSec(day)!,hi=localDayEndSec(day)!;
-    final p={for(final r in await db.rawQuery('SELECT device_id,count(*) AS n FROM decoded_onehz WHERE rec_ts>=? AND rec_ts<? GROUP BY device_id',[lo,hi]))
-      r['device_id'] as String:r['n'] as int};
-    final b={for(final r in await db.rawQuery('SELECT device_id,count(*) AS n FROM decoded_rr WHERE rec_ts>=? AND rec_ts<? GROUP BY device_id',[lo,hi]))
-      r['device_id'] as String:r['n'] as int};
+    final p=await LocalDb.exportInputCounts(db,beats:false,fromSec:lo,toSec:hi);
+    final b=await LocalDb.exportInputCounts(db,beats:true,fromSec:lo,toSec:hi);
     return {for(final device in {...p.keys,...b.keys}) device:(p[device]??0,b[device]??0)};
   }
 
@@ -400,13 +433,11 @@ class _Mapper {
 
   Future<void> expandArchives() async {
     final shape=source.tables['substrate_archive']!;
-    if (!shape.columnNames.containsAll([...SubstrateArchive.metaColumns,'blob']) || shape.rowidAlias==null) {
+    if (!shape.columnNames.containsAll([...SubstrateArchive.metaColumns,'blob']) || shape.rowidAlias==null || unknownLiveOwnership) {
       reports['substrate_archive']={'source_count':Sqflite.firstIntValue(await src.rawQuery('SELECT count(*) FROM substrate_archive')),
-        'omitted_all':true,'reason':'unsupported archive shape','columns':shape.columnNames.toList()};
+        'omitted_all':true,'reason':unknownLiveOwnership ? 'unverifiable live parent ownership':'unsupported archive shape','columns':shape.columnNames.toList()};
       return;
     }
-    await file.applySql('CREATE TEMP TABLE live_parent AS SELECT device_id,ts_ms FROM decoded_onehz');
-    await file.applySql('CREATE UNIQUE INDEX temp.live_parent_key ON live_parent(device_id,ts_ms)');
     await file.applySql('CREATE TEMP TABLE archive_claims(device_id TEXT,ts_ms INTEGER,rec_ts INTEGER,claim TEXT,bucket_id INTEGER,row_index INTEGER)');
     await file.applySql('CREATE INDEX temp.archive_claim_identity ON archive_claims(device_id,ts_ms)');
     final count = Sqflite.firstIntValue(await src.rawQuery('SELECT count(*) FROM substrate_archive'))!;
@@ -478,15 +509,19 @@ class _Mapper {
       }
       final expanded = await runMappingWorker(MappingInput('unpack', '', kept));
       final batch = file.beginBatch();
+      final acceptedParents=<(Object?,Object?)>{};
       for (final entry in expanded.rows) {
         final table = entry['table'] as String;
         final row = (entry['row'] as Map).cast<String, Object?>();
-        final invalid = excluded(table,row) ?? invalidTargetRow(row,target.tables[table]);
+        final invalid = excluded(table,row) ?? invalidTargetRow(row,target.tables[table]) ??
+            (table=='decoded_rr' && !acceptedParents.contains((row['device_id'],row['ts_ms']))
+              ? 'orphan archive beat after withheld parent':null);
         if (invalid != null) {
           archiveAccounting.add({'bucket':entry['bucket'],'parent_index':entry['parent_index'],
             'table':table,'beat_index':row['beat_index'],'reason':invalid});
           continue;
         }
+        if(table=='decoded_onehz') {acceptedParents.add((row['device_id'],row['ts_ms']));}
         batch.writeRow(table, row);
         expectedCounts[table] = (expectedCounts[table] ?? 0) + 1;
       }

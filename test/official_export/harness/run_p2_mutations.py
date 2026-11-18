@@ -9,6 +9,7 @@ mutations={
  'fork checkpoint after verification':(L+'mapper.dart','    verified = true;', '''    await targetFile.writeRow('day_checkpoint',{'day_id':'2026-10-20','algo_version':125,'fmt':5,'ctx_sig':'fork','cp_rec_ts':1,'rev_vec':Uint8List(1),'state':Uint8List(1),'computed_at':1});
     verified = true;''',T+'mapper_test.dart'),
  'cursor dropped from finished file':(L+'mapper.dart','    verified = true;',"    await targetFile.applySql('DELETE FROM sync_cursor');\n    verified = true;",T+'mapper_test.dart'),
+ 'archive policy discarded':(L+'mapper.dart','    verified = true;',"    await targetFile.applySql('DELETE FROM compute_freshness');\n    verified = true;",T+'mapper_test.dart'),
  'obsolete fork live cursor':(L+'prune_cursor.dart','  final edge = calendar.midnightAtOrAfter(oldestExactSec);','  final edge = forkCursorSec;',T+'archive_mapping_test.dart'),
  'stale beats after live empty':(L+'mapper.dart','    verified = true;',"    await targetFile.writeRow('decoded_rr',{'device_id':'','ts_ms':1792756800000,'rec_ts':1792756800,'beat_index':0,'rr_ts_ms':1792756800000,'rr_ms':800.0});\n    verified = true;",T+'archive_mapping_test.dart'),
  'archive row dropped':(L+'mapping_worker.dart',"final sourceRows = table == 'decoded_onehz' ? [content['parent']] : content['beats'] as List;","final sourceRows = table == 'decoded_onehz' ? [] : content['beats'] as List;",T+'archive_mapping_test.dart'),

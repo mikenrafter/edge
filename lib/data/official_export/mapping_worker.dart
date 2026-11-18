@@ -7,9 +7,13 @@ import 'package:crypto/crypto.dart';
 import 'profile_target.dart';
 import 'dart:typed_data';
 import '../../util/heavy.dart';
+import '../../util/raw_readers.dart';
+import '../day_label.dart';
+import '../hyrox_plan.dart';
+import '../triathlon_plan.dart';
 import '../../util/worker_init.dart';
 import '../../util/worker_audit.dart';
-import '../db.dart';
+import '../raw_archive_row.dart';
 import '../substrate_archive_codec.dart';
 import 'profile_tables.dart';
 
@@ -26,13 +30,14 @@ String qualifiedCustomKey(String key, String unit) {
 
 @SendableShape('SQLite row maps, exact archive bytes and manifest JSON')
 class MappingInput {
-  const MappingInput(this.operation, this.table, this.rows, {this.blob, this.codec = 1, this.fingerprint, this.json});
+  const MappingInput(this.operation, this.table, this.rows, {this.blob, this.codec = 1, this.fingerprint, this.json, this.batch});
   final String operation, table;
   final List<Map<String, Object?>> rows;
   final Uint8List? blob;
   final int codec;
   final int? fingerprint;
   final Object? json;
+  final RowBatch<Map<String,Object?>>? batch;
 }
 
 @SendableShape('Projected SQLite rows, archive rows and explicit omissions')
@@ -51,6 +56,18 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
   WorkerInit.ensure(inputs);
   assertWorker();
   WorkerAudit.entered('officialMappingHeavy');
+  if (input.operation == 'keys') {
+    return MappingOutput([for(final row in input.batch!) {
+      if(row.containsKey('cursor')) 'cursor':row['cursor'],
+      'device_id':row['device_id'],'ts_ms':row['ts_ms'],
+    }],const []);
+  }
+  if (input.operation == 'bounds') {
+    return MappingOutput([for(final row in input.batch!)
+      for(final sec in [row['lo'],row['hi']])
+        {'day':dayLabelOf(DateTime.fromMillisecondsSinceEpoch((sec as int)*1000))},
+    ],const []);
+  }
   if (input.operation == 'fileHash') {
     final digest = await sha256.bind(File(input.json as String).openRead()).first;
     return MappingOutput(const [], const [], text: digest.toString());
@@ -75,18 +92,18 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
     if (bucket == null || SubstrateArchiveCodec.fingerprint(bucket) != input.fingerprint) {
       return const MappingOutput([], [{'reason': 'unreadable codec or fingerprint mismatch'}]);
     }
-    final parents = <Object?, List<int>>{};
+    final parents = <(Object?,Object?), List<int>>{};
     for (var i = 0; i < bucket.onehz.rowCount; i++) {
-      (parents[bucket.onehz.valueAt('ts_ms', i)] ??= []).add(i);
+      (parents[(bucket.onehz.valueAt('device_id',i),bucket.onehz.valueAt('ts_ms', i))] ??= []).add(i);
     }
-    final beats = <Object?, List<Map<String, Object?>>>{};
+    final beats = <(Object?,Object?), List<Map<String, Object?>>>{};
     final notes = <Map<String, Object?>>[];
     for (var i = 0; i < bucket.rr.rowCount; i++) {
-      final ts = bucket.rr.valueAt('ts_ms', i);
-      if (!parents.containsKey(ts)) {
+      final identity = (bucket.rr.valueAt('device_id',i),bucket.rr.valueAt('ts_ms', i));
+      if (!parents.containsKey(identity)) {
         notes.add({'beat_index': i, 'reason': 'archive orphan beat'});
       } else {
-        (beats[ts] ??= []).add(bucket.rr.rowAt(i));
+        (beats[identity] ??= []).add(bucket.rr.rowAt(i));
       }
     }
     Map<String, Object?> sorted(Map<String, Object?> row) => {
@@ -100,7 +117,7 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
         'row_index': i,
         'claim': jsonEncode({
           'parent': sorted(bucket.onehz.rowAt(i)),
-          'beats': [for (final beat in (beats[bucket.onehz.valueAt('ts_ms', i)] ?? <Map<String, Object?>>[])
+          'beats': [for (final beat in (beats[(bucket.onehz.valueAt('device_id',i),bucket.onehz.valueAt('ts_ms', i))] ?? <Map<String, Object?>>[])
               ..sort((a, b) => (a['beat_index'] as int).compareTo(b['beat_index'] as int))) sorted(beat)],
         }),
       },
@@ -133,6 +150,9 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
       if (v != null && !rule.targetValues.contains(v)) { refusal = 'unsupported ${rule.column}: $v'; }
     }
     switch (input.table) {
+      case 'alarm_schedule':
+        if ((source['natural_window_minutes'] is num && (source['natural_window_minutes'] as num)>0) ||
+            (source['gradual_window_minutes'] is num && (source['gradual_window_minutes'] as num)>0)) {refusal='Natural or Gradual wake choice unsupported';}
       case 'observation':
         if (!{'vendor','entered','imported'}.contains(source['source_kind']) ||
             (source['key'] == null && source['vendor_key'] == null)) { refusal = 'unsupported observation provenance or identity'; }
@@ -146,7 +166,7 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
         // A parsed plan is required by the tagged models. Keep unsupported
         // plans in the snapshot, never turn them into another preset.
         try {
-          if (jsonDecode(source['plan_json'] as String) is! Map) { refusal = 'unsupported race plan'; }
+          if (!_supportedRacePlanHeavy(input.table,source['plan_json'] as String)) { refusal = 'unsupported race plan'; }
         } catch (_) { refusal = 'unsupported race plan'; }
       case 'activity_suggestions':
         if (source['status'] == 'pending') { refusal = 'pending inference'; }
@@ -204,7 +224,7 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
         continue;
       }
       out.clear();
-      out.addAll(LocalDb.rawArchiveRow(deviceId: source['device_id'] as String,
+      out.addAll(encodeRawArchiveRow(deviceId: source['device_id'] as String,
           hex: hex, counter: source['counter'] as int?, packetType: source['packet_type'] as int,
           recTs: source['rec_ts'] as int?, capturedAt: source['captured_at'] as int,
           reason: source['reason'] as String));
@@ -243,4 +263,33 @@ bool _portablePreference(Map<String, Object?> r) {
     try { if (jsonDecode(value) is! Map) return false; } catch (_) { return false; }
   }
   return true;
+}
+
+// Frozen v0.12.2 JSON vocabulary. A later fork plan never becomes a target
+// plan by accident merely because its SQL column is still called plan_json.
+@heavy
+bool _supportedRacePlanHeavy(String table,String text) {
+  final json=jsonDecode(text);
+  if(json is! Map || json['v']!=1 || json['segments'] is! List) {return false;}
+  if(json.keys.any((k)=>!{'v','preset','segments'}.contains(k))) {return false;}
+  for(final item in json['segments'] as List) {
+    if(item is! Map) {return false;}
+    final allowed=table=='hyrox_session'
+      ? const {'kind','station','round_index','planned_distance_m','planned_reps','planned_cal','goal_sec'}
+      : const {'kind','environment','planned_distance_m','goal_sec'};
+    if(item.keys.any((key)=>!allowed.contains(key))) {return false;}
+    for(final key in ['planned_distance_m','round_index','planned_reps','planned_cal','goal_sec']) {
+      final value=item[key];
+      if(value!=null && (value is! num || !value.isFinite ||
+          (key!='planned_distance_m' && value!=value.truncate()))) {return false;}
+    }
+    if(table=='hyrox_session') {
+      if(item['kind']!='hyrox_round' || !{'skierg','sled_push','sled_pull','burpee_broad_jump','rowing','farmers_carry','sandbag_lunges','wall_balls'}.contains(item['station'])) {return false;}
+    } else {
+      if(!{'swim','t1','bike','t2','run'}.contains(item['kind']) ||
+          (item['environment']!=null && !{'indoor','outdoor'}.contains(item['environment']))) {return false;}
+    }
+  }
+  final data=json.cast<String,Object?>();
+  return table=='hyrox_session' ? HyroxPlan.fromJson(data)!=null : TriathlonPlan.fromJson(data)!=null;
 }

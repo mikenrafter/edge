@@ -174,6 +174,23 @@ String _verbOf(String word) {
   return 'delete';
 }
 
+// Const top-level catalogs are data. Their initialization cannot execute SQL.
+// Passing any catalog value to execute/rawUpdate is a nonliteral invocation,
+// which scanDynamicWriters must still detect. [p21_write_seam_guard_test]
+class _ConstCatalogRanges extends RecursiveAstVisitor<void> {
+  final ranges=<(int,int)>[];
+  @override
+  void visitTopLevelVariableDeclaration(TopLevelVariableDeclaration node) {
+    if (node.variables.isConst) {
+      for (final variable in node.variables.variables) {
+        final value=variable.initializer;
+        if (value!=null) {ranges.add((value.offset,value.end));}
+      }
+    }
+    super.visitTopLevelVariableDeclaration(node);
+  }
+}
+
 /// Every write to `day_result` / `baselines` in [src].
 List<WriteSite> scanWriters(String src) {
   final text = _joinAdjacentLiterals(blankComments(src));
@@ -183,9 +200,13 @@ List<WriteSite> scanWriters(String src) {
     return const [];
   }
   final code = codeOnly(src);
+  final unit = parseString(content: src, throwIfDiagnostics: false).unit;
+  final catalogs=_ConstCatalogRanges();
+  unit.accept(catalogs);
   final hits = <({int at, String verb, String table, String text})>[];
   final literalEnds = _literalEnds(text);
   for (final m in _sqlWrite.allMatches(text)) {
+    if (catalogs.ranges.any((r)=>m.start>=r.$1 && m.start<r.$2)) {continue;}
     // To the end of the Dart string literal the SQL sits in, so a raw UPDATE
     // carries its SET list whatever quotes the identifiers use.
     final end = literalEnds.firstWhere((e) => e > m.end, orElse: () => m.end);
@@ -199,7 +220,6 @@ List<WriteSite> scanWriters(String src) {
   // API writes are decided on the parsed AST, from the DECODED value of the
   // table argument: parentheses, raw strings, triple quotes and adjacent
   // literals all spell the same table.
-  final unit = parseString(content: src, throwIfDiagnostics: false).unit;
   final apiCalls = <MethodInvocation>[];
   unit.accept(_LiteralApiWrites(apiCalls));
   final apiMembers = <int, String>{};

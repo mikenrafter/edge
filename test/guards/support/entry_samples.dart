@@ -1,4 +1,5 @@
 import '../../support/incremental_day_fixture.dart';
+import 'package:openstrap_edge/data/official_export/mapping_worker.dart';
 import 'package:openstrap_edge/compute/night_day_worker.dart';
 import 'package:openstrap_edge/compute/night_checkpoint.dart';
 import 'package:openstrap_edge/compute/night_rr_state.dart';
@@ -78,6 +79,19 @@ Future<void> _sameInWorker<T>(
 }
 
 final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
+  'officialMappingHeavy': (
+    roundTrip: () async {
+      const input=MappingInput('page','journal_field_def',[
+        {'__export_rowid':1,'key':'custom_caffeine','label':'Caffeine','kind':'dose','unit':'g','created_at':1},
+      ]);
+      await expectIsolateRoundTrip<MappingInput>(input,project:(i)=>[i.operation,i.table,i.rows,i.blob,i.codec,i.fingerprint,i.json]);
+      final direct=await officialMappingHeavy(mappingWorkerInputs,input);
+      final result=await Isolate.run(()=>officialMappingHeavy(mappingWorkerInputs,input));
+      expect(result.rows.single['key'],'custom_u1_637573746f6d5f6361666665696e65_67');
+      expect(result.rows,direct.rows);expect(result.notes,direct.notes);
+      await expectIsolateRoundTrip<MappingOutput>(result,project:(r)=>[r.rows,r.notes,r.text]);
+    },
+  ),
   'typicalCaffeineHeavy': (
     roundTrip: () async {
       int ts(int day, int hour) =>

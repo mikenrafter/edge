@@ -41,7 +41,7 @@ const officialProfile = OfficialProfile(
       evidence: r'''`data/db.dart:1353`''',
       keep: ['weekday', 'hour', 'minute', 'enabled', 'smart_window_minutes'],
       omit: ['natural_window_minutes', 'gradual_window_minutes', 'gradual_pattern', 'gradual_cadence_sec'],
-      rowRule: r'''weekday/hour/minute/enabled/smart window; Natural and Gradual are omissions''',
+      rowRule: r'''weekday/hour/minute/enabled/smart window; rows choosing Natural or Gradual stay recovery-only, never translated into another wake method''',
       merge: MergeKey(['weekday'], MergeRule.fillMissing, r'''existing target slot wins'''),
     ),
     'android_metadata': TableProfile(

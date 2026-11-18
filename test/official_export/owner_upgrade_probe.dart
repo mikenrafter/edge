@@ -60,6 +60,10 @@ void main() {
     final watch = Stopwatch()..start();
     void lap(String what) {
       report['t:$what'] = watch.elapsedMilliseconds;
+      // Phase timing also makes a long archive expansion observable without
+      // logging source values while the final report is still being built.
+      // ignore: avoid_print
+      print('P2 owner phase $what: ${watch.elapsedMilliseconds} ms');
       watch.reset();
     }
 
@@ -86,6 +90,7 @@ void main() {
       'integrity': (await pre.rawQuery('PRAGMA integrity_check')).single.values.single,
       'tables': preCounts.length,
     };
+    expect((report['before'] as Map)['user_version'],89);
     await pre.close();
     lap('before');
 
@@ -93,6 +98,7 @@ void main() {
     final db = await LocalDb.instance;
     lap('upgrade_open');
     report['rebuild'] = LocalDb.lastRebuild?.toString();
+    expect(LocalDb.lastRebuild,isNull,reason:'the real source must migrate without quarantine/rebuild');
     final postCatalog = await SchemaCatalog.read(db);
     final postCounts = await _counts(db);
     final gaps = officialProfile.coverage(postCatalog);
@@ -103,6 +109,7 @@ void main() {
       'tables': postCounts.length,
       'profile_gaps': [for (final g in gaps) g.text],
     };
+    expect((report['after'] as Map)['user_version'],LocalDb.schemaVersion);
     report['row_counts'] = {
       for (final e in postCounts.entries) e.key: {'before': preCounts[e.key], 'after': e.value},
       for (final e in preCounts.entries)
