@@ -28,7 +28,7 @@ void main() {
  });
  tearDownAll(() async {await fx.dispose();});
  test('control: the honest mapper output conserves',() async {
-  await verifyConservation(fx.forkPath,report);
+  await verifyConservation(fx.forkPath,report,literalOmitted:richFixtureLiteralOmissions);
  },timeout:const Timeout(Duration(minutes:8)));
  test('valid rows reported as refused are caught, not just counted',() async {
   final lie=_withTables(report,(t) {
@@ -36,14 +36,14 @@ void main() {
    final mapped=ranges.keys.firstWhere((k)=>(k as String).startsWith('mapped;'));
    ranges['unfinished or fabricated session end; columns=']=ranges.remove(mapped);
   });
-  await expectLater(verifyConservation(fx.forkPath,lie),throwsA(isA<TestFailure>()));
+  await expectLater(verifyConservation(fx.forkPath,lie,literalOmitted:richFixtureLiteralOmissions),throwsA(isA<TestFailure>()));
  },timeout:const Timeout(Duration(minutes:8)));
  test('a carried table reported as omitted entirely is caught',() async {
   final lie=_withTables(report,(t) {
    t['journal']={'source_count':(t['journal'] as Map)['source_count'],'omitted_all':true,
      'reason':'unsupported source shape','columns':const <String>[]};
   });
-  await expectLater(verifyConservation(fx.forkPath,lie),throwsA(isA<TestFailure>()));
+  await expectLater(verifyConservation(fx.forkPath,lie,literalOmitted:richFixtureLiteralOmissions),throwsA(isA<TestFailure>()));
  },timeout:const Timeout(Duration(minutes:8)));
  for(final plant in const {
   'journal':"INSERT INTO journal(date,tags_json,note,updated_at) VALUES('2031-01-01','[]','invented',1)",
@@ -54,7 +54,7 @@ void main() {
    await File(report.path).copy(copy);
    final db=await databaseFactoryFfi.openDatabase(copy);
    try {await db.execute(plant.value);} finally {await db.close();}
-   await expectLater(verifyConservation(fx.forkPath,_withTables(report,(_){},path:copy)),throwsA(isA<TestFailure>()));
+   await expectLater(verifyConservation(fx.forkPath,_withTables(report,(_){},path:copy),literalOmitted:richFixtureLiteralOmissions),throwsA(isA<TestFailure>()));
   },timeout:const Timeout(Duration(minutes:8)));
  }
 }

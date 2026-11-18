@@ -28,6 +28,13 @@ import 'support.dart';
 import 'target/scenario.dart';
 
 int dayStart(int n) => dayStartEpoch(n);
+
+/// Source rows the fixture itself knows must be omitted although no SQL
+/// predicate can say why (the oracle's literal escape hatch, per table):
+/// the generic filler's plan_json is 'x', which is not a parsable race plan.
+const richFixtureLiteralOmissions = <String, Set<int>>{
+  'triathlon_session': {1},
+};
 final int forkCursor = fixtureForkCursor;
 final int oldestExact = fixtureOldestExact;
 final int edgeD4 = fixtureExpectedCursor;

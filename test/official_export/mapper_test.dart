@@ -26,7 +26,7 @@ void main() {
           expectedPrunedBefore: fx.expectedPrunedBefore), isEmpty);
       expect(report.cursor.sec, fx.expectedPrunedBefore);
       expect(report.tables.keys, contains('decoded_onehz'));
-      await verifyConservation(fx.forkPath,report);
+      await verifyConservation(fx.forkPath,report,literalOmitted:richFixtureLiteralOmissions);
       final db = await databaseFactoryFfi.openDatabase(path);
       try {
         final def = (await db.query('journal_field_def', where: "unit='g'")).single;
