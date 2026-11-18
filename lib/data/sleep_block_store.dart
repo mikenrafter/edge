@@ -279,6 +279,12 @@ abstract final class SleepBlockStore {
             }
           } else if(w.row['state']!='removed') { refuse(SleepRefusalReason.staleEntry,target);break; }
           w.row['state']='live';w.row['merged_into']=null;
+          // Restore is an explicit acceptance; keep the measured snapshot.
+          if(w.row['kind']=='nap' && {'legacy','detected'}.contains(w.row['source'])) {
+            w.row['source']='confirmed';
+            final payload=await _payload(w.row['payload_json']);
+            if(payload!=null) w.row['payload_json']=await JsonPayloadLane.shared.encode({...payload,'source':'confirmed'});
+          }
         case ResetToDetected(:final target):
           final w=await bind(target);if(w==null) break;
           if(_StoredBlock(w.row).history case DetectedKnown(:final startTs,:final endTs)) {
