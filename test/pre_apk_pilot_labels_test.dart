@@ -1,11 +1,13 @@
 // why: kept pilots must be identifiable at every entry point, without shrinking
 // the controls. Catches a missing badge or a label that replaces the tap target.
+// CLAIM(pilot-entry-labels).
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:openstrap_edge/l10n/app_localizations.dart';
+import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/profile/device_lab.dart';
@@ -42,7 +44,11 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await Prefs.ensureLoaded();
+    // Match the chart fixtures so AM/PM axis layout cannot mask the entry check.
+    final clock = ClockFormatController.seed(ClockFormat.h24);
+    addTearDown(clock.dispose);
   });
+  tearDown(ClockFormatController.debugReset);
 
   testWidgets('Settings Tracks entry carries Pilot and retains its target', (t) async {
     await _pump(t, const MoreSettingsView());
