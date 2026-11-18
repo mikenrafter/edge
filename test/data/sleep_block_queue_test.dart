@@ -22,7 +22,7 @@ void main() {
   });
   tearDown(() async { await LocalDb.close(); });
   test('Q1 nap receipt has only nap work and preserves the frozen headline', () async {
-    await db.insert('sync_cursor', {'name': LocalDb.kFrozenHeadlineCursor, 'value': jsonEncode({'day': day, 'readiness': 71})});
+    await db.insert('sync_cursor', {'name': LocalDb.kFrozenHeadlineCursor, 'updated_at': 1, 'value': jsonEncode({'day': day, 'readiness': 71})});
     final repo = LocalRepositoryImpl(getProfileMap: () => {});
     expect(await repo.putNap(dayId: day, startTs: start, endTs: start + 2400, source: 'manual'), isA<SleepSaved>());
     final jobs = await db.query('sleep_edit_job');
