@@ -114,6 +114,9 @@ class PulseUpgradeCaptureFailed implements Exception {
 class PulseEpisodeStore {
   PulseEpisodeStore._();
 
+  /// Small budgets exercise aggregate import admission without large fixtures.
+  static int? importBudgetBytesForTest;
+
   /// Phase 2 ships the storage only. Phase 3 flips this when central routing
   /// and silent recovery exist (spec 4.2/4.4). While false there is no Pulse
   /// retention hold and no refused:unsupported row.

@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/pulse_ep_worker.dart';
 import 'package:openstrap_edge/data/pulse_ep/pulse_ep_codec.dart';
+import 'package:openstrap_edge/data/pulse_ep/pulse_ep_store.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/import_journal.dart';
 import 'package:openstrap_edge/data/recent_slice.dart';
@@ -28,6 +29,13 @@ const _local = ['pulse_ep_checkpoint', 'pulse_ep_complete', 'pulse_ep_upgrade'];
 const _day = '2026-11-10';
 const _t0 = 1794000000000;
 
+class _StopBeforePulseAdmission implements ImportTableProbe {
+  @override
+  Future<void> beforeTable(String table) async {
+    if (table == 'pulse_ep_admission') throw StateError('interrupted after pulse evidence/outbox');
+  }
+}
+
 class _StopBeforeRevisions implements ImportTableProbe {
   @override
   Future<void> beforeTable(String table) async {
@@ -40,7 +48,10 @@ void main() {
   late BackupEnv env;
   setUpAll(() async => env = await BackupEnv.create('pulse-ep-transport.db'));
   tearDownAll(() async => env.dispose());
-  tearDown(ImportHooks.reset);
+  tearDown(() {
+    ImportHooks.reset();
+    PulseEpisodeStore.importBudgetBytesForTest = null;
+  });
   setUp(() async {
     await env.wipe();
     SharedPreferences.setMockInitialValues({});
@@ -324,6 +335,86 @@ void main() {
         'bomb': 'not_sent', 'unsupported': 'not_sent', 'size': 'not_sent'});
     expect(result['_pulse_evidence_corrupt'], 4);
     expect(result['_pulse_evidence_unsupported'], 1);
+  });
+
+  // WHY/R7: independently bounded backups may exceed the retained byte budget
+  // when merged. Check actual aggregate bytes after each real import.
+  // catches: admitting imported blobs without global budget reconciliation.
+  test('R7 aggregate import budget and local pending pins are enforced', () async {
+    var db = await LocalDb.instance;
+    await seedPortableEpisode(db, id: 'a', startMs: _t0, endMs: _t0 + 600000, startDay: _day);
+    final a = await LocalDb.exportCopy();
+    final sizeA = (await pulseRows(db, 'pulse_ep_evidence')).single['encoded_bytes'] as int;
+    await env.wipe();
+    db = await LocalDb.instance;
+    await seedPortableEpisode(db, id: 'b', startMs: _t0, endMs: _t0 + 600000, startDay: _day);
+    final b = await LocalDb.exportCopy();
+    final sizeB = (await pulseRows(db, 'pulse_ep_evidence')).single['encoded_bytes'] as int;
+    await env.wipe();
+    PulseEpisodeStore.importBudgetBytesForTest = sizeA > sizeB ? sizeA : sizeB;
+    await LocalDb.importFromDbFile(a);
+    db = await LocalDb.instance;
+    await db.update('pulse_ep_outbox', {'state': 'pending', 'token': 'local-claim'},
+        where: 'episode_id = ?', whereArgs: ['a']);
+    final result = await LocalDb.importFromDbFile(b);
+    final blobs = await pulseRows(db, 'pulse_ep_evidence');
+    expect(blobs.map((r) => r['episode_id']), ['a']);
+    expect(blobs.fold<int>(0, (sum, r) => sum + (r['encoded_bytes'] as int)), lessThanOrEqualTo(PulseEpisodeStore.importBudgetBytesForTest!));
+    expect((await pulseRows(db, 'pulse_ep_outbox', where: 'episode_id = ?', whereArgs: ['a'])).single['token'], 'local-claim');
+    expect((await pulseRows(db, 'pulse_ep_outbox', where: 'episode_id = ?', whereArgs: ['b'])).single['state'], 'not_sent');
+    expect(result['_pulse_evidence_budget_refused'], 1);
+  });
+
+  // WHY/R7: current and actually delivered evidence are the only retained
+  // revisions. Reconciliation must also run after copied-table resume markers.
+  // catches: accumulating every imported revision and skipping final resume repair.
+  for (final resume in [false, true]) {
+    test('R7 retains current and delivered revisions${resume ? ' after resume' : ''}', () async {
+      var db = await LocalDb.instance;
+      await seedPortableEpisode(db, id: 'r', startMs: _t0, endMs: _t0 + 600000,
+          startDay: _day, state: 'sent', revision: 3);
+      final header = (await pulseRows(db, 'pulse_ep_revision')).single;
+      final blob = (await pulseRows(db, 'pulse_ep_evidence')).single;
+      for (final revision in [1, 2]) {
+        await db.insert('pulse_ep_revision', {...header, 'revision': revision});
+        await db.insert('pulse_ep_evidence', {...blob, 'revision': revision});
+      }
+      await db.update('pulse_ep_outbox', {'revision': 1});
+      final path = await LocalDb.exportCopy();
+      await env.wipe();
+      if (resume) {
+        ImportHooks.table = _StopBeforePulseAdmission();
+        await expectLater(LocalDb.importFromDbFile(path), throwsStateError);
+        ImportHooks.reset();
+        await LocalDb.close();
+        expect((await ImportJournal.resumeIfUnfinished()).resumed, isTrue);
+      } else {
+        await LocalDb.importFromDbFile(path);
+      }
+      db = await LocalDb.instance;
+      expect((await pulseRows(db, 'pulse_ep_evidence', orderBy: 'revision')).map((r) => r['revision']), [1, 3]);
+      expect((await pulseRows(db, 'pulse_ep_revision', where: 'revision = 2')).single['evidence_status'], 'expired');
+    });
+  }
+
+  // WHY/R7: expiration is terminal for a retained revision, and imported
+  // creation age cannot be refreshed to make an old recording look new.
+  // catches: restoring payload under an expired local revision or resetting age.
+  test('R7 expired local and aged imported recordings cannot be revived', () async {
+    var db = await LocalDb.instance;
+    await seedPortableEpisode(db, id: 'expired', startMs: _t0, endMs: _t0 + 600000, startDay: _day);
+    await seedPortableEpisode(db, id: 'aged', startMs: _t0, endMs: _t0 + 600000, startDay: _day,
+        createdMs: DateTime.now().millisecondsSinceEpoch - 366 * 86400000);
+    final path = await LocalDb.exportCopy();
+    await db.delete('pulse_ep_evidence');
+    await db.update('pulse_ep_revision', {'evidence_status': 'expired'});
+    await db.delete('pulse_ep_episode', where: 'id = ?', whereArgs: ['aged']);
+    await db.delete('pulse_ep_revision', where: 'episode_id = ?', whereArgs: ['aged']);
+    await db.delete('pulse_ep_outbox', where: 'episode_id = ?', whereArgs: ['aged']);
+    await LocalDb.importFromDbFile(path);
+    expect(await pulseRows(db, 'pulse_ep_evidence'), isEmpty);
+    expect((await pulseRows(db, 'pulse_ep_revision')).map((r) => r['evidence_status']), everyElement('expired'));
+    expect((await pulseRows(db, 'pulse_ep_outbox')).map((r) => r['state']), everyElement('not_sent'));
   });
 
 }
