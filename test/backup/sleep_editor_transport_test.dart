@@ -14,6 +14,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/backup_extras.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/sleep_editor.dart';
+import 'package:openstrap_edge/data/sleep_editor_write.dart';
+import 'package:openstrap_edge/data/sleep_import_rules.dart';
 import 'package:openstrap_edge/gestures/moment_follow_ups.dart';
 import 'package:openstrap_edge/gestures/moment_review_queue.dart';
 import 'package:openstrap_edge/gestures/moment_review_service.dart';
@@ -160,6 +163,97 @@ void main() {
       await _clear(db);
       await LocalDb.importFromDbFile(backup);
       expect(await db.query('sleep_nap'), hasLength(2));
+    });
+  });
+
+  group('CLAIM(sleep-editor-transport) the envelope travels with its row', () {
+    final env = SleepEditEnvelope(
+      origin: OriginRef(suppressed: [SuppressedInterval(_day, _t0, _t0 + 3600)]),
+      detected: DetectedKnown(
+          startTs: _t0, endTs: _t0 + 3600, sourceDay: _day,
+          measures: const {'duration_min': 47}),
+    );
+
+    // WHY: a full backup carries the nap and main snapshots whole, and a
+    // restore into an empty install reads them back with the same meaning.
+    test('a backup round-trips main and nap envelopes into an empty database',
+        () async {
+      await _clear(db);
+      final napPayload = await SleepEditCodec.write(const {}, env);
+      await db.insert('sleep_nap',
+          _nap(_t0, _t0 + 40 * _min, payload: napPayload));
+      await db.insert('sleep_override', {
+        'day_id': _day, 'onset_ts': _t0 - 9 * 3600, 'offset_ts': _t0 - 3600,
+        'source': 'manual', 'created_at': 5,
+        'payload_json': await SleepEditCodec.write(const {}, env),
+      });
+      final backup = await _snapshot('sleep_envelope.db');
+      await _clear(db);
+      await LocalDb.importFromDbFile(backup);
+      for (final table in ['sleep_nap', 'sleep_override']) {
+        final row = (await db.query(table)).single;
+        final read = await SleepEditCodec.read(row['payload_json'] as String?);
+        final d = (read as EnvelopeOk).envelope.detected as DetectedKnown;
+        expect((d.startTs, d.endTs), (_t0, _t0 + 3600), reason: table);
+        expect(read.envelope.origin.suppressed.single.endTs, _t0 + 3600);
+      }
+    });
+
+    // WHY: an OLD backup has no payload column; its rows restore with history
+    // unavailable (never invented), and the bounds stay usable.
+    test('an old backup without payload_json restores with history unavailable',
+        () async {
+      await _clear(db);
+      await db.insert('sleep_nap', _nap(_t0, _t0 + 40 * _min));
+      await db.insert('sleep_override', {
+        'day_id': _day, 'onset_ts': _t0 - 9 * 3600, 'offset_ts': _t0 - 3600,
+        'source': 'confirmed', 'created_at': 5,
+      });
+      final backup = await _snapshot('sleep_old_backup.db');
+      final raw = await databaseFactory.openDatabase(backup);
+      await raw.execute('ALTER TABLE sleep_override DROP COLUMN payload_json');
+      await raw.execute('ALTER TABLE sleep_nap DROP COLUMN payload_json');
+      await raw.close();
+      await _clear(db);
+      await LocalDb.importFromDbFile(backup);
+      final main = (await db.query('sleep_override')).single;
+      expect(main['payload_json'], isNull);
+      expect(main['onset_ts'], _t0 - 9 * 3600);
+      expect(await SleepEditCodec.read(main['payload_json'] as String?),
+          isA<EnvelopeUnavailable>());
+      expect(await db.query('sleep_nap'), hasLength(1));
+    });
+
+    // WHY: a repeated import converges: refusals are reported again, identical
+    // rows stay silent and nothing is duplicated or shrunk.
+    test('importing the same backup twice is idempotent', () async {
+      await _clear(db);
+      await db.insert('sleep_nap', _nap(_t0, _t0 + 60 * _min));
+      final backup = await _snapshot('sleep_twice.db');
+      await db.update('sleep_nap', {'end_ts': _t0 + 30 * _min});
+      await LocalDb.importFromDbFile(backup);
+      final once = await db.query('sleep_nap');
+      await LocalDb.importFromDbFile(backup);
+      expect(await db.query('sleep_nap'), once);
+      expect((await SleepImportReport.load()).where((e) => e.refused),
+          hasLength(1));
+    });
+
+    // WHY: a close pair from ONE source is listed for review, not refused or
+    // merged, and survives a later closed import screen (it is stored).
+    test('a source-internal close pair is reported for review after the '
+        'import', () async {
+      await _clear(db);
+      await db.insert('sleep_nap', _nap(_t0, _t0 + 40 * _min));
+      await db.insert('sleep_nap', _nap(_t0 + 60 * _min, _t0 + 100 * _min));
+      final backup = await _snapshot('sleep_pair_report.db');
+      await _clear(db);
+      await LocalDb.importFromDbFile(backup);
+      final report = await SleepImportReport.load();
+      expect(report.where((e) => e.kind == 'close-in-source'), hasLength(1));
+      expect(report.where((e) => e.refused), isEmpty);
+      final summary = await lastImportSummary();
+      expect(summary?.sleepCloseReview, isNotEmpty);
     });
   });
 

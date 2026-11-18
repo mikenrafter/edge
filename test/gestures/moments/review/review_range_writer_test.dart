@@ -9,6 +9,7 @@
 // on that day. So a 23:40 to 00:20 nap is a `sleep_nap` row of the START's day.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/sleep_editor.dart';
 import 'package:openstrap_edge/compute/manual_session.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
@@ -153,8 +154,8 @@ void main() {
         reason: 'a rejection is not a nap');
   });
 
-  test('a nap overlapping a stored manual edit extends it (one row, the '
-      'union)', () async {
+  test('a nap overlapping a stored manual edit is refused for spacing: no '
+      'window written, the range is not left in progress', () async {
     await LocalDb.putNapEdit(
         dayId: '2026-10-06',
         startTs: sec(2026, 10, 6, 9, 30),
@@ -165,11 +166,11 @@ void main() {
         moments: [mA, mB],
         glasses: const [],
         now: reviewNow);
-    expect(rep.failed, isEmpty);
+    expect(rep.failed.values.single, isA<SleepMergeRequiredException>());
     final rows = await LocalDb.napEdits('2026-10-06');
-    expect(rows, hasLength(1));
-    expect(rows.single['start_ts'], sec(2026, 10, 6, 9, 15));
-    expect(rows.single['end_ts'], sec(2026, 10, 6, 10, 5));
+    expect(rows, hasLength(1), reason: 'nothing was written or unioned');
+    expect(rows.single['start_ts'], sec(2026, 10, 6, 9, 30));
+    expect(rep.remaining.ranges.single.inProgress, isFalse);
   });
 
   test('the workout goes to logManualWorkout with the chosen type, "other" by '

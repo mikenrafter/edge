@@ -2232,6 +2232,39 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   @override
+  Future<SleepEditorOutcome> putNap({
+    required String dayId,
+    required int startTs,
+    required int endTs,
+    required String source,
+    SleepMergeAuthorization? merge,
+  }) async {
+    _focusCheck('putNap');
+    try {
+      final r = await LocalDb.putNapEdit(
+          dayId: dayId, startTs: startTs, endTs: endTs, source: source, merge: merge);
+      return SleepSaved({
+        dayId,
+        if (r != null) for (final b in r.extended) b.day,
+      });
+    } on SleepMergeRequiredException catch (e) {
+      return SleepRefused(SleepRefusalReason.mergeRequired, proposal: e.proposal);
+    }
+  }
+
+  @override
+  Future<SleepEditorOutcome> deleteNap(String dayId, int startTs,
+      {SleepMergeAuthorization? merge}) async {
+    _focusCheck('deleteNap');
+    try {
+      await LocalDb.deleteNapEdit(dayId, startTs, merge: merge);
+      return SleepSaved({dayId});
+    } on SleepMergeRequiredException catch (e) {
+      return SleepRefused(SleepRefusalReason.mergeRequired, proposal: e.proposal);
+    }
+  }
+
+  @override
   Future<SleepEditorOutcome> saveSleepEditor(SleepEditorPlan plan) async {
     _focusCheck('saveSleepEditor');
     try {

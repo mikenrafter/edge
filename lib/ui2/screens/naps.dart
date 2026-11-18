@@ -11,6 +11,7 @@ import '../../models/metric.dart' show whyFromNote;
 import '../../state/app_state.dart';
 import '../ui2.dart';
 import 'home_screen.dart' show clockOfTs, hm, repoOf;
+import '../../data/sleep_editor.dart';
 import 'metric_detail.dart';
 import 'detected_activities.dart' show NapAutoLogRow;
 import '../../health/health_nap_export.dart';
@@ -144,9 +145,26 @@ class _NapsScreenState extends State<NapsScreen>
   @override
   void focusStarted() => _load();
 
+  /// The repository the last read used: every write goes through it, never
+  /// through LocalDb directly, so the shared spacing rule applies.
+  LocalRepository? _repoSeen;
+  LocalRepository get _repo =>
+      _repoSeen ?? (throw StateError('no repository to write a nap with'));
+
+  /// A refused write surfaces its reason through the same path as any failed
+  /// edit (the screen's failure line).
+  void _must(SleepEditorOutcome out) {
+    if (out is SleepRefused && out.proposal != null) {
+      throw SleepMergeRequiredException(out.proposal!);
+    }
+    if (out is SleepRefused) throw StateError('That change was refused.');
+    if (out is SleepFailed) throw out.error;
+  }
+
   Future<bool> _load() async {
     final repo = repoOf(context);
     if (repo == null) return false;
+    _repoSeen = repo;
     final token = ++_loadToken;
     try {
       final d = await NapsData.load(repo, want: _day);
@@ -226,10 +244,10 @@ class _NapsScreenState extends State<NapsScreen>
         // over the same afternoon, and re-logging it later would land on a
         // window that is still being suppressed.
         if (nap['source'] == 'manual') {
-          await LocalDb.deleteNapEdit(day, start);
+          _must(await _repo.deleteNap(day, start));
         } else {
-          await LocalDb.putNapEdit(
-              dayId: day, startTs: start, endTs: end, source: 'rejected');
+          _must(await _repo.putNap(
+              dayId: day, startTs: start, endTs: end, source: 'rejected'));
         }
         // The window is no longer a confirmed nap, so its Apple Health
         // samples go too. A failed native delete is queued by the exporter
@@ -242,7 +260,7 @@ class _NapsScreenState extends State<NapsScreen>
 
   Future<void> _restore(String day, int start) => _edit(() async {
         await HealthNapExporter.shared.synchronized(() async {
-          await LocalDb.deleteNapEdit(day, start);
+          _must(await _repo.deleteNap(day, start));
           // "Put it back" restores the row as 'confirmed' — re-export it.
           await HealthNapExporter.exportNapRow(dayId: day, startTs: start);
         });
@@ -305,8 +323,8 @@ class _NapsScreenState extends State<NapsScreen>
     if (!mounted) return;
     await _edit(() async {
       await HealthNapExporter.shared.synchronized(() async {
-        await LocalDb.putNapEdit(
-            dayId: day, startTs: s, endTs: e, source: 'manual');
+        _must(await _repo.putNap(
+            dayId: day, startTs: s, endTs: e, source: 'manual'));
         await HealthNapExporter.exportConfirmedNap(
             dayId: day, startTs: s, endTs: e);
       });

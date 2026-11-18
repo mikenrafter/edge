@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/sleep_import_rules.dart';
 
 const _day = '2026-10-12';
 const _other = '2026-10-13';
@@ -134,6 +135,10 @@ void main() {
     expect([for (final r in fields) r['field']], ['alcohol']);
     expect((await db.query('lab_result')).single['value'], 90.0);
     expect((await db.query('sleep_override')).single['onset_ts'], 300);
+    expect(
+        (await SleepImportReport.load()).where((e) => e.refused),
+        hasLength(1),
+        reason: 'the differing backup entry is reported, not silently dropped');
     expect((await db.query('cycle_symptom')).single['symptoms_json'],
         '["headache"]');
     expect((await db.query('cycle_log')).single['kind'], 'end');
@@ -164,7 +169,12 @@ void main() {
 
     final fields = await db.query('journal_metric');
     expect([for (final r in fields) r['field']], ['alcohol']);
-    expect((await db.query('sleep_override')).single['onset_ts'], 500);
+    // Sleep assertions are local-wins (owner S7): the newer backup does not
+    // replace the local window, and the refused entry is reported.
+    expect((await db.query('sleep_override')).single['onset_ts'], 100);
+    final report = await SleepImportReport.load();
+    expect(report.where((e) => e.refused && e.table == 'sleep_override'),
+        hasLength(1));
   });
 
   test('an older backup does not undo a dose marked after it', () async {

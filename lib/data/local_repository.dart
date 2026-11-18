@@ -271,6 +271,23 @@ abstract class LocalRepository {
   Future<SleepEditorRead> readSleepEditor(String dayId) =>
       throw UnimplementedError('readSleepEditor');
 
+  /// Writes (or, with `source: 'rejected'`, suppresses) one nap window through
+  /// the shared spacing guard. Pass [merge] to approve a proposal a refusal
+  /// returned. Never throws for spacing: the outcome says Saved or Refused.
+  Future<SleepEditorOutcome> putNap({
+    required String dayId,
+    required int startTs,
+    required int endTs,
+    required String source,
+    SleepMergeAuthorization? merge,
+  }) => throw UnimplementedError('putNap');
+
+  /// Deletes a nap row, or restores a removed one (a restore is a new block, so
+  /// the spacing guard applies).
+  Future<SleepEditorOutcome> deleteNap(String dayId, int startTs,
+          {SleepMergeAuthorization? merge}) =>
+      throw UnimplementedError('deleteNap');
+
   /// Commits [plan] in one transaction; a typed outcome, never a bool.
   Future<SleepEditorOutcome> saveSleepEditor(SleepEditorPlan plan) =>
       throw UnimplementedError('saveSleepEditor');

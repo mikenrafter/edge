@@ -8,6 +8,8 @@
 // fakes; time is injected (`now`), never read. RED: the screen still applies
 // each answer at once and has no queue.
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/assumed_water.dart';
@@ -216,11 +218,11 @@ void main() {
       final r = _Rig();
       await r.pump(t);
       await _tap(t, _choice(mA, MomentChoice.meal));
-      expect(r.store.load().length, 1);
+      expect(r.service.queue.length, 1);
       await _tap(t, _undo(mA));
       expect(_pending(mA), findsNothing);
       expect(_card(mA), findsOneWidget);
-      expect(r.store.load().isEmpty, isTrue);
+      expect(r.service.queue.isEmpty, isTrue);
       expect(r.log.entries, isEmpty);
     });
 
@@ -287,7 +289,7 @@ void main() {
       expect(_card(mB), findsNothing);
       expect(find.byKey(ValueKey('assumed-water:${gNoon.key}')), findsNothing);
       expect(_card(mC), findsOneWidget, reason: 'unreviewed stays');
-      expect(r.store.load().isEmpty, isTrue);
+      expect(r.service.queue.isEmpty, isTrue);
       expect(_saveEnabled(t), isFalse);
     });
 
@@ -314,8 +316,8 @@ void main() {
       expect(_in(_pending(mB), 'Meal'), findsOneWidget);
       expect(_failedNote(mB), findsOneWidget);
       expect(_failedNote(mA), findsNothing);
-      expect(r.store.load().decisionFor(ReviewKey.moment(mB)), isNotNull);
-      expect(r.store.load().length, 1);
+      expect(r.service.queue.decisionFor(ReviewKey.moment(mB)), isNotNull);
+      expect(r.service.queue.length, 1);
       expect(_saveEnabled(t), isTrue, reason: 'Save can be pressed again');
     });
 
@@ -345,13 +347,17 @@ void main() {
     });
   });
 
-  group('the queue persists', () {
-    testWidgets('written at once, not on dispose', (t) async {
+  group('the queue is session-only (owner, 2026-11-17)', () {
+    // WHY: choices are held by the service for this session and never reach
+    // storage; only a Save that already started is stored.
+    testWidgets('held at once by the service, not written to storage',
+        (t) async {
       final r = _Rig();
       await r.pump(t);
       await _tap(t, _choice(mA, MomentChoice.meal));
-      final q = r.store.load();
+      final q = r.service.queue;
       expect(q.decisionFor(ReviewKey.moment(mA))!.choice, MomentChoice.meal);
+      expect(r.store.load().decisions, isEmpty);
     });
 
     testWidgets('leaving and returning: a NEW screen shows the same pending '
@@ -371,32 +377,42 @@ void main() {
       expect(r.log.entries, isEmpty, reason: 'leaving applies nothing');
     });
 
-    testWidgets('an app restart: a draft already on disk is shown', (t) async {
-      final r = _Rig();
-      await r.store.save(MomentReviewQueue.empty
+    // WHY: an app restart loses unsaved choices; a stored legacy draft is
+    // filtered on load. Catches a store that still brings decisions back.
+    testWidgets('an app restart: a legacy draft on disk is not shown',
+        (t) async {
+      final legacy = MomentReviewQueue.empty
           .withDecision(ReviewKey.moment(mA),
               const ReviewDecision.label(MomentChoice.caffeine, value: 80))
           .withDecision(
-              ReviewKey.glass(gNoon), const ReviewDecision.removeGlass()));
+              ReviewKey.glass(gNoon), const ReviewDecision.removeGlass());
+      Prefs.setString(MomentReviewStore.prefKey, jsonEncode(legacy.toJson()));
+      final r = _Rig();
       await r.pump(t, glassList: [gNoon]);
-      expect(_in(_pending(mA), 'Caffeine'), findsOneWidget);
-      expect(_in(_pending(mA), '80'), findsOneWidget);
-      expect(_in(_gPending(gNoon), 'Remove'), findsOneWidget);
+      expect(_pending(mA), findsNothing);
+      expect(_gPending(gNoon), findsNothing);
     });
 
-    testWidgets('a persisted range comes back as a range', (t) async {
+    // WHY: a Save that already started DOES survive a restart and resumes.
+    testWidgets('a started range comes back as a range after a restart',
+        (t) async {
+      final started = MomentReviewQueue.empty
+          .withRange(mA, mB, MomentChoice.nap)
+          .ranges
+          .single
+          .copyWith(attempting: true, windowWritten: true);
+      await const MomentReviewStore()
+          .save(MomentReviewQueue.empty.withRangeProgress(started));
       final r = _Rig();
-      await r.store.save(
-          MomentReviewQueue.empty.withRange(mA, mB, MomentChoice.nap));
       await r.pump(t);
       expect(_range(mA), findsOneWidget);
       expect(_range(mB), findsOneWidget);
     });
 
-    testWidgets('a draft for something no longer pending is dropped, from the '
-        'screen and from storage', (t) async {
+    testWidgets('a draft for something no longer pending is dropped from the '
+        'screen and from the session queue', (t) async {
       final r = _Rig();
-      await r.store.save(MomentReviewQueue.empty
+      await r.service.edit((_) => MomentReviewQueue.empty
           .withDecision(ReviewKey.moment(mA), const ReviewDecision.skip())
           .withDecision(ReviewKey.moment(mC), const ReviewDecision.skip())
           .withDecision(
@@ -404,18 +420,17 @@ void main() {
       await r.pump(t, moments: [mA]);
       expect(_pending(mA), findsOneWidget);
       expect(_card(mC), findsNothing);
-      final q = r.store.load();
-      expect(q.decisions.keys, [ReviewKey.moment(mA)]);
+      expect(r.service.queue.decisions.keys, [ReviewKey.moment(mA)]);
     });
 
     testWidgets('a draft for a MOMENT does not attach to a glass of the same '
         'minute', (t) async {
       final r = _Rig();
-      await r.store.save(MomentReviewQueue.empty
+      await r.service.edit((_) => MomentReviewQueue.empty
           .withDecision(ReviewKey.moment(mA), const ReviewDecision.skip()));
       await r.pump(t, moments: const [], glassList: [gSameMinuteAsA]);
       expect(_gPending(gSameMinuteAsA), findsNothing);
-      expect(r.store.load().isEmpty, isTrue);
+      expect(r.service.queue.isEmpty, isTrue);
     });
   });
 
@@ -459,7 +474,7 @@ void main() {
         expect(_pending(m), findsNothing);
       }
       expect(r.log.entries, isEmpty);
-      expect(r.store.load().ranges, hasLength(1));
+      expect(r.service.queue.ranges, hasLength(1));
     });
 
     testWidgets('pairing in the other direction gives the same range (earlier '
@@ -469,7 +484,7 @@ void main() {
       await _tap(t, _choice(mB, MomentChoice.nap));
       await _tap(t, _pair(mB));
       await _tap(t, _pairTarget(mB, mA));
-      final range = r.store.load().ranges.single;
+      final range = r.service.queue.ranges.single;
       expect((range.startKey, range.endKey), (mA.key, mB.key));
     });
 
@@ -482,7 +497,7 @@ void main() {
       await _tap(t, _undo(mB));
       expect(_range(mA), findsNothing);
       expect(_range(mB), findsNothing);
-      expect(r.store.load().isEmpty, isTrue);
+      expect(r.service.queue.isEmpty, isTrue);
       expect(_saveEnabled(t), isFalse);
     });
 
@@ -495,10 +510,10 @@ void main() {
       await _tap(t, _pairTarget(mA, mC));
       expect(_rangeError(mA), findsOneWidget);
       expect(_range(mA), findsNothing);
-      expect(r.store.load().ranges, isEmpty);
+      expect(r.service.queue.ranges, isEmpty);
     });
 
-    testWidgets('a pair overlapping a nap already logged is accepted (it extends)',
+    testWidgets('a pair overlapping a nap already logged is still accepted on the spot (spacing is decided at Save)',
         (t) async {
       final r = _Rig();
       r.ranges.naps = {
@@ -511,7 +526,7 @@ void main() {
       await _tap(t, _pair(mA));
       await _tap(t, _pairTarget(mA, mB));
       expect(_rangeError(mA), findsNothing);
-      expect(r.store.load().ranges, hasLength(1));
+      expect(r.service.queue.ranges, hasLength(1));
     });
 
     testWidgets('Save writes the nap range once, labels both moments, and '
@@ -528,7 +543,7 @@ void main() {
           [MomentChoice.nap, MomentChoice.nap]);
       expect(_card(mA), findsNothing);
       expect(_card(mB), findsNothing);
-      expect(r.store.load().isEmpty, isTrue);
+      expect(r.service.queue.isEmpty, isTrue);
     });
 
     testWidgets('Save writes a workout range through the workout path',
@@ -555,7 +570,7 @@ void main() {
       expect(_range(mA), findsOneWidget);
       expect(_range(mB), findsOneWidget);
       expect(_failedNote(mA), findsOneWidget);
-      expect(r.store.load().ranges, hasLength(1));
+      expect(r.service.queue.ranges, hasLength(1));
     });
   });
 
@@ -596,7 +611,7 @@ void main() {
       await _tap(t, _pairTarget(mA, mB));
       expect(_in(_range(mA), 'Running'), findsOneWidget,
           reason: 'the paired card names the type');
-      expect(r.store.load().ranges.single.workoutType, 'running');
+      expect(r.service.queue.ranges.single.workoutType, 'running');
       await _tap(t, _save);
       expect(r.ranges.loggedWorkouts.single.type, 'running');
     });

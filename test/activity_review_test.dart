@@ -4,6 +4,7 @@ import 'package:timezone/timezone.dart' as tz;
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/sleep_editor.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/activity_store.dart';
@@ -383,8 +384,8 @@ void main() {
     expect(await store.pending(), hasLength(1));
   });
 
-  test('a nap overlapping a saved nap extends it instead of being refused',
-      () async {
+  test('a nap overlapping a saved nap asks for an explicit merge, then writes '
+      'the union', () async {
     final s = await detectNap();
     await db.insert('sleep_nap', {
       'day_id': day,
@@ -393,9 +394,17 @@ void main() {
       'source': 'manual',
       'created_at': now,
     });
-    await repo.confirmActivity(s);
+    await expectLater(
+      repo.confirmActivity(s),
+      throwsA(isA<SleepMergeRequiredException>()),
+    );
+    expect(await store.pending(), hasLength(1), reason: 'still pending');
+    final proposal = (await repo.proposeNapKeep(s.startTs, s.endTs))!;
+    await repo.confirmActivity(s, merge: proposal.authorization);
     expect(await store.pending(), isEmpty);
-    final rows = await LocalDb.napEdits(day);
+    final rows = (await LocalDb.napEdits(day))
+        .where((r) => r['source'] != 'rejected')
+        .toList();
     expect(rows, hasLength(1));
     expect(rows.single['start_ts'], start);
     expect(rows.single['end_ts'], start + 1800);

@@ -1,6 +1,5 @@
-// Keeping a nap that overlaps sleep EXTENDS the overlapped block to the union
-// instead of being refused (owner decision). RED: resolveNapKeep is a stub that
-// returns the input bounds, and confirm still refuses an overlap.
+// Keeping a nap within 30 minutes of another sleep block needs an explicit,
+// approved merge (owner decisions 2026-11-17); nothing is unioned silently.
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -11,7 +10,7 @@ import 'package:openstrap_edge/data/activity_store.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
-import 'package:openstrap_edge/data/nap_resolution.dart';
+import 'package:openstrap_edge/data/sleep_editor.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
 
 void main() {
@@ -101,98 +100,51 @@ void main() {
   Future<List<Map<String, Object?>>> napRows() =>
       db.query('sleep_nap', orderBy: 'start_ts ASC');
 
-  group('resolveNapKeep', () {
-    test('no overlap: the input bounds, nothing extended', () async {
-      final r = await repo.resolveNapKeep(t0, t0 + 1800);
-      expect(r.startTs, t0);
-      expect(r.endTs, t0 + 1800);
-      expect(r.extended, isEmpty);
+  group('proposeNapKeep (30-minute rule)', () {
+    test('no neighbour: nothing to merge', () async {
+      expect(await repo.proposeNapKeep(t0, t0 + 1800), isNull);
     });
 
-    test('a nap it overlaps is extended to the union', () async {
-      await addNap(t0, t0 + 1800);
-      final r = await repo.resolveNapKeep(t0 + 1200, t0 + 3000);
-      expect(r.startTs, t0);
-      expect(r.endTs, t0 + 3000);
-      expect(r.extended, [
-        (kind: 'nap', day: dayOf(t0), startTs: t0, endTs: t0 + 1800),
-      ]);
-    });
-
-    test('containment: the input inside a nap resolves to that nap', () async {
-      await addNap(t0, t0 + 3600);
-      final r = await repo.resolveNapKeep(t0 + 600, t0 + 1800);
-      expect(r.startTs, t0);
-      expect(r.endTs, t0 + 3600);
-      expect(r.extended, [
-        (kind: 'nap', day: dayOf(t0), startTs: t0, endTs: t0 + 3600),
-      ]);
-    });
-
-    test('the input containing a nap also extends over it', () async {
-      await addNap(t0 + 600, t0 + 1200);
-      final r = await repo.resolveNapKeep(t0, t0 + 3000);
-      expect((r.startTs, r.endTs), (t0, t0 + 3000));
-      expect(r.extended, hasLength(1));
-    });
-
-    test('bridging two naps yields one union covering both', () async {
-      await addNap(t0, t0 + 1800);
-      await addNap(t0 + 3600, t0 + 5400);
-      final r = await repo.resolveNapKeep(t0 + 1500, t0 + 3900);
-      expect(r.startTs, t0);
-      expect(r.endTs, t0 + 5400);
-      expect(r.extended.map((b) => b.startTs), [t0, t0 + 3600]);
-    });
-
-    test('transitive: a block overlapping an overlapped block joins in', () async {
-      // The input touches only B; A overlaps B on the other side, so A joins.
-      await addNap(t0, t0 + 1800); // A
-      await addNap(t0 + 1500, t0 + 3000); // B overlaps A
-      final r = await repo.resolveNapKeep(t0 + 2700, t0 + 3300);
-      expect(r.startTs, t0);
-      expect(r.endTs, t0 + 3300);
-      expect(r.extended, hasLength(2));
-    });
-
-    test('never bridges a gap: a nap the input does not reach is untouched',
+    test('a nap it overlaps proposes the union, keeping the earlier nap',
         () async {
       await addNap(t0, t0 + 1800);
-      await addNap(t0 + 3600, t0 + 5400);
-      final r = await repo.resolveNapKeep(t0 + 1500, t0 + 2400);
-      expect(r.startTs, t0);
-      expect(r.endTs, t0 + 2400);
-      expect(r.extended.map((b) => b.startTs), [t0]);
+      final r = (await repo.proposeNapKeep(t0 + 1200, t0 + 3000))!;
+      expect((r.startTs, r.endTs), (t0, t0 + 3000));
+      expect(r.survivor.startTs, t0);
+      expect(r.absorbed, isEmpty);
     });
 
-    test('touching counts: input end == nap start', () async {
+    test('touching and 29:59 both need a merge; exactly 30:00 does not',
+        () async {
       await addNap(t0 + 1800, t0 + 3600);
-      final r = await repo.resolveNapKeep(t0, t0 + 1800);
-      expect(r.startTs, t0);
-      expect(r.endTs, t0 + 3600);
-      expect(r.extended, hasLength(1));
+      expect(await repo.proposeNapKeep(t0, t0 + 1800), isNotNull);
+      expect(await repo.proposeNapKeep(t0 - 600, t0 + 1800 - 1799), isNotNull);
+      // Ends exactly 1800 s before the nap starts.
+      expect(await repo.proposeNapKeep(t0 - 1800, t0), isNull);
+    });
+
+    test('bridging two naps pulls both into one proposal', () async {
+      await addNap(t0, t0 + 1800);
+      await addNap(t0 + 3600, t0 + 5400);
+      final r = (await repo.proposeNapKeep(t0 + 1500, t0 + 3900))!;
+      expect((r.startTs, r.endTs), (t0, t0 + 5400));
+      expect(r.participants, hasLength(2));
+    });
+
+    test('a chain is followed transitively past the input', () async {
+      await addNap(t0, t0 + 1800); // A
+      await addNap(t0 + 3000, t0 + 4000); // B, 20 min after A
+      final r = (await repo.proposeNapKeep(t0 + 4900, t0 + 5700))!; // 15 min after B
+      expect((r.startTs, r.endTs), (t0, t0 + 5700));
+      expect(r.participants, hasLength(2));
     });
 
     test('a rejected nap is not a block', () async {
       await addNap(t0, t0 + 1800, source: 'rejected');
-      final r = await repo.resolveNapKeep(t0 + 600, t0 + 2400);
-      expect((r.startTs, r.endTs), (t0 + 600, t0 + 2400));
-      expect(r.extended, isEmpty);
+      expect(await repo.proposeNapKeep(t0 + 600, t0 + 2400), isNull);
     });
 
-    test('the input itself must still be a 5 min..6 h nap', () async {
-      await expectLater(
-        repo.resolveNapKeep(t0, t0 + 120),
-        throwsA(isA<ActivityReviewException>()),
-      );
-      await expectLater(
-        repo.resolveNapKeep(t0, t0 + 7 * 3600),
-        throwsA(isA<ActivityReviewException>()),
-      );
-    });
-
-    test('overlapping a sleep_override main sleep extends it (union may pass 6 h)',
-        () async {
+    test('a sleep_override main sleep is the survivor of a merge', () async {
       final on = t0, off = t0 + 8 * 3600;
       await LocalDb.putSleepOverride(
         dayId: dayOf(off),
@@ -200,16 +152,12 @@ void main() {
         offsetTs: off,
         source: 'manual',
       );
-      final r = await repo.resolveNapKeep(off - 600, off + 900);
-      expect(r.startTs, on);
-      expect(r.endTs, off + 900);
-      expect(r.extended, [
-        (kind: 'main_sleep', day: dayOf(off), startTs: on, endTs: off),
-      ]);
+      final r = (await repo.proposeNapKeep(off - 600, off + 900))!;
+      expect((r.startTs, r.endTs), (on, off + 900));
+      expect(r.survivor.kind, SleepBlockKind.main);
     });
 
-    test('a main sleep known only from day_result.window_json extends too',
-        () async {
+    test('a main known only from day_result.window_json counts too', () async {
       final on = t0, off = t0 + 8 * 3600;
       await dayResult(
         dayOf(off),
@@ -217,57 +165,48 @@ void main() {
           'value': {'onset_ms': on * 1000, 'offset_ms': off * 1000},
         }),
       );
-      final r = await repo.resolveNapKeep(on - 900, on + 600);
-      expect(r.startTs, on - 900);
-      expect(r.endTs, off);
-      expect(r.extended.map((b) => b.kind), ['main_sleep']);
+      final r = (await repo.proposeNapKeep(on - 900, on + 600))!;
+      expect((r.startTs, r.endTs), (on - 900, off));
+      expect(r.survivor.kind, SleepBlockKind.main);
     });
   });
 
   group('commit', () {
-    test('containment keeps the nap and adds no row (no duplicate credit)',
-        () async {
+    // WHY: keeping a nap near another block is NEVER silent: without the
+    // person's approval nothing is written and the suggestion stays pending.
+    test('without an approved merge nothing is written', () async {
       final s = await suggest(t0 + 600, t0 + 1800);
       await addNap(t0, t0 + 3600);
-      final res = await repo.resolveNapKeep(t0 + 600, t0 + 1800);
-      await repo.confirmActivity(s, expected: res);
-      final rows = await napRows();
-      expect(rows, hasLength(1));
-      expect((rows.single['start_ts'], rows.single['end_ts']), (t0, t0 + 3600));
+      final before = await napRows();
+      await expectLater(
+        repo.confirmActivity(s),
+        throwsA(isA<SleepMergeRequiredException>()),
+      );
+      expect(await napRows(), before);
+      expect((await store.get(s.id))!.status, ActivityReviewStatus.pending);
     });
 
-    test('overlapped naps merge into ONE row with the union, marked manual',
+    // WHY: an approved merge leaves ONE live union; the absorbed nap is a
+    // tombstone naming the survivor, and old aggregates do not ride along.
+    test('an approved merge writes one union row and tombstones the other',
         () async {
       final s = await suggest(t0 + 1500, t0 + 3900);
       await addNap(t0, t0 + 1800, source: 'confirmed');
       await addNap(t0 + 3600, t0 + 5400, source: 'confirmed');
-      final res = await repo.resolveNapKeep(t0 + 1500, t0 + 3900);
-      await repo.confirmActivity(s, startTs: t0 + 1500, endTs: t0 + 3900,
-          expected: res);
-      final rows = await napRows();
-      expect(rows, hasLength(1));
-      expect((rows.single['start_ts'], rows.single['end_ts']), (t0, t0 + 5400));
-      // The detector's old aggregates must not ride along on the new bounds.
-      expect(rows.single['source'], 'manual');
-      expect(rows.single['payload_json'], isNull);
+      final p = (await repo.proposeNapKeep(t0 + 1500, t0 + 3900))!;
+      await repo.confirmActivity(s,
+          startTs: t0 + 1500, endTs: t0 + 3900, merge: p.authorization);
+      final live = (await napRows()).where((r) => r['source'] != 'rejected');
+      expect(live, hasLength(1));
+      expect((live.single['start_ts'], live.single['end_ts']), (t0, t0 + 5400));
+      expect(live.single['source'], 'manual');
+      expect('${live.single['payload_json']}', isNot(contains('duration_min')));
+      expect((await napRows()).where((r) => r['source'] == 'rejected'),
+          hasLength(1));
       expect((await store.get(s.id))!.status, ActivityReviewStatus.confirmed);
     });
 
-    test('a nap beyond a gap is left alone when only one is overlapped',
-        () async {
-      final s = await suggest(t0 + 1500, t0 + 2400);
-      await addNap(t0, t0 + 1800, source: 'confirmed');
-      await addNap(t0 + 3600, t0 + 5400, source: 'confirmed');
-      final res = await repo.resolveNapKeep(t0 + 1500, t0 + 2400);
-      await repo.confirmActivity(s, startTs: t0 + 1500, endTs: t0 + 2400,
-          expected: res);
-      final rows = await napRows();
-      expect(rows.map((r) => r['start_ts']), [t0, t0 + 3600]);
-      expect(rows.first['end_ts'], t0 + 2400);
-      expect(rows.last['source'], 'confirmed');
-    });
-
-    test('overlapping a sleep_override main sleep edits it through the sleep path',
+    test('an approved merge with a main sleep edits it through the sleep path',
         () async {
       final on = t0, off = t0 + 8 * 3600;
       final s = await suggest(off - 600, off + 900);
@@ -283,21 +222,18 @@ void main() {
         'basis': 'test',
         'created_at': now,
       });
-      final res = await repo.resolveNapKeep(off - 600, off + 900);
-      await repo.confirmActivity(s, startTs: off - 600, endTs: off + 900,
-          expected: res);
+      final p = (await repo.proposeNapKeep(off - 600, off + 900))!;
+      await repo.confirmActivity(s,
+          startTs: off - 600, endTs: off + 900, merge: p.authorization);
       final ov = (await LocalDb.getSleepOverride(dayOf(off)))!;
       expect((ov['onset_ts'], ov['offset_ts']), (on, off + 900));
       expect(ov['source'], 'manual');
       expect(await napRows(), isEmpty, reason: 'no separate nap row');
-      // putSleepOverride reopens the night.
       expect(await db.query('wake_confirmation'), isEmpty);
     });
 
-    test('a main sleep known only from window_json becomes an override',
-        () async {
+    test('a main known only from window_json becomes an override', () async {
       final on = t0, off = t0 + 8 * 3600;
-      // The suggestion starts before the default cutoff (t0 - 1): move it back.
       await db.update('activity_review_meta', {'activated_at': t0 - 3600});
       final s = await suggest(on - 900, on + 600);
       await dayResult(
@@ -307,44 +243,28 @@ void main() {
         }),
       );
       expect(await LocalDb.getSleepOverride(dayOf(off)), isNull);
-      final res = await repo.resolveNapKeep(on - 900, on + 600);
-      await repo.confirmActivity(s, startTs: on - 900, endTs: on + 600,
-          expected: res);
+      final p = (await repo.proposeNapKeep(on - 900, on + 600))!;
+      await repo.confirmActivity(s,
+          startTs: on - 900, endTs: on + 600, merge: p.authorization);
       final ov = (await LocalDb.getSleepOverride(dayOf(off)))!;
       expect((ov['onset_ts'], ov['offset_ts']), (on - 900, off));
       expect(await napRows(), isEmpty);
     });
 
-    test('a stale expected throws NapResolutionChanged and writes nothing',
-        () async {
+    // WHY: an approval is for exactly the set the person saw; a nap that lands
+    // afterwards is not absorbed silently.
+    test('a stale approval is refused and writes nothing', () async {
       final s = await suggest(t0, t0 + 1800);
-      final preview = await repo.resolveNapKeep(t0, t0 + 1800);
-      expect(preview.extended, isEmpty);
-      // A nap lands after the preview.
-      await addNap(t0 + 900, t0 + 2400, source: 'confirmed');
+      await addNap(t0 + 3000, t0 + 3600, source: 'confirmed');
+      final p = (await repo.proposeNapKeep(t0, t0 + 1800))!;
+      await addNap(t0 - 2400, t0 - 1200, source: 'confirmed'); // arrives after
       final before = await napRows();
-      NapResolutionChanged? changed;
-      try {
-        await repo.confirmActivity(s, expected: preview);
-      } on NapResolutionChanged catch (e) {
-        changed = e;
-      }
-      expect(changed, isNotNull);
-      expect((changed!.now.startTs, changed.now.endTs), (t0, t0 + 2400));
-      expect(changed.now.extended, hasLength(1));
+      await expectLater(
+        repo.confirmActivity(s, merge: p.authorization),
+        throwsA(isA<SleepMergeRequiredException>()),
+      );
       expect(await napRows(), before);
       expect((await store.get(s.id))!.status, ActivityReviewStatus.pending);
-    });
-
-    test('a matching expected commits', () async {
-      final s = await suggest(t0, t0 + 1800);
-      await addNap(t0 + 900, t0 + 2400, source: 'confirmed');
-      final res = await repo.resolveNapKeep(t0, t0 + 1800);
-      expect(res.extended, hasLength(1));
-      await repo.confirmActivity(s, expected: res);
-      final rows = await napRows();
-      expect(rows, hasLength(1));
-      expect((rows.single['start_ts'], rows.single['end_ts']), (t0, t0 + 2400));
     });
   });
 
