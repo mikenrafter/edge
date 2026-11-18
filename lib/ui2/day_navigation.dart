@@ -1,5 +1,264 @@
-import 'package:flutter/widgets.dart';
+import 'dart:async';
+import 'package:clock/clock.dart' as pc;
+import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../data/day_label.dart';
+import '../l10n/app_localizations.dart';
+import 'grammar.dart';
+import 'theme.dart';
+import 'skeleton/pending_scope.dart';
+import '../l10n/date_text.dart' show prettyDay;
 
-/// The common return action on a page with day navigation.
+// This module owns the midnight timer and date-picker latch. Pages own their
+// selected date and read generation; this control never waits for a repository.
+// CLAIM(day-navigation-immediate): today's action stays available during reads
+// [sleep-structural/spec §2.1; day_navigation_shared_test].
 Widget backToTodayControl({required String selectedDay,
-    required ValueChanged<String> onSelect}) => const SizedBox.shrink();
+    required ValueChanged<String> onSelect}) =>
+  _BackToTodayControl(selectedDay: selectedDay, onSelect: onSelect);
+
+class _BackToTodayControl extends StatefulWidget {
+  const _BackToTodayControl({required this.selectedDay, required this.onSelect});
+  final String selectedDay;
+  final ValueChanged<String> onSelect;
+  @override
+  State<_BackToTodayControl> createState() => _BackToTodayState();
+}
+
+class _BackToTodayState extends State<_BackToTodayControl>
+    with WidgetsBindingObserver {
+  Timer? _midnight;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _armMidnight();
+  }
+
+  void _armMidnight() {
+    _midnight?.cancel();
+    final now = pc.clock.now();
+    final end = localDayEndSec(todayLabel(now))!;
+    final delay = Duration(milliseconds: end * 1000 - now.millisecondsSinceEpoch);
+    _midnight = Timer(delay, () {
+      if (!mounted) return;
+      setState(() {});
+      _armMidnight();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      setState(() {});
+      _armMidnight();
+    } else {
+      _midnight?.cancel();
+    }
+  }
+
+  @override
+  void dispose() {
+    _midnight?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    if (widget.selectedDay == todayLabel(pc.clock.now())) {
+      return const SizedBox.shrink();
+    }
+    final p = P.of(c);
+    final label = AppLocalizations.of(c)?.homeBackToToday ?? 'Back to today';
+    // Extracted from Home. Keep its pill presentation, with a 48 dp target.
+    return PendingStatic(child: Pressable(
+      key: const ValueKey('home-back-to-today'),
+      semanticLabel: label,
+      onTap: () => widget.onSelect(todayLabel(pc.clock.now())),
+      child: Container(constraints: const BoxConstraints(minHeight: 48),
+        padding: const EdgeInsets.symmetric(horizontal: S.x4, vertical: S.x3),
+        decoration: ShapeDecoration(color: p.card2,
+          shape: StadiumBorder(side: BorderSide(color: p.line))),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(LucideIcons.calendarDays, size: 16, color: p.on(C.blue)),
+          const SizedBox(width: S.x2),
+          Flexible(child: Text(label,
+            style: F.cap.copyWith(color: p.on(C.blue)))),
+        ])),
+    ));
+  }
+}
+
+/// A failed stored read is retryable; it must not look like an empty day.
+Widget dayReadFailure(BuildContext c, VoidCallback retry) {
+  final l = AppLocalizations.of(c);
+  return StatusCard(
+    l?.wellnessLoadFailedTitle ?? 'This could not be read',
+    l?.wellnessLoadFailedBody ??
+        'Reading your stored data failed. Nothing was deleted — this is '
+        'a read that went wrong, not missing data.',
+    fix: l?.homeTryAgain ?? 'Try again',
+    icon: LucideIcons.databaseZap,
+    onFix: retry,
+  );
+}
+
+/// Reserves the control's measured height below the page, including large text
+/// and system insets. A footer and the last scroll row remain above the pill.
+class DayNavigationFrame extends StatelessWidget {
+  const DayNavigationFrame({super.key, required this.selectedDay,
+    required this.onSelect, required this.child});
+  final String selectedDay;
+  final ValueChanged<String> onSelect;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext c) => ColoredBox(color: P.of(c).bg,
+    child: Column(children: [
+    Expanded(child: child),
+    SafeArea(top: false, child: Padding(
+      padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x3),
+      child: Center(child: backToTodayControl(
+        selectedDay: selectedDay, onSelect: onSelect)),
+    )),
+  ]));
+}
+
+final _openPickers = Expando<bool>();
+
+/// The day a single-day screen should load: the one it was OPENED with when
+/// that day exists, else the screen's own idea of now, else the newest day on
+/// disk.
+///
+/// [want] is the day the caller asked for and [prefer] the screen's own
+/// resolution (`today_day`, a held-over night). With no [want] this is exactly
+/// what every loader did inline, which is why passing no day changes nothing.
+String? pickDay(List<String> days, String? want, [String? prefer]) {
+  final d = want ?? prefer;
+  // No derived days at all: there is nothing to fall back TO, so the caller's
+  // own answer stands or the screen renders its absence.
+  if (days.isEmpty || d == todayLabel()) return d;
+  if (d != null && days.contains(d)) return d;
+  return days.first;
+}
+
+/// 'Today' when it is, otherwise the day itself. Never "N days ago" — a
+/// control you steer with needs the name of the place, not the distance to it.
+String dayNavLabel(String? day, [AppLocalizations? l]) =>
+    day == todayLabel() ? l?.healthToday ?? 'Today' : prettyDay(day, l);
+
+/// The calendar, restricted to the days that exist. A picker that offers an
+/// empty day is a dead end, so [days] greys out everything it does not contain.
+Future<String?> chooseDay(
+    BuildContext c, List<String> days, String? current) async {
+  if (days.isEmpty) return null;
+  final have = days.toSet();
+  final sorted = [...days]..sort(); // oldest → newest
+  final first = DateTime.parse(sorted.first);
+  final last = DateTime.parse(sorted.last);
+  final want = DateTime.tryParse(current ?? '') ?? last;
+  final navigator = Navigator.of(c);
+  if (_openPickers[navigator] == true) return null;
+  _openPickers[navigator] = true;
+  try {
+  final picked = await showDatePicker(
+    context: c,
+    initialDate: want.isBefore(first) ? first : (want.isAfter(last) ? last : want),
+    firstDate: first,
+    lastDate: last,
+    selectableDayPredicate: (d) => have.contains(dayLabelOf(d)),
+    helpText: AppLocalizations.of(c)?.metricDetailChooseDayHelp ?? 'Choose a day',
+  );
+  return picked == null ? null : dayLabelOf(picked);
+  } finally {
+    _openPickers[navigator] = false;
+  }
+}
+
+/// The day stepper every single-day screen wears under its nav bar.
+///
+/// [days] is `availableDays()` — NEWEST FIRST, and only days that derived. Both
+/// arrows and the picker walk that list, so there is no way to steer onto a day
+/// this install has no record of. With fewer than two days there is nowhere to
+/// go and the control renders nothing rather than two dead arrows.
+class DayNav extends StatelessWidget {
+  final String? day;
+  final List<String> days;
+  final ValueChanged<String> onDay;
+
+  /// Draws the bar (both arrows dimmed) with fewer than two days, for a screen
+  /// that must not gain a row when the second day arrives.
+  final bool alwaysShow;
+
+  const DayNav({
+    super.key,
+    required this.day,
+    required this.days,
+    required this.onDay,
+    this.alwaysShow = false,
+  });
+
+  @override
+  Widget build(BuildContext c) {
+    if (days.length < 2 && !alwaysShow) return const SizedBox.shrink();
+    final p = P.of(c);
+    final l = AppLocalizations.of(c);
+    final i = days.indexOf(day ?? '');
+    // days is newest first: the OLDER day is further down the list.
+    final older = i < 0 ? days.firstOrNull : (i + 1 < days.length ? days[i + 1] : null);
+    final newer = i > 0 ? days[i - 1] : null;
+
+    Widget arrow(IconData icon, String label, String? to) => Opacity(
+          key: ValueKey(icon == LucideIcons.chevronLeft ? 'day-nav-previous' : 'day-nav-next'),
+          opacity: to == null ? .35 : 1,
+          child: Pressable(
+            onTap: to == null ? null : () => onDay(to),
+            semanticLabel: label,
+            child: Icon(icon, size: 20, color: p.ink),
+          ),
+        );
+
+    return PendingStatic(
+      child: GuideBox(child: Container(
+      decoration: BoxDecoration(color: p.card2, borderRadius: R.rMd),
+      child: Row(children: [
+        arrow(LucideIcons.chevronLeft, l?.metricDetailPreviousDay ?? 'Previous day',
+            older),
+        Expanded(
+          child: Pressable(
+            key: const ValueKey('day-nav-choose'),
+            onTap: () async {
+              final picked = await chooseDay(c, days, day);
+              if (c.mounted && picked != null && picked != day) {
+                PendingUserAction.run(() => onDay(picked));
+              }
+            },
+              semanticLabel:
+                  l?.metricDetailChooseDayShowing(dayNavLabel(day, l)) ??
+                  'Choose a day. Showing ${dayNavLabel(day, l)}',
+              child: SizedBox(width: double.infinity, child: Text(
+                dayNavLabel(day, l),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600),
+              )),
+            ),
+          ),
+        arrow(LucideIcons.chevronRight, l?.metricDetailNextDay ?? 'Next day', newer),
+      ],
+          ),
+        ),
+    ));
+  }
+}
+
+/// [DayNav] and the gap under it, spread into a `detailScaffold` body — or
+/// nothing at all when there is only one day to look at.
+List<Widget> dayNavRow(
+        String? day, List<String> days, ValueChanged<String> onDay) =>
+    [
+      DayNav(day: day, days: days, onDay: onDay, alwaysShow: true),
+      const SizedBox(height: S.x3),
+    ];

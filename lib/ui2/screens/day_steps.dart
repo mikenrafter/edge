@@ -1,3 +1,4 @@
+import '../day_navigation.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -270,10 +271,12 @@ class _DayStepsDetailState extends State<DayStepsDetail> implements NerdStatsLis
 
   DayStepsData? _d;
   bool _loading = true;
+  bool _readFailed = false;
   String? _day;
   // A quick second tap on the day stepper starts a second load; the first
   // can finish last and must not paint the old day under the new label.
   int _loadToken = 0;
+  List<String> _navDays = const [];
 
   @override
   void initState() {
@@ -300,23 +303,35 @@ class _DayStepsDetailState extends State<DayStepsDetail> implements NerdStatsLis
           bandHasNoCounter: pairedBandHasNoCounter(context),
           want: _day);
       if (mounted && token == _loadToken) {
-        setState(() => (_d = d, _loading = false));
+        setState(() => (_d = d, _readFailed = false, _loading = false));
       }
     } catch (_) {
-      if (mounted && token == _loadToken) setState(() => _loading = false);
+      if (mounted && token == _loadToken) setState(() => (_readFailed = true, _loading = false));
     }
   }
 
   void _goDay(String day) {
     setState(() {
+      _navDays = _d?.days ?? _navDays;
       _day = day;
+      _readFailed = false;
+      _d = null;
       _loading = true;
     });
     _load();
   }
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => DayNavigationFrame(
+      selectedDay: _day ?? _d?.day ?? widget.day ?? todayLabel(),
+      onSelect: _goDay, child: _content(c));
+
+  void _retryRead() {
+    setState(() { _readFailed = false; _loading = true; });
+    _load();
+  }
+
+  Widget _content(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final d = _d ?? const DayStepsData();
@@ -324,8 +339,9 @@ class _DayStepsDetailState extends State<DayStepsDetail> implements NerdStatsLis
     // when there is no stepper.
     return detailScaffold(c, l?.dayStepsTitle ?? 'Steps',
         [
-      ...dayNavRow(_day ?? d.day, d.days, _goDay),
-      if (_loading && _d == null) ...[
+      ...dayNavRow(_day ?? d.day, (_d?.days ?? _navDays), _goDay),
+      if (_readFailed) dayReadFailure(c, _retryRead)
+      else if (_loading && _d == null) ...[
         const SizedBox(height: S.x4),
         PendingChart(shape: PendingChartShape.bars, title: l?.dayStepsChartTitle ?? 'When they were counted', unit: 'steps'),
         const PendingContent(pending: true, child: PendingRows(count: 3)),

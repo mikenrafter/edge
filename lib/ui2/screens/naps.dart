@@ -312,7 +312,11 @@ class _NapsScreenState extends State<NapsScreen>
   }
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => DayNavigationFrame(
+      selectedDay: _day ?? _d?.day ?? widget.day ?? todayLabel(),
+      onSelect: _goDay, child: _content(c));
+
+  Widget _content(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final d = _d ?? NapsData(day: _day ?? todayLabel());
@@ -332,6 +336,7 @@ class _NapsScreenState extends State<NapsScreen>
     }
     if (_paused) {
       return detailScaffold(c, l?.napsTitle ?? 'Naps', [
+        ...dayNavRow(_day ?? d.day, d.days, _goDay),
         const Padding(
           padding: EdgeInsets.only(top: S.x4),
           child: PausedOlderDays(),

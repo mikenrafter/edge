@@ -6,8 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
-import 'package:openstrap_edge/ui2/day_navigation.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/activity/day_strain.dart';
 import 'package:openstrap_edge/ui2/profile/gallery.dart';
@@ -18,6 +18,7 @@ const past = '2026-05-19';
 const days = ['2026-05-22', '2026-05-20', past];
 
 class HeldRepo extends LocalRepository {
+  HeldRepo() { dates.future.ignore(); }
   final dates = Completer<List<String>>();
   @override
   Future<List<String>> availableDays() => dates.future;
@@ -41,7 +42,7 @@ Future<void> frame(WidgetTester t, Widget page, {AppState? app,
   await t.pumpWidget(ChangeNotifierProvider<ThemeController>(
     create: (_) => ThemeController.seed(AppThemeChoice.light, Brightness.light),
     child: MaterialApp(theme: buildTheme(Brightness.light),
-    navigatorObservers: [if (observer != null) observer],
+    navigatorObservers: [?observer],
     home: app == null ? page : ChangeNotifierProvider<AppState>.value(
       value: app, child: page))));
   await t.pump();
@@ -54,6 +55,7 @@ void main() {
   // is pending. Removing one installation must fail. CLAIM(day-navigation-immediate).
   testWidgets('all date pages offer today while available dates are pending', (t) async {
     final pages = <String, Widget>{
+      'Home': const HomeScreen(data: HomeData()),
       'Sleep': const SleepDetail(day: past),
       'Timeline': const DayTimelineScreen(day: past),
       'Steps': const DayStepsDetail(day: past),
@@ -66,8 +68,16 @@ void main() {
     for (final entry in pages.entries) {
       final app = AppState.forTesting()..repo = HeldRepo();
       await frame(t, entry.value, app: app);
+      if (entry.key == 'Home') {
+        t.widget<DayNav>(find.byType(DayNav)).onDay(past);
+        await t.pump();
+      }
       expect(find.text('Back to today').hitTestable(), findsOneWidget,
         reason: '${entry.key} must remain navigable before availableDays completes');
+      (app.repo as HeldRepo).dates.completeError(const FormatException('locked'));
+      await t.pump();
+      expect(find.text('Back to today').hitTestable(), findsOneWidget,
+        reason: '${entry.key} must remain navigable after read failure');
       await t.pumpWidget(const SizedBox());
       app.dispose();
     }
@@ -102,15 +112,34 @@ void main() {
     Navigator.of(origin).pop();
     await t.pumpAndSettle();
     await next;
+    final picker = chooseDay(origin, days, past);
+    final duplicatePicker = chooseDay(origin, days, past);
+    await t.pumpAndSettle();
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    Navigator.of(origin).pop(DateTime(2026, 5, 20));
+    await t.pumpAndSettle();
+    expect(await picker, '2026-05-20');
+    expect(await duplicatePicker, isNull);
   });
 
   // WHY: choosing today explicitly must not resolve to an older completed night.
-  test('Sleep explicitly reads today even when it is absent from available days', () async {
+  testWidgets('Sleep explicitly reads today even when it is absent from available days', (t) async {
     final repo = EmptyTodayRepo();
     final read = await SleepData.load(repo, want: '2026-05-22');
     expect(read.day, '2026-05-22');
     expect(read.night['has_sleep'], isNot(true));
     expect(repo.requested, ['2026-05-22']);
+    final today = todayLabel();
+    final held = HeldRepo();
+    final app = AppState.forTesting()..repo = held;
+    await frame(t, SleepDetail(day: past, data: SleepData(
+      day: past, latestDay: today, days: [today, past])), app: app);
+    await t.tap(find.text('Back to today'));
+    await t.pump();
+    expect(t.widget<DayNav>(find.byType(DayNav)).day, today);
+    expect(find.text('Back to today'), findsNothing);
+    await t.pumpWidget(const SizedBox());
+    app.dispose();
   });
 
   // WHY: a date switch must remove the prior measurements on the next frame,
@@ -145,11 +174,17 @@ void main() {
     t.widget<DayNav>(find.byType(DayNav)).onDay(past);
     await t.pump();
     repo.oldest.complete({'day_total': 222, 'day_source': 'strap_counter'});
+    await repo.oldest.future;
     await t.pump();
-    expect(find.textContaining('222 steps'), findsOneWidget);
+    await t.pump();
+    expect(find.textContaining('222 steps'), findsOneWidget,
+      reason: t.widgetList<Text>(find.byType(Text)).map((w) => w.data).join(' | '));
     repo.middle.complete({'day_total': 111, 'day_source': 'strap_counter'});
+    await repo.middle.future;
     await t.pump();
-    expect(find.textContaining('222 steps'), findsOneWidget);
+    await t.pump();
+    expect(find.textContaining('222 steps'), findsOneWidget,
+      reason: t.widgetList<Text>(find.byType(Text)).map((w) => w.data).join(' | '));
     expect(find.textContaining('111 steps'), findsNothing);
     expect(t.widget<DayNav>(find.byType(DayNav)).day, past);
     await t.pumpWidget(const SizedBox());
@@ -184,6 +219,8 @@ void main() {
   testWidgets('gallery includes back to today', (t) async {
     final cases = galleryCases();
     expect(cases.containsKey('back_to_today'), isTrue);
+    expect(cases['back_to_today'].runtimeType,
+      backToTodayControl(selectedDay: past, onSelect: (_) {}).runtimeType);
     await frame(t, Scaffold(body: cases['back_to_today']));
     expect(find.text('Back to today'), findsOneWidget);
   });

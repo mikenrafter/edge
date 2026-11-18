@@ -1,3 +1,4 @@
+import '../day_navigation.dart';
 import '../../l10n/date_text.dart';
 import '../../l10n/display_text.dart';
 import 'dart:math' show sqrt;
@@ -255,10 +256,12 @@ class Investigate extends StatefulWidget {
 class _InvestigateState extends State<Investigate> {
   InvestigateData? _d;
   bool _loading = true;
+  bool _readFailed = false;
   String? _day;
   // A quick second tap on the day stepper starts a second load; the first
   // can finish last and must not paint the old day under the new label.
   int _loadToken = 0;
+  List<String> _navDays = const [];
 
   // PRV log export (the 'hrv' page). Cleared on every exit of an attempt.
   bool _prvExporting = false;
@@ -287,23 +290,35 @@ class _InvestigateState extends State<Investigate> {
       final d =
           await InvestigateData.load(repo, widget.metricKey, want: _day);
       if (mounted && token == _loadToken) {
-        setState(() => (_d = d, _loading = false));
+        setState(() => (_d = d, _readFailed = false, _loading = false));
       }
     } catch (_) {
-      if (mounted && token == _loadToken) setState(() => _loading = false);
+      if (mounted && token == _loadToken) setState(() => (_readFailed = true, _loading = false));
     }
   }
 
   void _goDay(String day) {
     setState(() {
+      _navDays = _d?.days ?? _navDays;
       _day = day;
+      _readFailed = false;
+      _d = null;
       _loading = true;
     });
     _load();
   }
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => DayNavigationFrame(
+      selectedDay: _day ?? _d?.day ?? widget.day ?? todayLabel(),
+      onSelect: _goDay, child: _content(c));
+
+  void _retryRead() {
+    setState(() { _readFailed = false; _loading = true; });
+    _load();
+  }
+
+  Widget _content(BuildContext c) {
     final l = AppLocalizations.of(c);
     final spec = specOf(widget.metricKey);
     final d = _d ?? const InvestigateData();
@@ -314,7 +329,8 @@ class _InvestigateState extends State<Investigate> {
       uiText(context, spec.title),
       sub: l?.investigateNerdStatsLabel ?? 'NERD STATS',
       [
-        ...dayNavRow(_day ?? d.day, d.days, _goDay),
+        ...dayNavRow(_day ?? d.day, (_d?.days ?? _navDays), _goDay),
+        if (_readFailed) dayReadFailure(c, _retryRead) else
         ...[
           if (hrvish) ..._hrvPanels(c, d) else ..._genericPanels(c, spec, d),
           if (widget.metricKey == 'stress') ..._stressPanels(c, d),

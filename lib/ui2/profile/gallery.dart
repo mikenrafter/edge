@@ -357,6 +357,8 @@ Map<String, Widget> componentCases() => {
       // The newest day: forward is dead, and the label reads Today rather than
       // a date. Both halves of that are the honesty — there is no day after
       // this one, and saying so beats a live arrow that does nothing.
+      'back_to_today': backToTodayControl(
+          selectedDay: _navDays.last, onSelect: (_) {}),
       'day_nav_today': DayNav(
           day: _navDays.first, days: _navDays, onDay: (_) {}),
       'section': const Section('Recovery', StatusCard('Nothing yet today',

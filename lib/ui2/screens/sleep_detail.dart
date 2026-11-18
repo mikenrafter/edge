@@ -958,7 +958,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   /// it goes with it.
   void _goDay(String day) {
     setState(() {
-      _day = sleepStepperDay(day, (_d ?? _lastGood)?.latestDay);
+      _day = day;
       _failed = false;
       _d = null;
       _scrub = null;
@@ -970,7 +970,11 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   }
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => DayNavigationFrame(
+      selectedDay: _day ?? _d?.day ?? widget.day ?? todayLabel(),
+      onSelect: _goDay, child: _content(c));
+
+  Widget _content(BuildContext c) {
     final d = _d ?? SleepData(day: _day ?? widget.day ?? todayLabel());
     final l = AppLocalizations.of(c);
     final recalculating = d.night['recalculating'] == true;

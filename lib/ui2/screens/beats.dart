@@ -468,7 +468,11 @@ class _BeatsState extends State<Beats>
   }
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => DayNavigationFrame(
+      selectedDay: _day ?? _d?.day ?? widget.day ?? todayLabel(),
+      onSelect: _goDay, child: _content(c));
+
+  Widget _content(BuildContext c) {
     final l = AppLocalizations.of(c);
     final d = _d ?? const BeatsData();
     return detailScaffold(

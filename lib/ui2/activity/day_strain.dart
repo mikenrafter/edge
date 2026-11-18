@@ -1,3 +1,4 @@
+import '../day_navigation.dart';
 import '../../l10n/decimal_text.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -229,13 +230,13 @@ class DayStrainDetail extends StatefulWidget {
 class _DayStrainDetailState extends State<DayStrainDetail> {
   DayStrainData? _d;
   bool _loading = true;
+  bool _readFailed = false;
   bool _hasWear = false;
 
   @override
   void initState() {
     super.initState();
     _day = widget.day;
-    _shownDay = widget.day;
     if (widget.data != null) {
       _d = widget.data;
       _loading = false;
@@ -259,18 +260,26 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
         }
       });
       final (_, d) = await (wearRead, DayStrainData.load(repo, forDay: day)).wait;
-      if (mounted && token == _loadToken) setState(() => (_d = d, _shownDay = day, _loading = false));
+      if (mounted && token == _loadToken) setState(() => (_d = d, _readFailed = false, _loading = false));
     } catch (_) {
-      // A step that could not be read stays on the day whose data is still
-      // on screen, so the stepper never names a day the curve is not.
+      // Keep the selected date available after a failed read.
       if (mounted && token == _loadToken) {
-        setState(() => (_day = _shownDay, _loading = false));
+        setState(() => (_readFailed = true, _loading = false));
       }
     }
   }
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => DayNavigationFrame(
+      selectedDay: _day ?? _d?.shownDay ?? widget.day ?? todayLabel(),
+      onSelect: _goDay, child: _content(c));
+
+  void _retryRead() {
+    setState(() { _readFailed = false; _loading = true; });
+    _load();
+  }
+
+  Widget _content(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final d = _d ?? const DayStrainData();
@@ -281,8 +290,9 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
       c,
       l?.dayStrainTitle ?? 'Day strain',
       [
-        ...dayNavRow(_day ?? d.shownDay, d.days, _goDay),
-        if (_loading && _d != null)
+        ...dayNavRow(_day ?? d.shownDay, (_d?.days ?? _navDays), _goDay),
+        if (_readFailed) dayReadFailure(c, _retryRead)
+        else if (_loading && _d != null)
           const Center(child: PendingMark())
         else PendingContent(
         memoryKey: 'day-strain:body',
@@ -505,18 +515,17 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
   /// and moves with the stepper.
   String? _day;
 
-  /// The day whose data `_d` holds. A step that cannot be read returns here,
-  /// not to the day the stepper named before it, which may itself have been
-  /// overtaken before it loaded.
-  String? _shownDay;
-
   // A quick second tap on the stepper starts a second load; the first can
   // finish last and must not paint the old day under the new label.
   int _loadToken = 0;
+  List<String> _navDays = const [];
 
   void _goDay(String day) {
     setState(() {
+      _navDays = _d?.days ?? _navDays;
       _day = day;
+      _readFailed = false;
+      _d = null;
       _loading = true;
     });
     _load();

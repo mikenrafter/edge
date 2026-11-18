@@ -724,7 +724,12 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
   }
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => _tab == 3
+      ? DayNavigationFrame(selectedDay: _vDay ?? _v?.day ?? todayLabel(),
+          onSelect: _goVitalsDay, child: _content(c))
+      : _content(c);
+
+  Widget _content(BuildContext c) {
     final d = _d ?? const HealthData();
     final l = AppLocalizations.of(c);
     return tabRootList(padding: kTabRootPad, children: [
@@ -1360,8 +1365,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
       final days = _vDays;
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // Null `_vDay` is today, the newest day in the list.
-        if (days != null && days.isNotEmpty)
-          ...dayNavRow(_vDay ?? days.first, days, _goVitalsDay),
+        ...dayNavRow(_vDay ?? todayLabel(), days ?? const [], _goVitalsDay),
         _vFailed
             ? _readFailed(l?.healthWhatVitals ?? 'vitals', () {
                 setState(() => _vFailed = false);

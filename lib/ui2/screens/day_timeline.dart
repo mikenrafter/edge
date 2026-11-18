@@ -1543,8 +1543,11 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   }
 
   Future<void> _goDay(String day) async {
-    if (day == (_day ?? _d?.day) || !await _canLeave() || !mounted) return;
-    await _review?.discardDraft();
+    if (day == (_day ?? _d?.day)) return;
+    if (_review?.hasChanges == true || _review?.busy == true || _askingLeave) {
+      if (!await _canLeave() || !mounted) return;
+      await _review?.discardDraft();
+    }
     if (!mounted) return;
     _review?.removeListener(_onReview);
     _review?.dispose();
@@ -1598,7 +1601,11 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   }
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => DayNavigationFrame(
+      selectedDay: _day ?? _d?.day ?? widget.day ?? todayLabel(),
+      onSelect: _goDay, child: _content(c));
+
+  Widget _content(BuildContext c) {
     final d = _d ?? const TimelineData();
     final l = AppLocalizations.of(c);
     final p = P.of(c);

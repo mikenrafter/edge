@@ -1,5 +1,6 @@
-import '../../data/sleep_edit_store.dart';
 import '../../l10n/date_text.dart';
+export '../../l10n/date_text.dart' show prettyDay, monthName, monthShortName, weekdayShortName;
+import '../../data/sleep_edit_store.dart';
 import 'dart:async';
 import '../../data/home_snapshot_store.dart';
 import '../read_prefetch.dart';
@@ -132,6 +133,9 @@ bool selectShellDestination(BuildContext c, Widget w) {
   return false;
 }
 
+// Each source route owns its pending destination types until they return.
+final _openDestinations = Expando<Set<Type>>();
+
 /// Push a detail screen. Every drill-down in ui2 goes through here.
 ///
 /// This was a raw `PageRouteBuilder` with its own fade+slide, which silently
@@ -141,10 +145,19 @@ bool selectShellDestination(BuildContext c, Widget w) {
 /// so a plain route gets the fade-through on Android and the Cupertino slide
 /// WITH swipe-back on iOS. [themedRoute] also keeps the pushed screen
 /// re-colouring on an appearance change and names the route for Crashlytics.
-Future<void> go(BuildContext c, Widget w) {
-  if (selectShellDestination(c, w)) return Future<void>.value();
-  final page = ShellNavigation.carry(c, w);
-  return Navigator.of(c).push<void>(themedRoute<void>((_) => page, name: w.runtimeType.toString()));
+Future<void> go(BuildContext c, Widget w) async {
+  if (selectShellDestination(c, w)) return;
+  final navigator = Navigator.of(c);
+  final source = ModalRoute.of(c) ?? navigator;
+  final destinations = _openDestinations[source] ??= <Type>{};
+  if (!destinations.add(w.runtimeType)) return;
+  try {
+    final page = ShellNavigation.carry(c, w);
+    await navigator.push<void>(themedRoute<void>((_) => page,
+      name: w.runtimeType.toString()));
+  } finally {
+    destinations.remove(w.runtimeType);
+  }
 }
 
 /// The repo, or null when there is no AppState above us — which is the case in
@@ -864,61 +877,6 @@ String clock(num? minOfDay) =>
 String clockOfTs(num? ts) {
   if (ts == null) return '';
   return formatClockOf(DateTime.fromMillisecondsSinceEpoch(ts.round() * 1000));
-}
-
-const _months = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
-
-String monthName(int month, AppLocalizations? l) {
-  if (l == null) return _months[month - 1];
-  return [
-    l.homeMonthJanuary, l.homeMonthFebruary, l.homeMonthMarch,
-    l.homeMonthApril, l.homeMonthMay, l.homeMonthJune,
-    l.homeMonthJuly, l.homeMonthAugust, l.homeMonthSeptember,
-    l.homeMonthOctober, l.homeMonthNovember, l.homeMonthDecember,
-  ][month - 1];
-}
-
-const _monthsShort = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-];
-
-/// Abbreviated month for "Thu 4 Sep" date chips.
-String monthShortName(int month, AppLocalizations? l) {
-  if (l == null) return _monthsShort[month - 1];
-  return [
-    l.homeMonthJanuaryShort, l.homeMonthFebruaryShort, l.homeMonthMarchShort,
-    l.homeMonthAprilShort, l.homeMonthMayShort, l.homeMonthJuneShort,
-    l.homeMonthJulyShort, l.homeMonthAugustShort, l.homeMonthSeptemberShort,
-    l.homeMonthOctoberShort, l.homeMonthNovemberShort, l.homeMonthDecemberShort,
-  ][month - 1];
-}
-
-const _weekdaysShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-/// Abbreviated weekday for `DateTime.weekday` (1 = Monday), e.g. "Thu 4 Sep"
-/// date chips. Reuses the `wellness*` short-day keys — they're already
-/// translated everywhere and mean the same three letters here.
-String weekdayShortName(int weekday, AppLocalizations? l) {
-  if (l == null) return _weekdaysShort[weekday - 1];
-  return [
-    l.wellnessMon, l.wellnessTue, l.wellnessWed,
-    l.wellnessThu, l.wellnessFri, l.wellnessSat, l.wellnessSun,
-  ][weekday - 1];
-}
-
-/// 'YYYY-MM-DD' → "Saturday, 20 May".
-String prettyDay(String? dayId, [AppLocalizations? l]) {
-  final d = dayId == null ? null : DateTime.tryParse(dayId);
-  if (d == null) return '';
-  return localizedDate(
-    d,
-    l?.localeName ?? LocaleController.displayLanguageCode,
-    weekday: true,
-  );
 }
 
 /// The readiness band. `readiness_glassbox` carries no label of its own, so the
@@ -3084,11 +3042,9 @@ class _HomeScreenState extends State<HomeScreen>
             ringData.overnightAt ?? ringData.activityAt)
         : null;
 
-    const pillHeight = S.tap;
-    const pillGap = S.x3;
-    return Stack(fit: StackFit.expand, children: [
-      _refreshable(tabRootList(padding: pad.copyWith(
-        bottom: pad.bottom + pillHeight + pillGap), children: [
+    return DayNavigationFrame(selectedDay: _day ?? todayLabel(),
+      onSelect: _goDay,
+      child: _refreshable(tabRootList(padding: pad, children: [
       if (d.sleepEdit case final status? when !status.isNone) SleepEditStatus(status: status),
       // ── greeting ──
       //
@@ -3231,22 +3187,7 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       const HelpEntry(topic: GuideTopic.today),
     ])),
-      if (!isToday) Positioned(left: S.x4, right: S.x4, bottom: pillGap,
-        child: Align(alignment: Alignment.bottomCenter, child: Pressable(
-          key: const ValueKey('home-back-to-today'),
-          onTap: () => _goDay(todayLabel()),
-          child: Container(height: pillHeight,
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            decoration: ShapeDecoration(color: p.card2,
-              shape: StadiumBorder(side: BorderSide(color: p.line))),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(LucideIcons.calendarDays, size: 16, color: p.on(C.blue)),
-              const SizedBox(width: S.x2),
-              Text(l?.homeBackToToday ?? 'Back to today',
-                style: F.cap.copyWith(color: p.on(C.blue))),
-            ])),
-        ))),
-    ]);
+    );
   }
 
   /// "Review activities" / "Breakdown of your day", handed the count read with
