@@ -417,4 +417,31 @@ void main() {
     expect((await pulseRows(db, 'pulse_ep_outbox')).map((r) => r['state']), everyElement('not_sent'));
   });
 
+  // WHY/R9: preserve local valid bytes and conservative consumed history while
+  // exposing that the imported handoff names different recording content.
+  // catches: IGNORE treating divergent revisions as unchanged duplicates.
+  test('R9 divergent consumed import reports conflict and preserves handoff checksum', () async {
+    var db = await LocalDb.instance;
+    await seedPortableEpisode(db, id: 'conflict', startMs: _t0,
+        endMs: _t0 + 600000, startDay: _day, state: 'sent', rr: 900);
+    final foreign = literalPulseRecording('conflict', '', _t0, _t0 + 600000, rr: 900);
+    final path = await LocalDb.exportCopy();
+    await env.wipe();
+    db = await LocalDb.instance;
+    await seedPortableEpisode(db, id: 'conflict', startMs: _t0,
+        endMs: _t0 + 600000, startDay: _day, state: 'owed', rr: 800);
+    final local = literalPulseRecording('conflict', '', _t0, _t0 + 600000);
+    final result = await LocalDb.importFromDbFile(path);
+    expect((await pulseRows(db, 'pulse_ep_evidence')).single['payload'], local.bytes);
+    expect((await pulseRows(db, 'pulse_ep_revision')).single['checksum'], local.checksum);
+    expect(result['_pulse_conflicts'], 1);
+    final outcome = (await pulseRows(db, 'pulse_ep_outbox')).single;
+    expect(outcome['state'], 'sent');
+    expect(outcome['recording_checksum'], foreign.checksum);
+    expect(outcome['reason'], 'imported delivered recording conflicts with local revision');
+    final again = await LocalDb.importFromDbFile(path);
+    expect(again['_pulse_conflicts'], 1);
+    expect(await pulseRows(db, 'pulse_ep_outbox'), [outcome]);
+  });
+
 }
