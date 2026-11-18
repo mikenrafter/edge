@@ -201,13 +201,13 @@ void main() {
 
   // WHY/CLAIM(pulse-upgrade-membership): an episode supported ONLY by records
   // that existed at the upgrade takes terminal "before this version" handling.
-  test('an episode entirely on pre-upgrade records is before_version; one new key makes it owed', () async {
+  test('R5 entirely pre-upgrade is before_version; one new key is insufficient', () async {
     await db.insert('pulse_ep_upgrade_record', {'source': 's', 'ts_ms': _t0});
     await db.insert('pulse_ep_upgrade_record', {'source': 's', 'ts_ms': _t0 + 1000});
     await publish(_pub(id: 's:0', keys: [_t0, _t0 + 1000]));
     expect((await outbox('s:0'))['state'], 'before_version');
     await publish(_pub(id: 's:200', start: 200, end: 210, keys: [_t0 + 200 * _min, _t0 + 1000]));
-    expect((await outbox('s:200'))['state'], 'owed');
+    expect((await outbox('s:200'))['state'], 'not_sent');
   });
 
   test('membership is per source: another source key does not suppress', () async {

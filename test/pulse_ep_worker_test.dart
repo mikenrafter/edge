@@ -221,4 +221,40 @@ void main() {
     expect(debt['reason'], contains('1 MiB envelope'));
   });
 
+  // WHY/R5: new record identity is necessary but cannot authorize old qualifying
+  // windows. Exact window support also admits late interior fills whose final
+  // keys were already captured. No durable per-record arrival ledger is needed.
+  // catches: any-new-key eligibility, or using only each window's closing key.
+  for (final scenario in ['single late record', 'one new window', 'two new windows', 'interior fills', 'wholly new old recording']) {
+    test('R5 window novelty: $scenario', () async {
+      final db = await LocalDb.instance;
+      await insertRows(db, '', rows);
+      final singleKey = rows[100].tsMs;
+      bool newKey(int ts) => switch (scenario) {
+        'single late record' => ts == singleKey,
+        'one new window' => ts >= _t0 && ts < _t0 + 300000,
+        'two new windows' => ts >= _t0 && ts < _t0 + 600000,
+        'interior fills' => ts >= _t0 && ts < _t0 + 600000 &&
+            (ts - _t0) % 300000 >= 60000 && (ts - _t0) % 300000 < 180000,
+        _ => true,
+      };
+      final captured = db.batch();
+      for (final key in rows.map((r) => r.tsMs).toSet()) {
+        if (!newKey(key)) captured.insert('pulse_ep_upgrade_record', {'source': '', 'ts_ms': key});
+      }
+      await captured.commit(noResult: true);
+      if (scenario == 'interior fills') {
+        for (final start in [_t0, _t0 + 300000]) {
+          final closing = rows.where((r) => r.beatTsMs >= start && r.beatTsMs < start + 300000).last.tsMs;
+          expect((await db.query('pulse_ep_upgrade_record', where: 'source = ? AND ts_ms = ?', whereArgs: ['', closing])), hasLength(1));
+        }
+      }
+      await evaluate(db);
+      final debt = (await pulseRows(db, 'pulse_ep_outbox')).single;
+      final insufficient = scenario == 'single late record' || scenario == 'one new window';
+      expect(debt['state'], insufficient ? 'not_sent' : 'owed');
+      if (insufficient) expect(debt['reason'], 'insufficient new qualifying support');
+    });
+  }
+
 }
