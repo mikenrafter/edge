@@ -566,6 +566,17 @@ class NotificationService {
     return false;
   }
 
+  /// Quiet/sleep check for one OS slot at the time it would fire. Class of each
+  /// slot id (owner, 2026-11-18; spec §4.5):
+  ///  - meds slots and the snooze backstop: always pass (user-scheduled doses,
+  ///    a wake backstop);
+  ///  - water (idWaterBase band), stillness, wind-down, check-in: recurring
+  ///    slots, skipped inside the window;
+  ///  - journal prompt (idJournalLog) and morning brief (idMorningBrief) at the
+  ///    wearer's chosen times: system nudges, skipped like the rest;
+  ///  - weekly recap, evening brief, alarm night check, experiment slots
+  ///    (idExperimentBase band): the 'reminders' rule, skipped (experiment
+  ///    reminders are an open question for the owner).
   Future<bool> _slotAllowed(int id, DateTime at) async {
     if (isMedSlot(id) || id == idSnoozeBackstop) return true;
     final prefs = await NotificationPrefs.load();

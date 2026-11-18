@@ -1737,7 +1737,7 @@ class NotificationSettingsView extends StatelessWidget {
                     SetRow(LucideIcons.moon, C.indigo,
                         l?.settingsQuietHoursRowTitle ?? 'Quiet hours',
                         sub: l?.settingsQuietHoursRowSub ??
-                            'Nothing buzzes inside this window',
+                            'Most alerts wait until this window ends',
                         value: prefs.quietEnabled ? on : off,
                         chevron: false,
                         onTap: () => set(
@@ -1759,9 +1759,10 @@ class NotificationSettingsView extends StatelessWidget {
                           if (v != null) set(prefs.copyWith(quietEndMin: v));
                         }),
                     SetRow(LucideIcons.bell, C.blue,
-                        'If unavailable, send to',
+                        l?.settingsFallbackRowTitle ?? 'If unavailable, send to',
                         value: prefs.fallbackDestination == AlertDestination.phone
-                            ? 'Phone' : 'Band',
+                            ? l?.settingsFallbackPhone ?? 'Phone'
+                            : l?.settingsFallbackBand ?? 'Band',
                         chevron: false,
                         onTap: () => set(prefs.copyWith(fallbackDestination:
                             prefs.fallbackDestination == AlertDestination.phone

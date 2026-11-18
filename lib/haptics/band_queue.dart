@@ -467,7 +467,6 @@ class BandHapticQueue {
     this.log,
     this.minGap,
     this.onBusyChanged,
-    this.permit,
     DateTime Function()? planningNow,
   }) : _planningNow = planningNow;
 
@@ -477,7 +476,6 @@ class BandHapticQueue {
   DateTime _planNow() => _planningNow?.call() ?? clock.now();
 
   final BandCommandLedger ledger;
-  final Future<bool> Function()? permit;
 
   /// Called with true when a job starts and false when the band is free of it
   /// (its playback ended and the gap after it passed): the app is playing on
@@ -861,8 +859,7 @@ class BandHapticQueue {
     final j = _Job(job, commands, timeout, settle, startBy,
         clock.now().add(startBy),
         lab: lab,
-        permit: (Zone.current[kAlertHandoffKey] as Future<bool> Function()?) ??
-            (alarm ? null : permit),
+        permit: Zone.current[kAlertHandoffKey] as Future<bool> Function()?,
         hold: hold is BandHold ? hold : null,
         wanted: wanted is bool Function() ? wanted : null,
         gesture: gesture,

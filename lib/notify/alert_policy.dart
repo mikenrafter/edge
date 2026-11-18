@@ -1,4 +1,5 @@
 // Owns interruption eligibility for phone alerts and every queued band write.
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart' show debugPrintSynchronously, visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'alert_rule.dart';
@@ -8,6 +9,9 @@ import 'reminder_sleep_gate.dart';
 enum AlertDestination {
   phone, band;
 
+  /// A missing or unreadable stored value takes the phone. Only the log line
+  /// below sees a corrupt local value; a corrupt IMPORT is refused and reported
+  /// by the settings import itself.
   static AlertDestination parse(Object? value) {
     if (value == null) return phone;
     for (final destination in values) {
@@ -46,10 +50,18 @@ class AlertPolicy {
   @visibleForTesting
   static AlertSleepSource sleepSource = const StoredAlertSleepSource();
 
+  /// Kinds the wearer started or is inside of: they are not alerts, so quiet
+  /// hours and sleep never hold them (owner, 2026-11-18). The test/preview/find
+  /// buzzes, Device lab probes, ECG cues, gesture tap-acks and the cues of a
+  /// breathing session.
+  static const _sessionKinds = {'buzzPreview', 'hardwareProbe', 'ecg',
+    'gesture', 'breath'};
+
   // CLAIM(alert-release): priority never grants a wake pass [spec §4.5].
   static AlertReleaseClass releaseClass(AlertRule rule) {
-    if (rule.userScheduled || const {'meds', 'wake', 'alarmLatchFailed',
-        'alarm', 'nativeAlarm'}.contains(rule.kind)) {
+    if (rule.userScheduled || _sessionKinds.contains(rule.kind) ||
+        const {'meds', 'wake', 'alarmLatchFailed', 'alarm', 'nativeAlarm'}
+            .contains(rule.kind)) {
       return AlertReleaseClass.alwaysPass;
     }
     if (rule.executionMode == AlertExecutionMode.osScheduled ||
@@ -70,11 +82,19 @@ class AlertPolicy {
         ? AlertDisposition.skip : AlertDisposition.hold, reason);
   }
 
+  /// The saved rule for [rule]'s id. A pass the caller's own rule carries
+  /// (a relayed alarm is [AlertRule.userScheduled]) survives the reload.
+  static AlertRule _saved(NotificationPrefs prefs, AlertRule rule) {
+    final saved = prefs.alertRule(rule.id);
+    return rule.userScheduled && !saved.userScheduled
+        ? saved.copyWith(userScheduled: true) : saved;
+  }
+
   static Future<AlertRule> currentRule(AlertRule rule) async {
     if (!NotificationPrefs.alertRuleOrder.contains(rule.id)) return rule;
     final sp = await SharedPreferences.getInstance();
     await sp.reload();
-    return (await NotificationPrefs.load()).alertRule(rule.id);
+    return _saved(await NotificationPrefs.load(), rule);
   }
 
   static Future<String> fallback() async =>
@@ -84,23 +104,22 @@ class AlertPolicy {
   /// the wearer is awake. A cached onset is still aged against the new instant.
   static Future<bool> permits(AlertRule rule, String target) async {
     try {
+      final saved = NotificationPrefs.alertRuleOrder.contains(rule.id);
+      // A rule with no saved switch that always passes needs no storage read.
+      if (!saved && releaseClass(rule) == AlertReleaseClass.alwaysPass) return true;
       final sp = await SharedPreferences.getInstance();
       await sp.reload();
       final prefs = await NotificationPrefs.load();
-      final current = prefs.alertRule(rule.id);
+      final current = saved ? _saved(prefs, rule) : rule;
       // Internal cues have no saved switch. Saved rules must remain enabled.
-      if (NotificationPrefs.alertRuleOrder.contains(rule.id) && !current.enabled) {
-        return false;
-      }
-      final effective = NotificationPrefs.alertRuleOrder.contains(rule.id) ? current : rule;
-      if (releaseClass(effective) == AlertReleaseClass.alwaysPass) return true;
-      final now = DateTime.now();
+      if (saved && !current.enabled) return false;
+      if (releaseClass(current) == AlertReleaseClass.alwaysPass) return true;
+      final now = clock.now();
       final sleep = await sleepSource.load(now);
       final finalPrefs = await NotificationPrefs.load();
-      final finalRule = NotificationPrefs.alertRuleOrder.contains(rule.id)
-          ? finalPrefs.alertRule(rule.id) : effective;
+      final finalRule = saved ? _saved(finalPrefs, rule) : current;
       if (!finalRule.enabled) return false;
-      return AlertPolicy(finalPrefs, sleep).decide(finalRule, DateTime.now()).allowed;
+      return AlertPolicy(finalPrefs, sleep).decide(finalRule, now).allowed;
     } catch (error) {
       debugPrintSynchronously('[notify] eligibility unavailable: $error');
       return false;

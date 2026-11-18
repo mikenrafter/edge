@@ -13,3 +13,11 @@ class FailedAlertSleepSource implements AlertSleepSource {
   @override
   Future<ReminderSleepGate> load(DateTime now) async => throw StateError('unavailable');
 }
+
+/// An open sleep onset one hour old: the wearer is asleep right now.
+class AsleepAlertSleepSource implements AlertSleepSource {
+  const AsleepAlertSleepSource();
+  @override
+  Future<ReminderSleepGate> load(DateTime now) async => ReminderSleepGate(
+      periods: [ReminderSleepPeriod(now.subtract(const Duration(hours: 1)))]);
+}

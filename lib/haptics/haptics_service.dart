@@ -53,7 +53,6 @@ class HapticsService {
     BandCommandLedger? ledger,
     int Function()? commandLimit,
     DateTime Function()? planningNow,
-    Future<bool> Function()? permit,
   })  : _allowLong = allowLong,
         _now = now ?? (() => clock.now()),
         ledger = ledger ?? BandCommandLedger(limit: commandLimit) {
@@ -65,7 +64,6 @@ class HapticsService {
       minGap: () => Duration(milliseconds: profile?.minVibrationGapMs ?? 0),
       onBusyChanged: (b) => onBusyChanged?.call(b),
       planningNow: planningNow,
-      permit: permit,
     );
   }
 

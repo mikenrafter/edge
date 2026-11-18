@@ -99,9 +99,10 @@ class NotificationCenter {
         const {'zone', 'breath', 'tasker', 'wake', 'relay'}.contains(ruleId);
     if (!await AlertPolicy.permits(rule, 'phone')) return const {};
     // FeatureFlag.alertDispatcher OFF: the pre-dispatcher delivery. Phone only,
-    // through the same fire-once claim; a rule that does not select the phone
-    // (or is off) stays silent, so switching the flag off never adds a phone
-    // alert the user did not choose. Band haptics are not reachable from here.
+    // through the same fire-once claim. A disabled rule stays silent. A
+    // band-only rule reaches the phone only when the wearer's fallback
+    // destination is the phone and the band cannot take the alert, the same
+    // answer the dispatcher gives. Band haptics are not reachable from here.
     await FeatureFlags.ensureLoaded();
     if (!FeatureFlags.isOn(FeatureFlag.alertDispatcher)) {
       final rule = prefs.alertRule(id);

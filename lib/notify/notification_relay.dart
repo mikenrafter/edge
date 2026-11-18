@@ -460,6 +460,10 @@ class RelayController {
         AlertRule(
           id: 'relay',
           kind: 'relay',
+          // A relayed phone alarm or timer is wake class: quiet hours and sleep
+          // never hold it. Apps and calls keep the hold. The channel's own
+          // quiet window and switches still gate it above (targetAllowed).
+          userScheduled: channel == 'alarms',
           destinations: AlertRule.band,
           executionMode: AlertExecutionMode.phoneLive,
           fallback: env['fallback'] == 'phoneIfBandUnavailable'
@@ -476,6 +480,7 @@ class RelayController {
         eventId: '$channel:$key:$postMs:${_removals[key] ?? 0}',
         sourceTime: DateTime.fromMillisecondsSinceEpoch(postMs),
         historical: false,
+        ruleDecidesFallback: true,
         targetAllowed: (_) => currentSuppression() == null,
         phoneTransport: phone,
         bandTimeout: chosen == null

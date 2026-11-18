@@ -149,6 +149,14 @@ class AlertDispatcher {
     // (a recorded rhythm: up to 8 buzzes, 2 s apart) asks for the time it
     // needs. Never shorter than the default.
     Duration? bandTimeout,
+    // The rule's own [AlertRule.fallback] decides whether anything covers an
+    // unavailable destination: [AlertFallback.none] means nothing does. Off
+    // (the default), the global [fallbackDestination] covers every rule. The
+    // relay turns it on, since its fallback is a per-channel user switch.
+    bool ruleDecidesFallback = false,
+    // Set only by the retry below: the band already refused this event, so it
+    // counts as unavailable even though it is still connected.
+    bool bandRefusedThisEvent = false,
   }) async {
     final typed = rule is AlertRule
         ? rule
@@ -175,15 +183,19 @@ class AlertDispatcher {
       if (transportTargets != null && !transportTargets.contains(target)) {
         return 'transportUnavailable';
       }
-      if (target == 'band' && !isConnected()) return 'bandUnavailable';
+      if (target == 'band' && (bandRefusedThisEvent || !isConnected())) {
+        return 'bandUnavailable';
+      }
       return AlertCapabilityRegistry.destinationSupportReason(rule ?? typed, target,
         supportedTargets: currentSupportedTargets,
         supportedBandModes: supportedBandModes,
         supportedPhoneModes: supportedPhoneModes);
     }
-    Future<String?> configuredFallback() async =>
-        await fallbackDestination?.call() ??
-        (typed.fallback == AlertFallback.phoneIfBandUnavailable ? 'phone' : null);
+    Future<String?> configuredFallback() async {
+      if (ruleDecidesFallback && typed.fallback == AlertFallback.none) return null;
+      return await fallbackDestination?.call() ??
+          (typed.fallback == AlertFallback.phoneIfBandUnavailable ? 'phone' : null);
+    }
     final lost = selected.where((t) => unavailable(t) != null).toList();
     for (final target in lost) {
       reason ??= unavailable(target);
@@ -337,7 +349,8 @@ class AlertDispatcher {
           eventId: eventId, sourceTime: sourceTime, historical: historical,
           phoneTransport: phoneTransport, bandTransport: bandTransport,
           bandDelivery: bandDelivery, transportTargets: transportTargets,
-          targetAllowed: targetAllowed, bandTimeout: bandTimeout);
+          targetAllowed: targetAllowed, bandTimeout: bandTimeout,
+          ruleDecidesFallback: ruleDecidesFallback, bandRefusedThisEvent: true);
       }
     }
     return AlertDeliveryOutcome(delivered, reason);

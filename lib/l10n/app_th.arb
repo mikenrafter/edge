@@ -11925,7 +11925,7 @@
   "@settingsQuietHoursRowTitle": {
     "description": "Settings row title toggling quiet hours"
   },
-  "settingsQuietHoursRowSub": "ไม่มีการสั่นในช่วงเวลานี้",
+  "settingsQuietHoursRowSub": "การแจ้งเตือนส่วนใหญ่จะรอจนสิ้นสุดช่วงเวลานี้",
   "@settingsQuietHoursRowSub": {
     "description": "Settings row subtitle for the quiet-hours toggle"
   },
@@ -11934,6 +11934,9 @@
     "description": "Settings row title for the quiet-hours start time"
   },
   "settingsQuietHoursEndsRowTitle": "สิ้นสุด",
+  "settingsFallbackRowTitle": "หากใช้ไม่ได้ ให้ส่งไปที่",
+  "settingsFallbackPhone": "โทรศัพท์",
+  "settingsFallbackBand": "สายรัด",
   "@settingsQuietHoursEndsRowTitle": {
     "description": "Settings row title for the quiet-hours end time"
   },
