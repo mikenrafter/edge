@@ -18,33 +18,10 @@ import 'detected_activities.dart' show NapAutoLogRow;
 import '../../health/health_nap_export.dart';
 
 
-// NAPS — the day's naps, and the last word on them.
-//
-// `nap_min` has been populated on every judged day (232 minutes on one of
-// them), the `naps` block has carried the windows behind it, and neither had a
-// reader. Underneath, `sleep_nap` has had `putNapEdit` and `deleteNapEdit`
-// since the detector became a PROPOSAL rather than a verdict — and no caller,
-// anywhere, so `applyNapEdits` replayed a table that could never have a row in
-// it. sleep_detail.dart says so in as many words: "a control that appeared to
-// edit naps while the edits went nowhere would be worse than the absence. It
-// needs a writer first."
-//
-// This is that writer, and it ships with the display for one reason: showing a
-// nap and letting someone correct it are the same feature. A list you cannot
-// argue with is the detector asserting it was there; the person who was
-// actually there gets the last word.
-//
-// AN EDIT IS A RECOMPUTE, NOT A REDRAW. Nap minutes are subtracted from sleep
-// need and sleep debt, so every write here forces the day to derive again —
-// the same machinery a sleep-window correction uses, and the engine
-// force-includes nap-edit days even when they are finalized.
-//
-// WHAT IS DELIBERATELY NOT HERE: no stages. A 30-minute nap holds no complete
-// cycle, the stager says nothing about one, and a logged nap is a REPORT, not
-// an estimate — it gets no confidence, because dressing it in the detector's
-// scale would imply it was inferred.
-
-
+// Nap corrections go through the repository and SleepBlockStore. The shared
+// sleep worker recomposes nap totals and cross-day results; a nap-only edit
+// leaves the measured night and its fence intact. Manual naps are reports and
+// carry no inferred confidence or stages.
 
 class NapsData {
   const NapsData({

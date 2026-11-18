@@ -1,11 +1,8 @@
 // moment_review_range.dart — validating and writing a REVIEW RANGE.
 //
-// Nap range  -> the existing nap edit (`LocalDb.putNapEdit`, source 'manual',
-//               filed under the START's local day — the same way the Naps screen
-//               files a nap it logs, and the way the derivation attributes a nap
-//               that spans midnight: by where it starts), then the day is
-//               re-analysed once. Exactly the two marked minutes: never a wider
-//               sleep window.
+// Nap range -> SleepBlockStore's manual nap command, owned by the start's
+// local day, followed by the shared sleep worker. The assertion keeps exactly
+// the reviewed interval; it never expands a main sleep without approval.
 // Workout    -> the existing `LocalRepository.logManualWorkout` (type 'other'
 //               unless the wearer picked one in the pairing sheet).
 
@@ -143,7 +140,7 @@ class ReviewRangeWriter {
   /// manual nap edits stored for it (a day not yet re-analysed shows them only
   /// here).
   Future<List<NapMap>> existingNaps(String dayId) async {
-    // Nap spacing is enforced beneath putNapEdit (it refuses a window within
+    // SleepBlockStore enforces nap spacing (it refuses a window within
     // 30 minutes of another block); only workout overlaps are checked here.
     if (transaction != null) return [];
     final d = await _repo().getDayNaps(dayId);
@@ -170,8 +167,8 @@ class ReviewRangeWriter {
           (row['end_ts'] as int?) ?? DateTime.now().millisecondsSinceEpoch ~/ 1000)];
   }
 
-  /// `putNapEdit(dayId, startSec, endSec, source: 'manual')`. [dayId] is the
-  /// START's local day label. Keyed on (day, start): writing it twice is one row.
+  /// Stores the reviewed interval through the sleep owner. [dayId] frames the
+  /// editor; ownership is assigned from the interval's local start date.
   Future<void> logNap(
       {required String dayId, required int startSec, required int endSec}) async {
     final tx=transaction;
