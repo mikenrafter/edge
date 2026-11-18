@@ -12,6 +12,9 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
+import android.os.StatFs
 import java.util.concurrent.Executors
 
 /** SAF operations for a chosen backup folder. No broad storage permission.
@@ -22,6 +25,8 @@ object BackupFolderBridge {
     private const val REQUEST_PICK_FOLDER = 0x5A41
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
+    private val cipherWrites = mutableMapOf<String, Pair<String, OutputStream>>()
+    private val cipherReads = mutableMapOf<String, Pair<String, InputStream>>()
     private var pendingPick: MethodChannel.Result? = null
 
     fun register(engine: FlutterEngine, context: Context) {
@@ -30,7 +35,7 @@ object BackupFolderBridge {
             .setMethodCallHandler { call, result ->
                 if (call.method == "pick") {
                     pick(result)
-                } else if (call.method in setOf("list", "write", "rename", "delete", "release")) {
+                } else if (call.method in setOf("list", "write", "rename", "delete", "release", "freeSpace", "openCiphertext", "appendCiphertext", "closeCiphertext", "readCiphertext", "closeCiphertextRead")) {
                     run(result) { dispatch(app, call) }
                 } else {
                     result.notImplemented()
@@ -175,6 +180,7 @@ object BackupFolderBridge {
             ?: throw IOException("The backup file no longer exists in this folder.")
 
     private fun dispatch(context: Context, call: MethodCall): Any? {
+        if (call.method == "freeSpace") return StatFs(context.filesDir.absolutePath).availableBytes
         val tree = call.argument<String>("tree") ?: throw IllegalArgumentException("Missing folder")
         if (call.method == "release") {
             val grant = context.contentResolver.persistedUriPermissions.firstOrNull { it.uri.toString() == tree }
@@ -188,6 +194,76 @@ object BackupFolderBridge {
         }
         val root = root(context, tree)
         return when (call.method) {
+            "openCiphertext" -> {
+                val name = call.argument<String>("name") ?: throw IllegalArgumentException("Missing filename")
+                requireBackupFileName(name)
+                if (children(context, root).any { it.name == name }) throw IOException("Filename is already in use")
+                val uri = DocumentsContract.createDocument(context.contentResolver, root, "application/octet-stream", name)
+                    ?: throw IOException("Could not create export")
+                try {
+                    val info = document(context, uri)
+                    if (info.name != name || !canPublishBackup(info.flags)) throw IOException("Folder cannot publish exports")
+                    val output = context.contentResolver.openOutputStream(uri, "w") ?: throw IOException("Could not write export")
+                    cipherWrites[uri.toString()] = tree to output
+                    info.json()
+                } catch (e: Exception) {
+                    try { DocumentsContract.deleteDocument(context.contentResolver, uri) } catch (_: Exception) {}
+                    throw e
+                }
+            }
+            "appendCiphertext" -> {
+                val uri = call.argument<String>("uri") ?: ""
+                val pending = cipherWrites[uri] ?: throw IOException("Export stream is closed")
+                if (pending.first != tree) throw SecurityException("Export belongs to another folder")
+                val bytes = call.argument<ByteArray>("bytes") ?: throw IllegalArgumentException("Missing bytes")
+                require(bytes.size <= 2 * 1024 * 1024) { "Export chunk is too large" }
+                try { pending.second.write(bytes) } catch (e: Exception) {
+                    cipherWrites.remove(uri)
+                    try { pending.second.close() } catch (_: Exception) {}
+                    throw e
+                }
+                null
+            }
+            "closeCiphertext" -> {
+                val uri = call.argument<String>("uri") ?: ""
+                cipherWrites[uri]?.let {
+                    if (it.first != tree) throw SecurityException("Export belongs to another folder")
+                    cipherWrites.remove(uri)
+                    it.second.close()
+                }
+                null
+            }
+            "readCiphertext" -> {
+                val uri = call.argument<String>("uri") ?: ""
+                val pending = cipherReads[uri] ?: run {
+                    val info = child(context, root, uri)
+                    val stream = context.contentResolver.openInputStream(info.uri) ?: throw IOException("Could not read export")
+                    (tree to stream).also { cipherReads[uri] = it }
+                }
+                if (pending.first != tree) throw SecurityException("Export belongs to another folder")
+                try {
+                    val bytes = ByteArray(256 * 1024)
+                    val count = pending.second.read(bytes)
+                    if (count < 0) {
+                        cipherReads.remove(uri)
+                        pending.second.close()
+                        ByteArray(0)
+                    } else bytes.copyOf(count)
+                } catch (e: Exception) {
+                    cipherReads.remove(uri)
+                    try { pending.second.close() } catch (_: Exception) {}
+                    throw e
+                }
+            }
+            "closeCiphertextRead" -> {
+                val uri = call.argument<String>("uri") ?: ""
+                cipherReads[uri]?.let {
+                    if (it.first != tree) throw SecurityException("Export belongs to another folder")
+                    cipherReads.remove(uri)
+                    it.second.close()
+                }
+                null
+            }
             "list" -> children(context, root).filter { !it.directory }.map { it.json() }
             "write" -> {
                 val name = call.argument<String>("name") ?: throw IllegalArgumentException("Missing filename")

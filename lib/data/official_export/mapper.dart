@@ -46,6 +46,8 @@ Future<OfficialMapReport> mapOfficialSnapshot({
   LocalCalendar calendar = const DayLabelCalendar(),
   ExportSpaceBudget? space,
   void Function(String phase, int milliseconds)? onPhase,
+  void Function(String family, int records)? onProgress,
+  Map<String,Object?>? snapshotReceipt,
 }) async {
   final timer = Stopwatch()..start();
   void lap(String phase) { onPhase?.call(phase, timer.elapsedMilliseconds); timer.reset(); }
@@ -74,7 +76,7 @@ Future<OfficialMapReport> mapOfficialSnapshot({
     await targetFile.applySql('CREATE TABLE backup_prefs(key TEXT PRIMARY KEY,type TEXT NOT NULL,value TEXT NOT NULL)');
     await targetFile.applySql('CREATE TABLE backup_secrets(key TEXT PRIMARY KEY)');
     final target = await SchemaCatalog.read(dst);
-    final builder = _Mapper(src, targetFile, catalog, target, space, calendar);
+    final builder = _Mapper(src, targetFile, catalog, target, space, calendar, onProgress);
     await builder.readExclusions();
     await builder.prepareLiveOwnership();
     lap('layout_and_live_ownership');
@@ -134,7 +136,7 @@ Future<OfficialMapReport> mapOfficialSnapshot({
       'omitted_source_objects': [for (final o in catalog.objects)
         {'type':o.type,'name':o.name,'table':o.table,'reason':'source SQL objects never travel'}],
       'archive_accounting': builder.archiveAccounting, 'days': days,
-      'snapshot_receipt': 'caller supplies snapshot boundary/content receipt in P3',
+      'snapshot_receipt': snapshotReceipt ?? {'sha256':sourceHash},
     }));
     await space?.requireAvailable((manifest.text!.length * 4) + 65536);
     await targetFile.applySql('CREATE TABLE fork_transition_manifest(version INTEGER NOT NULL,payload_json TEXT NOT NULL)');
@@ -170,8 +172,9 @@ Future<int?> oldestMappedExactSec(DatabaseExecutor db) async =>
     ));
 
 class _Mapper {
-  _Mapper(this.src, this.file, this.source, this.target, this.space, this.calendar);
+  _Mapper(this.src, this.file, this.source, this.target, this.space, this.calendar, this.onProgress);
   final LocalCalendar calendar;
+  final void Function(String,int)? onProgress;
   final Database src;
   final PrivateExportFile file;
   Database get dst => file.read;
@@ -272,6 +275,7 @@ class _Mapper {
   }
 
   Future<void> copyTable(String name) async {
+    onProgress?.call(name,0);
     final shape = source.tables[name]!;
     final policy = officialProfile.tables[name];
     final count = Sqflite.firstIntValue(await src.rawQuery('SELECT count(*) FROM ${_q(name)}'))!;
@@ -312,6 +316,7 @@ class _Mapper {
           [?after]);
       if (page.isEmpty) { break; }
       after = page.last['__export_rowid'] as int;
+      onProgress?.call(name, after);
       Set<(Object?,Object?)>? liveBeatParents;
       if(name=='decoded_rr') {
         final matches=await LocalDb.exportMatchingParents(dst,[
@@ -483,6 +488,7 @@ class _Mapper {
     final flushed = <String, List<(int, int)>>{};
     for (final meta in metas) {
       final id = meta['__export_rowid'] as int;
+      onProgress?.call('substrate_archive',outcomes.length);
       final device = meta['device_id'] as String;
       final blob = await SubstrateArchive.readBlob(src, device, meta['utc_day'] as int);
       if (blob == null) { outcomes[id] = 'missing archive bytes'; continue; }

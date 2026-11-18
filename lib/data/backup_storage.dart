@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
@@ -162,4 +163,67 @@ abstract interface class CipherBackupStorage {
   Stream<List<int>> readCiphertext(BackupFile file);
   Future<BackupFile> publishCiphertext(BackupFile file, String name);
   Future<void> deleteCiphertext(BackupFile file);
+}
+
+class LocalCipherBackupStorage implements CipherBackupStorage {
+  const LocalCipherBackupStorage(this.directory);
+  final Directory directory;
+  @override String get label=>directory.path;
+  Future<File> _file(BackupFile file) async {
+    final root=await directory.resolveSymbolicLinks();
+    final resolved=await File(file.path).resolveSymbolicLinks();
+    if(p.dirname(resolved)!=root) throw const FileSystemException('File is outside selected folder');
+    return File(resolved);
+  }
+  @override Future<BackupFile> createCiphertext(String name) async {
+    if(p.basename(name)!=name || name=='.' || name=='..') throw const FormatException('Unsafe filename');
+    await directory.create(recursive:true);
+    final file=File(p.join(directory.path,name));
+    await file.create(exclusive:true);
+    return BackupFile(path:file.path,name:name);
+  }
+  @override Future<void> appendCiphertext(BackupFile file,List<int> bytes) async {
+    await (await _file(file)).writeAsBytes(bytes,mode:FileMode.append);
+  }
+  @override Future<void> closeCiphertext(BackupFile file) async {
+    final out=await (await _file(file)).open(mode:FileMode.append);
+    try {await out.flush();} finally {await out.close();}
+  }
+  @override Stream<List<int>> readCiphertext(BackupFile file) async* {yield* (await _file(file)).openRead();}
+  @override Future<BackupFile> publishCiphertext(BackupFile file,String name) async {
+    if(p.basename(name)!=name) throw const FormatException('Unsafe filename');
+    final target=File(p.join(directory.path,name));
+    if(await target.exists())throw const FileSystemException('Filename is already in use');
+    final published=await (await _file(file)).rename(target.path);
+    return BackupFile(path:published.path,name:name);
+  }
+  @override Future<void> deleteCiphertext(BackupFile file) async {await (await _file(file)).delete();}
+}
+
+class AndroidCipherBackupStorage implements CipherBackupStorage {
+  const AndroidCipherBackupStorage(this.folder);
+  final BackupFolder folder;
+  @override String get label=>folder.name;
+  Map<String,Object?> _args([BackupFile? file])=>{'tree':folder.uri,if(file!=null)'uri':file.path};
+  BackupFile _file(Map<dynamic,dynamic> value)=>BackupFile(path:value['uri'] as String,name:value['name'] as String);
+  @override Future<BackupFile> createCiphertext(String name) async {
+    final file=await AndroidBackupStorage.channel.invokeMapMethod<String,dynamic>('openCiphertext',{..._args(),'name':name});
+    if(file==null)throw const FileSystemException('Could not create export');
+    return _file(file);
+  }
+  @override Future<void> appendCiphertext(BackupFile file,List<int> bytes)=>
+    AndroidBackupStorage.channel.invokeMethod<void>('appendCiphertext',{..._args(file),'bytes':Uint8List.fromList(bytes)});
+  @override Future<void> closeCiphertext(BackupFile file)=>AndroidBackupStorage.channel.invokeMethod<void>('closeCiphertext',_args(file));
+  @override Stream<List<int>> readCiphertext(BackupFile file) async* {
+    try {
+      while(true) {
+        final chunk=await AndroidBackupStorage.channel.invokeMethod<Uint8List>('readCiphertext',_args(file));
+        if(chunk==null)throw const FileSystemException('Could not read saved file');
+        if(chunk.isEmpty)break;
+        yield chunk;
+      }
+    } finally {await AndroidBackupStorage.channel.invokeMethod<void>('closeCiphertextRead',_args(file));}
+  }
+  @override Future<BackupFile> publishCiphertext(BackupFile file,String name)=>AndroidBackupStorage(folder).rename(file,name);
+  @override Future<void> deleteCiphertext(BackupFile file)=>AndroidBackupStorage(folder).delete(file);
 }

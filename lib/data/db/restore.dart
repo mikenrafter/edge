@@ -46,7 +46,7 @@ Future<void> _ldbPurgeDemoRows() async {
     });
   }
 
-Future<String> _ldbExportCopy({required bool includeSubstrateArchive, required BackupExtras extras, Directory? into, AttachedCopy? attached, ExportFileWrite? privateWrite}) async {
+Future<String> _ldbExportCopy({required bool includeSubstrateArchive, required BackupExtras extras, Directory? into, AttachedCopy? attached, ExportFileWrite? privateWrite, Future<void> Function()? beforeCopyWrite}) async {
     if (privateWrite != null) {
       // This capability is minted only by exclusive creation of a new file.
       // No live-store handle enters this branch. Keep dynamic file SQL at the
@@ -86,6 +86,7 @@ Future<String> _ldbExportCopy({required bool includeSubstrateArchive, required B
     await out.execute('BEGIN');
     for (final r in schema) {
       if (r['type'] != 'table' || have.contains(r['name'])) continue;
+      await beforeCopyWrite?.call();
       final name = r['name'] as String;
       await out.execute(r['sql'] as String);
       final where = await whereFor(out, name);
@@ -124,6 +125,14 @@ Future<String> _ldbExportCopy({required bool includeSubstrateArchive, required B
     }
     if (attached != null) {
       await copyAttached(attached.srcPath, attached.dest, attached.whereFor);
+      if (attached.transitionManifest != null) {
+        final copy = await openDatabase(attached.dest, singleInstance: false);
+        try {
+          await copy.execute('CREATE TABLE IF NOT EXISTS fork_transition_manifest(version INTEGER NOT NULL,payload_json TEXT NOT NULL)');
+          await copy.delete('fork_transition_manifest');
+          await copy.insert('fork_transition_manifest', {'version':1,'payload_json':attached.transitionManifest});
+        } finally { await copy.close(); }
+      }
       return attached.dest;
     }
 
@@ -136,7 +145,7 @@ Future<String> _ldbExportCopy({required bool includeSubstrateArchive, required B
     Database? copy;
     try {
       var archiveCopied = true;
-      if (!LocalDb.debugForceAttachExport && await LocalDb._vacuumIntoSupported(db)) {
+      if (beforeCopyWrite == null && !LocalDb.debugForceAttachExport && await LocalDb._vacuumIntoSupported(db)) {
         await db.execute('VACUUM INTO ?', [dest]);
       } else {
         await copyAttached(db.path, dest, (_, table) async =>

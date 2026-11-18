@@ -70,6 +70,8 @@ class UnresolvedOk {
 /// another package; those closures stay in the guard baseline until each
 /// reader becomes a persisted artifact.
 const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#backupStreamHeavy, dispatcher: Dispatcher.spawn,
+    reason: 'bounded request/reply OSBK encryption and authenticated stream-to-hash, zero verification plaintext'),
   WorkerEntry(#officialMappingHeavy, dispatcher: Dispatcher.run,
     reason: 'official export field projection, archive verification/expansion and manifest encoding; initialized row-map worker with round-trip proof'),
   WorkerEntry(#segmentCalendarDaysHeavy, dispatcher: Dispatcher.run,

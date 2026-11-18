@@ -55,7 +55,7 @@ class Destination implements CipherBackupStorage {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test('literal full peak includes publication overlap and zero verification file',(){
-    expect(const ExportEstimate(100,300,20).peakBytes,8391530);
+    expect(const ExportEstimate(100,300,20).peakBytes,8391650);
   });
   test('preflight refuses before capture and leaves live writes possible',() async {
     final fx=await RichFixture.build();
@@ -97,7 +97,12 @@ void main() {
           }
           expect(root.listSync().whereType<File>().length,1);
         }
-        expect(Directory('${root.path}/private').listSync(recursive:true).whereType<File>(),isEmpty);
+        if(mode=='recoveryFailure') {
+          expect(coord.canRetryRecovery,isTrue);
+          expect(Directory('${root.path}/private').listSync(recursive:true).whereType<File>().where((f)=>f.path.endsWith('fork.db')).length,1);
+          await coord.finish();
+        }
+        expect(Directory('${root.path}/private').listSync(recursive:true).whereType<File>().where((f)=>!f.path.endsWith('interruption.json')),isEmpty);
         // The source fixture stays readable after every failure.
         expect((await fx.inventoryOf(fx.forkPath)).rowCounts['journal'],greaterThan(0));
       } finally {await root.delete(recursive:true);await fx.dispose();}

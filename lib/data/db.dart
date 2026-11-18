@@ -5719,9 +5719,10 @@ class LocalDb {
     bool includePrefs = true,
     AttachedCopy? attached,
     ExportFileWrite? privateWrite,
+    Future<void> Function()? beforeCopyWrite,
   }) => _ldbExportCopy(
       includeSubstrateArchive: includeSubstrateArchive, extras: includePrefs ? extras : BackupExtras.none,
-      into: into, attached: attached, privateWrite: privateWrite);
+      into: into, attached: attached, privateWrite: privateWrite, beforeCopyWrite:beforeCopyWrite);
 
   /// Bounded identity page from a frozen export snapshot. This never opens the
   /// live store. Callers choose only an unshadowed SQLite rowid alias.

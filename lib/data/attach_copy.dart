@@ -19,10 +19,11 @@ typedef AttachCopyWhere = Future<String?> Function(
 
 /// A file-to-file copy request; this never targets the live store.
 class AttachedCopy {
-  const AttachedCopy(this.srcPath, this.dest, this.whereFor);
+  const AttachedCopy(this.srcPath, this.dest, this.whereFor, {this.transitionManifest});
   final String srcPath;
   final String dest;
   final AttachCopyWhere whereFor;
+  final String? transitionManifest;
 }
 
 /// File-copy compatibility seam used by whole exports and recent slices.
