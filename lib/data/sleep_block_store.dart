@@ -88,7 +88,7 @@ abstract final class SleepBlockStore {
       'detected_day': history == 'known' ? day : null, 'payload_json': payload,
       'revision': 0, 'created_at': created, 'updated_at': created,
     };
-    Future<bool> insert(Map<String, Object?> block) async {
+    Future<bool> insertBlock(Map<String, Object?> block) async {
       if ((await tx.query('sleep_block', columns: ['id'], where: 'id = ?',
           whereArgs: [block['id']])).isNotEmpty) return false;
       // An explicit pre-check reports uniqueness refusal; OR IGNORE would hide it.
@@ -109,7 +109,7 @@ abstract final class SleepBlockStore {
       final known = source == 'manual' || source == 'confirmed';
       if (!known && source != 'rejected') note('unknown_source', 'sleep_override', day, start, end);
       if (source == 'rejected' && end - start == 1) note('placeholder_bounds', 'sleep_override', day, start, end);
-      await insert(row('legacy:main:$day', 'main', day, start, end,
+      await insertBlock(row('legacy:main:$day', 'main', day, start, end,
         known ? source as String : 'detected', known ? 'live' : 'removed', legacy['created_at'] as int));
     }
     for (final legacy in naps) {
@@ -123,7 +123,7 @@ abstract final class SleepBlockStore {
       final knownSource = const {'manual', 'confirmed', 'legacy', 'rejected'}.contains(source);
       if (!knownSource) note('unknown_source', 'sleep_nap', day, start, end);
       final known = source == 'legacy' || (source == 'confirmed' || source == 'rejected') && snapshot;
-      await insert(row('legacy:nap:$day:$start', 'nap', day, start, end,
+      await insertBlock(row('legacy:nap:$day:$start', 'nap', day, start, end,
         knownSource && source != 'rejected' ? source as String : 'detected',
         knownSource && source != 'rejected' ? 'live' : 'removed', legacy['created_at'] as int,
         history: known ? 'known' : 'unavailable',
@@ -149,7 +149,7 @@ abstract final class SleepBlockStore {
             where: 'start_ts < ? AND end_ts > ?', whereArgs: [end, start])).isNotEmpty) continue;
         final payload = await JsonPayloadLane.shared.encode({...nap, 'source': 'legacy'});
         if (payload == null) throw StateError('legacy nap payload could not be encoded');
-        if (await insert(row('legacy:nap:$day:$start', 'nap', day, start, end,
+        if (await insertBlock(row('legacy:nap:$day:$start', 'nap', day, start, end,
             'legacy', 'live', cutoff, history: 'known', detectedStart: start,
             detectedEnd: end, payload: payload))) {
           // The sole projection write in backfill. Existing source rows are kept.

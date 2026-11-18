@@ -3804,5 +3804,4 @@ Future<void> _ldbPrivCreateSleepBlock(DatabaseExecutor db) async {
   await db.execute('CREATE INDEX IF NOT EXISTS idx_sleep_block_owner ON sleep_block(owner_day, kind, state)');
   await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_sleep_block_live_main ON sleep_block(owner_day) WHERE kind = 'main' AND state = 'live'");
   await LocalDb._addColumnIfMissing(db, 'sleep_edit_job', 'nap_revision', 'INTEGER NOT NULL DEFAULT 0');
-  await LocalDb._addColumnIfMissing(db, 'sleep_edit_job', 'nap_applied_revision', 'INTEGER NOT NULL DEFAULT 0');
-}
+  await LocalDb._addColumnIfMissing(db, 'sleep_edit_job', 'nap_applied_revision', 'INTEGER NOT NULL DEFAULT 0');  }

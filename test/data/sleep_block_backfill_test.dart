@@ -204,7 +204,7 @@ void main() {
   test('B15 upgrade changes only step-3 nap input revision, no jobs/headline', () async {
     var db = await reopen(); await seedLegacy(db);
     await db.insert('sleep_edit_job',{'day_id':fixtureDay,'revision':4,'applied_revision':4,'nap_revision':7,'nap_applied_revision':6,'phase':'done'});
-    await db.insert('sync_cursor',{'name':LocalDb.kFrozenHeadlineCursor,'value':'{"day":"2026-11-01","score":72}'});
+    await db.insert('sync_cursor',{'name':LocalDb.kFrozenHeadlineCursor,'value':'{"day":"2026-11-01","score":72}','updated_at':1});
     final jobs = await db.query('sleep_edit_job'), cursor = await db.query('sync_cursor');
     final revisions = await db.query('input_revision');
     final results = await db.query('day_result');
