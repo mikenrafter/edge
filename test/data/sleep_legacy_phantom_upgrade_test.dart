@@ -30,6 +30,8 @@ void main() {
       await raw.execute('DROP TABLE sleep_block');
       await raw.execute('ALTER TABLE sleep_override DROP COLUMN payload_json');
       await raw.execute('PRAGMA user_version = 92'); await raw.close();
+      final backup=p.join(temp.path,'pre94-backup.db');
+      await File(path).copy(backup);
       db=await LocalDb.instance;
       await cleanNextNightNapsOnce();
       expect((await SleepBlockStore.live(db,4500,6500)).where((b)=>b.kind==SleepBlockKind.nap),isEmpty,
@@ -39,6 +41,13 @@ void main() {
       await LocalDb.recomposeNaps(fixtureDay,(await SleepEditStore.status(fixtureDay))!['nap_revision'] as int);
       final bundle=jsonDecode((await LocalDb.dayResult(fixtureDay))!['payload_json'] as String);
       expect(bundle['naps']['value'],isEmpty,reason:'later composition cannot resurrect the phantom');
+      // The import path has not copied the source's day_result yet when its
+      // sleep stage runs. It must use the source bounds read before the TX.
+      await LocalDb.wipeAll();
+      await LocalDb.importFromDbFile(backup);
+      expect(await db.query('sleep_block'),isEmpty,
+        reason:'import must not capture the same pre-94 phantom either');
+      expect(await db.query('sleep_nap'),isEmpty);
     } finally { await LocalDb.close(); await temp.delete(recursive:true); }
   });
 }
