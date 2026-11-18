@@ -185,7 +185,8 @@ void main() {
   test('B11 unknown source is retained as removed and reported', () async {
     final db = await reopen();
     final report = await SleepBlockStore.absorb(db, overrides:[],naps:[napRow(1000,1600,'future')],mode:AbsorbMode.backfill);
-    final row = (await db.query('sleep_block')).single;
+    final rows = await db.query('sleep_block'); expect(rows,hasLength(1));
+    final row = rows.single;
     expect((row['state'],row['source'],row['history']),('removed','detected','unavailable'));
     expect(report.map((e)=>e.kind),['unknown_source']);
     expect(await SleepBlockStore.live(db,0,2000),isEmpty);
