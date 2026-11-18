@@ -265,7 +265,8 @@ abstract final class SleepBlockStore {
   static Future<void> _project(DatabaseExecutor tx, Set<String> ownerDays) async {
     const priority = {'live':0,'removed':1,'merged':2};
     for (final day in ownerDays) {
-      final rows = await tx.query('sleep_block',where:'owner_day = ?',whereArgs:[day]);
+      final rows = List<Map<String, Object?>>.of(await tx.query(
+        'sleep_block', where: 'owner_day = ?', whereArgs: [day]));
       rows.sort((a,b) {
         final state = (priority[a['state']] ?? 1).compareTo(priority[b['state']] ?? 1);
         if (state != 0) return state;

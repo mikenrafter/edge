@@ -3,7 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite/sqflite.dart';
 
 Future<void> projectionMatches(DatabaseExecutor db, String day) async {
-  final blocks = await db.query('sleep_block', where:'owner_day = ?', whereArgs:[day]);
+  final blocks = List<Map<String,Object?>>.of(await db.query(
+    'sleep_block', where:'owner_day = ?', whereArgs:[day]));
   const rank = {'live':0, 'removed':1, 'merged':2};
   blocks.sort((a,b) {
     final state = rank[a['state']]!.compareTo(rank[b['state']]!);
