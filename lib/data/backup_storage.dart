@@ -151,3 +151,15 @@ class AndroidBackupStorage implements BackupStorage {
   Future<void> delete(BackupFile file) =>
       channel.invokeMethod<void>('delete', {..._arguments(), 'uri': file.path});
 }
+
+/// Uncompressed OSBK streaming at the existing folder owner. A handle remains
+/// incomplete until authenticated read-back and publication both succeed.
+abstract interface class CipherBackupStorage {
+  String get label;
+  Future<BackupFile> createCiphertext(String name);
+  Future<void> appendCiphertext(BackupFile file, List<int> bytes);
+  Future<void> closeCiphertext(BackupFile file);
+  Stream<List<int>> readCiphertext(BackupFile file);
+  Future<BackupFile> publishCiphertext(BackupFile file, String name);
+  Future<void> deleteCiphertext(BackupFile file);
+}
