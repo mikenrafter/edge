@@ -84,6 +84,15 @@ class RichFixture {
           unfilled.add(shape.name);
         }
       }
+      // The export-carrier tables a snapshot gains from BackupExtras.all, with an
+      // attachment larger than Android's ~2 MiB cursor window (chunked reads,
+      // never SELECT *). Created only in the fixture copy of the live schema.
+      await db.execute('CREATE TABLE backup_prefs (key TEXT PRIMARY KEY, type TEXT NOT NULL, value TEXT NOT NULL)');
+      await db.execute('CREATE TABLE backup_secrets (key TEXT PRIMARY KEY)');
+      await db.execute('CREATE TABLE backup_files (rel_path TEXT PRIMARY KEY, bytes BLOB)');
+      await db.insert('backup_prefs', {'key': 'clock_format', 'type': 'string', 'value': '24h'});
+      await db.insert('backup_secrets', {'key': 'coach_api_key'});
+      await db.insert('backup_files', {'rel_path': 'recordings/big.bin', 'bytes': Uint8List(3 * 1024 * 1024)});
       await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
     } finally {
       await LocalDb.close();
@@ -221,16 +230,6 @@ Map<String, List<Map<String, Object?>>> _specificRows() {
     ],
     'water_moment': [
       {'id': 'wm-1', 'date': '2026-10-24', 'at_min': 600, 'ml': 250},
-    ],
-    // A substrate-archive row whose blob is larger than Android's ~2 MiB cursor
-    // window: chunked reads, never SELECT * (spec §3.3). Content is opaque here.
-    'substrate_archive': [
-      {
-        'device_id': '', 'utc_day': dayStart(4) ~/ 86400, 'codec': 1,
-        'from_ts': dayStart(4), 'to_ts': dayStart(5), 'onehz_rows': 1, 'rr_rows': 0,
-        'raw_bytes': 3 * 1024 * 1024, 'fingerprint': 7,
-        'blob': Uint8List(3 * 1024 * 1024), 'created_at': 1, 'updated_at': 1,
-      },
     ],
     // Distinct frames sharing a counter, plus a second device.
     'raw_archive_frames': [
