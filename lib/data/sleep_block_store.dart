@@ -588,6 +588,14 @@ abstract final class SleepBlockStore {
     return out;
   }
 
+  /// Exact assertion identity for delayed exports; a key replacement is distinct.
+  static Future<SleepBlock?> liveById(DatabaseExecutor tx,String id) async {
+    final row=(await tx.query('sleep_block',where:'id = ?',whereArgs:[id])).firstOrNull;
+    if(row==null) return null;
+    final stored=_StoredBlock(row);
+    return stored.state==SleepBlockState.live?stored.block:null;
+  }
+
   static Future<SleepEditorRead> read(DatabaseExecutor tx, String day) async {
     final rows = (await tx.query('sleep_block', where: 'owner_day = ?',
       whereArgs: [day], orderBy: 'start_ts, id')).map(_StoredBlock.new).toList();

@@ -48,6 +48,7 @@ import '../compute/nap_edits.dart' show manualNapWindowIsValid;
 import '../data/sleep_block_store.dart';
 import '../data/sleep_editor.dart';
 import '../data/db.dart';
+import '../data/json_payload_lane.dart';
 import 'health_export.dart' show HealthExporter, kHealthSyncPref;
 
 /// Native side: `HealthKitSleepWriter` on the existing sleep channel.
@@ -199,14 +200,14 @@ class HealthNapExporter {
       final list=<Map<String,dynamic>>[];
       try {
         final raw=rows.firstOrNull?['value'];
-        final decoded=raw is String?jsonDecode(raw):null;
+        final decoded=raw is String?await JsonPayloadLane.shared.decodeUncached(raw):null;
         if(decoded is List) list.addAll(decoded.whereType<Map>().map((r)=>Map<String,dynamic>.from(r)));
       } catch (_) { /* Corrupt retry state is replaced by this durable receipt. */ }
       for(final entry in entries) {
         list.removeWhere((r)=>r['blockId']==entry['blockId'] && r['startTs']==entry['startTs']);
         list.add(entry);
       }
-      await tx.insert('sync_cursor',{'name':key,'value':jsonEncode(list),
+      await tx.insert('sync_cursor',{'name':key,'value':await JsonPayloadLane.shared.encode(list) ?? (throw StateError('Health nap receipt could not be encoded')),
         'updated_at':DateTime.now().millisecondsSinceEpoch},conflictAlgorithm:ConflictAlgorithm.replace);
     }
   }
@@ -231,16 +232,15 @@ class HealthNapExporter {
         .whenComplete(release.complete);
   }
 
-  /// Export the nap stored at ([dayId], [startTs]) — its [endTs] is read from
-  /// the row. Used after "put back" restores a rejected nap to 'confirmed'.
-  /// Never throws; false when nothing was written.
+  /// Revalidates the exact saved assertion; a replacement at its old key
+  /// cannot stand in for a removed or moved block.
   static Future<bool> exportNapRow({required String blockId}) async {
     try {
-    final rows=await (await LocalDb.instance).query('sleep_block',where:'id = ?',whereArgs:[blockId]);
-    final r=rows.firstOrNull;
-    if(r==null || r['kind']!='nap' || r['state']!='live') return false;
-    return shared.exportNapRowAt(dayId:r['owner_day'] as String,startTs:r['start_ts'] as int);
-    } catch(e) { debugPrintSynchronously('[health] export nap block $blockId: $e'); return false; }
+      final row=await _defaultBlockRow(blockId);
+      if(row==null) return false;
+      return shared.exportNap(dayId:row['day_id'] as String,
+        startTs:row['start_ts'] as int,endTs:row['end_ts'] as int,blockId:blockId);
+    } catch(e) { debugPrintSynchronously('[health] export nap block $blockId: $e');return false; }
   }
 
   /// Instance-level [exportNapRow] — a failing row read returns false
@@ -270,10 +270,15 @@ class HealthNapExporter {
   /// overlap, store error). A failed write is queued for retry by the
   /// per-day export pass.
   static Future<bool> exportConfirmedNap({
-    required String dayId,
-    required int startTs,
-    required int endTs,
-  }) => shared.exportNap(dayId: dayId, startTs: startTs, endTs: endTs);
+    required String dayId,required int startTs,required int endTs,
+  }) async {
+    try {
+      final row=await _defaultNapRow(dayId,startTs);
+      final id=row?['id'];
+      if(id is! String || row?['end_ts']!=endTs) return false;
+      return exportNapRow(blockId:id);
+    } catch(e) { debugPrintSynchronously('[health] resolve nap block: $e');return false; }
+  }
 
   /// Remove a previously exported nap window from Apple Health (the nap was
   /// deleted or rejected in Edge). Samples overlapping the current main
@@ -290,12 +295,14 @@ class HealthNapExporter {
     required String dayId,
     required int startTs,
     required int endTs,
+    String? blockId,
   }) => synchronized(() async {
     try {
       // Health Connect has no nap export yet; never claim one happened.
       if (!isApple) return false;
       if (!await _healthSyncEnabled()) return false;
-      final row = await _napRow(dayId, startTs);
+      final row = blockId==null?await _napRow(dayId,startTs):await _defaultBlockRow(blockId);
+      if(blockId!=null && (row?['day_id']!=dayId || row?['start_ts']!=startTs)) return false;
       final source = row?['source'];
       // The stored row is the source of truth: a caller passing a stale
       // endTs (e.g. before an edit landed) must not export a window the row
@@ -322,17 +329,19 @@ class HealthNapExporter {
       if (!written) {
         await _recordPending(_kPendingNapExports, {
           'dayId': dayId,
+          if(blockId!=null) 'blockId':blockId,
           'startTs': startTs,
           'endTs': endTs,
         });
       } else {
-        await _removePending(_kPendingNapExports, dayId, startTs);
+        await _removePending(_kPendingNapExports,dayId,startTs,blockId:blockId,endTs:endTs);
       }
       return written;
     } catch (e) {
       debugPrintSynchronously('[health] exportNap $dayId $startTs-$endTs: $e');
       await _recordPending(_kPendingNapExports, {
         'dayId': dayId,
+          if(blockId!=null) 'blockId':blockId,
         'startTs': startTs,
         'endTs': endTs,
       });
@@ -355,10 +364,10 @@ class HealthNapExporter {
       if (!await _healthSyncEnabled()) return true;
       await _retryPendingDeletes();
       final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      final accepted = <({int s, int e, String day})>[];
+      final accepted = <({int s, int e, String day,String? id})>[];
       bool overlapsAccepted(int s, int e) =>
           accepted.any((w) => s < w.e && e > w.s);
-      void consider(int s, int e, String? source, String day) {
+      void consider(int s,int e,String? source,String day,{String? id}) {
         if (!napWindowExportable(
           source: source,
           startTs: s,
@@ -370,7 +379,7 @@ class HealthNapExporter {
         // Two overlapping nap rows must not erase each other's samples:
         // the first one written in this pass wins.
         if (overlapsAccepted(s, e)) return;
-        accepted.add((s: s, e: e, day: day));
+        accepted.add((s:s,e:e,day:day,id:id));
       }
 
       for (final row in await _dayNapRows(dayId)) {
@@ -379,7 +388,7 @@ class HealthNapExporter {
         final source = row['source'];
         if (startTs is! num || endTs is! num) continue;
         consider(startTs.toInt(), endTs.toInt(),
-            source is String ? source : null, dayId);
+            source is String ? source : null, dayId,id:row['id'] as String?);
       }
       // Retry previously failed exports of ANY day (failed writes on days
       // behind the export cursor would otherwise never be retried). Each
@@ -393,23 +402,25 @@ class HealthNapExporter {
           await _removePendingEntry(_kPendingNapExports, p); // drop malformed
           continue;
         }
+        final blockId=p['blockId'] is String?p['blockId'] as String:null;
         Map<String, dynamic>? current;
         try {
-          current = await _napRow(pDay, s.toInt());
+          current = blockId==null?await _napRow(pDay,s.toInt()):await _defaultBlockRow(blockId);
         } catch (_) {
           continue; // DB down — keep the entry for a later pass
         }
         final source = current?['source'];
         final storedEnd = current?['end_ts'];
         final stillValid =
+            (blockId==null || current?['day_id']==pDay && current?['start_ts']==s.toInt()) &&
             (source == 'confirmed' || source == 'manual') &&
             storedEnd is num &&
             storedEnd.toInt() == e.toInt();
         if (!stillValid) {
-          await _removePending(_kPendingNapExports, pDay, s.toInt());
+          await _removePending(_kPendingNapExports,pDay,s.toInt(),blockId:blockId,endTs:e.toInt());
           continue;
         }
-        consider(s.toInt(), e.toInt(), source as String, pDay);
+        consider(s.toInt(),e.toInt(),source as String,pDay,id:blockId);
       }
 
       var ok = true;
@@ -419,6 +430,13 @@ class HealthNapExporter {
         // may already have deleted their Health samples, and a day that
         // gives up retries would leave them missing.
         try {
+          if(w.id!=null) {
+            final current=await _defaultBlockRow(w.id!);
+            if(current==null || current['day_id']!=w.day || current['start_ts']!=w.s || current['end_ts']!=w.e ||
+                !napWindowExportable(source:current['source'] as String?,startTs:w.s,endTs:w.e,nowSec:nowSec)) {
+              await _removePending(_kPendingNapExports,w.day,w.s,blockId:w.id,endTs:w.e);continue;
+            }
+          }
           if (await _overlapsMainSleep(w.s, w.e)) continue;
           final written = await _writer.replaceNap(
             start: DateTime.fromMillisecondsSinceEpoch(w.s * 1000),
@@ -428,17 +446,19 @@ class HealthNapExporter {
             ok = false;
             await _recordPending(_kPendingNapExports, {
               'dayId': w.day,
+              if(w.id!=null) 'blockId':w.id,
               'startTs': w.s,
               'endTs': w.e,
             });
           } else {
-            await _removePending(_kPendingNapExports, w.day, w.s);
+            await _removePending(_kPendingNapExports,w.day,w.s,blockId:w.id,endTs:w.e);
           }
         } catch (rowError) {
           debugPrintSynchronously('[health] exportDayNaps $dayId row ${w.s}-${w.e}: $rowError');
           ok = false;
           await _recordPending(_kPendingNapExports, {
             'dayId': w.day,
+              if(w.id!=null) 'blockId':w.id,
             'startTs': w.s,
             'endTs': w.e,
           });
@@ -558,7 +578,8 @@ class HealthNapExporter {
     try {
       final list = await _pendingList(key);
       final dup = list.any((e) =>
-          e['startTs'] == entry['startTs'] && e['endTs'] == entry['endTs']);
+          e['startTs'] == entry['startTs'] && e['endTs'] == entry['endTs'] &&
+          (entry['blockId']==null || e['blockId']==entry['blockId']));
       if (!dup) {
         list.add(entry);
         await _setCursor(key, jsonEncode(list));
@@ -571,18 +592,21 @@ class HealthNapExporter {
   Future<void> _removePendingEntry(String key, Map<String, dynamic> entry) async {
     try {
       final list = await _pendingList(key);
-      list.removeWhere((e) => e['startTs'] == entry['startTs'] && e['endTs'] == entry['endTs']);
+      list.removeWhere((e) => e['startTs'] == entry['startTs'] && e['endTs'] == entry['endTs'] &&
+          (entry['blockId']==null || e['blockId']==entry['blockId']));
       await _setCursor(key, jsonEncode(list));
     } catch (e) {
       debugPrintSynchronously('[health] remove pending nap entry: $e');
     }
   }
 
-  Future<void> _removePending(String key, String? dayId, int startTs) async {
+  Future<void> _removePending(String key,String? dayId,int startTs,{String? blockId,int? endTs}) async {
     try {
       final list = await _pendingList(key);
       final kept = list.where((e) {
         if (e['startTs'] != startTs) return true;
+        if(blockId!=null && e['blockId']!=blockId) return true;
+        if(endTs!=null && e['endTs']!=endTs) return true;
         if (dayId != null && e['dayId'] != dayId) return true;
         return false;
       }).toList();
@@ -595,6 +619,13 @@ class HealthNapExporter {
   static Future<bool> _defaultHealthSyncEnabled() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(kHealthSyncPref) == true;
+  }
+
+  static Future<Map<String,dynamic>?> _defaultBlockRow(String id) async {
+    final b=await SleepBlockStore.liveById(await LocalDb.instance,id);
+    if(b==null || b.kind!=SleepBlockKind.nap) return null;
+    return {'id':b.id,'day_id':b.day,'start_ts':b.startTs,'end_ts':b.endTs,
+      'source':b.provenance==SleepEntryProvenance.automatic?'confirmed':b.provenance.name};
   }
 
   static Future<Map<String, dynamic>?> _defaultNapRow(
