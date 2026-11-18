@@ -35,11 +35,15 @@ void main() {
     await stored('live'); await stored('removed',state:'removed');
     await stored('merged',state:'merged'); await stored('bad',state:'future-state');
     await db.insert('sleep_block',blockRow('bad-kind',kind:'future-kind',start:start+3600,end:start+5400));
-    await db.insert('sleep_block',blockRow('bad-source',source:'future-source',start:start+3600,end:start+5400));
+    await db.insert('sleep_block',blockRow('bad-source',source:'future-source',start:start+3600,end:start+5400,
+      history:'known',detectedStart:start,detectedEnd:start+1800,detectedDay:fixtureDay));
     final rows = await live();
     expect(rows.map((b)=>b.id), ['live']);
     expect((rows.single.ownerDay, rows.single.revision, rows.single.provenance),
       (fixtureDay,0,SleepEntryProvenance.manual));
+    final unknown = (await SleepBlockStore.read(db,fixtureDay)).entries.where((e)=>e.id=='bad-source').single;
+    expect(unknown.removed,isTrue);
+    expect(unknown.history,isA<DetectedUnavailable>());
   });
   // catches: the original missing bare-window COALESCE.
   test('S2 live includes the literal bare main window', () async {
@@ -106,6 +110,8 @@ void main() {
     await db.insert('sleep_block',blockRow('manual',start:1000,end:3400));
     await db.insert('sleep_block',blockRow('moved',day:'2026-11-02',start:9000,end:9600,
       history:'known',detectedStart:7000,detectedEnd:7600,detectedDay:fixtureDay));
+    await db.insert('sleep_block',blockRow('moved-main',kind:'main',day:'2026-11-02',start:10000,end:11000,
+      history:'known',detectedStart:5000,detectedEnd:6000,detectedDay:fixtureDay));
     final edits = await SleepBlockStore.napEdits(db,fixtureDay);
     expect(edits.map((n)=>(n.kind.name,n.startSec,n.endSec)).toSet(),
       {('rejected',1000,4600),('added',1000,3400),('rejected',7000,7600)});
