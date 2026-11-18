@@ -21,7 +21,6 @@ void main() {
     await loadType();
   });
 
-  setUp(clearPrefs);
 
   group('month grid', () {
     Future<void> host(WidgetTester t, List<Map<String, dynamic>> strain) async {

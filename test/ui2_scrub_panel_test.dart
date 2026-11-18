@@ -140,7 +140,6 @@ void main() {
     await initPrefs();
     await loadType();
   });
-  setUp(clearPrefs);
 
   panelLaws(_rhr);
   panelLaws(_bars);

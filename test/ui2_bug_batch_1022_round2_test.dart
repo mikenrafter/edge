@@ -65,7 +65,6 @@ void main() {
     await initPrefs();
     await loadType();
   });
-  setUp(clearPrefs);
 
   testWidgets('B2: with no sleep bounds the key row still prints no skin-temp '
       'number', (t) async {

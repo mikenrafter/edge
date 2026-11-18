@@ -5,10 +5,9 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/state/app_state.dart';
-import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
-import '../support/chart_harness.dart' show ChartRepo, initPrefs, loadType;
+import '../support/chart_harness.dart' show initPrefs, loadType;
 
 const past = '2026-05-19';
 const days = ['2026-05-22', '2026-05-20', past];

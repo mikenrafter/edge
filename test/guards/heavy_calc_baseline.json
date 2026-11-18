@@ -6023,100 +6023,100 @@
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_probe_begin.dart",
-      "symbol": "beginEcgProbeStream",
+      "file": "gestures/ecg_tap_begin.dart",
+      "symbol": "beginEcgForTap",
       "element": "begin(wrist)",
       "count": 1
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_probe_begin.dart",
-      "symbol": "beginEcgProbeStream",
+      "file": "gestures/ecg_tap_begin.dart",
+      "symbol": "beginEcgForTap",
       "element": "cancel()",
       "count": 1
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_probe_begin.dart",
-      "symbol": "beginEcgProbeStream",
+      "file": "gestures/ecg_tap_begin.dart",
+      "symbol": "beginEcgForTap",
       "element": "captureEpoch()",
       "count": 2
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_probe_begin.dart",
-      "symbol": "beginEcgProbeStream",
+      "file": "gestures/ecg_tap_begin.dart",
+      "symbol": "beginEcgForTap",
       "element": "isCapturing()",
       "count": 3
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_probe_begin.dart",
-      "symbol": "beginEcgProbeStream",
+      "file": "gestures/ecg_tap_begin.dart",
+      "symbol": "beginEcgForTap",
       "element": "isCurrent()",
       "count": 2
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_probe_begin.dart",
-      "symbol": "beginEcgProbeStream",
+      "file": "gestures/ecg_tap_begin.dart",
+      "symbol": "beginEcgForTap",
       "element": "lookupWrist()",
       "count": 1
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_probe_begin.dart",
-      "symbol": "beginEcgProbeStream",
+      "file": "gestures/ecg_tap_begin.dart",
+      "symbol": "beginEcgForTap",
       "element": "note?.call('Another ECG started while the wrist was being looked up. ' 'Leaving it alone.')",
       "count": 1
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_probe_begin.dart",
-      "symbol": "beginEcgProbeStream",
+      "file": "gestures/ecg_tap_begin.dart",
+      "symbol": "beginEcgForTap",
       "element": "note?.call('ECG start: wrist looked up (${looking.elapsedMilliseconds} ms).')",
       "count": 1
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_probe_begin.dart",
-      "symbol": "beginEcgProbeStream",
+      "file": "gestures/ecg_tap_begin.dart",
+      "symbol": "beginEcgForTap",
       "element": "note?.call('No wrist remembered. Take one ECG reading first so the lab ' 'knows which wrist the band is on.')",
       "count": 1
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_probe_begin.dart",
-      "symbol": "beginEcgProbeStream",
+      "file": "gestures/ecg_tap_begin.dart",
+      "symbol": "beginEcgForTap",
       "element": "note?.call('The gesture ended before the ECG stream finished starting. ' 'The late stream was stopped.')",
       "count": 1
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_probe_begin.dart",
-      "symbol": "beginEcgProbeStream",
+      "file": "gestures/ecg_tap_begin.dart",
+      "symbol": "beginEcgForTap",
       "element": "note?.call('The gesture ended while the ECG stream was starting; the ' 'capture is not this gesture\\'s, so it was left alone.')",
       "count": 1
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_probe_begin.dart",
-      "symbol": "beginEcgProbeStream",
+      "file": "gestures/ecg_tap_begin.dart",
+      "symbol": "beginEcgForTap",
       "element": "note?.call('The gesture ended while the wrist was being looked up. ' 'No ECG stream was started.')",
       "count": 1
     },
     {
       "rule": "unresolvedInvocation",
       "file": "gestures/gesture_dispatcher.dart",
-      "symbol": "GestureDispatcher._giveBackRepeatTap",
+      "symbol": "GestureDispatcher._giveBackEcgTap",
       "element": "_release(claimKey)",
       "count": 1
     },
     {
       "rule": "unresolvedInvocation",
       "file": "gestures/gesture_dispatcher.dart",
-      "symbol": "GestureDispatcher._giveBackRepeatTap",
-      "element": "log?.call('[gesture] rep: claim release failed: $relErr')",
+      "symbol": "GestureDispatcher._giveBackEcgTap",
+      "element": "log?.call('[gesture] ecg: claim release failed: $relErr')",
       "count": 1
     },
     {
@@ -6262,15 +6262,15 @@
     {
       "rule": "unresolvedInvocation",
       "file": "gestures/gesture_dispatcher.dart",
-      "symbol": "GestureDispatcher._takeRepeatTap",
+      "symbol": "GestureDispatcher._takeEcgTap",
       "element": "_claim(claimKey)",
       "count": 1
     },
     {
       "rule": "unresolvedInvocation",
       "file": "gestures/gesture_dispatcher.dart",
-      "symbol": "GestureDispatcher._takeRepeatTap",
-      "element": "log?.call('[gesture] rep: claim failed: $err')",
+      "symbol": "GestureDispatcher._takeEcgTap",
+      "element": "log?.call('[gesture] ecg: claim failed: $err')",
       "count": 1
     },
     {
@@ -12627,13 +12627,6 @@
       "file": "ui2/screens/ecg_screener.dart",
       "symbol": "EcgScreenerScreen._open",
       "element": "open(u)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ui2/screens/metric_annotations.dart",
-      "symbol": "loadAnnotations",
-      "element": "debugPrint('metric annotations: $e')",
       "count": 1
     },
     {

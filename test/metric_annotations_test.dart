@@ -14,7 +14,6 @@ import 'package:openstrap_edge/ui2/ui2.dart';
 
 const _day = '2026-10-03';
 final int _start = localDayStartSec(_day)!;
-final int _end = localDayEndSec(_day)!;
 int _ts(int minute) => _start + minute * 60;
 
 void main() {

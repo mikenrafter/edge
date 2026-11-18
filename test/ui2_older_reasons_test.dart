@@ -27,7 +27,6 @@ void main() {
     await initPrefs();
     await loadType();
   });
-  setUp(clearPrefs);
 
   group('month grid (plain scrub row)', () {
     Future<void> host(WidgetTester t, List<Map<String, dynamic>> strain) async {

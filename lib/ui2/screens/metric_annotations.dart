@@ -154,7 +154,7 @@ Future<List<ChartAnnotation>> loadAnnotations(String from, String to,
       l: l,
     );
   } catch (e) {
-    debugPrint('metric annotations: $e');
+    debugPrintSynchronously('metric annotations: $e');
     return const [];
   }
 }
