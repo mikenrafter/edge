@@ -17,6 +17,8 @@ import 'package:openstrap_edge/data/backup_extras.dart';
 const _dynamicReads = <String, List<String>>{
   'feature_flags.dart|f.prefsKey|bool': ['ff.alert_dispatcher', 'ff.native_relay',
     'ff.source_resolver_ui', 'ff.tap_classifiers', 'ff.natural_wake'],
+  // The shared wrapper still owns Tasker consent after ECG counting is removed.
+  'acked_bool.dart|key|bool': ['tasker_moment_export'],
   'remembered_expansion.dart|accordionPrefKey(id|bool': ['accordion_example'],
   'profile.dart|accordionPrefKey(id|bool': ['accordion_profile'],
   'sync_control.dart|accordionPrefKey(_detailsId|bool': ['accordion_sync'],

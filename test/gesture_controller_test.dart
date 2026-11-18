@@ -157,13 +157,12 @@ void main() {
 
   group('route dispatch', () {
     test('an immediate double tap runs the mapped in-app action and nothing '
-        'else, with no ECG and no cue', () async {
+        'else, with no cue', () async {
       await newHost();
       await h.settings.setDoubleTapActions({DeviceAction.markMoment});
       final out = await h.controller.handle(h.doubleTap());
       expect(out.map((o) => o.status), [GestureStatus.ran]);
       expect(h.acted, ['mark']);
-      expect(h.ecg.begins, isEmpty);
       expect(h.order, isNot(contains('cue')));
     });
 
