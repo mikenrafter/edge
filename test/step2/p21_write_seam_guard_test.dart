@@ -29,8 +29,11 @@ import '../guards/support/db_source.dart';
 /// may use. The migration ladder's one-time `derived_day` copy runs inside
 /// `_open`, before schema 71 and its triggers exist, and is allowed for that
 /// reason only.
-const _allowed = <String, Map<String, Map<String, Set<String>>>>{
-  'day_result': {'lib/data/db.dart': {
+// The existing derived-row exceptions remain the same two-table ledger for
+// the debt ratchet. Mandatory sleep owners are the new architecture contract,
+// not legacy exceptions [phase2_5-spec §6.2 item 3; CLAIM(sleep-block-guard)].
+const _allowed = <String, Map<String, Set<String>>>{
+  'day_result': {
     'LocalDb.putDayResult': {'insert'},
     'LocalDb._open': {'insert'},
     'LocalDb.deleteDays': {'delete'},
@@ -48,15 +51,19 @@ const _allowed = <String, Map<String, Map<String, Set<String>>>>{
     'LocalDb._scrubImportedSkinTempZ': {'update'},
     'LocalDb.rewriteDayPayload': {'update'},
     'LocalDb.recomposeNaps': {'insert'},
-  }},
-  'baselines': {'lib/data/db.dart': {
+  },
+  'baselines': {
     'LocalDb.putBaselines': {'insert'},
     'LocalDb.updateBaseline': {'insert'},
     'LocalDb.touchBaseline': {'update'},
     // Upstream's activity review (log D19): a baselines write refused when a
     // review landed since the calculation started.
     'LocalDb.putReviewedBaseline': {'insert'},
-   }},
+   },
+};
+
+final _allowedByFile = <String, Map<String, Map<String, Set<String>>>>{
+  for(final table in _allowed.entries) table.key:{'lib/data/db.dart':table.value},
   'sleep_block': {
     'lib/data/sleep_block_store.dart': {
       'SleepBlockStore.apply': {'insert','update'},
@@ -257,7 +264,7 @@ Map<String, List<WriteSite>> _scanLib() {
 }
 
 bool _isAllowed(String path, WriteSite s) =>
-    (_allowed[s.table]?[path]?[s.member]?.contains(s.verb) ?? false);
+    (_allowedByFile[s.table]?[path]?[s.member]?.contains(s.verb) ?? false);
 
 class _ReviewCalls extends RecursiveAstVisitor<void> {
   final methods=<String,Set<String>>{};
@@ -776,7 +783,7 @@ class Queue {
           for(final s in path.value) '${path.key} ${s.table} ${s.member} ${s.verb}',
       };
       final missing = <String>[
-        for(final t in _allowed.entries)
+        for(final t in _allowedByFile.entries)
           for(final file in t.value.entries)
             for(final m in file.value.entries)
               for(final v in m.value)
