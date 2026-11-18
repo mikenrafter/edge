@@ -1689,11 +1689,6 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                 ) ??
                 0;
             final cleanupWatch = Stopwatch()..start();
-    // The report outlives the import screen. A resumed run adds to what the
-    // interrupted one already listed.
-    if (sleepPre != null) {
-      await SleepImportReport.save(sleepNotes, unionWithStored: resumed);
-    }
             if (spanTable) await endBulkSpans(txn, spanFrom);
             copied += chunkCopied;
             lastChunkCopied = chunkCopied;
@@ -2659,6 +2654,11 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     // otherwise reinstate itself over an earlier lowering. The cursor may not
     // sit above the oldest decoded second actually present.
     final cleanupWatch = Stopwatch()..start();
+    // The report outlives the import screen. A resumed run adds to what the
+    // interrupted one already listed.
+    if (sleepPre != null) {
+      await SleepImportReport.save(sleepNotes, unionWithStored: resumed);
+    }
     if (order.contains('decoded_onehz') || order.contains('sync_cursor')) {
       // Main keeps the greater edge while copying. The fork must still
       // preserve the ORIGINAL local holes on resume: its edge cannot be
