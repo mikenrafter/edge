@@ -29,5 +29,5 @@ class RawReader {
 const List<RawReader> kRawReaders = <RawReader>[
   RawReader(#LocalDb.exportParentKeys, reason:'bounded frozen-snapshot identity page; consumed by officialMappingHeavy'),
   RawReader(#LocalDb.exportMatchingParents, reason:'bounded parent-identity matches for export beat ownership; consumed by officialMappingHeavy'),
-  RawReader(#LocalDb.exportDayBounds, reason:'native UTC aggregate endpoints; endpoints pass through officialMappingHeavy; the caller's LocalCalendar labels them'),
+  RawReader(#LocalDb.exportDayBounds, reason:'native UTC aggregate endpoints; endpoints pass through officialMappingHeavy; the caller calendar labels them'),
 ];
