@@ -1382,7 +1382,7 @@ extension _EngineDayCompute on DerivationEngine {
             continue;
           }
           final nap = suggestion.kind == ActivityKind.nap;
-          if(onPrompt!=null) { await onPrompt(suggestion);continue; }
+          if(onPrompt!=null) { await onPrompt.call(suggestion);continue; }
           await NotificationCenter.instance.emit(NotificationEvent(
             dedupeKey: '${work.day}:activity:${suggestion.id}',
             category: NotifCategory.reminders, priority: NotifPriority.normal,
