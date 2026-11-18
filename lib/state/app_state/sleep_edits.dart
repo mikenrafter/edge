@@ -99,5 +99,3 @@ final class _AppSleepEditPublication implements SleepEditPublication {
     return true;
   }
 }
-
-

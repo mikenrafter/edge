@@ -14,6 +14,7 @@ import 'package:openstrap_edge/data/sleep_editor.dart';
 import 'package:openstrap_edge/compute/manual_session.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/gestures/moment_follow_ups.dart';
 import 'package:openstrap_edge/gestures/moment_review_apply.dart';
 import 'package:openstrap_edge/gestures/moment_review_queue.dart';
@@ -32,6 +33,12 @@ class _Repo extends LocalRepository {
   @override
   Future<Map<String, dynamic>> getDayNaps(String date) async =>
       {if (naps[date] != null) 'naps': naps[date]};
+
+  @override
+  Future<SleepEditorOutcome> putNap({required String dayId,required int startTs,
+    required int endTs,required String source,SleepMergeAuthorization? merge}) =>
+      LocalRepositoryImpl(getProfileMap:()=>{}).putNap(dayId:dayId,startTs:startTs,
+        endTs:endTs,source:source,merge:merge);
 
   @override
   Future<List<SessionSpan>> savedSessionSpans() async => const [];
@@ -137,6 +144,11 @@ void main() {
         dayId: '2026-10-06',
         startTs: sec(2026, 10, 6, 15, 0),
         endTs: sec(2026, 10, 6, 15, 30),
+        source: 'manual');
+    await TestSleepWrites.putNapEdit(
+        dayId: '2026-10-06',
+        startTs: sec(2026, 10, 6, 16, 0),
+        endTs: sec(2026, 10, 6, 16, 30),
         source: 'manual');
     await TestSleepWrites.putNapEdit(
         dayId: '2026-10-06',
