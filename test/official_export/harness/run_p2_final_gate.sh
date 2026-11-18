@@ -19,6 +19,7 @@ python3 -I test/official_export/harness/run_p2_mutations.py
 python3 -I test/official_export/harness/run_mutations.py unit
 # Restored passing controls prove that neither mutation loop left source edits.
 flutter test --concurrency=1 -r expanded test/official_export \
-  test/sendable_officialMappingHeavy_test.dart test/step2/p21_write_seam_guard_test.dart
+  test/sendable_officialMappingHeavy_test.dart test/step2/p21_write_seam_guard_test.dart \
+  test/step2/p21_revision_identity_test.dart
 bash test/official_export/harness/check_target_integrity.sh
 bash test/official_export/harness/run_p2_recompute.sh
