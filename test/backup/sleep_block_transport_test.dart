@@ -10,6 +10,10 @@ import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/import_journal.dart';
 import 'package:openstrap_edge/data/recent_slice.dart';
 import 'package:openstrap_edge/data/sleep_block_store.dart';
+import 'package:openstrap_edge/data/sleep_editor.dart';
+import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/state/prefs.dart';
+import 'package:openstrap_edge/gestures/moment_review_service.dart';
 import 'package:openstrap_edge/data/sleep_import_rules.dart';
 import '../data/support/sleep_block_fixture.dart' show blockRow;
 
@@ -25,6 +29,8 @@ class _Paths extends PathProviderPlatform {
   final String root;
   @override
   Future<String?> getTemporaryPath() async => root;
+  @override Future<String?> getApplicationSupportPath() async => root;
+  @override Future<String?> getApplicationDocumentsPath() async => root;
 }
 
 void main() {
@@ -47,9 +53,9 @@ void main() {
   Future<void> import(String path) async { await LocalDb.importFromDbFile(path); }
   Future<List<Map<String,Object?>>> rows() => db.query('sleep_block',orderBy:'id');
   Future<List<SleepImportEntry>> notes() => SleepImportReport.load();
-  setUpAll(() { sqfliteFfiInit(); databaseFactory=databaseFactoryFfi; });
+  setUpAll(() { TestWidgetsFlutterBinding.ensureInitialized(); sqfliteFfiInit(); databaseFactory=databaseFactoryFfi; });
   setUp(() async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({}); await Prefs.ensureLoaded();
     temp=await Directory.systemTemp.createTemp('sleep-C-');
     PathProviderPlatform.instance=_Paths(temp.path);
     await LocalDb.close(); LocalDb.dbName=p.join(temp.path,'local.db');
@@ -141,7 +147,9 @@ void main() {
     await expectLater(import(path),throwsA(isA<StateError>()));
     expect(await rows(),isEmpty); expect(await db.query('sleep_nap'),isEmpty);
     expect(await db.query('sleep_edit_job'),isEmpty);
-    ImportHooks.reset(); await import(path);
+    ImportHooks.reset();
+    final resumed=await ImportJournal.resumeIfUnfinished(force:true);
+    expect(resumed.error,isNull); expect(resumed.resumed,isTrue);
     expect((await rows()).map((r)=>r['id']),['a','b']);
     expect(await db.query('sleep_nap'),hasLength(2));
     expect(await db.query('sleep_edit_job'),hasLength(1));
@@ -167,7 +175,13 @@ void main() {
     await db.insert('sleep_block',block('survivor'));
     await db.insert('sleep_block',block('participant',owner:otherDay,state:'merged',survivor:'survivor'));
     await SleepBlockStore.projectForTest(db,{day,otherDay});
-    await LocalDb.deleteDays({day});
+    final service=MomentReviewService.shared;
+    service.stageSleepEditorDraft(day,await SleepBlockStore.plan(db,day,[AddNap(start+10000,start+12400)]));
+    service.stageSleepEditorDraft(otherDay,await SleepBlockStore.plan(db,otherDay,[]));
+    final app=AppState.forTesting();
+    try { await app.deleteDays({day}); } finally { app.dispose(); }
+    expect(service.readSleepEditorDraft(day).plan,isNull);
+    expect(service.readSleepEditorDraft(otherDay).plan,isNotNull);
     expect((await rows()).map((r)=>r['id']),['participant']);
     final entry=(await SleepBlockStore.read(db,otherDay)).entries.single;
     expect(entry.removed,isTrue); expect(entry.mergedInto,isNull);
