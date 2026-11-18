@@ -109,7 +109,7 @@ extension _EngineCrossDayPrune on DerivationEngine {
           await DerivationEngine.debugQuietRepassHook?.call(dayId);
           final prepared = await _prepareTargetDay(dayId);
           if (prepared != null && !prepared.daySub.isEmpty) {
-            final r = await _derivePreparedDay(prepared, profile, dataNowSec, after);
+            final r = await _deriveReviewedDay(prepared, profile, dataNowSec, after);
             if (r == DayDerive.committed) {
               done++;
             } else if (r == DayDerive.declined || r == DayDerive.reused) {

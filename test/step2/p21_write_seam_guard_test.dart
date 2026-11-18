@@ -281,12 +281,12 @@ void main() {
   // WHY Q7: the runtime transaction spy exercises this post-day publisher.
   // The AST backstop pins its production caller and keeps it out of compute.
   test('Q7 compute returns review work; the per-day caller alone publishes it',() {
-    final positive=reviewCalls("extension X on Object { void _computePreparedDay() { store.autoLogNaps(); } }");
-    expect(positive['_computePreparedDay'],contains('autoLogNaps'));
+    final positive=reviewCalls("extension X on Object { void _derivePreparedDay() { store.autoLogNaps(); } }");
+    expect(positive['_derivePreparedDay'],contains('autoLogNaps'));
     final calls=reviewCalls(File('lib/compute/engine/day_compute.dart').readAsStringSync());
-    expect(calls['_computePreparedDay'],isNotNull);
-    expect(calls['_computePreparedDay']!.intersection({'autoLogNaps','confirm','apply','preserveLegacyNaps'}),isEmpty);
-    expect(calls['_derivePreparedDay'],containsAll(['_computePreparedDay','_publishDayReview']));
+    expect(calls['_derivePreparedDay'],isNotNull);
+    expect(calls['_derivePreparedDay']!.intersection({'autoLogNaps','confirm','apply','preserveLegacyNaps'}),isEmpty);
+    expect(calls['_deriveReviewedDay'],containsAll(['_derivePreparedDay','_publishDayReview']));
     expect(calls['_publishDayReview'],containsAll(['reconcile','autoLogNaps','mayNotifyNew']));
   });
   test('G1 real sleep writes are confined to the block and queue owners',() {

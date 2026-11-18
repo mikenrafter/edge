@@ -2525,7 +2525,7 @@ class DerivationEngine {
       final prepared = await _prepareTargetDay(dayId, reuse: false, banked: true);
       if (prepared == null) return null;
       _batchBundles.remove(dayId);
-      await _derivePreparedDay(prepared, profile, dataNowSec, history,
+      await _deriveReviewedDay(prepared, profile, dataNowSec, history,
           batchReference: true);
       // The same JSON round trip the stored value takes.
       final b = _batchBundles.remove(dayId);
@@ -2648,13 +2648,13 @@ class DerivationEngine {
 
   @visibleForTesting
   Future<void> debugPublishSleepReview(String day,List<Map<String,dynamic>> naps,int dataNowSec,{
-    bool forceFinalize=false,bool batchReference=false,Future<void> Function(ActivitySuggestion)? onPrompt,
+    bool forceFinalize=false,bool batchReference=false,Call1<ActivitySuggestion,Future<void>>? onPrompt,
   }) => _publishDayReview(_DayReviewWork(day,naps,const [],const [],dataNowSec,forceFinalize,batchReference),onPrompt:onPrompt,nowTs:dataNowSec);
 
   @visibleForTesting
   Future<void> debugDerivePreparedDay(PreparedDerivationDay day, Profile profile,
       int dataNowSec, {ana.CalculationMode calculationMode = ana.CalculationMode.forced}) async {
-    await _derivePreparedDay(day, profile, dataNowSec,
+    await _deriveReviewedDay(day, profile, dataNowSec,
       await _BaselineHistoryCache.load(), calculationMode: calculationMode);
   }
 
@@ -2673,7 +2673,7 @@ class DerivationEngine {
     final sw = Stopwatch()..start();
     try {
       _incompleteFingerprints.remove(day.date);
-      final committed = await _derivePreparedDay(day, profile, dataNowSec, history,
+      final committed = await _deriveReviewedDay(day, profile, dataNowSec, history,
           calculationMode: calculationMode,
           reason: reason,
           onStaleTonight: onStaleTonight);
@@ -4746,7 +4746,7 @@ class DerivationEngine {
       dayEndSec: _localNextDayLabelToSec(day.date),
       sleepOffsetSec: offsetSec,
     );
-    return (await _derivePreparedDay(
+    return (await _deriveReviewedDay(
       PreparedDerivationDay(
         date: day.date,
         endSec: day.endSec,

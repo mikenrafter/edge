@@ -33,14 +33,14 @@ extension _EngineDayCompute on DerivationEngine {
   /// the day. [DayDerive.declined] when the day deliberately kept its existing
   /// result: not a derive, so the caller must not count it as done, and settles
   /// it instead (see engine/settled.dart).
-  Future<DayDerive> _derivePreparedDay(
+  Future<DayDerive> _deriveReviewedDay(
     PreparedDerivationDay day,Profile profile,int dataNowSec,_BaselineHistoryCache history,{
     bool forceFinalize=false,bool suppliedSubstrate=false,
     ana.CalculationMode calculationMode=ana.CalculationMode.forced,
     DayResultWrite reason=DayResultWrite.derive,bool batchReference=false,Set<String>? onStaleTonight,
   }) async {
     _DayReviewWork? review;
-    final result=await _computePreparedDay(day,profile,dataNowSec,history,
+    final result=await _derivePreparedDay(day,profile,dataNowSec,history,
       forceFinalize:forceFinalize,suppliedSubstrate:suppliedSubstrate,calculationMode:calculationMode,
       reason:reason,batchReference:batchReference,onStaleTonight:onStaleTonight,
       deferReview:(work)=>review=work);
@@ -51,7 +51,7 @@ extension _EngineDayCompute on DerivationEngine {
     return result;
   }
 
-  Future<DayDerive> _computePreparedDay(
+  Future<DayDerive> _derivePreparedDay(
     PreparedDerivationDay day,
     Profile profile,
     int dataNowSec,
@@ -1345,7 +1345,7 @@ extension _EngineDayCompute on DerivationEngine {
   }
 
   /// Per-day review runs after the compute pass and its result transaction.
-  Future<void> _publishDayReview(_DayReviewWork work,{Future<void> Function(ActivitySuggestion)? onPrompt,int? nowTs}) async {
+  Future<void> _publishDayReview(_DayReviewWork work,{Call1<ActivitySuggestion,Future<void>>? onPrompt,int? nowTs}) async {
     if(work.batchReference) return;
     final activityStore=ActivityStore(await LocalDb.instance);
     final batchReference=work.batchReference, forceFinalize=work.forceFinalize;

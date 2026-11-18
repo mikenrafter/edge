@@ -237,7 +237,7 @@ void main() {
     for(final enabled in [true,false]) {
       for(final t in ['sleep_block','sleep_nap','sleep_edit_job','activity_suggestions']) { await db.delete(t); }
       SharedPreferences.setMockInitialValues({if(enabled) Prefs.napAutoLogSinceSec:start-1});
-      await engine.debugPublishSleepReview(day,[{'start':start,'end':start+2400,'confidence':0.9}],start+3600,onPrompt:(_) async { prompts++; });
+      await engine.debugPublishSleepReview(day,[{'start':start,'end':start+2400,'confidence':0.9}],start+3600,onPrompt:TestCall1((_) async { prompts++; }));
       final suggestions=await db.query('activity_suggestions');expect(suggestions,hasLength(1));
       expect(suggestions.single['status'],enabled?'confirmed':'pending');
       expect(prompts,enabled?0:1);
