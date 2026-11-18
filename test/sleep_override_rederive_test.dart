@@ -55,7 +55,14 @@ void main() {
     await databaseFactory.deleteDatabase(p.join(dir, LocalDb.dbName));
   });
 
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    // Independent cases must not inherit a previous case's stable assertion;
+    // an identical second Save is correctly a no-op in the new owner.
+    await LocalDb.close();
+    final dir=await databaseFactory.getDatabasesPath();
+    await databaseFactory.deleteDatabase(p.join(dir,LocalDb.dbName));
+  });
 
   test('an edit made during derive acknowledges its durable receipt', () async {
     final app = AppState.forTesting();
