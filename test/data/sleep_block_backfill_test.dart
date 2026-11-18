@@ -47,12 +47,32 @@ void main() {
   for (final version in [92, 93]) {
     test('B${version == 92 ? 2 : 3} upgrade from $version absorbs a stored main', () async {
       var db = await reopen();
-      await db.insert('sleep_override', {'day_id':'2026-11-01', 'onset_ts':100,
-        'offset_ts':200, 'source':'manual', 'created_at':7});
+      await seedLegacy(db);
       await rewind(version);
       db = await reopen();
       await expectBlockTable(db);
-      expect((await db.query('sleep_block')).single['id'], 'legacy:main:2026-11-01');
+      final expected = <Map<String,Object?>>[
+        for (final (day,source,state,a,b) in [
+          ('2026-10-30','manual','live',100,200),
+          ('2026-10-31','confirmed','live',300,400),
+          (fixtureDay,'detected','removed',500,501),
+        ]) {...blockRow('legacy:main:$day',kind:'main',day:day,start:a,end:b,
+          source:source,state:state), 'created_at':11,'updated_at':11},
+        blockRow('legacy:nap:$fixtureDay:1100',start:1100,end:1700,source:'confirmed',
+          history:'known',detectedStart:1000,detectedEnd:1600,detectedDay:fixtureDay,payload:napPayload),
+        blockRow('legacy:nap:$fixtureDay:1800',start:1800,end:1900,source:'confirmed'),
+        blockRow('legacy:nap:$fixtureDay:2000',start:2000,end:2100),
+        blockRow('legacy:nap:$fixtureDay:3000',start:3000,end:3600,source:'legacy',
+          history:'known',detectedStart:3000,detectedEnd:3600,detectedDay:fixtureDay,payload:'{"duration_min":10}'),
+        blockRow('legacy:nap:$fixtureDay:2200',start:2200,end:2800,source:'detected',state:'removed',
+          history:'known',detectedStart:2000,detectedEnd:2900,detectedDay:fixtureDay,payload:rejectedPayload),
+        blockRow('legacy:nap:$fixtureDay:4000',start:4000,end:4600,source:'detected',state:'removed'),
+        {...blockRow('legacy:nap:$fixtureDay:5000',start:5000,end:5600,source:'legacy',
+          history:'known',detectedStart:5000,detectedEnd:5600,detectedDay:fixtureDay,
+          payload:'{"start":5000,"end":5600,"duration_min":10,"source":"legacy"}'),
+          'created_at':20000,'updated_at':20000},
+      ]..sort((a,b)=>(a['id'] as String).compareTo(b['id'] as String));
+      expect(await db.query('sleep_block',orderBy:'id'),expected);
     });
   }
   test('B4 same-version repair recreates a missing table', () async {
