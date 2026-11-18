@@ -4,17 +4,21 @@
 build/official_probe/base-lib.tar must match P2_BASELINE_REF (the pre-P2 HEAD).
 This runs only after the selected gate, on the idle owned Boat worktree.
 """
-import json, os, pathlib, subprocess, tarfile
+import hashlib, json, os, pathlib, subprocess, tarfile
 
 root=pathlib.Path(__file__).resolve().parents[3]
 out=root/'build/official_probe'
+reference=json.loads((out/'baseline-reference.json').read_text())
+assert reference['ref']==os.environ.get('P2_BASELINE_REF','95d68f6cb')
+assert hashlib.sha256((out/'base-lib.tar').read_bytes()).hexdigest()==reference['archive_sha256']
+(out/'baseline-comparison.json').unlink(missing_ok=True)
 gate=json.loads((out/'graph-summary.json').read_text())
 assert not gate['incomplete'],gate['incomplete']
 current=gate['failures']
 files=sorted({str(pathlib.Path(f['file']).relative_to(root)) for f in current})
 os.environ.update(TZ='UTC0',TZDIR='/usr/share/zoneinfo')
 saved={p:p.read_bytes() for p in (root/'lib').rglob('*') if p.is_file()}
-members=[]
+members=[];baseline_exit=0
 try:
  if files:
   with tarfile.open(out/'base-lib.tar') as archive:
@@ -26,7 +30,7 @@ try:
   # including generated files, are restored below.
   subprocess.run(['flutter','gen-l10n'],cwd=root,check=True)
   with (out/'baseline.jsonl').open('w') as log:
-   subprocess.run(['flutter','test','--no-pub','--concurrency=1','--reporter=json',*files],cwd=root,stdout=log)
+   baseline_exit=subprocess.run(['flutter','test','--no-pub','--concurrency=1','--reporter=json',*files],cwd=root,stdout=log).returncode
 finally:
  for path,data in saved.items():path.write_bytes(data)
  for path in (root/'lib').rglob('*'):
@@ -37,23 +41,27 @@ def signature(errors):
  return [line.strip() for line in text.splitlines() if line.strip().startswith(('Expected:','Actual:','Which:'))] or [text]
 
 def key(test):return str(pathlib.Path(test['file']).relative_to(root)),test['name']
-baseline={};suites={};tests={};errors={}
+baseline={};suites={};tests={};errors={};finished=set();done=not files
 if files:
  for line in (out/'baseline.jsonl').read_text().splitlines():
   try:event=json.loads(line)
   except ValueError:continue
   if event.get('type')=='suite':suites[event['suite']['id']]=event['suite']['path']
   if event.get('type')=='testStart':tests[event['test']['id']]=event['test']
+  if event.get('type')=='testDone':finished.add(event['testID'])
+  if event.get('type')=='done':done=True
   if event.get('type')=='error':errors.setdefault(event.get('testID'),[]).append(event['error'])
   if event.get('type')=='testDone' and event['result']!='success' and not event.get('skipped'):
    test=tests[event['testID']]
    row=dict(test,file=suites[test['suiteID']],errors=errors.get(event['testID'],[]))
    baseline[key(row)]=signature(row['errors'])
 actual={key(t):signature(t['errors']) for t in current}
-comparison={'base':os.environ.get('P2_BASELINE_REF','95d68f6cb'),'files':files,'matched':[
+loaded={str(pathlib.Path(p).relative_to(root)) for p in suites.values()}
+complete=done and not (tests.keys()-finished) and not (set(files)-loaded)
+comparison={'base':reference['ref'],'archive_sha256':reference['archive_sha256'],'complete':complete,'exit':baseline_exit,'files':files,'matched':[
  {'file':k[0],'test':k[1],'signature':v} for k,v in actual.items() if baseline.get(k)==v],
  'unmatched_current':[k for k,v in actual.items() if baseline.get(k)!=v],
  'base_only':[k for k in baseline if k not in actual]}
 (out/'baseline-comparison.json').write_text(json.dumps(comparison,indent=2)+'\n')
-print(json.dumps(comparison),flush=True)
-raise SystemExit(bool(comparison['unmatched_current'] or comparison['base_only']))
+print(json.dumps({k:(len(v) if isinstance(v,list) else v) for k,v in comparison.items()}),flush=True)
+raise SystemExit(not complete or bool(comparison['unmatched_current'] or comparison['base_only']))
