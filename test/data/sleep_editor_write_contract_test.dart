@@ -12,6 +12,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:openstrap_edge/compute/derivation_engine.dart' show kAlgoVersion;
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart'
     show ActivityReviewException;
@@ -220,6 +221,61 @@ void main() {
       );
       final r = (await db.query('sleep_override')).single;
       expect(r['offset_ts'], _a0 - 90 * _min);
+    });
+  });
+
+  group('CLAIM(sleep-block-separation) detected main, real stored shape', () {
+    // day_compute stores `SleepWindow.toJson()` UNWRAPPED in window_json
+    // ({onset_ms, offset_ms, spt_sec}); only older fixtures used the
+    // {value: {...}} envelope. Both shapes must be read.
+    Future<void> detectedNight(int on, int off, {bool wrapped = false}) {
+      final window = {'onset_ms': on * 1000, 'offset_ms': off * 1000, 'spt_sec': off - on};
+      return LocalDb.putDayResult(
+        dayId: _day,
+        algoVersion: kAlgoVersion,
+        payloadJson: jsonEncode({
+          'scalars': {'rhr': 53, 'readiness': 74, 'nap_min': 0},
+          'naps': {'value': [], 'count': 0},
+        }),
+        windowJson: jsonEncode(wrapped ? {'value': window} : window),
+        finalized: true,
+        source: 'band',
+        rhr: 53,
+        readiness: 74,
+        series: {'rhr': 53, 'readiness': 74, 'nap_min': 0},
+      );
+    }
+
+    // WHY: with no user override the night is known only from the stored
+    // window. Catches a lookup that reads only the wrapped shape: a nap logged
+    // 10 minutes after waking would then save with no Merge prompt.
+    test('a nap 10 minutes after an UNWRAPPED detected night needs a merge',
+        () async {
+      final wake = _a0 - 3600;
+      await detectedNight(wake - 8 * 3600, wake);
+      final before = await _everything(db);
+      await expectLater(
+        putNap(wake + 10 * _min, wake + 50 * _min),
+        throwsA(isA<ActivityReviewException>()),
+      );
+      expect(await _everything(db), before);
+    });
+
+    test('the wrapped shape older fixtures used is still read', () async {
+      final wake = _a0 - 3600;
+      await detectedNight(wake - 8 * 3600, wake, wrapped: true);
+      await expectLater(
+        putNap(wake + 10 * _min, wake + 50 * _min),
+        throwsA(isA<ActivityReviewException>()),
+      );
+    });
+
+    // WHY: exactly 30:00 after the stored wake is two blocks, in the real shape.
+    test('exactly 30:00 after an unwrapped detected night saves', () async {
+      final wake = _a0 - 3600;
+      await detectedNight(wake - 8 * 3600, wake);
+      await putNap(wake + 30 * _min, wake + 70 * _min);
+      expect(await db.query('sleep_nap'), hasLength(1));
     });
   });
 
