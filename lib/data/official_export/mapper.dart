@@ -431,6 +431,11 @@ class _Mapper {
     ledger.verify(); reports['sync_cursor'] = ledger.toJson();
   }
 
+  // Archive claims. One record per archived parent (identity, bucket, row index,
+  // beat count, typed content hash) in the OUTPUT file, where ExportSpaceBudget
+  // sees it (TEMP is RAM on Android). Only one overlapping bucket group of one
+  // device is held at a time. Content is re-read from the snapshot to expand.
+  // CLAIM(official-export-archive-claims) [archive_claims_test; P2 review F1].
   Future<void> expandArchives() async {
     final shape=source.tables['substrate_archive']!;
     if (!shape.columnNames.containsAll([...SubstrateArchive.metaColumns,'blob']) || shape.rowidAlias==null || unknownLiveOwnership) {
@@ -438,61 +443,120 @@ class _Mapper {
         'omitted_all':true,'reason':unknownLiveOwnership ? 'unverifiable live parent ownership':'unsupported archive shape','columns':shape.columnNames.toList()};
       return;
     }
-    await file.applySql('CREATE TEMP TABLE archive_claims(device_id TEXT,ts_ms INTEGER,rec_ts INTEGER,claim TEXT,bucket_id INTEGER,row_index INTEGER)');
-    await file.applySql('CREATE INDEX temp.archive_claim_identity ON archive_claims(device_id,ts_ms)');
+    await file.applySql('CREATE TABLE archive_claims(device_id TEXT NOT NULL,ts_ms INTEGER NOT NULL,rec_ts INTEGER,'
+        'bucket_id INTEGER NOT NULL,row_index INTEGER NOT NULL,beats INTEGER NOT NULL,digest TEXT NOT NULL)');
+    await file.applySql('CREATE INDEX archive_claim_identity ON archive_claims(device_id,ts_ms)');
     final count = Sqflite.firstIntValue(await src.rawQuery('SELECT count(*) FROM substrate_archive'))!;
     final ledger = _RowLedger(count);
-    int? after;
-    while (true) {
-      final page = await src.rawQuery('SELECT rowid AS __export_rowid,${SubstrateArchive.metaColumns.map(_q).join(',')} FROM substrate_archive '
-          '${after == null ? '' : 'WHERE rowid > ?'} ORDER BY rowid LIMIT 16', [?after]);
-      if (page.isEmpty) { break; }
-      for (final meta in page) {
-        final id = meta['__export_rowid'] as int;
-        final blob = await SubstrateArchive.readBlob(src, meta['device_id'] as String, meta['utc_day'] as int);
-        if (blob == null) { ledger.add(id, 'missing archive bytes'); continue; }
-        final decoded = await runMappingWorker(MappingInput('archive', '', const [], blob: blob,
-            codec: meta['codec'] as int, fingerprint: meta['fingerprint'] as int));
-        if (decoded.rows.isEmpty && decoded.notes.any((n) => n['reason'] == 'unreadable codec or fingerprint mismatch')) {
-          ledger.add(id, 'unreadable codec or fingerprint mismatch'); continue;
-        }
-        for (var offset=0;offset<decoded.rows.length;offset+=256) {
-          final batch = file.beginBatch();
-          var bytes=65536;
-          for (final claim in decoded.rows.skip(offset).take(256)) {
-            if (claim['device_id'] != meta['device_id'] || claim['ts_ms'] is! int) {
-              archiveLedgers.putIfAbsent(id,()=>_RowLedger(-1)).add(claim['row_index'] as int,'invalid archive identity'); continue;
-            }
-            final reason = excluded('decoded_onehz', claim);
-            if (reason != null) {
-              archiveLedgers.putIfAbsent(id,()=>_RowLedger(-1)).add(claim['row_index'] as int,reason); continue;
-            }
-            bytes+=(claim['claim'] as String).length*4+1024;
-            batch.writeRow('archive_claims', {...claim, 'bucket_id': id});
-          }
-          await space?.requireAvailable(bytes);
-          await batch.flush();
-        }
-        archiveAccounting.add({'bucket': id, 'fingerprint': meta['fingerprint'], 'parents': decoded.rows.length, 'beats': meta['rr_rows'],
-          'orphan_beats': decoded.notes});
-        ledger.add(id, 'verified exact expansion; archive storage represented by decoded rows');
+    final outcomes = <int, String>{};
+    final metas = await src.rawQuery('SELECT rowid AS __export_rowid,${SubstrateArchive.metaColumns.map(_q).join(',')} FROM substrate_archive '
+        'ORDER BY device_id,from_ts,to_ts,rowid');
+    final group = _ArchiveGroup();
+    final flushed = <String, List<(int, int)>>{};
+    for (final meta in metas) {
+      final id = meta['__export_rowid'] as int;
+      final device = meta['device_id'] as String;
+      final blob = await SubstrateArchive.readBlob(src, device, meta['utc_day'] as int);
+      if (blob == null) { outcomes[id] = 'missing archive bytes'; continue; }
+      final decoded = await runMappingWorker(MappingInput('archive', '', const [], blob: blob,
+          codec: meta['codec'] as int, fingerprint: meta['fingerprint'] as int));
+      if (decoded.rows.isEmpty && decoded.notes.any((n) => n['reason'] == 'unreadable codec or fingerprint mismatch')) {
+        outcomes[id] = 'unreadable codec or fingerprint mismatch'; continue;
       }
-      after = page.last['__export_rowid'] as int;
+      final usable = <Map<String, Object?>>[];
+      for (final claim in decoded.rows) {
+        if (claim['device_id'] != device || claim['ts_ms'] is! int) {
+          archiveLedgers.putIfAbsent(id,()=>_RowLedger(-1)).add(claim['row_index'] as int,'invalid archive identity'); continue;
+        }
+        final reason = excluded('decoded_onehz', claim);
+        if (reason != null) {
+          archiveLedgers.putIfAbsent(id,()=>_RowLedger(-1)).add(claim['row_index'] as int,reason); continue;
+        }
+        usable.add(claim);
+      }
+      archiveAccounting.add({'bucket': id, 'fingerprint': meta['fingerprint'], 'parents': decoded.rows.length, 'beats': meta['rr_rows'],
+        'orphan_beats': decoded.notes});
+      outcomes[id] = 'verified exact expansion; archive storage represented by decoded rows';
+      if (usable.isEmpty) { continue; }
+      var lo = usable.first['ts_ms'] as int, hi = lo;
+      for (final c in usable) { final t = c['ts_ms'] as int; if (t < lo) { lo = t; } if (t > hi) { hi = t; } }
+      // Buckets arrive in metadata order. A bucket whose CONTENT reaches back
+      // into a group already settled cannot be compared with it, so it is
+      // withheld by name rather than risking an unseen conflict.
+      if ((flushed[device] ?? const <(int, int)>[]).any((r) => lo <= r.$2 && hi >= r.$1)) {
+        for (final c in usable) {
+          archiveLedgers.putIfAbsent(id,()=>_RowLedger(-1)).add(c['row_index'] as int,'bucket content overlaps a settled group; withheld');
+        }
+        continue;
+      }
+      if (group.isEmpty || group.device != device || lo > group.hi! || hi < group.lo!) {
+        await _settleGroup(group, flushed);
+        group.start(device);
+      }
+      group.add(id, meta, lo, hi);
+      for (var offset = 0; offset < usable.length; offset += 256) {
+        final batch = file.beginBatch();
+        for (final c in usable.skip(offset).take(256)) {
+          batch.writeRow('archive_claims', {...c, 'bucket_id': id});
+        }
+        await space?.requireAvailable(256 * 512 + 65536);
+        await batch.flush();
+      }
+    }
+    await _settleGroup(group, flushed);
+    for (final id in outcomes.keys.toList()..sort()) { ledger.add(id, outcomes[id]!); }
+    archiveAccounting.addAll([for (final e in archiveLedgers.entries)
+      {'bucket': e.key, ...e.value.toJson()}]);
+    await file.applySql('DROP TABLE archive_claims');
+    await file.applySql('DROP TABLE temp.live_parent');
+    ledger.verify(); reports['substrate_archive'] = ledger.toJson();
+  }
+
+  Future<List<Map<String, Object?>>> _bucketBlobs(_ArchiveGroup group, Iterable<int> ids, [Map<int, List<int>>? select]) async => [
+    for (final id in ids)
+      {'bucket_id': id, 'codec': group.metas[id]!['codec'], 'fingerprint': group.metas[id]!['fingerprint'],
+       'blob': (await SubstrateArchive.readBlob(src, group.metas[id]!['device_id'] as String, group.metas[id]!['utc_day'] as int))!,
+       if (select != null) 'select': select[id]},
+  ];
+
+  /// Decides every claim of one overlapping group, expands the kept ones, then
+  /// empties the claim table so the next group reuses its pages.
+  Future<void> _settleGroup(_ArchiveGroup group, Map<String, List<(int, int)>> flushed) async {
+    if (group.isEmpty) { return; }
+    // Equal hashes deduplicate only after an exact re-read compare.
+    int? lastIdentity;
+    while (true) {
+      final identities = await dst.rawQuery(
+          'SELECT a.device_id,a.ts_ms,group_concat(a.bucket_id||\':\'||a.row_index,\',\') AS claims,min(a.rowid) AS first_claim '
+          'FROM archive_claims a WHERE NOT EXISTS(SELECT 1 FROM live_parent l WHERE l.device_id=a.device_id AND l.ts_ms=a.ts_ms) '
+          'GROUP BY a.device_id,a.ts_ms HAVING count(*)>1 AND count(DISTINCT a.digest)=1 '
+          '${lastIdentity == null ? '' : 'AND min(a.rowid)>?'} ORDER BY min(a.rowid) LIMIT 2048', [?lastIdentity]);
+      if (identities.isEmpty) { break; }
+      final lists = [for (final row in identities)
+        [for (final c in (row['claims'] as String).split(',')) [for (final part in c.split(':')) int.parse(part)]]];
+      final ids = {for (final l in lists) for (final c in l) c[0]};
+      final differing = await runMappingWorker(MappingInput('claimsEqual', '', await _bucketBlobs(group, ids), json: lists));
+      for (final d in differing.rows) {
+        final row = identities[d['identity'] as int];
+        await file.applySql("UPDATE archive_claims SET digest=digest||'#'||rowid WHERE device_id=? AND ts_ms=?",
+            [row['device_id'], row['ts_ms']]);
+      }
+      lastIdentity = identities.last['first_claim'] as int;
     }
     // Live parents own the WHOLE beat set, even when it is empty. Every
     // conflicting archive claim is withheld; no bucket order decides a winner.
     int? lastClaim;
     while (true) {
       final claims = await dst.rawQuery(
-          'SELECT a.rowid AS claim_id,a.*,CASE '
+          'SELECT a.rowid AS claim_id,a.bucket_id,a.row_index,CASE '
           'WHEN EXISTS(SELECT 1 FROM live_parent l WHERE l.device_id=a.device_id AND l.ts_ms=a.ts_ms) THEN 1 '
-          'WHEN EXISTS(SELECT 1 FROM archive_claims b WHERE b.device_id=a.device_id AND b.ts_ms=a.ts_ms AND b.claim != a.claim) THEN 2 '
+          'WHEN EXISTS(SELECT 1 FROM archive_claims b WHERE b.device_id=a.device_id AND b.ts_ms=a.ts_ms AND b.digest != a.digest) THEN 2 '
           'WHEN EXISTS(SELECT 1 FROM archive_claims b WHERE b.device_id=a.device_id AND b.ts_ms=a.ts_ms AND b.rowid<a.rowid) THEN 3 '
           'ELSE 0 END AS verdict FROM archive_claims a '
-          '${lastClaim == null ? '' : 'WHERE a.rowid > ?'} ORDER BY a.rowid LIMIT 256',
+          '${lastClaim == null ? '' : 'WHERE a.rowid > ?'} ORDER BY a.rowid LIMIT 4096',
           [?lastClaim]);
       if (claims.isEmpty) { break; }
-      final kept = <Map<String, Object?>>[];
+      final kept = <int, List<int>>{};
       for (final claim in claims) {
         final reason = switch (claim['verdict']) {
           1 => 'live parent owns complete beat set',
@@ -503,38 +567,54 @@ class _Mapper {
         // Bucket index ranges identify every exact occurrence without a
         // multi-million-entry in-memory manifest.
         final bucket = claim['bucket_id'] as int;
-        final accounting = archiveLedgers.putIfAbsent(bucket, () => _RowLedger(-1));
-        accounting.add(claim['row_index'] as int, reason);
-        if (claim['verdict'] == 0) { kept.add(claim); }
+        archiveLedgers.putIfAbsent(bucket, () => _RowLedger(-1)).add(claim['row_index'] as int, reason);
+        if (claim['verdict'] == 0) { (kept[bucket] ??= []).add(claim['row_index'] as int); }
       }
-      final expanded = await runMappingWorker(MappingInput('unpack', '', kept));
-      final batch = file.beginBatch();
+      final expanded = await runMappingWorker(MappingInput('unpack', '', await _bucketBlobs(group, kept.keys, kept)));
       final acceptedParents=<(Object?,Object?)>{};
-      for (final entry in expanded.rows) {
-        final table = entry['table'] as String;
-        final row = (entry['row'] as Map).cast<String, Object?>();
-        final invalid = excluded(table,row) ?? invalidTargetRow(row,target.tables[table]) ??
-            (table=='decoded_rr' && !acceptedParents.contains((row['device_id'],row['ts_ms']))
-              ? 'orphan archive beat after withheld parent':null);
-        if (invalid != null) {
-          archiveAccounting.add({'bucket':entry['bucket'],'parent_index':entry['parent_index'],
-            'table':table,'beat_index':row['beat_index'],'reason':invalid});
-          continue;
+      for (var offset = 0; offset < expanded.rows.length; offset += 1024) {
+        final batch = file.beginBatch();
+        final slice = expanded.rows.skip(offset).take(1024).toList();
+        for (final entry in slice) {
+          final table = entry['table'] as String;
+          final row = (entry['row'] as Map).cast<String, Object?>();
+          final invalid = excluded(table,row) ?? invalidTargetRow(row,target.tables[table]) ??
+              (table=='decoded_rr' && !acceptedParents.contains((row['device_id'],row['ts_ms']))
+                ? 'orphan archive beat after withheld parent':null);
+          if (invalid != null) {
+            archiveAccounting.add({'bucket':entry['bucket'],'parent_index':entry['parent_index'],
+              'table':table,'beat_index':row['beat_index'],'reason':invalid});
+            continue;
+          }
+          if(table=='decoded_onehz') {acceptedParents.add((row['device_id'],row['ts_ms']));}
+          batch.writeRow(table, row);
+          expectedCounts[table] = (expectedCounts[table] ?? 0) + 1;
         }
-        if(table=='decoded_onehz') {acceptedParents.add((row['device_id'],row['ts_ms']));}
-        batch.writeRow(table, row);
-        expectedCounts[table] = (expectedCounts[table] ?? 0) + 1;
+        await space?.requireAvailable(slice.length * 4096 + 65536);
+        await batch.flush();
       }
-      await space?.requireAvailable(expanded.rows.length * 4096 + 65536);
-      await batch.flush();
       lastClaim = claims.last['claim_id'] as int;
     }
-    archiveAccounting.addAll([for (final e in archiveLedgers.entries)
-      {'bucket': e.key, ...e.value.toJson()}]);
-    await file.applySql('DROP TABLE temp.archive_claims');
-    await file.applySql('DROP TABLE temp.live_parent');
-    ledger.verify(); reports['substrate_archive'] = ledger.toJson();
+    await file.applySql('DELETE FROM archive_claims');
+    (flushed[group.device!] ??= []).add((group.lo!, group.hi!));
+    group.clear();
   }
+}
+
+/// One device's buckets whose archived second ranges overlap. Identity
+/// conflicts can only arise inside a group.
+class _ArchiveGroup {
+  String? device;
+  int? lo, hi;
+  final metas = <int, Map<String, Object?>>{};
+  bool get isEmpty => metas.isEmpty;
+  void start(String d) { device = d; lo = null; hi = null; metas.clear(); }
+  void add(int id, Map<String, Object?> meta, int from, int to) {
+    metas[id] = meta;
+    lo = lo == null || from < lo! ? from : lo;
+    hi = hi == null || to > hi! ? to : hi;
+  }
+  void clear() { device = null; lo = null; hi = null; metas.clear(); }
 }
 
 String? invalidTargetRow(Map<String,Object?> row,TableShape? shape) {

@@ -92,46 +92,60 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
     if (bucket == null || SubstrateArchiveCodec.fingerprint(bucket) != input.fingerprint) {
       return const MappingOutput([], [{'reason': 'unreadable codec or fingerprint mismatch'}]);
     }
-    final parents = <(Object?,Object?), List<int>>{};
-    for (var i = 0; i < bucket.onehz.rowCount; i++) {
-      (parents[(bucket.onehz.valueAt('device_id',i),bucket.onehz.valueAt('ts_ms', i))] ??= []).add(i);
-    }
-    final beats = <(Object?,Object?), List<Map<String, Object?>>>{};
-    final notes = <Map<String, Object?>>[];
-    for (var i = 0; i < bucket.rr.rowCount; i++) {
-      final identity = (bucket.rr.valueAt('device_id',i),bucket.rr.valueAt('ts_ms', i));
-      if (!parents.containsKey(identity)) {
-        notes.add({'beat_index': i, 'reason': 'archive orphan beat'});
-      } else {
-        (beats[identity] ??= []).add(bucket.rr.rowAt(i));
-      }
-    }
-    Map<String, Object?> sorted(Map<String, Object?> row) => {
-      for (final k in row.keys.toList()..sort()) k: row[k],
-    };
+    // One record per parent: identity, position, beat count and a typed content
+    // hash. Never the content itself. [P2 review F1; archive_claims_test]
+    final view = _ArchiveView(bucket);
     return MappingOutput([
       for (var i = 0; i < bucket.onehz.rowCount; i++) {
         'device_id': bucket.onehz.valueAt('device_id', i),
         'ts_ms': bucket.onehz.valueAt('ts_ms', i),
         'rec_ts': bucket.onehz.valueAt('rec_ts', i),
         'row_index': i,
-        'claim': jsonEncode({
-          'parent': sorted(bucket.onehz.rowAt(i)),
-          'beats': [for (final beat in (beats[(bucket.onehz.valueAt('device_id',i),bucket.onehz.valueAt('ts_ms', i))] ?? <Map<String, Object?>>[])
-              ..sort((a, b) => (a['beat_index'] as int).compareTo(b['beat_index'] as int))) sorted(beat)],
-        }),
+        'beats': view.beatsOf(i).length,
+        'digest': sha256.convert(utf8.encode(view.content(i))).toString(),
       },
-    ], notes);
+    ], view.orphanNotes);
+  }
+  if (input.operation == 'claimsEqual') {
+    // Exact re-read compare: the stored hash is never trusted to deduplicate.
+    // rows: the buckets involved; json: identities, each a list of [bucket, row].
+    final views = <Object?, _ArchiveView>{};
+    for (final b in input.rows) {
+      final bucket = SubstrateArchiveCodec.decode(b['blob'] as Uint8List, codec: b['codec'] as int);
+      if (bucket == null || SubstrateArchiveCodec.fingerprint(bucket) != b['fingerprint']) {
+        throw StateError('archive bucket ${b['bucket_id']} unreadable on re-read');
+      }
+      views[b['bucket_id']] = _ArchiveView(bucket);
+    }
+    final differing = <Map<String, Object?>>[];
+    final identities = input.json as List;
+    for (var k = 0; k < identities.length; k++) {
+      String? first;
+      for (final claim in identities[k] as List) {
+        final text = views[(claim as List)[0]]!.content(claim[1] as int);
+        first ??= text;
+        if (text != first) { differing.add({'identity': k}); break; }
+      }
+    }
+    return MappingOutput(differing, const []);
   }
   if (input.operation == 'unpack') {
+    // rows: one entry per bucket with the row indexes to expand.
     final rows = <Map<String, Object?>>[];
-    for (final claim in input.rows) {
-      final content = jsonDecode(claim['claim'] as String) as Map;
-      for (final table in ['decoded_onehz', 'decoded_rr']) {
-        final sourceRows = table == 'decoded_onehz' ? [content['parent']] : content['beats'] as List;
-        for (final row in sourceRows) {
-          rows.add({'table': table, 'bucket':claim['bucket_id'], 'parent_index':claim['row_index'], 'row': {
-            for (final c in officialProfile.tables[table]!.keep) c: (row as Map)[c],
+    for (final b in input.rows) {
+      final bucket = SubstrateArchiveCodec.decode(b['blob'] as Uint8List, codec: b['codec'] as int);
+      if (bucket == null || SubstrateArchiveCodec.fingerprint(bucket) != b['fingerprint']) {
+        throw StateError('archive bucket ${b['bucket_id']} unreadable on re-read');
+      }
+      final view = _ArchiveView(bucket);
+      for (final i in b['select'] as List) {
+        i as int;
+        rows.add({'table': 'decoded_onehz', 'bucket': b['bucket_id'], 'parent_index': i, 'row': {
+          for (final c in officialProfile.tables['decoded_onehz']!.keep) c: bucket.onehz.valueAt(c, i),
+        }});
+        for (final beat in view.beatsOf(i)) {
+          rows.add({'table': 'decoded_rr', 'bucket': b['bucket_id'], 'parent_index': i, 'row': {
+            for (final c in officialProfile.tables['decoded_rr']!.keep) c: beat[c],
           }});
         }
       }
@@ -302,3 +316,55 @@ bool _supportedRacePlanHeavy(String table,String text) {
   final data=json.cast<String,Object?>();
   return table=='hyrox_session' ? HyroxPlan.fromJson(data)!=null : TriathlonPlan.fromJson(data)!=null;
 }
+
+/// A decoded archive bucket with its beats grouped under their parents.
+class _ArchiveView {
+  _ArchiveView(this.bucket) {
+    for (var i = 0; i < bucket.onehz.rowCount; i++) {
+      (_parents[(bucket.onehz.valueAt('device_id', i), bucket.onehz.valueAt('ts_ms', i))] ??= []).add(i);
+    }
+    for (var i = 0; i < bucket.rr.rowCount; i++) {
+      final identity = (bucket.rr.valueAt('device_id', i), bucket.rr.valueAt('ts_ms', i));
+      if (!_parents.containsKey(identity)) {
+        orphanNotes.add({'beat_index': i, 'reason': 'archive orphan beat'});
+      } else {
+        (_beats[identity] ??= []).add(i);
+      }
+    }
+  }
+  final ArchiveBucket bucket;
+  final _parents = <(Object?, Object?), List<int>>{};
+  final _beats = <(Object?, Object?), List<int>>{};
+  final orphanNotes = <Map<String, Object?>>[];
+
+  /// The parent's beats ordered by beat_index (ties by typed content).
+  List<Map<String, Object?>> beatsOf(int parentIndex) {
+    final identity = (bucket.onehz.valueAt('device_id', parentIndex), bucket.onehz.valueAt('ts_ms', parentIndex));
+    final rows = [for (final i in _beats[identity] ?? const <int>[]) bucket.rr.rowAt(i)];
+    final keyed = [for (final r in rows) (r, _typedRow(r))];
+    keyed.sort((a, b) {
+      final x = a.$1['beat_index'], y = b.$1['beat_index'];
+      final byIndex = x is int && y is int ? x.compareTo(y) : x == null ? (y == null ? 0 : -1) : y == null ? 1 : 0;
+      return byIndex != 0 ? byIndex : a.$2.compareTo(b.$2);
+    });
+    return [for (final k in keyed) k.$1];
+  }
+
+  /// Canonical TYPED content of one claim (parent row plus ordered beats):
+  /// int, real, text, blob and NULL stay distinct, so 72 and 72.0 differ.
+  String content(int parentIndex) => jsonEncode([
+    _typedRow(bucket.onehz.rowAt(parentIndex)),
+    [for (final beat in beatsOf(parentIndex)) _typedRow(beat)],
+  ]);
+}
+
+String _typedRow(Map<String, Object?> row) => jsonEncode([
+  for (final k in row.keys.toList()..sort()) [k, _typed(row[k])],
+]);
+
+Object _typed(Object? v) => v == null ? const ['n']
+  : v is int ? ['i', v]
+  : v is double ? ['r', v.toString()]
+  : v is String ? ['t', v]
+  : v is Uint8List ? ['b', base64Encode(v)]
+  : ['x', '${v.runtimeType}:$v'];
