@@ -15,6 +15,8 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'support/alert_sleep_source.dart';
+import 'package:openstrap_edge/notify/alert_policy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:openstrap_edge/data/day_label.dart';
@@ -110,6 +112,8 @@ void main() {
       original;
 
   setUp(() {
+    // Dedupe storage is deliberately unavailable; sleep is independently known.
+    AlertPolicy.sleepSource = const AwakeAlertSleepSource();
     // Quiet hours off + all categories on, so gating never interferes with the
     // dedupe-focused tests (the gating tests set their own values).
     SharedPreferences.setMockInitialValues({'notif_quiet_enabled': false});
@@ -117,6 +121,7 @@ void main() {
   });
 
   tearDown(() {
+    AlertPolicy.sleepSource = const StoredAlertSleepSource();
     center.presentSink = original;
   });
 
@@ -230,7 +235,7 @@ void main() {
       expect(sink.shown, isEmpty);
     });
 
-    test('a critical event overrides quiet hours (default) and still fires once',
+    test('a critical event remains held during quiet hours',
         () async {
       SharedPreferences.setMockInitialValues({
         'notif_quiet_enabled': true,
@@ -243,7 +248,7 @@ void main() {
       final e = _ev('$_today:illness', priority: NotifPriority.critical);
       await center.emit(e);
       await center.emit(e);
-      expect(sink.shown.length, 1);
+      expect(sink.shown, isEmpty);
     });
   });
 

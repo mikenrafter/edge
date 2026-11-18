@@ -9,10 +9,10 @@
 //   profile), the profile chosen by the band's generation, allow-long read per
 //   delivery, the queue and its ledger, lab mode, and the band's ended event.
 
+import 'support/band_handoff.dart';
 import 'dart:async';
 
 import 'package:clock/clock.dart';
-import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/pattern_transcript.dart';
 import 'package:openstrap_edge/gestures/strap_event.dart';

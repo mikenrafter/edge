@@ -54,7 +54,10 @@ class ReminderSleepGate {
       }
     }
     for (final p in periods) {
-      if (!at.isBefore(p.start) && (p.end == null || at.isBefore(p.end!))) {
+      if (!at.isBefore(p.start) &&
+          (p.end == null
+              ? at.difference(p.start) <= kMaxSleepLookback
+              : at.isBefore(p.end!))) {
         return ReminderSuppression.asleep;
       }
     }

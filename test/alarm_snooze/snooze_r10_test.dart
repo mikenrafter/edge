@@ -11,6 +11,7 @@
 //  4  the window is bounded by MONOTONIC time and by the wall clock staying in
 //     [T-10 s, T+35 s]: moving the phone clock back never keeps a hold
 
+import '../support/band_handoff.dart' show withBandHandoff;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/haptics/builtin_patterns.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
@@ -45,7 +46,7 @@ void main() {
   }
 
   Future<BuzzDelivery> requestCue() =>
-      rig.app.gestureCues.slot(kGestureConfirmKey);
+      withBandHandoff(() => rig.app.gestureCues.slot(kGestureConfirmKey));
 
   group('2 a restart inside the window', () {
     test('settings load first, the saved alarm after: the window is open '
@@ -68,11 +69,11 @@ void main() {
   group('3 AppState tells the queue when the next window opens', () {
     Future<bool> startsWithin(Duration timeout) async {
       var started = false;
-      unawaited_(rig.app.haptics.runJob(1, (token) async {
+      unawaited_(withBandHandoff(() => rig.app.haptics.runJob(1, (token) async {
         started = true;
         await token.write(() async => true);
         return BuzzDelivery.complete;
-      }, timeout: timeout));
+      }, timeout: timeout)));
       await Future<void>.delayed(const Duration(milliseconds: 200));
       return started;
     }

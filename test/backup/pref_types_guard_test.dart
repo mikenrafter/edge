@@ -84,6 +84,15 @@ const _typeOf = {
 String _base(String path) => path.split('/').last;
 
 void main() {
+  test('fallback and retired override retain their import types', () {
+    expect(expectedPrefType('notif_fallback_destination'), 'string');
+    expect(expectedPrefType('notif_critical_override'), 'bool');
+  });
+  // These owners parse Object? to refuse wrong types without throwing a cast.
+  const validatedRawReads = {
+    'notif_fallback_destination': 'string',
+    'notif_critical_override': 'bool',
+  };
   final files = Directory('lib').listSync(recursive: true)
       .whereType<File>().where((f) => f.path.endsWith('.dart')).toList();
   final text = {for (final f in files) f.path: f.readAsStringSync()};
@@ -200,11 +209,13 @@ void main() {
   test('the table has no entry nothing reads, and none that is denylisted', () {
     final read = {
       ...reads.keys,
+      ...validatedRawReads.keys,
       for (final v in _dynamicReads.values) ...v,
     };
     expect(kPrefTypes.keys.where((k) => !read.contains(k)), isEmpty,
         reason: 'stale kPrefTypes entries');
-    expect(kPrefTypes.keys.where(kPrefsNotBackedUp.containsKey), isEmpty,
+    expect(kPrefTypes.keys.where((k) => kPrefsNotBackedUp.containsKey(k) &&
+        k != 'notif_critical_override'), isEmpty,
         reason: 'a denylisted key never reaches restore');
     for (final t in kPrefTypes.values) {
       expect(const {'string', 'bool', 'int', 'double', 'stringList'}, contains(t));

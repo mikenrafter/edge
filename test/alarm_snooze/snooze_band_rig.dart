@@ -22,6 +22,7 @@
 // the engine's termination hook (the production constructor does), so the rig
 // does. If the hook's shape changes, this is the one place to follow it.
 
+import '../support/band_handoff.dart' show withBandHandoff;
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -458,7 +459,7 @@ class SnoozeBandRig {
     final found = <(Played, List<String>)>[];
     Future<void> record(Played kind, Future<Object?> Function() play) async {
       final before = probe.writes.length;
-      await play();
+      await withBandHandoff(play);
       await probe.settle();
       found.add((
         kind,

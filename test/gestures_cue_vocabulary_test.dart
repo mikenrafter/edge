@@ -23,7 +23,7 @@
 // AppState._ecgTapBuzz, ackTap and the ECG session is in
 // gesture_cues_wiring_test.dart.
 
-import 'package:fake_async/fake_async.dart';
+import 'support/band_handoff.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/gesture_dispatcher.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';

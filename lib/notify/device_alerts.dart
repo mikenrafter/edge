@@ -58,7 +58,8 @@ class _NotificationCenterSink implements DeviceAlertSink {
   Future<bool> show(NotificationEvent e) {
     // Band alerts fire from the BLE state pipeline, which runs headless on both
     // platforms — never prompt for permission from there.
-    return NotificationCenter.instance.emit(e, allowPermissionPrompt: false);
+    return NotificationCenter.instance.emitReaching(e, allowPermissionPrompt: false)
+        .then((targets) => targets.isNotEmpty);
   }
 
   @override
@@ -120,6 +121,10 @@ class DeviceAlerts {
   /// without somewhere to remember it.
   static const String _kLowArmed = 'device_alerts.low_armed';
 
+  // A refused charging notice remains owed until the next eligible state pass.
+  static const String _kPendingChargeTs = 'device_alerts.charge_pending_ts';
+  int? _pendingChargeTs;
+
   @visibleForTesting
   static const String debugLastChargeTsKey = _kLastChargeTs;
   @visibleForTesting
@@ -173,6 +178,8 @@ class DeviceAlerts {
   /// defaults costs at most one duplicate announcement.
   Future<void> _restore() async {
     try {
+      final pending = await _store.readInt(_kPendingChargeTs);
+      _pendingChargeTs = pending != null && pending > 0 ? pending : null;
       final eventTs = await _store.readInt(_kLastChargeTs);
       final wallSec = await _store.readInt(_kLastChargeWall);
       final armed = await _store.readInt(_kLowArmed);
@@ -290,6 +297,10 @@ class DeviceAlerts {
             ) ==
             ChargeAlertVerdict.announce;
 
+    final retryCharge = !announce && charging == true &&
+        _pendingChargeTs != null &&
+        (chargingTs == null || chargingTs <= 0 || chargingTs == _pendingChargeTs);
+    final offerCharge = announce || retryCharge;
     int? persistEventTs;
     if (announce) {
       _lastAnnouncedWallSec = nowSec;
@@ -340,10 +351,14 @@ class DeviceAlerts {
       await _io(() => _notes.cancel(NotificationService.idCharging));
     }
     final today = _localDay(nowSec);
-    final showCharging = announce && _chargeShownDay != today;
+    final showCharging = offerCharge && _chargeShownDay != today;
     final shownBefore = _chargeShownDay;
     if (showCharging) _chargeShownDay = today;
-    if (announce) {
+    if (cancelChargingCard && _pendingChargeTs != null) {
+      _pendingChargeTs = null;
+      await _io(() => _store.writeInt(_kPendingChargeTs, 0));
+    }
+    if (offerCharge) {
       if (showCharging) {
         // A card the shared gate dropped (quiet hours, category off) does not
         // spend today's one: put the latch back. A throw keeps it, since
@@ -355,16 +370,22 @@ class DeviceAlerts {
             // genuine second plug-in the same day is a genuinely new key while
             // a re-announcement of the same one is not. Date-prefixed so
             // FiredKeyStore's retention sweep can reach it.
-            kind: 'band_charging:${chargingTs ?? nowSec}',
+            kind: 'band_charging:${retryCharge ? _pendingChargeTs : chargingTs ?? nowSec}',
             title: 'Charging',
           )));
         if (dropped) {
           _chargeShownDay = shownBefore;
+          _pendingChargeTs = announce
+              ? (chargingTs != null && chargingTs > 0 ? chargingTs : nowSec)
+              : _pendingChargeTs;
+          await _io(() => _store.writeInt(_kPendingChargeTs, _pendingChargeTs!));
         } else {
+          _pendingChargeTs = null;
+          await _io(() => _store.writeInt(_kPendingChargeTs, 0));
           await _io(() => _store.writeInt(_kChargeShownDay, today));
         }
       }
-      await _io(() => _store.writeInt(_kLastChargeWall, nowSec));
+      if (announce) await _io(() => _store.writeInt(_kLastChargeWall, nowSec));
       if (persistEventTs != null) {
         await _io(() => _store.writeInt(_kLastChargeTs, persistEventTs!));
       }

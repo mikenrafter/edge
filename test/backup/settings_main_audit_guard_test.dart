@@ -74,7 +74,7 @@ const _mustTravel = {
   'workout.zone_alert_enabled', 'workout.zone_alert_target_zone', 'workout.rpe_skips',
   'notif_health', 'notif_recovery', 'notif_reminders', 'notif_device',
   'notif_quiet_enabled', 'notif_quiet_start', 'notif_quiet_end',
-  'notif_critical_override', 'notif_water', 'notif_water_interval',
+  'notif_fallback_destination', 'notif_water', 'notif_water_interval',
   'notif_auto_detect', 'notif_nap_detect', 'notif_movement', 'notif_meds',
   'notif_checkin', 'notif_battery_pct', 'notif_stepgoal', 'notif_winddown',
   'notif_alarm_latch_failed', 'notif_alarm_night_check',
@@ -111,6 +111,8 @@ const _mustTravel = {
 const _prefixExamples = {'ui.home_ring_details.v1', 'ui.load_memory.v1'};
 
 const _mustStay = {
+  'device_alerts.charge_pending_ts',
+  'notif_critical_override',
   // Fork-owned diagnostics and local import/write recovery do not travel.
   'developer.load_timings.v1', 'developer.load_timings_enabled.v1',
   'import_reentry_pending', 'settings_recovery_journal_v1',
@@ -180,7 +182,8 @@ const _indirectKeys = <String, List<String>>{
   'lib/state/prefs.dart:key': [], // generic SharedPreferences facade
   'lib/notify/device_alerts.dart:key': [
     'device_alerts.last_charge_event_ts', 'device_alerts.last_charge_wall_sec',
-    'device_alerts.charge_shown_day', 'device_alerts.low_armed'],
+    'device_alerts.charge_shown_day', 'device_alerts.low_armed',
+    'device_alerts.charge_pending_ts'],
   'lib/notify/notification_center.dart:prefsKey': [
     'last_recovery_notif_day', 'last_stepgoal_day'],
   'lib/health/health_import_state.dart:what.key': [
@@ -284,7 +287,7 @@ void main() {
     await env.wipe();
     // Typed as the app reads them: restore refuses a row of another type.
     await setPrefs({
-      for (final key in {..._mustTravel, ..._mustStay, ..._prefixExamples}) key: switch (key == 'coach_api_key_present' ? 'bool' : expectedPrefType(key)) {
+      for (final key in {..._mustTravel, ..._mustStay, ..._prefixExamples}) key: key == 'notif_fallback_destination' ? 'phone' : switch (key == 'coach_api_key_present' ? 'bool' : expectedPrefType(key)) {
         'bool' => true,
         'int' => 1,
         'double' => 1.5,

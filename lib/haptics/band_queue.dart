@@ -277,6 +277,9 @@ class BandEndedSignal {
   }
 }
 
+/// Captured by queued jobs and checked immediately before each platform write.
+const Symbol kAlertHandoffKey = #openstrapAlertHandoff;
+
 /// What a running job writes through. Every band command goes through [write]:
 /// it turns one of the job's reservations into a ledger write stamped now,
 /// resets the band's ended signal, and tracks the write until it lands. Once
@@ -284,7 +287,8 @@ class BandEndedSignal {
 /// nothing, so a job that was told to stop cannot play the rest of its rhythm
 /// over the next one.
 class BandJobToken {
-  BandJobToken._(this._reservation, this._onWrite, [this._stop]);
+  BandJobToken._(this._reservation, this._onWrite, [this._stop, this._permit]);
+  final Future<bool> Function()? _permit;
   final BandReservation _reservation;
   final void Function()? _onWrite;
 
@@ -303,6 +307,8 @@ class BandJobToken {
   /// Send one band command with [send]. False, with nothing sent, when the job
   /// is cancelled or has used its whole reservation; else what [send] says.
   Future<bool> write(Future<bool> Function() send) async {
+    if (_cancelled || (_stop?.stopRequested ?? false)) return false;
+    if (_permit != null && !await Future<bool>.sync(_permit)) return false;
     if (_cancelled || (_stop?.stopRequested ?? false)) return false;
     if (!_reservation.take(clock.now())) return false;
     _writes++;
@@ -387,6 +393,7 @@ class _Job {
       this.alarm = false,
       this.limitExempt = false,
       this.stop,
+      this.permit,
       this.immediate = false});
   final Future<BuzzDelivery> Function(BandJobToken job) run;
   final int commands;
@@ -417,6 +424,7 @@ class _Job {
 
   /// An example's "stop now": the token refuses every write once it is true.
   final BandStop? stop;
+  final Future<bool> Function()? permit;
 
   /// Must start now or be rejected (a phase cue): never deferred either.
   final bool immediate;
@@ -818,6 +826,14 @@ class BandHapticQueue {
     required bool lab,
     bool immediate = false,
   }) {
+    final permit = Zone.current[kAlertHandoffKey] as Future<bool> Function()?;
+    // CLAIM(alert-handoff): only the dispatcher authorizes non-lab jobs
+    // [alert_policy_fix_r2_test]. Release builds also refuse an unowned job.
+    if (!lab && permit == null) {
+      log?.call('Band queue: rejected a job (missing alert handoff)');
+      assert(false, 'Non-lab band jobs require an alert handoff permit');
+      return Future<BuzzDelivery>.value(BuzzDelivery.rejected);
+    }
     final limit = ledger.limitNow;
     final alarm = Zone.current[kBandAlarmKey] == true && !lab;
     final limitExempt = Zone.current[kBandLimitExemptKey] == true && !lab;
@@ -851,6 +867,7 @@ class BandHapticQueue {
     final j = _Job(job, commands, timeout, settle, startBy,
         clock.now().add(startBy),
         lab: lab,
+        permit: permit,
         hold: hold is BandHold ? hold : null,
         wanted: wanted is bool Function() ? wanted : null,
         gesture: gesture,
@@ -1008,11 +1025,14 @@ class BandHapticQueue {
   }
 
   Future<void> _start(_Job j, BandReservation room) async {
-    final token = BandJobToken._(room, onWrite, j.stop);
+    final token = BandJobToken._(room, onWrite, j.stop, j.permit);
     BuzzDelivery? result;
     try {
       try {
-        final running = (() async => await j.run(token))();
+        final running = (() async {
+          if (j.permit != null && !await Future<bool>.sync(j.permit!)) return BuzzDelivery.rejected;
+          return await j.run(token);
+        })();
         final limit = j.timeout;
         result = limit == null
             ? await running

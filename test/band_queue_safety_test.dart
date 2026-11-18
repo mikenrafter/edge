@@ -12,10 +12,10 @@
 //      interleaved.
 //   6. A job of more than 30 commands is rejected, never clamped.
 
+import 'support/band_handoff.dart';
 import 'dart:async';
 
 import 'package:clock/clock.dart';
-import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/hardware_probe_runner.dart';
 import 'package:openstrap_edge/gestures/hardware_probes.dart';

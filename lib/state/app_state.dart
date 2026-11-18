@@ -138,6 +138,7 @@ import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
 import '../notify/notification_prefs.dart';
 import '../notify/alert_dispatcher.dart';
+import '../notify/alert_policy.dart';
 import '../notify/alert_rule.dart';
 import '../gestures/device_action.dart';
 import '../gestures/gesture_settings.dart';
@@ -315,6 +316,17 @@ class _WhoopCopyProgress implements WhoopImportProgressSink {
     }
   }
 }
+
+/// The rule behind every buzz the wearer starts by hand (preview, test buzz,
+/// find my strap): owner ruling 2026-11-18, these are not alerts.
+const AlertRule kBuzzPreviewRule = AlertRule(
+  id: 'buzz_preview',
+  kind: 'buzzPreview',
+  destinations: AlertRule.band,
+  executionMode: AlertExecutionMode.phoneLive,
+  staleAfter: Duration(seconds: 10),
+  channelPolicyId: 'buzz_preview',
+);
 
 class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   late final BleEngine engine;
@@ -903,6 +915,9 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   }
 
   late final AlertDispatcher alertDispatcher = AlertDispatcher(
+    policy: AlertPolicy.permits,
+    fallbackDestination: AlertPolicy.fallback,
+    latestRule: AlertPolicy.currentRule,
     phone: () async => false,
     // The default band transport (tap ack, a water or medication buzz with no
     // saved rhythm): one short buzz, in the band queue like everything else.
@@ -976,7 +991,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   }) async {
     final now = DateTime.now();
     final r = await alertDispatcher.dispatch(
-      _buzzPreviewRule,
+      kBuzzPreviewRule,
       eventId: 'preview:${now.microsecondsSinceEpoch}',
       sourceTime: now,
       historical: false,
@@ -1010,7 +1025,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     if (cancel?.cancelled == true) return false;
     final now = DateTime.now();
     final r = await alertDispatcher.dispatch(
-      _buzzPreviewRule,
+      kBuzzPreviewRule,
       eventId: 'preview:${now.microsecondsSinceEpoch}',
       sourceTime: now,
       historical: false,
@@ -1023,14 +1038,18 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     return r.targets.contains('band');
   }
 
-  static const _buzzPreviewRule = AlertRule(
-    id: 'buzz_preview',
-    kind: 'buzzPreview',
-    destinations: AlertRule.band,
-    executionMode: AlertExecutionMode.phoneLive,
-    staleAfter: Duration(seconds: 10),
-    channelPolicyId: 'buzz_preview',
-  );
+  /// What to tell the wearer when a buzz they started did not go out. Each
+  /// reason of [AlertDeliveryOutcome.suppressionReason] says what happened; the
+  /// band is blamed only when it refused or never answered.
+  @visibleForTesting
+  static String userBuzzFailureMessage(String? reason) => switch (reason) {
+        'bandUnavailable' => 'Connect your band first.',
+        'stale' => 'The buzz took too long to start. Try again.',
+        'deliveryUnconfirmed' =>
+          'The band did not confirm the buzz. It may still buzz.',
+        'deliveryFailed' => 'The band did not take the buzz. Try again.',
+        _ => 'The buzz was not sent${reason == null ? '' : ' ($reason)'}.',
+      };
 
   /// The rhythm of alert [ruleId]'s built-in pattern, or null when it cannot
   /// be read (the registry default then applies).
@@ -1076,7 +1095,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       sourceTime: time,
       historical: false,
       transportTargets: transportTargets,
-      targetAllowed: (_) => const {'breath', 'wake'}.contains(ruleId) ||
+      targetAllowed: (_) => AlertPolicy.releaseClass(prefs.alertRule(ruleId)) == AlertReleaseClass.alwaysPass ||
           !prefs.inQuietHours(DateTime.now().hour * 60 + DateTime.now().minute),
       phoneTransport: () => NotificationCenter.instance.emit(
         NotificationEvent(
@@ -7688,7 +7707,8 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
           ? own
           : alarmSequenceFromNotes(notes.join(' '), id: systemPatternId(slot));
     }
-    final now = DateTime.now();
+    // Source time and the dispatcher's freshness check share one clock.
+    final now = _wakeNow();
     final reAlarm = slot == kAlarmReAlarmKey;
     // The chain this belongs to: once it ends (switched off, Cancel-all,
     // unpaired) a job still waiting in the band queue is dropped, never written.
@@ -8226,10 +8246,8 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// The "alarm not confirmed" safety notification (Feature 2.1): fires once
   /// per armed epoch, only once every retry this grace window can offer is
   /// exhausted and the strap still never confirmed. Respects its own toggle
-  /// (default ON). Category device + critical priority rides the same
-  /// quiet-hours exemption as the band's other own-failure alerts (flat
-  /// battery, gone quiet) — a wake alarm that silently didn't latch is
-  /// exactly the kind of thing quiet hours must not swallow.
+  /// (default ON). Its explicit alarmLatchFailed rule is a wake alert and
+  /// passes quiet/sleep checks. Critical priority alone grants no exemption.
   Future<void> _notifyAlarmLatchFailed(int epoch) async {
     try {
       final prefs = await NotificationPrefs.load();
@@ -8256,30 +8274,34 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// confirm the band actually fires before trusting the scheduled wake.
   Future<void> testAlarmBuzz() async {
     if (!isConnected) throw Exception('Connect your band first.');
-    final ok = await _userBuzz(() async {
+    final r = await _userBuzz(() async {
       return await engine.runAlarm();
     });
-    if (!ok) throw Exception('The band did not take the buzz. Try again.');
+    if (!r.targets.contains('band')) {
+      throw Exception(userBuzzFailureMessage(r.suppressionReason));
+    }
   }
 
   Future<void> testBuzzPattern(int pattern) async {
     if (!isConnected) throw Exception('Connect your band first.');
-    final ok = await _userBuzz(() async {
+    final r = await _userBuzz(() async {
       await engine.buzzPattern(pattern);
       return true;
     });
-    if (!ok) throw Exception('The band did not take the buzz. Try again.');
+    if (!r.targets.contains('band')) {
+      throw Exception(userBuzzFailureMessage(r.suppressionReason));
+    }
   }
 
   /// One band buzz the user asked for with a button (test buzz, find my strap).
   /// Still an [alertDispatcher] delivery (own rule, unique event), so it cannot
   /// bypass the band-support checks or race a real alert's claim, and a write
-  /// that never answers gives up at the dispatcher's deadline. No quiet hours:
-  /// the user asked for it.
-  Future<bool> _userBuzz(Future<bool> Function() transport) async {
+  /// that never answers gives up at the dispatcher's deadline. No quiet hours
+  /// or sleep hold: the user asked for it, so it is not an alert.
+  Future<AlertDeliveryOutcome> _userBuzz(Future<bool> Function() transport) async {
     final now = DateTime.now();
-    final r = await alertDispatcher.dispatch(
-      _buzzPreviewRule,
+    return alertDispatcher.dispatch(
+      kBuzzPreviewRule,
       eventId: 'user:${now.microsecondsSinceEpoch}',
       sourceTime: now,
       historical: false,
@@ -8291,7 +8313,6 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
           }) ==
           BuzzDelivery.complete,
     );
-    return r.targets.contains('band');
   }
 
   /// Pulse the strap so it can be heard/felt during a find-my-strap hunt.
@@ -8300,10 +8321,13 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   Future<void> buzzBand() async {
     if (!isConnected) return;
     try {
-      await _userBuzz(() async {
+      final r = await _userBuzz(() async {
         await engine.buzz();
         return true;
       });
+      if (!r.targets.contains('band')) {
+        _log('[find] buzz not sent: ${userBuzzFailureMessage(r.suppressionReason)}');
+      }
     } catch (_) {
       // Best-effort by design: the next tick will try again.
     }

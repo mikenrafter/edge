@@ -3,11 +3,11 @@
 // comes within a second of the write, else the write time plus the default
 // Bluetooth lead. Driven against the virtual MG band like AppState wires it.
 
+import 'support/band_handoff.dart';
 import 'dart:async';
 import 'dart:io';
 
 import 'package:clock/clock.dart';
-import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/pattern_transcript.dart';
 import 'package:openstrap_edge/gestures/strap_event.dart';

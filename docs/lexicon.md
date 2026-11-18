@@ -193,3 +193,15 @@ in the same change that introduces it (AGENTS.md §6).
 - **Sleep receipt failure**: a night and operation-specific failed save retained by `SleepCoordinator` until acknowledged or superseded by a later successful save. App-level presentation survives route disposal.
 - **Withheld night**: while a night's own edit is unapplied, only its sleep-derived numbers are withheld. Its other measurements, and every later day, keep their values; later days carry a `sleep_edit` mark.
 - **Load timing**: an opt-in (Developer, off by default), bounded local diagnostic sample identifying a stored read, reader acquisition, writer queue, transaction or decode span. Elapsed parallel reads overlap and are never summed into load time.
+
+- **Alert release class**: what happens when interruption is blocked. Durable
+  debt remains eligible for retry; a recurring slot is skipped; wake alerts and
+  explicitly user-scheduled reminders always pass quiet and sleep checks.
+- **Fallback destination**: the user's global alternate alert destination when
+  the selected destination cannot execute. Defaults to phone. Hardware and
+  interruption restrictions still apply.
+
+- **Session cue**: a buzz the wearer requested directly or within an active
+  session, including test/preview/find-band buzzes, Device lab probes, ECG,
+  gesture acknowledgements and breathing cues. Quiet hours and sleep do not
+  hold these cues, and rejected cues take no alert fallback.

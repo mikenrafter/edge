@@ -13,6 +13,7 @@
 //     past fire + 3 h (a round-3 build could write one) ends the chain on
 //     resume and cancels the backstop; nothing is re-armed.
 
+import '../support/band_handoff.dart' show withBandHandoff;
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -59,11 +60,11 @@ void main() {
 
       // Another pattern holds the band when the snooze falls due.
       final hold = Completer<void>();
-      final job = rig.app.haptics.runJob(1, (token) async {
+      final job = withBandHandoff(() => rig.app.haptics.runJob(1, (token) async {
         await token.write(() async => true);
         await hold.future;
         return BuzzDelivery.complete;
-      }, timeout: const Duration(seconds: 60));
+      }, timeout: const Duration(seconds: 60)));
       await Future<void>.delayed(const Duration(milliseconds: 100));
       rig.clock.advance(kMin * 5);
       final tick = rig.app.debugKeepAliveTick();
@@ -95,11 +96,11 @@ void main() {
       expect(await storedState(), isNotNull, reason: 'precondition: snoozed');
 
       final hold = Completer<void>();
-      final job = rig.app.haptics.runJob(1, (token) async {
+      final job = withBandHandoff(() => rig.app.haptics.runJob(1, (token) async {
         await token.write(() async => true);
         await hold.future;
         return BuzzDelivery.complete;
-      }, timeout: const Duration(seconds: 60));
+      }, timeout: const Duration(seconds: 60)));
       await Future<void>.delayed(const Duration(milliseconds: 100));
       rig.clock.advance(kMin * 5);
       final tick = rig.app.debugKeepAliveTick();
@@ -134,11 +135,11 @@ void main() {
       await rig.terminate(HapticsTermination.expired);
       await rig.settle();
       final hold = Completer<void>();
-      final job = rig.app.haptics.runJob(1, (token) async {
+      final job = withBandHandoff(() => rig.app.haptics.runJob(1, (token) async {
         await token.write(() async => true);
         await hold.future;
         return BuzzDelivery.complete;
-      }, timeout: const Duration(seconds: 60));
+      }, timeout: const Duration(seconds: 60)));
       await Future<void>.delayed(const Duration(milliseconds: 100));
       rig.clock.advance(kMin * 5);
       final tick = rig.app.debugKeepAliveTick();
@@ -163,11 +164,11 @@ void main() {
           reAlarmAt: t0.add(const Duration(hours: 2, minutes: 59, seconds: 50)),
           fireAt: t0));
       final hold = Completer<void>();
-      final job = rig.app.haptics.runJob(1, (token) async {
+      final job = withBandHandoff(() => rig.app.haptics.runJob(1, (token) async {
         await token.write(() async => true);
         await hold.future;
         return BuzzDelivery.complete;
-      }, timeout: const Duration(seconds: 60));
+      }, timeout: const Duration(seconds: 60)));
       await Future<void>.delayed(const Duration(milliseconds: 100));
 
       rig.clock.advance(const Duration(hours: 2, minutes: 59, seconds: 58));

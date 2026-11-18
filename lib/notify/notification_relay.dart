@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart' show debugPrintSynchronously;
 import 'dart:async';
 import 'dart:convert';
 import 'alert_dispatcher.dart';
+import 'alert_policy.dart';
 import 'alert_rule.dart';
 import 'buzz_sequence.dart';
 import 'notification_prefs.dart';
@@ -52,7 +53,8 @@ String relayChannelOf(Object? category) => switch (category) {
 };
 
 /// One channel's policy. Defaults: apps relay when the feature is on; alarms and
-/// calls are opt-in; Do Not Disturb, vibrate and silent are all respected.
+/// calls are opt-in. Alarms pass Do Not Disturb by default; other channels
+/// respect it. Vibrate is included and silent is excluded.
 class ChannelConfig {
   const ChannelConfig({
     this.enabled = false,
@@ -68,9 +70,17 @@ class ChannelConfig {
     this.buzzSequence,
     this.appSequences = const {},
   });
+
+  /// Version of the Do Not Disturb default a saved config was written under.
+  /// Unmarked configs predate v2 (alarms did not pass Do Not Disturb), so their
+  /// stored `allowDuringDnd` is the old default, not a choice: where the
+  /// channel's default is now to pass it, it reads as true. Every save writes
+  /// the marker, so a false chosen afterwards stays false.
+  static const int dndDefaultVersion = 2;
+
   /// Apps relay once the feature is on; alarms and calls are opt-in.
   factory ChannelConfig.forChannel(String name) =>
-      ChannelConfig(enabled: name == 'apps');
+      ChannelConfig(enabled: name == 'apps', allowDuringDnd: name == 'alarms');
 
   final bool enabled, matchHaptics, allowDuringDnd, includeVibrate;
   final bool includeSilent, phoneFallback;
@@ -78,8 +88,8 @@ class ChannelConfig {
   final int? quietStartMinute, quietEndMinute;
 
   /// True: this channel's own Starts and Ends decide its quiet hours (both
-  /// null means none). False: it follows the global quiet hours from Alerts,
-  /// and any stored times are kept but not used.
+  /// null means none). False: apps and calls follow the global quiet hours;
+  /// alarms pass them. Stored times are kept but not used.
   final bool overrideQuietHours;
 
   /// The channel's own buzz rhythm; null takes the relay rule's default.
@@ -193,6 +203,7 @@ class ChannelConfig {
     'quietEndMinute': quietEndMinute,
     'overrideQuietHours': overrideQuietHours,
     'allowDuringDnd': allowDuringDnd,
+    'dndDefaultV': dndDefaultVersion,
     'includeVibrate': includeVibrate,
     'includeSilent': includeSilent,
     'phoneFallback': phoneFallback,
@@ -216,7 +227,12 @@ class ChannelConfig {
         overrideQuietHours:
             j['overrideQuietHours'] as bool? ??
             (j['quietStartMinute'] is int && j['quietEndMinute'] is int),
-        allowDuringDnd: j['allowDuringDnd'] as bool? ?? d.allowDuringDnd,
+        allowDuringDnd: switch (j['dndDefaultV']) {
+          final int v when v >= dndDefaultVersion =>
+            j['allowDuringDnd'] as bool? ?? d.allowDuringDnd,
+          // Written under the old default: a stored false was never a choice.
+          _ => d.allowDuringDnd || (j['allowDuringDnd'] as bool? ?? false),
+        },
         includeVibrate: j['includeVibrate'] as bool? ?? d.includeVibrate,
         includeSilent: j['includeSilent'] as bool? ?? d.includeSilent,
         phoneFallback: j['phoneFallback'] as bool? ?? d.phoneFallback,
@@ -383,7 +399,8 @@ class RelayController {
       if (env['onlyWhileWorn'] == true && env['worn'] != 'worn') {
         return 'notWorn';
       }
-      // The channel's own window when it overrides, else the global one.
+      // Alarm band delivery passes global quiet hours (owner, 2026-11-18),
+      // while an explicit channel override still holds it.
       final bool quiet;
       final int? start, end;
       if (cfg.overrideQuietHours) {
@@ -393,7 +410,7 @@ class RelayController {
       } else {
         start = env['quietStartMin'] as int?;
         end = env['quietEndMin'] as int?;
-        quiet = env['quietEnabled'] == true;
+        quiet = channel != 'alarms' && env['quietEnabled'] == true;
       }
       if (quiet && start != null && end != null) {
         final now = DateTime.fromMillisecondsSinceEpoch(atMs);
@@ -459,6 +476,10 @@ class RelayController {
         AlertRule(
           id: 'relay',
           kind: 'relay',
+          // A relayed phone alarm or timer is wake class: quiet hours and sleep
+          // never hold it. Apps and calls keep the hold. The channel's own
+          // quiet window and switches still gate it above (targetAllowed).
+          userScheduled: channel == 'alarms',
           destinations: AlertRule.band,
           executionMode: AlertExecutionMode.phoneLive,
           fallback: env['fallback'] == 'phoneIfBandUnavailable'
@@ -475,6 +496,7 @@ class RelayController {
         eventId: '$channel:$key:$postMs:${_removals[key] ?? 0}',
         sourceTime: DateTime.fromMillisecondsSinceEpoch(postMs),
         historical: false,
+        ruleDecidesFallback: true,
         targetAllowed: (_) => currentSuppression() == null,
         phoneTransport: phone,
         bandTimeout: chosen == null
@@ -559,6 +581,9 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   }) : dispatcher =
            dispatcher ??
            AlertDispatcher(
+             policy: AlertPolicy.permits,
+             fallbackDestination: AlertPolicy.fallback,
+             latestRule: AlertPolicy.currentRule,
              phone: () async => false,
              band: () async {
                await buzz();
@@ -830,6 +855,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
       sourceTime: now,
       ruleId: 'relay',
       phoneOnly: true,
+      ruleDecidesFallback: true,
     );
   }
 

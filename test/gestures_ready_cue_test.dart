@@ -3,7 +3,7 @@
 // single command of the band's vocabulary), which is distinct from the start
 // cue's pair, the confirm cue and the failure cue. A band with no haptic
 // profile (a 4.0) plays one plain pulse.
-import 'package:fake_async/fake_async.dart';
+import 'support/band_handoff.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/haptics/gesture_cues.dart';
 import 'package:openstrap_edge/haptics/haptic_profile.dart';

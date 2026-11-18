@@ -12160,7 +12160,7 @@
   "@settingsQuietHoursRowTitle": {
     "description": "Settings row title toggling quiet hours"
   },
-  "settingsQuietHoursRowSub": "Nothing buzzes inside this window",
+  "settingsQuietHoursRowSub": "Only alarms, medication and wake alerts come through",
   "@settingsQuietHoursRowSub": {
     "description": "Settings row subtitle for the quiet-hours toggle"
   },
@@ -12171,6 +12171,18 @@
   "settingsQuietHoursEndsRowTitle": "Ends",
   "@settingsQuietHoursEndsRowTitle": {
     "description": "Settings row title for the quiet-hours end time"
+  },
+  "settingsFallbackRowTitle": "If unavailable, send to",
+  "@settingsFallbackRowTitle": {
+    "description": "Settings row title: where an alert goes when its chosen destination cannot deliver it"
+  },
+  "settingsFallbackPhone": "Phone",
+  "@settingsFallbackPhone": {
+    "description": "Value of the fallback-destination row: the phone"
+  },
+  "settingsFallbackBand": "Band",
+  "@settingsFallbackBand": {
+    "description": "Value of the fallback-destination row: the band"
   },
   "settingsHealthExceptionsBreakThroughRowTitle": "Health exceptions break through",
   "@settingsHealthExceptionsBreakThroughRowTitle": {

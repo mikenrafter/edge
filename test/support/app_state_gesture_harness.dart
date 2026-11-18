@@ -37,6 +37,7 @@ import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/sync/paired_device.dart' show PairedDevice;
 import 'package:openstrap_protocol/openstrap_protocol.dart';
 
+import 'band_handoff.dart' show withBandHandoff;
 import 'ecg_presence_packets.dart' show presencePacket;
 
 export 'ecg_presence_packets.dart' show presencePacket;
@@ -356,7 +357,7 @@ class GestureRig {
     };
     for (final e in plays.entries) {
       final before = writes.length;
-      await e.value();
+      await withBandHandoff(e.value);
       final w = writes.skip(before).where((w) => _isHaptic(w.opcode));
       if (w.isNotEmpty) _cueBodies[e.key] = _hex(w.first.body);
     }

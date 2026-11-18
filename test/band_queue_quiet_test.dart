@@ -11,8 +11,8 @@
 //               and a plain job whose planned end (timeout + settle + write
 //               grace) would pass W waits for the window to end
 
+import 'support/band_handoff.dart';
 import 'package:clock/clock.dart';
-import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/haptics/band_queue.dart';
 import 'package:openstrap_edge/notify/alert_dispatcher.dart';

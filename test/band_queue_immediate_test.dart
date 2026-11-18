@@ -2,8 +2,8 @@
 // or is rejected on the spot. It never waits behind another job, the open
 // lab or the rolling command budget, and a rejection leaves nothing queued.
 
+import 'support/band_handoff.dart';
 import 'package:clock/clock.dart';
-import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/haptics/band_queue.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';

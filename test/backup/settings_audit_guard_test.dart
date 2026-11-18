@@ -85,6 +85,8 @@ void main() {
           reason: '${e.key} is no longer written anywhere: drop the entry');
       expect(prefsKeyBackedUp(e.key), isFalse);
     }
+    expect(prefsKeyBackedUp('notif_critical_override'), isFalse);
+    expect(prefsKeyBackedUp('device_alerts.charge_pending_ts'), isFalse);
     for (final k in kPrefsSignalOnly) {
       expect(prefsKeyBackedUp(k), isFalse);
     }
@@ -97,6 +99,7 @@ void main() {
       'gesture_double_tap_actions',
       'haptic_patterns_v1',
       'notif_alert_rules_v1',
+      'notif_fallback_destination',
       'theme_choice',
     ]) {
       expect(prefsKeyBackedUp(k), isTrue, reason: k);
