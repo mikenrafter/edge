@@ -230,7 +230,8 @@ const officialProfile = OfficialProfile(
       merge: MergeKey(['device_id', 'signal', 'start_ts'], MergeRule.plainReplace),
     ),
     'ecg_raw_packet': TableProfile(
-      policy: TablePolicy.mapped,
+      // Retiring the gesture origin field leaves no fork-only packet columns.
+      policy: TablePolicy.kept,
       dest: 'ecg_raw_packet',
       meaning: r'''Same table; exact bytes.''',
       evidence: r'''`schema.dart:1547`''',
