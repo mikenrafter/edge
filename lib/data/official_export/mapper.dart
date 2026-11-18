@@ -461,8 +461,9 @@ class _Mapper {
       return;
     }
     await file.applySql('CREATE TABLE archive_claims(device_id TEXT NOT NULL,ts_ms INTEGER NOT NULL,rec_ts INTEGER,'
-        'bucket_id INTEGER NOT NULL,row_index INTEGER NOT NULL,beats INTEGER NOT NULL,digest TEXT NOT NULL)');
+        'bucket_id INTEGER NOT NULL,row_index INTEGER NOT NULL,beats INTEGER NOT NULL,digest TEXT NOT NULL,verdict INTEGER)');
     await file.applySql('CREATE INDEX archive_claim_identity ON archive_claims(device_id,ts_ms)');
+    await file.applySql('CREATE INDEX archive_claim_selection ON archive_claims(bucket_id,verdict,row_index)');
     final count = Sqflite.firstIntValue(await src.rawQuery('SELECT count(*) FROM substrate_archive'))!;
     final ledger = _RowLedger(count);
     final outcomes = <int, String>{};
@@ -562,18 +563,16 @@ class _Mapper {
     }
     // Live parents own the WHOLE beat set, even when it is empty. Every
     // conflicting archive claim is withheld; no bucket order decides a winner.
+    await file.applySql('UPDATE archive_claims AS a SET verdict=CASE '
+        'WHEN EXISTS(SELECT 1 FROM live_parent l WHERE l.device_id=a.device_id AND l.ts_ms=a.ts_ms) THEN 1 '
+        'WHEN EXISTS(SELECT 1 FROM archive_claims b WHERE b.device_id=a.device_id AND b.ts_ms=a.ts_ms AND b.digest != a.digest) THEN 2 '
+        'WHEN EXISTS(SELECT 1 FROM archive_claims b WHERE b.device_id=a.device_id AND b.ts_ms=a.ts_ms AND b.rowid<a.rowid) THEN 3 '
+        'ELSE 0 END');
     int? lastClaim;
     while (true) {
-      final claims = await dst.rawQuery(
-          'SELECT a.rowid AS claim_id,a.bucket_id,a.row_index,CASE '
-          'WHEN EXISTS(SELECT 1 FROM live_parent l WHERE l.device_id=a.device_id AND l.ts_ms=a.ts_ms) THEN 1 '
-          'WHEN EXISTS(SELECT 1 FROM archive_claims b WHERE b.device_id=a.device_id AND b.ts_ms=a.ts_ms AND b.digest != a.digest) THEN 2 '
-          'WHEN EXISTS(SELECT 1 FROM archive_claims b WHERE b.device_id=a.device_id AND b.ts_ms=a.ts_ms AND b.rowid<a.rowid) THEN 3 '
-          'ELSE 0 END AS verdict FROM archive_claims a '
-          '${lastClaim == null ? '' : 'WHERE a.rowid > ?'} ORDER BY a.rowid LIMIT 4096',
-          [?lastClaim]);
+      final claims = await dst.rawQuery('SELECT rowid AS claim_id,bucket_id,row_index,verdict FROM archive_claims '
+          '${lastClaim == null ? '' : 'WHERE rowid > ?'} ORDER BY rowid LIMIT 4096', [?lastClaim]);
       if (claims.isEmpty) { break; }
-      final kept = <int, List<int>>{};
       for (final claim in claims) {
         final reason = switch (claim['verdict']) {
           1 => 'live parent owns complete beat set',
@@ -585,32 +584,44 @@ class _Mapper {
         // multi-million-entry in-memory manifest.
         final bucket = claim['bucket_id'] as int;
         archiveLedgers.putIfAbsent(bucket, () => _RowLedger(-1)).add(claim['row_index'] as int, reason);
-        if (claim['verdict'] == 0) { (kept[bucket] ??= []).add(claim['row_index'] as int); }
-      }
-      final expanded = await runMappingWorker(MappingInput('unpack', '', await _bucketBlobs(group, kept.keys, kept)));
-      final acceptedParents=<(Object?,Object?)>{};
-      for (var offset = 0; offset < expanded.rows.length; offset += 1024) {
-        final batch = file.beginBatch();
-        final slice = expanded.rows.skip(offset).take(1024).toList();
-        for (final entry in slice) {
-          final table = entry['table'] as String;
-          final row = (entry['row'] as Map).cast<String, Object?>();
-          final invalid = excluded(table,row) ?? invalidTargetRow(row,target.tables[table]) ??
-              (table=='decoded_rr' && !acceptedParents.contains((row['device_id'],row['ts_ms']))
-                ? 'orphan archive beat after withheld parent':null);
-          if (invalid != null) {
-            archiveAccounting.add({'bucket':entry['bucket'],'parent_index':entry['parent_index'],
-              'table':table,'beat_index':row['beat_index'],'reason':invalid});
-            continue;
-          }
-          if(table=='decoded_onehz') {acceptedParents.add((row['device_id'],row['ts_ms']));}
-          batch.writeRow(table, row);
-          expectedCounts[table] = (expectedCounts[table] ?? 0) + 1;
-        }
-        await space?.requireAvailable(slice.length * 4096 + 65536);
-        await batch.flush();
       }
       lastClaim = claims.last['claim_id'] as int;
+    }
+    // All group verdicts are durable before unpacking. Each worker decodes one
+    // bucket, selecting at most 20k parents; writes remain 1024-row slices.
+    // CLAIM(official-export-bounded-unpack) [archive_claims_test; review N2].
+    for (final bucket in group.metas.keys) {
+      int? lastIndex;
+      while (true) {
+        final selected = await dst.rawQuery('SELECT row_index FROM archive_claims WHERE bucket_id=? AND verdict=0 '
+            '${lastIndex == null ? '' : 'AND row_index>?'} ORDER BY row_index LIMIT 20000', [bucket, ?lastIndex]);
+        if (selected.isEmpty) { break; }
+        final kept = {bucket: [for (final row in selected) row['row_index'] as int]};
+        final expanded = await runMappingWorker(MappingInput('unpack', '', await _bucketBlobs(group, kept.keys, kept)));
+        final acceptedParents=<(Object?,Object?)>{};
+        for (var offset = 0; offset < expanded.rows.length; offset += 1024) {
+          final batch = file.beginBatch();
+          final slice = expanded.rows.skip(offset).take(1024).toList();
+          for (final entry in slice) {
+            final table = entry['table'] as String;
+            final row = (entry['row'] as Map).cast<String, Object?>();
+            final invalid = excluded(table,row) ?? invalidTargetRow(row,target.tables[table]) ??
+                (table=='decoded_rr' && !acceptedParents.contains((row['device_id'],row['ts_ms']))
+                  ? 'orphan archive beat after withheld parent':null);
+            if (invalid != null) {
+              archiveAccounting.add({'bucket':entry['bucket'],'parent_index':entry['parent_index'],
+                'table':table,'beat_index':row['beat_index'],'reason':invalid});
+              continue;
+            }
+            if(table=='decoded_onehz') {acceptedParents.add((row['device_id'],row['ts_ms']));}
+            batch.writeRow(table, row);
+            expectedCounts[table] = (expectedCounts[table] ?? 0) + 1;
+          }
+          await space?.requireAvailable(slice.length * 4096 + 65536);
+          await batch.flush();
+        }
+        lastIndex = selected.last['row_index'] as int;
+      }
     }
     await file.applySql('DELETE FROM archive_claims');
     (flushed[group.device!] ??= []).add((group.lo!, group.hi!));
