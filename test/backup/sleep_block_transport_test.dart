@@ -3,10 +3,12 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/import_journal.dart';
+import 'package:openstrap_edge/data/recent_slice.dart';
 import 'package:openstrap_edge/data/sleep_block_store.dart';
 import 'package:openstrap_edge/data/sleep_import_rules.dart';
 import '../data/support/sleep_block_fixture.dart' show blockRow;
@@ -17,6 +19,13 @@ Map<String,Object?> block(String id, {String owner = day, int? s, int? e,
     String kind = 'nap', String state = 'live', String? survivor, int rule = 1}) =>
   {...blockRow(id,day:owner,start:s ?? start,end:e ?? start+2400,
     kind:kind,state:state,mergedInto:survivor), 'owner_rule':rule};
+
+class _Paths extends PathProviderPlatform {
+  _Paths(this.root);
+  final String root;
+  @override
+  Future<String?> getTemporaryPath() async => root;
+}
 
 void main() {
   late Database db;
@@ -42,6 +51,7 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     temp=await Directory.systemTemp.createTemp('sleep-C-');
+    PathProviderPlatform.instance=_Paths(temp.path);
     await LocalDb.close(); LocalDb.dbName=p.join(temp.path,'local.db');
     db=await LocalDb.instance;
   });
@@ -167,7 +177,7 @@ void main() {
   // catches: recent support slices silently omit durable assertion history.
   test('T10 recent slice contains blocks', () async {
     await db.insert('sleep_block',block('slice',rule:0));
-    final path=await LocalDb.exportCopy(recentDays:7);
+    final path=await exportRecentSlice(now:DateTime(2026,10,15));
     final src=await databaseFactory.openDatabase(path);
     expect((await src.query('sleep_block')).single['owner_rule'],0); await src.close();
   });
@@ -231,6 +241,7 @@ void main() {
   test('T18 locally decided linked suggestion prevents capture', () async {
     final path=await backup([block('incoming')]);
     await db.insert('activity_suggestions',{'id':'decided','kind':'nap','day_id':day,
+      'start_ts':start,'end_ts':start+2400,'details_json':'{}',
       'detection_start':start,'detection_end':start+2400,'status':'discarded',
       'linked_id':'incoming','created_at':5,'updated_at':5});
     await import(path); expect(await rows(),isEmpty);
