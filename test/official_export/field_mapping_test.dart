@@ -38,13 +38,13 @@ void main() {
    {'__export_rowid':4,'weekday':4,'hour':6,'minute':45,'enabled':1,'smart_window_minutes':0,'natural_window_minutes':0,'gradual_window_minutes':15},
   ]));
   expect(rows.rows.map((r)=>[r['weekday'],r['hour'],r['minute'],r['enabled'],r['smart_window_minutes']]).toList(),
-   [[1,8,0,1,0],[2,8,5,1,20],[3,7,15,0,0],[4,6,45,1,0]]);
+   [[1,8,0,1,0],[2,8,5,1,0],[3,7,15,0,0],[4,6,45,1,0]]);
   expect(rows.notes.every((n)=>n['omitted']!=true),isTrue);
   final n1=rows.notes[0]['columns'] as List,n3=rows.notes[2]['columns'] as List,n4=rows.notes[3]['columns'] as List;
   expect(n1,contains('natural_window_minutes'));
   expect(n3,containsAll(['natural_window_minutes','gradual_pattern','gradual_cadence_sec','smart_window_minutes']));
   expect(n4,contains('gradual_window_minutes'));
-  expect(rows.notes[1]['columns'] as List,isNot(contains('smart_window_minutes')));
+  expect(rows.notes[1]['columns'] as List,contains('smart_window_minutes'));
  });
  test('portable preference types and presence markers are closed',() async {
   final prefs=await runMappingWorker(const MappingInput('page','backup_prefs',[
