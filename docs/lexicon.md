@@ -197,3 +197,8 @@ in the same change that introduces it (AGENTS.md §6).
 - **Fallback destination**: the user's global alternate alert destination when
   the selected destination cannot execute. Defaults to phone. Hardware and
   interruption restrictions still apply.
+
+- **Session cue**: a buzz the wearer requested directly or within an active
+  session, including test/preview/find-band buzzes, Device lab probes, ECG,
+  gesture acknowledgements and breathing cues. Quiet hours and sleep do not
+  hold these cues, and rejected cues take no alert fallback.

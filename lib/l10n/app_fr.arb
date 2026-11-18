@@ -2411,7 +2411,7 @@
   "settingsBuzzOnAppNotificationsRowSub": "Choisissez quelles applications du téléphone font vibrer le bracelet",
   "settingsGroupQuietHours": "Heures calmes",
   "settingsQuietHoursRowTitle": "Heures calmes",
-  "settingsQuietHoursRowSub": "La plupart des alertes attendent la fin de cette période",
+  "settingsQuietHoursRowSub": "Seules les alarmes, les rappels de médicaments et les alertes de réveil passent",
   "settingsQuietHoursStartsRowTitle": "Début",
   "settingsQuietHoursEndsRowTitle": "Fin",
   "settingsFallbackRowTitle": "Si indisponible, envoyer vers",

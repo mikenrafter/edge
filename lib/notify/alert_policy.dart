@@ -53,13 +53,15 @@ class AlertPolicy {
   /// Kinds the wearer started or is inside of: they are not alerts, so quiet
   /// hours and sleep never hold them (owner, 2026-11-18). The test/preview/find
   /// buzzes, Device lab probes, ECG cues, gesture tap-acks and the cues of a
-  /// breathing session.
+  /// breathing session. They also take no alert fallback.
+  static bool isSessionCue(AlertRule rule) => _sessionKinds.contains(rule.kind);
+
   static const _sessionKinds = {'buzzPreview', 'hardwareProbe', 'ecg',
     'gesture', 'breath'};
 
   // CLAIM(alert-release): priority never grants a wake pass [spec §4.5].
   static AlertReleaseClass releaseClass(AlertRule rule) {
-    if (rule.userScheduled || _sessionKinds.contains(rule.kind) ||
+    if (rule.userScheduled || isSessionCue(rule) ||
         const {'meds', 'wake', 'alarmLatchFailed', 'alarm', 'nativeAlarm'}
             .contains(rule.kind)) {
       return AlertReleaseClass.alwaysPass;

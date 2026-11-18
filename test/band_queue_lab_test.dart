@@ -5,10 +5,10 @@
 // closes. A job already playing is never preempted. The 30-per-2-minutes
 // ledger stays shared.
 
+import 'support/band_handoff.dart';
 import 'dart:async';
 
 import 'package:clock/clock.dart';
-import 'package:fake_async/fake_async.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/hardware_probe_runner.dart';

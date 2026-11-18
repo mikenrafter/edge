@@ -61,6 +61,8 @@ class NotificationCenter {
     bool historical = false,
     String? ruleId,
     bool phoneOnly = false,
+    // The caller already chose the phone as this rule's fallback.
+    bool ruleDecidesFallback = false,
   }) async => (await emitReaching(
     e,
     allowPermissionPrompt: allowPermissionPrompt,
@@ -68,6 +70,7 @@ class NotificationCenter {
     historical: historical,
     ruleId: ruleId,
     phoneOnly: phoneOnly,
+    ruleDecidesFallback: ruleDecidesFallback,
   )).contains('phone');
 
   /// [emit], reporting every target the event reached ('phone', 'band') rather
@@ -80,6 +83,8 @@ class NotificationCenter {
     bool historical = false,
     String? ruleId,
     bool phoneOnly = false,
+    // The caller already chose the phone as this rule's fallback.
+    bool ruleDecidesFallback = false,
   }) async {
     final prefs = await NotificationPrefs.load();
     final id =
@@ -110,7 +115,7 @@ class NotificationCenter {
         return const {};
       }
       if (!rule.enabled || (!rule.phoneSelected &&
-          prefs.fallbackDestination != AlertDestination.phone)) {
+          !(ruleDecidesFallback || prefs.fallbackDestination == AlertDestination.phone))) {
         return const {};
       }
       return await _emitPhone(
@@ -123,7 +128,9 @@ class NotificationCenter {
           : const {};
     }
     final out = await dispatcher.dispatch(
-      prefs.alertRule(id),
+      ruleDecidesFallback
+          ? rule.copyWith(fallback: AlertFallback.phoneIfBandUnavailable) : rule,
+      ruleDecidesFallback: ruleDecidesFallback,
       eventId: e.dedupeKey,
       sourceTime: sourceTime ?? DateTime.now(),
       historical: historical,

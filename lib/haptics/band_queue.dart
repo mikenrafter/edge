@@ -826,6 +826,14 @@ class BandHapticQueue {
     required bool lab,
     bool immediate = false,
   }) {
+    final permit = Zone.current[kAlertHandoffKey] as Future<bool> Function()?;
+    // CLAIM(alert-handoff): only the dispatcher authorizes non-lab jobs
+    // [alert_policy_fix_r2_test]. Release builds also refuse an unowned job.
+    if (!lab && permit == null) {
+      log?.call('Band queue: rejected a job (missing alert handoff)');
+      assert(false, 'Non-lab band jobs require an alert handoff permit');
+      return Future<BuzzDelivery>.value(BuzzDelivery.rejected);
+    }
     final limit = ledger.limitNow;
     final alarm = Zone.current[kBandAlarmKey] == true && !lab;
     final limitExempt = Zone.current[kBandLimitExemptKey] == true && !lab;
@@ -859,7 +867,7 @@ class BandHapticQueue {
     final j = _Job(job, commands, timeout, settle, startBy,
         clock.now().add(startBy),
         lab: lab,
-        permit: Zone.current[kAlertHandoffKey] as Future<bool> Function()?,
+        permit: permit,
         hold: hold is BandHold ? hold : null,
         wanted: wanted is bool Function() ? wanted : null,
         gesture: gesture,

@@ -12,6 +12,7 @@ import 'package:openstrap_edge/notify/alert_dispatcher.dart';
 import 'package:openstrap_edge/notify/alert_rule.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/notify/notification_center.dart';
+import 'package:openstrap_edge/notify/notification_event.dart';
 import 'package:openstrap_edge/notify/notification_prefs.dart';
 import 'package:openstrap_edge/notify/notification_service.dart';
 import 'package:openstrap_edge/notify/reminder_sleep_gate.dart';
@@ -63,6 +64,32 @@ void main() {
     NotificationService.instance.invalidatePermissionCache();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
+  });
+  // WHY: the owner confirmed that an experiment's daily reminder is a system
+  // nudge. Drive its real slot id through the OS scheduler, with an awake
+  // positive control proving the mock sees actual scheduled notifications.
+  test('experiment daily reminder skips quiet hours and sleep', () async {
+    await NotificationService.instance.init();
+    final at = DateTime.now().add(const Duration(minutes: 10));
+    Future<bool> schedule() => NotificationService.instance.scheduleOnce(
+      id: NotificationService.idExperimentBase,
+      category: NotifCategory.reminders,
+      title: 'Experiment', body: 'Daily reminder', at: at);
+    final minute = at.hour * 60 + at.minute;
+    await NotificationPrefs(quietEnabled: true,
+      quietStartMin: (minute + 1435) % 1440,
+      quietEndMin: (minute + 55) % 1440).save();
+    expect(await schedule(), isFalse);
+    expect(calls.where((c) => c.method == 'zonedSchedule'), isEmpty);
+    await const NotificationPrefs(quietEnabled: false).save();
+    final sp = await SharedPreferences.getInstance();
+    await sp.setString('expected_sleep_schedule_v1',
+      '{"onsetMinute":$minute,"wakeMinute":${(minute + 60) % 1440}}');
+    expect(await schedule(), isFalse);
+    expect(calls.where((c) => c.method == 'zonedSchedule'), isEmpty);
+    await sp.remove('expected_sleep_schedule_v1');
+    expect(await schedule(), isTrue);
+    expect(calls.where((c) => c.method == 'zonedSchedule'), hasLength(1));
   });
   test(
     'real OS scheduler omits sleeping water times and retains awake slots',

@@ -1043,8 +1043,6 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// band is blamed only when it refused or never answered.
   @visibleForTesting
   static String userBuzzFailureMessage(String? reason) => switch (reason) {
-        'channelSuppressed' =>
-          'The buzz was held back by quiet hours or sleep settings.',
         'bandUnavailable' => 'Connect your band first.',
         'stale' => 'The buzz took too long to start. Try again.',
         'deliveryUnconfirmed' =>
@@ -7709,7 +7707,8 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
           ? own
           : alarmSequenceFromNotes(notes.join(' '), id: systemPatternId(slot));
     }
-    final now = DateTime.now();
+    // Source time and the dispatcher's freshness check share one clock.
+    final now = _wakeNow();
     final reAlarm = slot == kAlarmReAlarmKey;
     // The chain this belongs to: once it ends (switched off, Cancel-all,
     // unpaired) a job still waiting in the band queue is dropped, never written.

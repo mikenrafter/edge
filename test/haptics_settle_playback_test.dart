@@ -12,7 +12,7 @@
 // before it stopped. The stored runtime (`bakedRuntimeMs`, the estimator
 // `bakedRuntimeMsFor` reads) was never consulted for the hold.
 
-import 'package:fake_async/fake_async.dart';
+import 'support/band_handoff.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_edge/haptics/band_queue.dart';

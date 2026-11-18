@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../data/db.dart';
 import '../haptics/band_queue.dart' show BandHold, kBandHoldKey, kAlertHandoffKey;
 import 'alert_rule.dart';
+import 'alert_policy.dart';
 import 'buzz_sequence.dart';
 
 /// Ownership is persisted before a transport runs. Failed targets release their
@@ -150,9 +151,10 @@ class AlertDispatcher {
     // needs. Never shorter than the default.
     Duration? bandTimeout,
     // The rule's own [AlertRule.fallback] decides whether anything covers an
-    // unavailable destination: [AlertFallback.none] means nothing does. Off
-    // (the default), the global [fallbackDestination] covers every rule. The
-    // relay turns it on, since its fallback is a per-channel user switch.
+    // unavailable destination: phoneIfBandUnavailable chooses the phone and
+    // none chooses nothing. Otherwise the global [fallbackDestination] decides.
+    // Session cues never take alert fallback. The relay turns this on because
+    // fallback is a per-channel user switch.
     bool ruleDecidesFallback = false,
     // Set only by the retry below: the band already refused this event, so it
     // counts as unavailable even though it is still connected.
@@ -192,7 +194,12 @@ class AlertDispatcher {
         supportedPhoneModes: supportedPhoneModes);
     }
     Future<String?> configuredFallback() async {
-      if (ruleDecidesFallback && typed.fallback == AlertFallback.none) return null;
+      // Session cues are skipped deliberately when they cannot play now.
+      if (AlertPolicy.isSessionCue(typed)) return null;
+      if (ruleDecidesFallback) {
+        return typed.fallback == AlertFallback.phoneIfBandUnavailable
+            ? 'phone' : null;
+      }
       return await fallbackDestination?.call() ??
           (typed.fallback == AlertFallback.phoneIfBandUnavailable ? 'phone' : null);
     }
@@ -248,7 +255,7 @@ class AlertDispatcher {
         }
         if (!await permit()) {
           if (target == 'band' && unavailable(target) != null) bandRefused = true;
-          reason ??= 'channelSuppressed';
+          reason ??= unavailable(target) ?? 'channelSuppressed';
           continue;
         }
         Future<T> guarded<T>(Future<T> Function() work) => runZoned(work,
@@ -345,12 +352,14 @@ class AlertDispatcher {
     if (delivered.isEmpty && bandRefused) {
       final fallback = await configuredFallback();
       if (fallback != null && !selected.contains(fallback) && unavailable(fallback) == null) {
-        return dispatch(typed.copyWith(destinations: fallback == 'phone' ? 1 : 2),
+        final retry = await dispatch(typed.copyWith(destinations: fallback == 'phone' ? 1 : 2),
           eventId: eventId, sourceTime: sourceTime, historical: historical,
           phoneTransport: phoneTransport, bandTransport: bandTransport,
           bandDelivery: bandDelivery, transportTargets: transportTargets,
           targetAllowed: targetAllowed, bandTimeout: bandTimeout,
           ruleDecidesFallback: ruleDecidesFallback, bandRefusedThisEvent: true);
+        return retry.targets.isNotEmpty ? retry
+            : AlertDeliveryOutcome(retry.targets, reason ?? retry.suppressionReason);
       }
     }
     return AlertDeliveryOutcome(delivered, reason);

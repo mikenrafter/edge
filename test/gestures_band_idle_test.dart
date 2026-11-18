@@ -19,8 +19,8 @@
 //
 // Failure mode today: HapticsService has no `whenIdle`.
 
+import 'support/band_handoff.dart';
 import 'package:clock/clock.dart';
-import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/haptics/gesture_cues.dart';
 import 'package:openstrap_edge/haptics/haptics_service.dart';

@@ -15,10 +15,10 @@
 //
 // Times are fake (fake_async): the queue reads `clock`, never DateTime.now.
 
+import 'support/band_handoff.dart';
 import 'dart:async';
 
 import 'package:clock/clock.dart';
-import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/haptics/band_queue.dart';
 import 'package:openstrap_edge/notify/alert_dispatcher.dart';

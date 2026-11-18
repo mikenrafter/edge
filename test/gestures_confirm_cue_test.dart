@@ -16,9 +16,9 @@
 // The assigned pattern's sequence for each gesture cue key, else the cue's
 // own built-in in the store (as customised), else absent.
 
+import 'support/band_handoff.dart';
 import 'dart:io';
 
-import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/pattern_transcript.dart';
 import 'package:openstrap_edge/haptics/builtin_patterns.dart';

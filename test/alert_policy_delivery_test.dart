@@ -1,3 +1,4 @@
+import 'support/band_handoff.dart' show withBandHandoff;
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -126,8 +127,8 @@ void main() {
   test('queued band writes recheck after waiting and between commands', () async {
     final queue = BandHapticQueue(ledger: BandCommandLedger());
     final release = Completer<void>();
-    final first = queue.run((_) async { await release.future; return BuzzDelivery.complete; },
-      commands: 0, timeout: const Duration(seconds: 10), settle: Duration.zero);
+    final first = withBandHandoff(() => queue.run((_) async { await release.future; return BuzzDelivery.complete; },
+      commands: 0, timeout: const Duration(seconds: 10), settle: Duration.zero));
     var allowed = true, writes = 0;
     final dispatcher = AlertDispatcher(phone: () async => false,
       band: () async => false, isConnected: () => true,

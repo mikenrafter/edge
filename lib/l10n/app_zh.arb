@@ -2411,7 +2411,7 @@
   "settingsBuzzOnAppNotificationsRowSub": "选择哪些手机应用的通知会触发手环振动",
   "settingsGroupQuietHours": "免打扰时段",
   "settingsQuietHoursRowTitle": "免打扰时段",
-  "settingsQuietHoursRowSub": "大多数提醒会等到此时段结束后再发出",
+  "settingsQuietHoursRowSub": "仅允许闹钟、用药和唤醒提醒",
   "settingsQuietHoursStartsRowTitle": "开始时间",
   "settingsQuietHoursEndsRowTitle": "结束时间",
   "settingsFallbackRowTitle": "无法送达时，改发送到",

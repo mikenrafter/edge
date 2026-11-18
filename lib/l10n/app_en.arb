@@ -12160,7 +12160,7 @@
   "@settingsQuietHoursRowTitle": {
     "description": "Settings row title toggling quiet hours"
   },
-  "settingsQuietHoursRowSub": "Most alerts wait until this window ends",
+  "settingsQuietHoursRowSub": "Only alarms, medication and wake alerts come through",
   "@settingsQuietHoursRowSub": {
     "description": "Settings row subtitle for the quiet-hours toggle"
   },

@@ -15,8 +15,8 @@
 // The screen control is pinned in haptic_command_limit_ui_test.dart and the
 // AppState wiring in gesture_haptic_budget_wiring_test.dart.
 
+import 'support/band_handoff.dart';
 import 'package:clock/clock.dart';
-import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/haptics/band_queue.dart';
 import 'package:openstrap_edge/haptics/haptics_service.dart';

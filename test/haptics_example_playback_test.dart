@@ -6,9 +6,9 @@
 //  3. explicit phase/branch gaps, separate from the patterns' own lengths.
 // Time is fake (fake_async); nothing sleeps.
 
+import 'support/band_handoff.dart';
 import 'dart:async';
 
-import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/haptics/example_playback.dart';
 import 'package:openstrap_edge/haptics/haptic_profile.dart';

@@ -20,6 +20,7 @@
 // sequence straight through `app.haptics.deliver`, so no vibration bytes are
 // hard-coded here.
 
+import '../../support/band_handoff.dart' show withBandHandoff;
 import 'dart:async';
 
 import 'package:flutter/services.dart';
@@ -73,7 +74,7 @@ Future<void> _fromTasker(String method, Object? args) {
 /// service, measured once on [r] (and cleared).
 Future<List<String>> _measure(GestureRig r, BuzzSequence seq) async {
   r.writes.clear();
-  await r.app.haptics.deliver(seq);
+  await withBandHandoff(() => r.app.haptics.deliver(seq));
   await r.app.haptics.whenIdle();
   final out = _haptic(r);
   r.writes.clear();

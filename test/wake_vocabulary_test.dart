@@ -28,9 +28,9 @@
 // The AppState wiring and the Alarm caption are in
 // wake_vocabulary_wiring_test.dart.
 
+import 'support/band_handoff.dart';
 import 'dart:io';
 
-import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/haptics/haptic_profile.dart';
 import 'package:openstrap_edge/haptics/haptics_service.dart';

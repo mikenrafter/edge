@@ -5642,7 +5642,7 @@
   "settingsBuzzOnAppNotificationsRowSub": "Выберите приложения телефона, вызывающие вибрацию браслета",
   "settingsGroupQuietHours": "Тихие часы",
   "settingsQuietHoursRowTitle": "Тихие часы",
-  "settingsQuietHoursRowSub": "Большинство оповещений ждут окончания этого промежутка",
+  "settingsQuietHoursRowSub": "Проходят только будильники, напоминания о лекарствах и сигналы пробуждения",
   "settingsQuietHoursStartsRowTitle": "Начало",
   "settingsQuietHoursEndsRowTitle": "Конец",
   "settingsFallbackRowTitle": "Если недоступно, отправить на",

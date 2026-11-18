@@ -2502,7 +2502,7 @@
   "settingsBuzzOnAppNotificationsRowSub": "Wähle, welche Apps das Band vibrieren lassen",
   "settingsGroupQuietHours": "Ruhezeiten",
   "settingsQuietHoursRowTitle": "Ruhezeiten",
-  "settingsQuietHoursRowSub": "Die meisten Hinweise warten, bis das Zeitfenster endet",
+  "settingsQuietHoursRowSub": "Nur Alarme, Medikamenten- und Weckhinweise kommen durch",
   "settingsQuietHoursStartsRowTitle": "Beginnt",
   "settingsQuietHoursEndsRowTitle": "Endet",
   "settingsFallbackRowTitle": "Wenn nicht verfügbar, senden an",

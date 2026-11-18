@@ -53,7 +53,8 @@ String relayChannelOf(Object? category) => switch (category) {
 };
 
 /// One channel's policy. Defaults: apps relay when the feature is on; alarms and
-/// calls are opt-in; Do Not Disturb, vibrate and silent are all respected.
+/// calls are opt-in. Alarms pass Do Not Disturb by default; other channels
+/// respect it. Vibrate is included and silent is excluded.
 class ChannelConfig {
   const ChannelConfig({
     this.enabled = false,
@@ -71,7 +72,7 @@ class ChannelConfig {
   });
   /// Apps relay once the feature is on; alarms and calls are opt-in.
   factory ChannelConfig.forChannel(String name) =>
-      ChannelConfig(enabled: name == 'apps');
+      ChannelConfig(enabled: name == 'apps', allowDuringDnd: name == 'alarms');
 
   final bool enabled, matchHaptics, allowDuringDnd, includeVibrate;
   final bool includeSilent, phoneFallback;
@@ -79,8 +80,8 @@ class ChannelConfig {
   final int? quietStartMinute, quietEndMinute;
 
   /// True: this channel's own Starts and Ends decide its quiet hours (both
-  /// null means none). False: it follows the global quiet hours from Alerts,
-  /// and any stored times are kept but not used.
+  /// null means none). False: apps and calls follow the global quiet hours;
+  /// alarms pass them. Stored times are kept but not used.
   final bool overrideQuietHours;
 
   /// The channel's own buzz rhythm; null takes the relay rule's default.
@@ -384,7 +385,8 @@ class RelayController {
       if (env['onlyWhileWorn'] == true && env['worn'] != 'worn') {
         return 'notWorn';
       }
-      // The channel's own window when it overrides, else the global one.
+      // Alarm band delivery passes global quiet hours (owner, 2026-11-18),
+      // while an explicit channel override still holds it.
       final bool quiet;
       final int? start, end;
       if (cfg.overrideQuietHours) {
@@ -394,7 +396,7 @@ class RelayController {
       } else {
         start = env['quietStartMin'] as int?;
         end = env['quietEndMin'] as int?;
-        quiet = env['quietEnabled'] == true;
+        quiet = channel != 'alarms' && env['quietEnabled'] == true;
       }
       if (quiet && start != null && end != null) {
         final now = DateTime.fromMillisecondsSinceEpoch(atMs);
@@ -839,6 +841,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
       sourceTime: now,
       ruleId: 'relay',
       phoneOnly: true,
+      ruleDecidesFallback: true,
     );
   }
 

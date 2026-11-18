@@ -15,6 +15,7 @@
 //
 // Real AppState, engine, haptics queue and stores on the rig.
 
+import '../support/band_handoff.dart' show withBandHandoff;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/haptics/builtin_patterns.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
@@ -44,7 +45,7 @@ void main() {
 
   /// The app asks for a plain cue now (a held one waits in the band queue).
   Future<BuzzDelivery> requestCue() =>
-      rig.app.gestureCues.slot(kGestureConfirmKey);
+      withBandHandoff(() => rig.app.gestureCues.slot(kGestureConfirmKey));
 
   Future<void> tick() async {
     await rig.app.debugKeepAliveTick();

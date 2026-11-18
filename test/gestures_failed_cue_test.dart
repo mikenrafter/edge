@@ -28,9 +28,9 @@
 // Failure mode today: no such key, slot or method; the failure buzz is a
 // fixed engine call.
 
+import 'support/band_handoff.dart';
 import 'dart:io';
 
-import 'package:fake_async/fake_async.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/haptics/builtin_patterns.dart';

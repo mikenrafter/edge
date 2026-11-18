@@ -15,10 +15,10 @@
 //
 // Times are fake (fake_async): the queue reads `clock`, never DateTime.now.
 
+import 'support/band_handoff.dart';
 import 'dart:async';
 
 import 'package:clock/clock.dart';
-import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/hardware_probe_runner.dart';
 import 'package:openstrap_edge/gestures/lab_log.dart';
@@ -777,7 +777,8 @@ void main() {
               settle: Duration.zero);
         },
       );
-      expect(await r.controller.buzz([0, 200, 100, 200]), isTrue);
+      expect(await withBandHandoff(
+          () => r.controller.buzz([0, 200, 100, 200])), isTrue);
       expect(jobs, [2]);
       expect(engine, ['buzz', 'buzz']);
       expect(ledger.commandsLeft(clock.now()), 28);

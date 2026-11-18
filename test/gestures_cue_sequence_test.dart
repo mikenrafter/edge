@@ -16,7 +16,7 @@
 //   Future<BuzzDelivery> confirm()      (as today)
 //   response(int) is removed.
 
-import 'package:fake_async/fake_async.dart';
+import 'support/band_handoff.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/haptics/gesture_cues.dart';
 import 'package:openstrap_edge/haptics/haptic_profile.dart';

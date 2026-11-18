@@ -11925,7 +11925,7 @@
   "@settingsQuietHoursRowTitle": {
     "description": "Settings row title toggling quiet hours"
   },
-  "settingsQuietHoursRowSub": "การแจ้งเตือนส่วนใหญ่จะรอจนสิ้นสุดช่วงเวลานี้",
+  "settingsQuietHoursRowSub": "เฉพาะนาฬิกาปลุก การเตือนกินยา และการเตือนให้ตื่นเท่านั้นที่จะส่งเข้ามา",
   "@settingsQuietHoursRowSub": {
     "description": "Settings row subtitle for the quiet-hours toggle"
   },

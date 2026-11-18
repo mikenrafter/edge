@@ -78,12 +78,16 @@ void main() {
       } else {
         await saveQuietNow({'relay': rule});
       }
+      final prefs = await NotificationPrefs.load();
       final c = RelayController(
         dispatcher: production(phone: () async { cards++; return true; }),
         buzz: (_) async { buzzes++; return true; },
         phone: () async { cards++; return true; },
         nowMs: () => DateTime.now().millisecondsSinceEpoch,
-        policy: (_) => {'enabled': true, 'packages': ['app']},
+        policy: (_) => {'enabled': true, 'packages': ['app'],
+          'quietEnabled': prefs.quietEnabled,
+          'quietStartMin': prefs.quietStartMin,
+          'quietEndMin': prefs.quietEndMin},
       );
       addTearDown(c.dispose);
       for (final name in ['apps', 'alarms', 'calls']) {
@@ -208,7 +212,7 @@ void main() {
 
     test('a refusal names its real reason, not the band', () {
       String msg(String? r) => AppState.userBuzzFailureMessage(r);
-      expect(msg('channelSuppressed'), contains('quiet hours'));
+      expect(msg('channelSuppressed'), isNot(contains('quiet hours')));
       expect(msg('bandUnavailable'), contains('Connect'));
       expect(msg('stale'), isNot(contains('did not take')));
       expect(msg('transportUnavailable'), isNot(contains('did not take')));
@@ -239,7 +243,10 @@ void main() {
     });
 
     test('the quiet-hours subtitle no longer says nothing buzzes', () {
-      expect(arb('en')['settingsQuietHoursRowSub'], isNot(contains('Nothing')));
+      expect(arb('en')['settingsQuietHoursRowSub'],
+          'Only alarms, medication and wake alerts come through');
+      expect(arb('es')['settingsFallbackBand'], 'Banda');
+      expect(arb('hi')['settingsFallbackBand'], 'बैंड');
       for (final code in ['de', 'es', 'fr', 'hi', 'ru', 'th', 'zh']) {
         expect(arb(code)['settingsQuietHoursRowSub'],
             isNot(arb('en')['settingsQuietHoursRowSub']),

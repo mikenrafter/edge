@@ -575,8 +575,8 @@ class NotificationService {
   ///  - journal prompt (idJournalLog) and morning brief (idMorningBrief) at the
   ///    wearer's chosen times: system nudges, skipped like the rest;
   ///  - weekly recap, evening brief, alarm night check, experiment slots
-  ///    (idExperimentBase band): the 'reminders' rule, skipped (experiment
-  ///    reminders are an open question for the owner).
+  ///    (idExperimentBase band): system nudges using the 'reminders' rule,
+  ///    skipped inside the window (owner confirmed 2026-11-18).
   Future<bool> _slotAllowed(int id, DateTime at) async {
     if (isMedSlot(id) || id == idSnoozeBackstop) return true;
     final prefs = await NotificationPrefs.load();
