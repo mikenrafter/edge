@@ -15,7 +15,11 @@ import 'assumed_water.dart';
 import 'water_moment.dart';
 import '../gestures/moment_follow_ups.dart';
 import '../gestures/moment_review_queue.dart';
+import 'sleep_block_writer.dart';
+import 'sleep_draft_fence.dart';
+import 'sleep_editor_write.dart';
 import 'sleep_editor.dart';
+import 'sleep_spacing.dart';
 import '../gestures/moment_review_apply.dart';
 import '../gestures/moment_review_range.dart';
 import '../platform/tasker_moment_export.dart';
@@ -37,6 +41,7 @@ import 'circadian_artifact.dart';
 import 'bundle_store.dart';
 import 'json_payload_lane.dart';
 import 'day_label.dart';
+import 'effect_work.dart' show InlineTransactionWork;
 import 'db.dart';
 import 'sleep_edit_store.dart';
 import 'read_paused.dart';
@@ -140,7 +145,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<void> confirmActivity(ActivitySuggestion suggestion, {
-    int? startTs, int? endTs, String? workoutType, NapResolution? expected,
+    int? startTs, int? endTs, String? workoutType, SleepMergeAuthorization? merge,
   }) async {
     final start = startTs ?? suggestion.startTs;
     final end = endTs ?? suggestion.endTs;
@@ -160,7 +165,7 @@ class LocalRepositoryImpl extends LocalRepository {
         final res = await ActivityStore(await LocalDb.instance).confirm(suggestion,
           startTs: start, endTs: end,
           edited: start != suggestion.startTs || end != suggestion.endTs,
-          expectedNap: expected);
+          merge: merge);
         // The fork can extend a main sleep instead of creating a separate nap.
         final main = res?.extended.where((b) => b.kind == 'main_sleep').lastOrNull;
         if (main != null) await mainSleepListener?.mainSleepExtended(main.day);
@@ -308,9 +313,19 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   @override
-  Future<NapResolution> resolveNapKeep(int startTs, int endTs) async {
-    _focusCheck('resolveNapKeep');
-    return NapResolver.resolve(await LocalDb.instance, startTs, endTs);
+  Future<SleepMergeProposal?> proposeNapKeep(int startTs, int endTs) async {
+    _focusCheck('proposeNapKeep');
+    final day = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(startTs * 1000));
+    return SleepBlockWriter.preflight(
+      await LocalDb.instance,
+      changes: [
+        BlockChange(
+          after: SleepBlock(
+              kind: SleepBlockKind.nap, day: day, startTs: startTs, endTs: endTs),
+        ),
+      ],
+      editingDay: day,
+    );
   }
 
   @override
@@ -2136,14 +2151,107 @@ class LocalRepositoryImpl extends LocalRepository {
   });
 
   @override
-  @override
-  Future<SleepEditorRead> readSleepEditor(String dayId) async => SleepEditorRead(
-      dayId: dayId, entries: const [], revision: null, draftGeneration: 0);
+  Future<SleepEditorRead> readSleepEditor(String dayId) async {
+    _focusCheck('readSleepEditor');
+    final db = await LocalDb.instance;
+    final generation = SleepDraftFence.shared.generationOf(dayId);
+    final dayStart = localDayStartSec(dayId) ?? 0;
+    final dayEnd = localDayEndSec(dayId) ?? dayStart + 86400;
+    final entries = <SleepEditorEntry>[];
+
+    Future<SleepEditorEntry> entry(StoredSleepRow row) async {
+      final h = await SleepBlockWriter.historyOf(row);
+      return SleepEditorEntry(
+        ref: SleepEntryRef(
+          kind: row.kind,
+          day: row.day,
+          startTs: row.kind == SleepBlockKind.nap ? row.startTs : null,
+          expectedEndTs: row.endTs,
+          expectedSource: row.source,
+        ),
+        startTs: row.startTs,
+        endTs: row.endTs,
+        provenance: switch (row.source) {
+          'manual' => SleepEntryProvenance.manual,
+          'confirmed' => SleepEntryProvenance.confirmed,
+          'legacy' => SleepEntryProvenance.retained,
+          'rejected' => h.retained['source'] == 'confirmed' ||
+                  h.retained['source'] == 'legacy'
+              ? SleepEntryProvenance.confirmed
+              : SleepEntryProvenance.manual,
+          _ => SleepEntryProvenance.unknown,
+        },
+        history: h.envelope.detected,
+        removed: row.source == 'rejected',
+      );
+    }
+
+    // Main: the override row when there is one, else the served automatic one.
+    final main = await SleepBlockWriter.mainRow(db, dayId);
+    if (main != null) {
+      entries.add(await entry(main));
+    } else {
+      final auto = (await SleepBlockWriter.liveNear(db, dayStart, dayEnd))
+          .where((b) => b.kind == SleepBlockKind.main && b.day == dayId)
+          .firstOrNull;
+      if (auto != null) {
+        entries.add(SleepEditorEntry(
+          ref: SleepEntryRef(
+            kind: SleepBlockKind.main,
+            day: dayId,
+            expectedEndTs: auto.endTs,
+            expectedSource: 'automatic',
+          ),
+          startTs: auto.startTs,
+          endTs: auto.endTs,
+          provenance: SleepEntryProvenance.automatic,
+          history: DetectedKnown(
+              startTs: auto.startTs, endTs: auto.endTs, sourceDay: dayId),
+          removed: false,
+        ));
+      }
+    }
+    for (final r in await db.query('sleep_nap',
+        where: 'day_id = ?', whereArgs: [dayId], orderBy: 'start_ts')) {
+      final row = await SleepBlockWriter.napRow(db, dayId, r['start_ts'] as int);
+      if (row != null) entries.add(await entry(row));
+    }
+    final jobs = await db.query('sleep_edit_job',
+        columns: ['revision'], where: 'day_id = ?', whereArgs: [dayId]);
+    final own = {for (final e in entries) e.ref.key};
+    return SleepEditorRead(
+      dayId: dayId,
+      entries: entries,
+      revision: jobs.isEmpty ? null : jobs.single['revision'] as int,
+      draftGeneration: generation,
+      neighbors: [
+        for (final b in await SleepBlockWriter.liveNear(db, dayStart, dayEnd))
+          if (!own.contains(b.key)) b,
+      ],
+    );
+  }
 
   @override
-  Future<SleepEditorOutcome> saveSleepEditor(SleepEditorPlan plan) async =>
-      const SleepRefused(SleepRefusalReason.unsupportedSource);
+  Future<SleepEditorOutcome> saveSleepEditor(SleepEditorPlan plan) async {
+    _focusCheck('saveSleepEditor');
+    try {
+      final db = await LocalDb.instance;
+      return await LocalDb.timedTransaction(
+        db,
+        'sleep edit receipt',
+        InlineTransactionWork(
+          (txn) => SleepEditorWrite.apply(plan, transaction: txn),
+        ),
+      );
+    } on SleepMergeRequiredException catch (e) {
+      return SleepRefused(SleepRefusalReason.mergeRequired,
+          proposal: e.proposal);
+    } catch (e) {
+      return SleepFailed(e);
+    }
+  }
 
+  @override
   Future<Map<String, dynamic>> getDayNaps(String date) => ReadPerf.reading('getDayNaps', () async {
     _focusCheck('getDayNaps');
     // THE EXACT DAY, never the latest-complete fallback: this list is editable,

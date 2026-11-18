@@ -53,30 +53,73 @@ class MomentReviewService extends ChangeNotifier {
   /// kept for this session but may be lost if the app closes.
   bool get persistFailed => _persistFailed;
 
-  // ── Session-only sleep editor drafts (phase 2 stubs) ─────────────────────
+  // ── Session-only sleep editor drafts ──────────────────────────────────────
+  //
+  // Per-day plans staged by the editor. They live only for this app session
+  // (S3): Back keeps them, Cancel clears one, a kill loses them, and exports
+  // never carry them. CLAIM(timeline-draft-lifetime).
 
-  /// The staged editor plan for [dayId], if any, and the generation it must
-  /// still match. STUB: always empty.
-  SleepEditorDraftRead readSleepEditorDraft(String dayId) =>
-      SleepEditorDraftRead(null, 0);
+  final Map<String, SleepEditorPlan> _sleepDrafts = {};
 
-  /// STUB: keeps nothing.
-  void stageSleepEditorDraft(String dayId, SleepEditorPlan plan) {}
+  /// The staged editor plan for [dayId], if any, with the generation it must
+  /// still match; a plan built under an older generation stays readable so the
+  /// route can say why it cannot Save.
+  SleepEditorDraftRead readSleepEditorDraft(String dayId) => SleepEditorDraftRead(
+      _sleepDrafts[dayId], SleepDraftFence.shared.generationOf(dayId));
 
-  /// STUB: nothing to cancel.
-  void cancelSleepEditorDraft(String dayId) {}
+  void stageSleepEditorDraft(String dayId, SleepEditorPlan plan) {
+    _sleepDrafts[dayId] = plan;
+    _revision++;
+    notifyListeners();
+  }
 
-  /// STUB: clears nothing.
-  void clearDayDrafts(Set<String> dayIds) {}
+  void cancelSleepEditorDraft(String dayId) {
+    if (_sleepDrafts.remove(dayId) != null) {
+      _revision++;
+      notifyListeners();
+    }
+  }
 
-  /// STUB: clears nothing.
-  void clearAllDrafts() {}
+  /// Delete day: drops the days' editor drafts and queued choices, and advances
+  /// their generation so a plan an open route still holds is refused at commit.
+  void clearDayDrafts(Set<String> dayIds) {
+    SleepDraftFence.shared.advanceDays(dayIds);
+    for (final d in dayIds) {
+      _sleepDrafts.remove(d);
+    }
+    _set(_queue.withoutDays(dayIds));
+    unawaited(_persist());
+  }
+
+  /// Delete everything: every draft and choice goes, the dataset generation
+  /// advances.
+  void clearAllDrafts() {
+    SleepDraftFence.shared.advanceDataset();
+    _sleepDrafts.clear();
+    _set(_queue.recoveryOnly);
+    unawaited(_persist());
+  }
+
+  /// After an import replaced data: drafts stay (stale ones say why and cannot
+  /// Save), the dataset generation advances and any imported queue is ignored.
+  void datasetImported() {
+    SleepDraftFence.shared.advanceDataset();
+    reload();
+    notifyListeners();
+  }
 
   /// Re-reads the stored queue (unless a Save is running, whose in-memory
   /// queue is the newer truth). Quiet: it does not notify.
   void reload() {
     if (saving) return;
-    _queue = store.load();
+    // Choices live only in this session's memory; storage holds only Saves that
+    // already started. Adopt a stored in-progress range this session does not
+    // know (a restart, or another service's progress), keep everything else.
+    var q = _queue;
+    for (final r in store.load().ranges) {
+      if (!q.ranges.any((x) => x.sameDecision(r))) q = q.withRangeProgress(r);
+    }
+    _queue = q;
     _revision++;
   }
 

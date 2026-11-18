@@ -332,9 +332,14 @@ class SleepEditorRead {
     required this.entries,
     required this.revision,
     required this.draftGeneration,
+    this.neighbors = const [],
   });
   final String dayId;
   final List<SleepEditorEntry> entries;
+
+  /// Live blocks owned by OTHER days near this day's span: read-only context
+  /// that still takes part in spacing validation.
+  final List<SleepBlock> neighbors;
 
   /// `sleep_edit_job.revision` of [dayId]; null when the day has no job row.
   final int? revision;

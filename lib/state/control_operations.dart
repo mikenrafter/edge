@@ -979,6 +979,10 @@ class SleepCoordinator extends ChangeNotifier {
           // timeout. A late DB write must never overwrite a subsequent edit.
           finish(await work());
         }
+      } on SleepMergeRequiredException catch (e) {
+        // A prompt for the route (Merge or Cancel), not an app-level failure.
+        finish(SleepOperationResult(
+            success: false, error: '$e', mergeProposal: e.proposal));
       } catch (e) {
         finish(SleepOperationResult(success: false, error: '$e'), retainFailure: true);
       } finally {

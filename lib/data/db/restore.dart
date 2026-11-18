@@ -1190,6 +1190,13 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       }
     }
     final counts = <String, int>{};
+    // The local sleep assertions as they stand BEFORE any table copies: local
+    // wins, and spacing is judged against this frozen set only (never against
+    // rows this same import already wrote).
+    final sleepPre = order.contains('sleep_nap') || order.contains('sleep_override')
+        ? await SleepImportRules.freeze(db)
+        : null;
+    final sleepNotes = <SleepImportEntry>[];
     // DISTINCT DAYS ACTUALLY WRITTEN — the number the caller reports as
     // "N days imported".
     //
@@ -1682,6 +1689,11 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                 ) ??
                 0;
             final cleanupWatch = Stopwatch()..start();
+    // The report outlives the import screen. A resumed run adds to what the
+    // interrupted one already listed.
+    if (sleepPre != null) {
+      await SleepImportReport.save(sleepNotes, unionWithStored: resumed);
+    }
             if (spanTable) await endBulkSpans(txn, spanFrom);
             copied += chunkCopied;
             lastChunkCopied = chunkCopied;
@@ -2229,12 +2241,16 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                     continue;
                   }
                 }
-                if (t == 'sleep_nap') {
-                  final local = await txn.query('sleep_nap',
-                    where: 'start_ts < ? AND end_ts > ? AND created_at >= ?',
-                    whereArgs: [row['end_ts'], row['start_ts'], row['created_at']]);
-                  // A newer local correction has already answered this window.
-                  if (local.isNotEmpty) continue;
+                if ((t == 'sleep_nap' || t == 'sleep_override') && sleepPre != null) {
+                  // LOCAL WINS (owner S7): a differing local row keeps its
+                  // columns and payload together, whichever created_at is
+                  // newer; identical rows skip silently; refusals are listed.
+                  final v = SleepImportRules.judge(t, row, sleepPre);
+                  if (v == SleepImportVerdict.refuseConflict ||
+                      v == SleepImportVerdict.refuseOverlap) {
+                    sleepNotes.add(SleepImportRules.refusal(t, row, v));
+                  }
+                  if (v != SleepImportVerdict.copy) continue;
                 }
                 if (edited != null) {
                   final key = editKey(row);
@@ -2613,6 +2629,23 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           } on DatabaseException {
             /* the export lacks that table */
           }
+        }
+      }
+      if (sleepPre != null) {
+        try {
+          final srcNaps = await src.query('sleep_nap');
+          final srcOverrides = await src.query('sleep_override');
+          sleepNotes.addAll(SleepImportRules.closePairs(
+            srcNaps: srcNaps,
+            srcOverrides: srcOverrides,
+            pre: sleepPre,
+            refused: {
+              for (final n in sleepNotes)
+                if (n.refused) SleepImportRules.refusedId(n),
+            },
+          ));
+        } on DatabaseException {
+          /* the export lacks one of the sleep tables: nothing to list */
         }
       }
       restoreFailed = false;

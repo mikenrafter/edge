@@ -88,16 +88,6 @@ void main() {
         'payload_json': payload,
       });
 
-  Future<void> rawMain(int s, int e,
-          {String day = _day, String source = 'manual'}) =>
-      db.insert('sleep_override', {
-        'day_id': day,
-        'onset_ts': s,
-        'offset_ts': e,
-        'source': source,
-        'created_at': _a0,
-      });
-
   group('CLAIM(sleep-block-separation) every caller has a defined refusal',
       () {
     // WHY: an opt-in auto-log must never extend or insert a window behind the
@@ -290,30 +280,45 @@ void main() {
       expect(live, hasLength(1));
       expect(live.single['start_ts'], _a0);
       expect(live.single['end_ts'], _a0 + 100 * _min);
-      expect((await db.query('sleep_nap', where: "source = 'rejected'")),
-          isNotEmpty,
-          reason: 'the absorbed block is suppressed, not duplicated');
     });
 
-    // WHY: the connected set is TRANSITIVE: A and C are each 25 minutes from B,
-    // so merging B pulls all three into one block.
-    test('a transitive chain merges once', () async {
+    // WHY: the connected set is TRANSITIVE: the new block is 25 minutes from
+    // A and 25 minutes from C, so approving the merge pulls both in, keeps A as
+    // the survivor (earliest nap), tombstones C naming A, and leaves ONE live
+    // union. Catches a merge that duplicates blocks or forgets the chain.
+    test('a transitive chain merges once and tombstones the absorbed block',
+        () async {
       await rawNap(_a0, _a0 + 30 * _min);
-      await rawNap(_a0 + 100 * _min, _a0 + 130 * _min); // 70 min from A: apart
+      await rawNap(_a0 + 100 * _min, _a0 + 130 * _min);
       SleepMergeProposal? proposal;
       try {
         await LocalDb.putNapEdit(
             dayId: _day,
-            startTs: _a0 + 55 * _min, // 25 min after A, 45 min before C
+            startTs: _a0 + 55 * _min,
             endTs: _a0 + 75 * _min,
             source: 'manual');
       } on SleepMergeRequiredException catch (e) {
         proposal = e.proposal;
       }
       expect(proposal, isNotNull);
-      expect(proposal!.participants, hasLength(2),
-          reason: 'C is 25 min after the new block: gap 100-75 = 25');
+      expect(proposal!.participants, hasLength(2));
+      expect(proposal.survivor.startTs, _a0);
       expect(proposal.endTs, _a0 + 130 * _min);
+      await LocalDb.putNapEdit(
+          dayId: _day,
+          startTs: _a0 + 55 * _min,
+          endTs: _a0 + 75 * _min,
+          source: 'manual',
+          merge: proposal.authorization);
+      final live = await db.query('sleep_nap', where: "source != 'rejected'");
+      expect(live, hasLength(1));
+      expect((live.single['start_ts'], live.single['end_ts']),
+          (_a0, _a0 + 130 * _min));
+      final gone = (await db.query('sleep_nap', where: "source = 'rejected'")).single;
+      expect(gone['start_ts'], _a0 + 100 * _min);
+      final env = await SleepEditCodec.read(gone['payload_json'] as String?);
+      expect((env as EnvelopeOk).envelope.origin.mergedInto, 'nap:$_day:$_a0');
+      expect(await db.query('sleep_edit_job'), isNotEmpty);
     });
 
     // WHY: a block that arrived after the person chose Merge must not be
@@ -382,7 +387,7 @@ void main() {
       );
       final text = await SleepEditCodec.write(
           {'duration_min': 47, 'confidence': 0.6}, env);
-      final json = jsonDecode(text!) as Map;
+      final json = jsonDecode(text) as Map;
       expect(json['duration_min'], 47);
       expect(json['confidence'], 0.6);
       final back = await SleepEditCodec.read(text);

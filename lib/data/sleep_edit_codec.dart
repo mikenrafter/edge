@@ -89,9 +89,12 @@ class SleepEditCodec {
               if (measures.isNotEmpty) 'measures': measures,
             },
           DetectedAbsent() => {'state': 'absent'},
-          // Unavailable is a READ state; writing it would invent history.
-          DetectedUnavailable() => throw StateError(
-              'cannot store unavailable history'),
+          // A merged block whose participants lacked a detection: stored as an
+          // explicit "unknown", so Reset stays disabled with the reason.
+          DetectedUnavailable(:final reason) => {
+              'state': 'unknown',
+              'reason': reason,
+            },
         },
         if (envelope.stages != null)
           'stages': {
@@ -105,8 +108,9 @@ class SleepEditCodec {
     return text;
   }
 
-  static const Object _none = Object();
-  static const Object _bad = Object();
+  // Distinct classes: two `const Object()` would be the SAME canonical instance.
+  static const Object _none = _Absent();
+  static const Object _bad = _Invalid();
 
   static bool _interval(Object? s, Object? e) =>
       s is int && e is int && s > 0 && e > s;
@@ -116,6 +120,9 @@ class SleepEditCodec {
     switch (raw['state']) {
       case 'absent':
         return const DetectedAbsent();
+      case 'unknown':
+        final why = raw['reason'];
+        return DetectedUnavailable(why is String ? why : 'history unavailable');
       case 'known':
         final day = raw['day'];
         if (!_interval(raw['start'], raw['end']) || day is! String) return null;
@@ -166,4 +173,12 @@ class SleepEditCodec {
       },
     );
   }
+}
+
+class _Absent {
+  const _Absent();
+}
+
+class _Invalid {
+  const _Invalid();
 }

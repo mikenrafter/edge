@@ -9,8 +9,11 @@ import '../compute/nap_edits.dart';
 import '../models/activity_suggestion.dart';
 import 'day_label.dart';
 import 'db.dart' show LocalDb;
+import 'sleep_block_writer.dart';
+import 'sleep_edit_codec.dart' show kSleepEditKey;
+import 'sleep_editor.dart';
+import 'sleep_spacing.dart';
 import 'nap_resolution.dart';
-import 'sleep_edit_store.dart';
 import 'track_activity.dart';
 import 'db/input_read_tracker.dart';
 
@@ -458,7 +461,7 @@ class ActivityStore {
     Map<String, dynamic>? session,
     bool edited = false,
     bool auto = false,
-    NapResolution? expectedNap,
+    SleepMergeAuthorization? merge,
     Transaction? transaction,
   }) async {
     Future<NapResolution?> write(Transaction tx) async {
@@ -524,29 +527,58 @@ class ActivityStore {
           'A nap must last between 5 minutes and 3 hours.',
         );
       }
-      final ext = await applyNapExtension(tx, startTs, endTs,
-          expected: expectedNap);
-      resolution = ext.res;
-      if (ext.handled) {
-        linked = '${ext.day}:${ext.res.startTs}';
+      // CLAIM(sleep-block-separation): a nap within 30 minutes of another block
+      // is a merge proposal, never a silent union or a second nearby block.
+      final proposal = await SleepBlockWriter.guard(
+        tx,
+        changes: [
+          BlockChange(
+            after: SleepBlock(
+              kind: SleepBlockKind.nap,
+              day: day,
+              startTs: startTs,
+              endTs: endTs,
+            ),
+          ),
+        ],
+        editingDay: day,
+        merge: merge,
+      );
+      if (proposal != null) {
+        await SleepBlockWriter.applyMerge(tx, proposal);
+        linked = '${proposal.survivor.day}:${proposal.startTs}';
+        resolution = (
+          startTs: proposal.startTs,
+          endTs: proposal.endTs,
+          extended: [
+            for (final b in proposal.participants)
+              (
+                kind: b.kind == SleepBlockKind.main ? 'main_sleep' : 'nap',
+                day: b.day,
+                startTs: b.startTs,
+                endTs: b.endTs,
+              ),
+          ],
+        );
       } else {
         linked = '$day:$startTs';
-        await tx.insert('sleep_nap', {
-          'day_id': day,
-          'start_ts': startTs,
-          'end_ts': endTs,
-          'source': edited ? 'manual' : 'confirmed',
-          'created_at': now ~/ 1000,
-          'payload_json': edited
-              ? null
-              : jsonEncode({
+        await SleepBlockWriter.putNapRow(
+          tx,
+          day: day,
+          startTs: startTs,
+          endTs: endTs,
+          source: edited ? 'manual' : 'confirmed',
+          retained: edited
+              ? const {}
+              : {
                   ...expected.details,
                   'start': startTs,
                   'end': endTs,
                   'source': 'confirmed',
                   if (auto) 'auto_logged': true,
-                }),
-        });
+                },
+          createdAt: now ~/ 1000,
+        );
       }
       await _changed(tx, day);
     }
@@ -566,78 +598,24 @@ class ActivityStore {
     return res;
   }
 
-  /// Keeps a nap at [s]..[e] inside [tx]: re-resolves, throws
-  /// [NapResolutionChanged] (writing nothing) when [expected] no longer
-  /// matches, then writes the union. A main sleep it reaches is rewritten as
-  /// the union through the sleep-override row (the caller releases the frozen
-  /// headline after commit and re-derives); absorbed naps are deleted and no
-  /// nap row is added, so the hours are not credited twice. Otherwise ONE
-  /// manual nap row carries the union; a union equal to one existing nap
-  /// changes nothing. [handled] is false when nothing was reached: the caller
-  /// writes its own plain row. [day] is the day that owns the result.
-  static Future<({NapResolution res, bool handled, String day})>
-  applyNapExtension(
-    DatabaseExecutor tx,
-    int s,
-    int e, {
-    NapResolution? expected,
-  }) async {
-    final res = await NapResolver.grow(tx, s, e);
-    if (expected != null && !NapResolver.same(expected, res)) {
-      throw NapResolutionChanged(res);
-    }
-    final unionDay = dayLabelOf(
-      DateTime.fromMillisecondsSinceEpoch(res.startTs * 1000),
+  /// Records WHY a pending nap was not logged (no revision bump: the detection
+  /// itself is unchanged).
+  Future<void> _markMergeRequired(
+      ActivitySuggestion s, SleepMergeProposal proposal) async {
+    final details = {
+      ...s.details,
+      'merge_required': {
+        'start': proposal.startTs,
+        'end': proposal.endTs,
+        'days': proposal.affectedDays.toList()..sort(),
+      },
+    };
+    await db.update(
+      'activity_suggestions',
+      {'details_json': jsonEncode(details)},
+      where: "id = ? AND status = 'pending'",
+      whereArgs: [s.id],
     );
-    if (res.extended.isEmpty) return (res: res, handled: false, day: unionDay);
-    final mains = res.extended.where((b) => b.kind == 'main_sleep').toList();
-    final naps = res.extended.where((b) => b.kind == 'nap').toList();
-    if (mains.isEmpty &&
-        naps.length == 1 &&
-        naps.single.startTs == res.startTs &&
-        naps.single.endTs == res.endTs) {
-      return (res: res, handled: true, day: naps.single.day);
-    }
-    for (final n in naps) {
-      await tx.delete(
-        'sleep_nap',
-        where: 'day_id = ? AND start_ts = ?',
-        whereArgs: [n.day, n.startTs],
-      );
-      await _changed(tx, n.day);
-    }
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    if (mains.isNotEmpty) {
-      final main = mains.last;
-      await tx.insert('sleep_override', {
-        'day_id': main.day,
-        'onset_ts': res.startTs,
-        'offset_ts': res.endTs,
-        'source': 'manual',
-        'created_at': now,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-      // A window edit reopens the night, as putSleepOverride does, and owes
-      // it a recalculation: the job commits with the assertion or not at all
-      // (a crash between the two once left new times under old numbers).
-      await tx.delete(
-        'wake_confirmation',
-        where: 'day_id = ?',
-        whereArgs: [main.day],
-      );
-      await SleepEditStore.enqueue(tx, main.day);
-      await _changed(tx, main.day);
-      return (res: res, handled: true, day: main.day);
-    }
-    await tx.insert('sleep_nap', {
-      'day_id': unionDay,
-      'start_ts': res.startTs,
-      'end_ts': res.endTs,
-      'source': 'manual',
-      'created_at': now,
-      'payload_json': null,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
-    await _changed(tx, unionDay);
-    return (res: res, handled: true, day: unionDay);
   }
 
   static Future<void> _changed(DatabaseExecutor tx, String day) async {
@@ -700,25 +678,51 @@ class ActivityStore {
     String day,
   ) async {
     InputReads.note('sleep_nap', day);
-    return [
+    final out = <NapEdit>[];
     for (final row in await tx.query(
       'sleep_nap',
       where: 'day_id = ?',
       whereArgs: [day],
-    ))
-      NapEdit(
+    )) {
+      Map<String, dynamic>? snapshot;
+      if (row['payload_json'] is String) {
+        snapshot = Map<String, dynamic>.from(
+          jsonDecode(row['payload_json'] as String) as Map,
+        )..remove(kSleepEditKey);
+        // An envelope-only payload (history without measurements) is no snapshot.
+        if (snapshot.isEmpty) snapshot = null;
+      }
+      out.add(NapEdit(
         kind: row['source'] == 'rejected'
             ? NapEditKind.rejected
             : NapEditKind.added,
         startSec: row['start_ts'] as int,
         endSec: row['end_ts'] as int,
-        snapshot: row['payload_json'] is String
-            ? Map<String, dynamic>.from(
-                jsonDecode(row['payload_json'] as String) as Map,
-              )
-            : null,
-      ),
-    ];
+        snapshot: snapshot,
+      ));
+    }
+    // An entry that moved or replaced a detection keeps that window suppressed
+    // under its origin, whichever day now owns the entry.
+    for (final row in await tx.rawQuery(
+      "SELECT payload_json FROM sleep_nap WHERE payload_json LIKE '%\"suppressed\"%'",
+    )) {
+      final doc = jsonDecode(row['payload_json'] as String);
+      if (doc is! Map) continue;
+      final env = doc[kSleepEditKey];
+      if (env is! Map) continue;
+      final origin = env['origin'];
+      if (origin is! Map) continue;
+      final list = origin['suppressed'];
+      if (list is! List) continue;
+      for (final s in list.whereType<Map>()) {
+        final a = s['start'], b = s['end'];
+        if (s['day'] == day && a is int && b is int && b > a) {
+          out.add(NapEdit(
+              kind: NapEditKind.rejected, startSec: a, endSec: b));
+        }
+      }
+    }
+    return out;
   }
 
 
@@ -858,6 +862,9 @@ class ActivityStore {
       try {
         await confirm(s, startTs: s.startTs, endTs: s.endTs, auto: true);
         logged++;
+      } on SleepMergeRequiredException catch (e) {
+        // Left pending with the reason: a person decides Merge or Cancel.
+        await _markMergeRequired(s, e.proposal);
       } on ActivityReviewException {
         // Left for the user to review.
       }

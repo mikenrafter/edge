@@ -557,15 +557,24 @@ Future<void> _ldbPutSleepOverride({required String dayId, required int onsetTs, 
     // goes with it (otherwise a crash between the two leaves an edit the next
     // pass would still truncate).
     await LocalDb.timedTransaction(db, 'sleep edit receipt',InlineTransactionWork( (txn) async {
-      await txn.insert('sleep_override', {
-        'day_id': dayId,
-        'onset_ts': onsetTs,
-        'offset_ts': offsetTs,
-        'source': source,
-        'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-      await txn.delete('wake_confirmation',
-          where: 'day_id = ?', whereArgs: [dayId]);
+      if (source != 'rejected') {
+        // CLAIM(sleep-block-separation): a main edit near a nap (or another
+        // night) needs an explicit merge approval; a rejection only removes.
+        final proposal = await SleepBlockWriter.guard(txn,
+          changes: [
+            BlockChange(
+              beforeKey: 'main:$dayId',
+              after: SleepBlock(kind: SleepBlockKind.main, day: dayId, startTs: onsetTs, endTs: offsetTs),
+            ),
+          ],
+          editingDay: dayId, merge: merge);
+        if (proposal != null) {
+          await SleepBlockWriter.applyMerge(txn, proposal);
+          return;
+        }
+      }
+      await SleepBlockWriter.putMainRow(txn,
+        day: dayId, onsetTs: onsetTs, offsetTs: offsetTs, source: source);
       await SleepEditStore.enqueue(txn, dayId);
     }));
   }
@@ -1392,26 +1401,6 @@ Future<Map<String, int>> _ldbApplyPendingActivityReviews() async {
 
 Future<NapResolution?> _ldbPutNapEdit({required String dayId, required int startTs, required int endTs, required String source, NapResolution? expected, Transaction? transaction, SleepMergeAuthorization? merge}) async {
     Future<NapResolution?> write(Transaction tx) async {
-      String? snapshot;
-      if (source != 'rejected') {
-        // A nap that reaches sleep extends it to the union (one transaction
-        // with the write); a stale preview throws and nothing is written.
-        final ext = await ActivityStore.applyNapExtension(tx, startTs, endTs, expected: expected);
-        if (ext.handled) {
-          await ActivityStore.supersede(tx, ActivityKind.nap, ext.res.startTs, ext.res.endTs);
-          await ActivityStore.markDayChanged(tx, dayId);
-          return ext.res;
-        }
-      }
-      // Legacy official rows can carry the night only in payload_json. If
-      // the union resolver could not identify a block, keep main's refusal
-      // rather than credit overlapping minutes again as a separate nap.
-      if (source == 'manual' &&
-          await ActivityStore.overlapsMainSleep(tx, startTs, endTs)) {
-        throw const ActivityReviewException(
-          'That overlaps your main sleep, which already counts that time.',
-        );
-      }
       if (source == 'rejected') {
         // A pre-upgrade nap may still live only in its retained day result.
         // Capture it before replacing that result with the user's rejection.
@@ -1422,15 +1411,49 @@ Future<NapResolution?> _ldbPutNapEdit({required String dayId, required int start
           await ActivityStore.preserveLegacyNaps(tx, dayId,
             Map<String, dynamic>.from(jsonDecode(days.single['payload_json'] as String) as Map));
         }
-        final existing = await tx.query('sleep_nap',
-          where: 'day_id = ? AND start_ts = ?', whereArgs: [dayId, startTs]);
-        if (existing.isNotEmpty) snapshot = existing.single['payload_json'] as String?;
+        // Removal only widens gaps, so it is never refused for spacing. The
+        // tombstone keeps the pre-removal bounds and the prior payload plus the
+        // detected snapshot (CLAIM(sleep-editor-nap-key)).
+        await SleepBlockWriter.tombstoneNap(tx, day: dayId, startTs: startTs, endTs: endTs);
+        await ActivityStore.supersede(tx, ActivityKind.nap, startTs, endTs);
+        await ActivityStore.markDayChanged(tx, dayId);
+        return null;
       }
-      await tx.insert('sleep_nap', {
-        'day_id': dayId, 'start_ts': startTs, 'end_ts': endTs,
-        'source': source, 'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        'payload_json': snapshot,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      // CLAIM(sleep-block-separation): the writer itself refuses a change that
+      // creates or narrows a gap under 30 minutes unless the caller carries an
+      // explicit approval of exactly that merge.
+      final existing = await SleepBlockWriter.napRow(tx, dayId, startTs);
+      final live = existing != null && existing.source != 'rejected';
+      final proposal = await SleepBlockWriter.guard(tx,
+        changes: [
+          BlockChange(
+            beforeKey: live ? 'nap:$dayId:$startTs' : null,
+            after: SleepBlock(kind: SleepBlockKind.nap, day: dayId, startTs: startTs, endTs: endTs),
+          ),
+        ],
+        editingDay: dayId, merge: merge);
+      if (proposal != null) {
+        await SleepBlockWriter.applyMerge(tx, proposal);
+        await ActivityStore.supersede(tx, ActivityKind.nap, proposal.startTs, proposal.endTs);
+        return (
+          startTs: proposal.startTs,
+          endTs: proposal.endTs,
+          extended: [
+            for (final b in proposal.participants)
+              (kind: b.kind == SleepBlockKind.main ? 'main_sleep' : 'nap', day: b.day, startTs: b.startTs, endTs: b.endTs),
+          ],
+        );
+      }
+      // Legacy official rows can carry the night only in payload_json. If
+      // the resolver could not identify a block, keep main's refusal rather
+      // than credit overlapping minutes again as a separate nap.
+      if (source == 'manual' &&
+          await ActivityStore.overlapsMainSleep(tx, startTs, endTs)) {
+        throw const ActivityReviewException(
+          'That overlaps your main sleep, which already counts that time.',
+        );
+      }
+      await SleepBlockWriter.putNapRow(tx, day: dayId, startTs: startTs, endTs: endTs, source: source);
       // Derivation drops any detection under an edit, so a pending one here
       // would never be reconciled again and could only fail to confirm.
       await ActivityStore.supersede(tx, ActivityKind.nap, startTs, endTs);
@@ -1443,7 +1466,7 @@ Future<NapResolution?> _ldbPutNapEdit({required String dayId, required int start
     return res;
   }
 
-Future<void> _ldbDeleteNapEdit(String dayId, int startTs) async {
+Future<void> _ldbDeleteNapEdit(String dayId, int startTs, {SleepMergeAuthorization? merge}) async {
     final db = await LocalDb.instance;
     await db.transaction((tx) async {
       final rows = await tx.query('sleep_nap',
@@ -1453,8 +1476,16 @@ Future<void> _ldbDeleteNapEdit(String dayId, int startTs) async {
       if (rows.isNotEmpty && rows.single['source'] == 'rejected') {
         final payload = rows.single['payload_json'];
         if (payload is String) {
-          final source = ((await JsonPayloadLane.shared.decodeUncached(payload)) as Map)['source'];
-          if (source == 'confirmed' || source == 'legacy') restoreSource = source as String;
+          final read = await SleepEditCodec.read(payload);
+          final source = read.retained['source'];
+          if (source == 'confirmed' || source == 'legacy') {
+            restoreSource = source as String;
+          } else if (read is EnvelopeOk && read.envelope.origin.mergedInto == null) {
+            // A removed manual (or edited) block: Restore brings back its own
+            // bounds as the person's entry. An absorbed block never restores on
+            // its own while its survivor contains it.
+            restoreSource = 'manual';
+          }
         } else {
           // A rejection from before activity review has no snapshot, and a
           // detection that old is never offered for review again. Put the
@@ -1472,6 +1503,25 @@ Future<void> _ldbDeleteNapEdit(String dayId, int startTs) async {
         }
       }
       if (restoreSource != null) {
+        // Restoring creates a block: the same 30-minute rule applies.
+        final proposal = await SleepBlockWriter.guard(tx,
+          changes: [
+            BlockChange(
+              after: SleepBlock(kind: SleepBlockKind.nap, day: dayId, startTs: startTs, endTs: rows.single['end_ts'] as int),
+            ),
+          ],
+          editingDay: dayId, merge: merge);
+        if (proposal != null) {
+          await SleepBlockWriter.applyMerge(tx, proposal);
+          return;
+        }
+        if (restoreSource == 'manual') {
+          await tx.update('sleep_nap', {
+            'source': 'manual',
+            'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          }, where: 'day_id = ? AND start_ts = ?', whereArgs: [dayId, startTs]);
+          return;
+        }
         // Removing a rejection means "Put it back". Keep its original asleep
         // minutes and confidence even after raw recordings have expired.
         // This is now an explicit decision, even for a legacy snapshot: a
@@ -1486,6 +1536,17 @@ Future<void> _ldbDeleteNapEdit(String dayId, int startTs) async {
           'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
           'payload_json': restorePayload,
         }, where: 'day_id = ? AND start_ts = ?', whereArgs: [dayId, startTs]);
+      } else if (rows.isNotEmpty && rows.single['source'] != 'rejected') {
+        // Deleting a LIVE row keeps what it remembers: a block that carries a
+        // detected snapshot or a suppression becomes a tombstone, never a gap
+        // in the suppression chain.
+        final row = (await SleepBlockWriter.napRow(tx, dayId, startTs))!;
+        final h = await SleepBlockWriter.historyOf(row);
+        if (h.envelope.detected is DetectedKnown || h.envelope.origin.suppressed.isNotEmpty) {
+          await SleepBlockWriter.tombstoneNap(tx, day: dayId, startTs: startTs);
+        } else {
+          await tx.delete('sleep_nap', where: 'day_id = ? AND start_ts = ?', whereArgs: [dayId, startTs]);
+        }
       } else {
         await tx.delete('sleep_nap', where: 'day_id = ? AND start_ts = ?', whereArgs: [dayId, startTs]);
       }

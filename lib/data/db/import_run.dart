@@ -103,7 +103,9 @@ Future<ImportSummary> _ldbRunJournaledImport(ImportRun run, void Function(Import
           refusedPrefs: extras.refusedPrefs, needsReentry: extras.needsReentry,
           unreadableSecrets: extras.unreadableSecrets,
           prefsRestored: extras.prefsRestored, prefsKept: extras.prefsKept,
-          filesRestored: extras.filesRestored, interruptedAndResumed: run.resumes);
+          filesRestored: extras.filesRestored, interruptedAndResumed: run.resumes,
+          sleepRefused: [for (final e in await SleepImportReport.load()) if (e.refused) e],
+          sleepCloseReview: [for (final e in await SleepImportReport.load()) if (!e.refused) e]);
     } catch (_) {
       ImportPerf.write(
         perfId,

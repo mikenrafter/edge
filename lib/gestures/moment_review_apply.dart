@@ -12,6 +12,7 @@ import '../data/assumed_water.dart';
 import '../data/day_label.dart' show dayLabelOf;
 import '../platform/tasker_moment_export.dart';
 import 'moment_follow_ups.dart';
+import '../data/sleep_editor.dart' show SleepMergeRequiredException;
 import 'moment_review_queue.dart';
 import 'moment_review_range.dart';
 
@@ -283,8 +284,16 @@ class MomentReviewApplier {
         return const _Done.already();
       }
       if (nap) {
-        await ranges.logNap(
-            dayId: dayLabelOf(start), startSec: startSec, endSec: endSec);
+        try {
+          await ranges.logNap(
+              dayId: dayLabelOf(start), startSec: startSec, endSec: endSec);
+        } on SleepMergeRequiredException {
+          // Refused for spacing BEFORE any window was written: clear only the
+          // attempt marker so this range is not stranded as an in-progress
+          // Save, keep both marks pending and report the reason.
+          await step(cur.copyWith(attempting: false));
+          rethrow;
+        }
         doneNaps.add({'start': startSec, 'end': endSec});
       } else {
         await ranges.logWorkout(

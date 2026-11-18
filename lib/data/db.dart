@@ -1,6 +1,10 @@
 import '../util/callable.dart';
 import 'json_payload_lane.dart';
+import 'sleep_block_writer.dart';
+import 'sleep_edit_codec.dart';
 import 'sleep_editor.dart';
+import 'sleep_import_rules.dart';
+import 'sleep_spacing.dart';
 import 'attach_copy.dart';
 // Local raw-first storage (SQLite via sqflite).
 //
@@ -7398,7 +7402,7 @@ class LocalDb {
     SleepMergeAuthorization? merge,
   }) => _ldbPutNapEdit(dayId: dayId, startTs: startTs, endTs: endTs, source: source, expected: expected, transaction: transaction, merge: merge);
 
-  static Future<void> deleteNapEdit(String dayId, int startTs) => _ldbDeleteNapEdit(dayId, startTs);
+  static Future<void> deleteNapEdit(String dayId, int startTs, {SleepMergeAuthorization? merge}) => _ldbDeleteNapEdit(dayId, startTs, merge: merge);
 
   static Future<List<Map<String, dynamic>>> napEdits(String dayId) async {
     final db = await instance;
@@ -9946,7 +9950,9 @@ class LocalDb {
     'journal_metric': (['date'], 'updated_at'),
     'lab_result': (['marker', 'taken_on'], 'updated_at'),
     'cycle_symptom': (['date'], 'updated_at'),
-    'sleep_override': (['day_id'], 'created_at'),
+    // Local wins (owner 2026-11-17): no edit stamp decides this table now;
+    // SleepImportRules reports a refused entry instead.
+    'sleep_override': (['day_id'], null),
     // A dose slot is re-marked in place (taken, skipped, cleared), so an older
     // backup would flip a dose logged since back to what it said then.
     'med_dose': (['med_key', 'date', 'slot_min'], 'updated_at'),

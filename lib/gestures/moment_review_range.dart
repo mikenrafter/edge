@@ -141,7 +141,8 @@ class ReviewRangeWriter {
   /// manual nap edits stored for it (a day not yet re-analysed shows them only
   /// here).
   Future<List<NapMap>> existingNaps(String dayId) async {
-    // Nap overlaps extend through putNapEdit; only workout overlaps refuse.
+    // Nap spacing is enforced beneath putNapEdit (it refuses a window within
+    // 30 minutes of another block); only workout overlaps are checked here.
     if (transaction != null) return [];
     final d = await _repo().getDayNaps(dayId);
     final out = <NapMap>[

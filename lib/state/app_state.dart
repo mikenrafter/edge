@@ -108,6 +108,8 @@ import '../data/db/input_revision_store.dart' show bumpInputRev;
 import '../data/db.dart';
 import '../data/finalized_day_index_maintenance.dart';
 import '../data/sleep_edit_store.dart';
+import '../data/sleep_editor.dart';
+import '../gestures/moment_review_service.dart';
 import '../data/activity_store.dart';
 import 'sleep_edit_runner.dart';
 import '../ecg/ble_ecg_transport.dart';
@@ -1726,6 +1728,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
         if (isConnected) await _armNextAlarmOccurrence();
       }
       await _reloadProfile();
+      // Session drafts were built against the data before this import: their
+      // generation advances (stale plans say why and cannot Save) and any
+      // queue the backup carried is ignored.
+      MomentReviewService.shared.datasetImported();
       // Imported day bundles carry quiet levels the seed has not priced from;
       // a marker left from before the import would keep it from ever running.
       if ((counts['day_result'] ?? 0) > 0) {
@@ -2589,6 +2595,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       // hand-written table list, and for the sync_cursor decision). The reset
       // holds the derive latch from before the gate went up, so no pass that
       // read the substrate before the wipe can write its days back after it.
+      MomentReviewService.shared.clearAllDrafts();
       await LocalDb.wipeAll();
       // The rows are gone; the cached fit is not. Without this a walk banked
       // after a data reset would still be corrected by the pre-reset gain.
@@ -4299,6 +4306,19 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     }
   }
 
+  /// Commits an editor plan, then wakes the durable runner for what it queued.
+  Future<SleepEditorOutcome> saveSleepEditor(SleepEditorPlan plan) async {
+    if (repo == null) {
+      return const SleepRefused(SleepRefusalReason.unsupportedSource);
+    }
+    final outcome = await repo!.saveSleepEditor(plan);
+    if (outcome is SleepSaved) {
+      unawaited(sleepEditRunner.start().catchError((Object e) => _log('[sleep edit] $e')));
+      notifyListeners();
+    }
+    return outcome;
+  }
+
   Future<SleepOperationResult> recalculateSleep(String day) =>
       sleepOperations.mutate(day, () => SleepEditStore.recalculate(day));
 
@@ -4446,6 +4466,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       LocalDb.exportDaysDb(dayIds);
 
   Future<int> deleteDays(Set<String> dayIds) async {
+    // Drafts and queued choices for these days go FIRST (and their generation
+    // advances), so a plan an open route still holds is refused even if its
+    // days are recreated: deletion cannot be undone by a stale Save.
+    MomentReviewService.shared.clearDayDrafts(dayIds);
     // A pass holding pre-delete input must finish before its days are removed.
     final deleted = await DerivationEngine.whileIdle(
       () => LocalDb.deleteDays(dayIds),
