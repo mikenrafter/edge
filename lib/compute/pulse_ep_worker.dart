@@ -52,10 +52,10 @@ PulseDetected detectPulseEpisodesHeavy(PulseDetectInput input) {
   WorkerInit.ensure(_kPulseWorker);
   assertWorker();
   WorkerAudit.entered('detectPulseEpisodesHeavy');
-  final detection = _detectPulseRows(input, input.rows);
+  final detection = _detectPulseRowsHeavy(input, input.rows);
   final capturedRows = [for (final r in input.rows) if (r['pre_upgrade'] == 1) r];
   final capturedKeys = {for (final r in capturedRows) r['ts_ms'] as int};
-  final before = _detectPulseRows(input, capturedRows);
+  final before = _detectPulseRowsHeavy(input, capturedRows);
   final beforeWindows = {for (final w in before.windows) w.startMs: w};
   return PulseDetected(detection, support: [
     for (final w in detection.windows)
@@ -72,7 +72,7 @@ PulseDetected detectPulseEpisodesHeavy(PulseDetectInput input) {
 }
 
 @heavy
-ana.PulseDetection _detectPulseRows(PulseDetectInput input, List<Map<String, Object?>> rows) {
+ana.PulseDetection _detectPulseRowsHeavy(PulseDetectInput input, List<Map<String, Object?>> rows) {
   final beats = <ana.PulseBeatInput>[];
   for (final r in rows) {
     final ts = (r['ts_ms'] as num).toInt(), bi = (r['beat_index'] as num).toInt();
@@ -293,6 +293,11 @@ PulseEvidence buildPulseEvidenceHeavy(
   );
 }
 
+/// A deterministic observation point for tests that admit data after preparation.
+abstract interface class PulseEvaluationProbe {
+  Future<void> beforeCommit();
+}
+
 /// Reads bounded committed beats and evaluates one source range. Not scheduled.
 class PulseEpisodeWorker {
   PulseEpisodeWorker._();
@@ -351,6 +356,7 @@ class PulseEpisodeWorker {
     required String origin,
     required int nowMs,
     List<PulseHrBin> hr = const [],
+    PulseEvaluationProbe? probe,
   }) async {
     const pad = 600000;
     final stamp = await PulseEpisodeStore.readStamp(db,
@@ -369,6 +375,7 @@ class PulseEpisodeWorker {
     final prepareInput = PulsePrepareInput(detection, hr: hr, fromMs: fromMs, toMs: toMs,
         support: detected.support);
     final prepared = await Isolate.run(() => preparePulseEvidenceHeavy(prepareInput));
+    await probe?.beforeCommit();
     final results = <PulseApply>[];
     for (final e in detection.episodes) {
       final enc = prepared.episodes[e.id];

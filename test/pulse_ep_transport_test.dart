@@ -313,7 +313,7 @@ void main() {
     }
     final bomb = ZLibCodec(level: 6).encode(List.filled(1024 * 1024 + 1, 32));
     await db.update('pulse_ep_evidence', {'payload': Uint8List.fromList(bomb),
-        'encoded_bytes': bomb.length, 'expanded_bytes': 1024 * 1024 + 1},
+        'encoded_bytes': bomb.length, 'expanded_bytes': 1},
         where: 'episode_id = ?', whereArgs: ['bomb']);
     final unknown = literalPulseRecording('unsupported', '', _t0, _t0 + 600000, version: 99);
     await db.update('pulse_ep_evidence', {'payload': Uint8List.fromList(unknown.bytes),

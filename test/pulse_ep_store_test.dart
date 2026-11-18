@@ -519,4 +519,16 @@ void main() {
     expect(await pulseRows(db, 'pulse_ep_checkpoint'), isEmpty);
   });
 
+  // WHY/R3: a maximum watermark cannot imply coverage across an unevaluated gap.
+  // catches: advancing a watermark merely because the next endpoint is larger.
+  test('R3 checkpoint cannot skip an unevaluated interval', () async {
+    var stamp = await PulseEpisodeStore.readStamp(db, source: 's', fromMs: 0, toMs: 100000);
+    await PulseEpisodeStore.advanceCheckpoint(db, source: 's', throughMs: 100000,
+        stamp: stamp, detector: 4, nowMs: 1);
+    stamp = await PulseEpisodeStore.readStamp(db, source: 's', fromMs: 200000, toMs: 300000);
+    await expectLater(PulseEpisodeStore.advanceCheckpoint(db, source: 's', throughMs: 300000,
+        stamp: stamp, detector: 4, nowMs: 2), throwsStateError);
+    expect((await pulseRows(db, 'pulse_ep_checkpoint')).single['through_ms'], 100000);
+  });
+
 }

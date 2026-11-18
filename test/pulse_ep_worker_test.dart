@@ -20,6 +20,13 @@ import 'pulse_ep_support.dart';
 // 2026-11-10 00:00:00 UTC-aligned so five-minute windows line up with minutes.
 const _t0 = 1794268800000;
 
+class _LateAdmission implements PulseEvaluationProbe {
+  @override
+  Future<void> beforeCommit() => commitRecords([
+    pulseRecord((_t0 + 1000) ~/ 1000, [800]),
+  ]);
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late BackupEnv env;
@@ -225,13 +232,14 @@ void main() {
   // windows. Exact window support also admits late interior fills whose final
   // keys were already captured. No durable per-record arrival ledger is needed.
   // catches: any-new-key eligibility, or using only each window's closing key.
-  for (final scenario in ['single late record', 'one new window', 'two new windows', 'interior fills', 'wholly new old recording']) {
+  for (final scenario in ['single late record', 'two small late fills', 'one new window', 'two new windows', 'interior fills', 'wholly new old recording']) {
     test('R5 window novelty: $scenario', () async {
       final db = await LocalDb.instance;
       await insertRows(db, '', rows);
       final singleKey = rows[100].tsMs;
       bool newKey(int ts) => switch (scenario) {
         'single late record' => ts == singleKey,
+        'two small late fills' => ts == singleKey || ts == rows.firstWhere((r) => r.tsMs >= _t0 + 360000).tsMs,
         'one new window' => ts >= _t0 && ts < _t0 + 300000,
         'two new windows' => ts >= _t0 && ts < _t0 + 600000,
         'interior fills' => ts >= _t0 && ts < _t0 + 600000 &&
@@ -251,10 +259,48 @@ void main() {
       }
       await evaluate(db);
       final debt = (await pulseRows(db, 'pulse_ep_outbox')).single;
-      final insufficient = scenario == 'single late record' || scenario == 'one new window';
+      final insufficient = scenario == 'single late record' || scenario == 'two small late fills' || scenario == 'one new window';
       expect(debt['state'], insufficient ? 'not_sent' : 'owed');
       if (insufficient) expect(debt['reason'], 'insufficient new qualifying support');
     });
   }
+
+  // WHY/R3: the empty-result path has no publication to recheck its stamp.
+  // A real decoded/admission commit after preparation must refuse checkpointing.
+  // catches: removing the checkpoint's final snapshot check.
+  test('R3 real worker refuses late admission with zero episodes', () async {
+    final db = await LocalDb.instance;
+    final regular = [for (var i = 0; i < 1200; i++)
+      (tsMs: _t0 + i * 1000, beatIndex: 0, beatTsMs: _t0 + i * 1000, rrMs: 1000),
+    ];
+    await insertRows(db, '', regular);
+    final out = await PulseEpisodeWorker.evaluate(db, source: '', fromMs: _t0,
+        toMs: _t0 + 600000, sourceStartMs: _t0 - 3600000,
+        completeThroughMs: _t0 + 1800000, origin: 'recentSync', nowMs: 10,
+        probe: _LateAdmission());
+    expect(await pulseRows(db, 'pulse_ep_episode'), isEmpty);
+    expect(out, hasLength(1));
+    expect(out.single, isA<PulseRefused>());
+    expect(await pulseRows(db, 'pulse_ep_checkpoint'), isEmpty);
+    expect(await pulseRows(db, 'pulse_ep_admission'), hasLength(1));
+  });
+
+  // WHY/R3: regular, closed quality-supported windows legitimately complete
+  // without an episode. Refusals must describe unsupported work only.
+  test('R3 regular supported range checkpoints without a refusal', () async {
+    final db = await LocalDb.instance;
+    final regular = [for (var i = 0; i < 1200; i++)
+      (tsMs: _t0 + i * 1000, beatIndex: 0, beatTsMs: _t0 + i * 1000,
+          rrMs: 1000 + (i % 3) * 2),
+    ];
+    await insertRows(db, '', regular);
+    final out = await PulseEpisodeWorker.evaluate(db, source: '', fromMs: _t0,
+        toMs: _t0 + 600000, sourceStartMs: _t0 - 3600000,
+        completeThroughMs: _t0 + 1800000, origin: 'recentSync', nowMs: 10);
+    expect(out, isEmpty);
+    final cp = (await pulseRows(db, 'pulse_ep_checkpoint')).single;
+    expect(cp['through_ms'], _t0 + 600000);
+    expect(cp['refused_json'], '[]');
+  });
 
 }
