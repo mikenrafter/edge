@@ -600,7 +600,16 @@ abstract final class SleepBlockStore {
           history: DetectedKnown(startTs: start,endTs: end,sourceDay: day),removed: false));
       }
     }
-    entries.sort((a,b) => a.startTs.compareTo(b.startTs));
+    final byId={for(final r in rows) r.block.id:r.row};
+    const priority={'live':0,'removed':1,'merged':2};
+    entries.sort((a,b) {
+      final start=a.startTs.compareTo(b.startTs);if(start!=0) return start;
+      final ra=byId[a.id],rb=byId[b.id];
+      final state=(priority[ra?['state']]??0).compareTo(priority[rb?['state']]??0);
+      if(state!=0) return state;
+      final updated=((rb?['updated_at'] as int?)??0).compareTo((ra?['updated_at'] as int?)??0);
+      return updated!=0?updated:(a.id??'').compareTo(b.id??'');
+    });
     final main = entries.where((e) => e.kind == SleepBlockKind.main).firstOrNull;
     final span = SleepOwnership.framingSpan(day,main: main == null ? null : (start:main.startTs,end:main.endTs),
       entries:[for (final e in entries) (start:e.startTs,end:e.endTs)]);
