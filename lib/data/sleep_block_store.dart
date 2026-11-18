@@ -243,7 +243,10 @@ abstract final class SleepBlockStore {
           await add(SleepBlockKind.main,day,startTs,endTs,'manual');
         case ConfirmMain(:final day,:final startTs,:final endTs):
           final existing=(await read(tx,day)).entries.where((e)=>e.kind==SleepBlockKind.main && !e.removed).firstOrNull;
-          if(existing==null) { refuse(SleepRefusalReason.staleEntry);break; }
+          if(existing==null || existing.ref is DetectedMainRef &&
+              (existing.startTs!=startTs || existing.endTs!=endTs)) {
+            refuse(SleepRefusalReason.staleEntry);break;
+          }
           final w=await bind(existing.ref);
           if(w!=null) { w.row['start_ts']=startTs;w.row['end_ts']=endTs;w.row['source']='confirmed';w.row['state']='live'; }
         case AddNap():
