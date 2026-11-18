@@ -680,7 +680,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       ),
       ...body,
     ];
-    if (!widget.embedded) return detailScaffold(c, title, body, sub: sub);
+    if (!widget.embedded) return detailScaffold(c, title, body, sub: sub, framed: true);
     final p = P.of(c);
     return RefreshIndicator.noSpinner(
       onRefresh: () => PendingUserAction.run(_load),

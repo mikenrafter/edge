@@ -12,7 +12,8 @@ import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/activity/day_strain.dart';
 import 'package:openstrap_edge/ui2/profile/gallery.dart';
-import 'package:openstrap_edge/ui2/screens/explorer.dart';
+import 'package:openstrap_edge/data/moment_label.dart';
+import 'package:openstrap_edge/ui2/screens/moment_follow_up.dart' show MomentAnswerEditLoader, SavedAnswer;
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 import '../support/explorer_harness.dart' show ExplorerRepo, initPrefs, loadType;
@@ -364,6 +365,67 @@ void main() {
     expect(wrong, isEmpty, reason: 'each destination must open exactly once');
   });
 
+  // WHY (S3): the explorer's own picker must not open twice on a double tap.
+  testWidgets('explorer day picker opens once on a double tap', (t) async {
+    final app = AppState.forTesting()..repo = ExplorerRepo();
+    await frame(t, ExplorerScreen(annotationLoader: (_, _) async => const []),
+      app: app);
+    await t.tap(find.byKey(const ValueKey('explore-scale:day')));
+    await t.pump();
+    final label = find.ancestor(of: find.byKey(const ValueKey('explore-day-label')),
+      matching: find.byType(Pressable)).first;
+    final onTap = t.widget<Pressable>(label).onTap!;
+    onTap();
+    onTap();
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 400));
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    await t.pumpWidget(const SizedBox());
+    app.dispose();
+  });
+
+  // WHY (S2): the editor opens at once, reads its own row, and says so when
+  // the answer is gone or the read fails.
+  testWidgets('moment editor loader opens at once and reads its own row', (t) async {
+    final read = Completer<SavedAnswer>();
+    var reads = 0;
+    await frame(t, MomentAnswerEditLoader(day: '2026-10-06', answerKey: '2026-10-06 10:15',
+      read: (_, _) { reads++; return read.future; }));
+    expect(find.byKey(const ValueKey('moment-edit-loading')), findsOneWidget);
+    expect(find.byKey(const ValueKey('moment-edit-screen')), findsNothing);
+    read.complete((saved: const MomentLabel(date: '2026-10-06', hhmm: '10:15',
+      label: 'caffeine', caffeineMg: 80, metricValue: 80, answeredAtMs: 1),
+      symptom: null));
+    await t.pump();
+    await t.pump();
+    expect(find.byKey(const ValueKey('moment-edit-screen')), findsOneWidget);
+    expect(reads, 1);
+    await t.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('moment editor loader reports a missing answer and a failed read', (t) async {
+    await frame(t, MomentAnswerEditLoader(day: '2026-10-06', answerKey: 'k',
+      read: (_, _) async => (saved: null, symptom: null)));
+    await t.pump();
+    expect(find.text('This answer is no longer saved.'), findsOneWidget);
+    await t.pumpWidget(const SizedBox());
+    var attempts = 0;
+    await frame(t, MomentAnswerEditLoader(day: '2026-10-06', answerKey: 'k',
+      read: (_, _) async {
+        attempts++;
+        if (attempts == 1) throw StateError('locked');
+        return (saved: null, symptom: null);
+      }));
+    await t.pump();
+    expect(find.text('Try again'), findsOneWidget);
+    await t.tap(find.text('Try again'));
+    await t.pump();
+    await t.pump();
+    expect(find.text('This answer is no longer saved.'), findsOneWidget);
+    expect(attempts, 2);
+    await t.pumpWidget(const SizedBox());
+  });
+
   // WHY (S4): entering and leaving Vitals must not remount the Health list
   // (scroll offset and sub-tab state would reset).
   testWidgets('switching Health sub-tabs keeps the same list mounted', (t) async {
@@ -386,8 +448,10 @@ void main() {
       reason: 'entering Vitals remounted the page');
     expect(t.state<ScrollableState>(find.byType(Scrollable).first).position.pixels,
       24, reason: 'entering Vitals reset the scroll offset');
-    await t.tap(find.text('Overview'));
+    // The Overview tab has scrolled out of the sub-tab strip: use its callback.
+    t.widget<SubTabs>(find.byType(SubTabs)).onTap(0);
     await t.pump();
+    expect(find.byType(DayNav), findsNothing, reason: 'Overview is showing');
     expect(identical(t.element(find.byType(ScreenTitle)), title), isTrue,
       reason: 'leaving Vitals remounted the page');
     await t.pumpWidget(const SizedBox());

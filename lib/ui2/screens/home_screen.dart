@@ -145,15 +145,18 @@ final _openDestinations = Expando<Set<Type>>();
 /// so a plain route gets the fade-through on Android and the Cupertino slide
 /// WITH swipe-back on iOS. [themedRoute] also keeps the pushed screen
 /// re-colouring on an appearance change and names the route for Crashlytics.
-Future<void> go(BuildContext c, Widget w) async {
-  if (selectShellDestination(c, w)) return;
+///
+/// Resolves with the route's result, or null when the destination was a shell
+/// tab or a repeat tap was ignored.
+Future<T?> go<T>(BuildContext c, Widget w) async {
+  if (selectShellDestination(c, w)) return null;
   final navigator = Navigator.of(c);
   final source = ModalRoute.of(c) ?? navigator;
   final destinations = _openDestinations[source] ??= <Type>{};
-  if (!destinations.add(w.runtimeType)) return;
+  if (!destinations.add(w.runtimeType)) return null;
   try {
     final page = ShellNavigation.carry(c, w);
-    await navigator.push<void>(themedRoute<void>((_) => page,
+    return await navigator.push<T>(themedRoute<T>((_) => page,
       name: w.runtimeType.toString()));
   } finally {
     destinations.remove(w.runtimeType);
@@ -3559,9 +3562,7 @@ class _HomeScreenState extends State<HomeScreen>
         // reloading on return is the only way this row picks up a briefing
         // written during the visit instead of showing stale/empty text until
         // some UNRELATED revision bump happens to refresh Home.
-        final screen = AiBriefingScreen(period: _resolveBriefingNow(d).period);
-        await Navigator.of(c).push(
-            themedRoute<void>((_) => screen, name: screen.runtimeType.toString()));
+        await go(c, AiBriefingScreen(period: _resolveBriefingNow(d).period));
         if (mounted) reload();
       },
     );

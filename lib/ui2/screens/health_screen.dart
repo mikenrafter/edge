@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart' as pc;
 import '../profile/profile.dart';
 import '../../l10n/display_text.dart';
 import 'package:flutter/material.dart';
@@ -724,10 +725,15 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
   }
 
   @override
-  Widget build(BuildContext c) => _tab == 3
-      ? DayNavigationFrame(selectedDay: _vDay ?? _v?.day ?? todayLabel(),
-          onSelect: _goVitalsDay, child: _content(c))
-      : _content(c);
+  // Always framed, so entering or leaving Vitals never changes the root widget
+  // (that would remount the list and reset its scroll). Off Vitals the pill is
+  // told today is shown, which hides it.
+  Widget build(BuildContext c) => DayNavigationFrame(
+      selectedDay: _tab == 3
+          ? _vDay ?? _v?.day ?? todayLabel(pc.clock.now())
+          : todayLabel(pc.clock.now()),
+      onSelect: _goVitalsDay,
+      child: _content(c));
 
   Widget _content(BuildContext c) {
     final d = _d ?? const HealthData();

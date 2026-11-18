@@ -377,7 +377,7 @@ class _InvestigateState extends State<Investigate> {
           _method(c, spec),
         ],
       ].map((child) => child is DayNav ? child : PendingContent(pending: _loading && _d == null,
-        child: child)).toList(),
+        child: child)).toList(), framed: true,
     );
   }
 

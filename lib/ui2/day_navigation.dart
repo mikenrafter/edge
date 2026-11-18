@@ -35,12 +35,17 @@ class _BackToTodayState extends State<_BackToTodayControl>
     _armMidnight();
   }
 
+  /// The longest the control trusts its own day-end estimate: a time-zone
+  /// change while resumed moves midnight with no event, so it looks again.
+  static const _recheck = Duration(minutes: 15);
+
   void _armMidnight() {
     _midnight?.cancel();
     final now = pc.clock.now();
     final end = localDayEndSec(todayLabel(now))!;
-    final delay = Duration(milliseconds: end * 1000 - now.millisecondsSinceEpoch);
-    _midnight = Timer(delay, () {
+    final untilEnd =
+        Duration(milliseconds: end * 1000 - now.millisecondsSinceEpoch);
+    _midnight = Timer(untilEnd < _recheck ? untilEnd : _recheck, () {
       if (!mounted) return;
       setState(() {});
       _armMidnight();
@@ -52,7 +57,9 @@ class _BackToTodayState extends State<_BackToTodayControl>
     if (state == AppLifecycleState.resumed) {
       setState(() {});
       _armMidnight();
-    } else {
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      // Inactive is still on screen (split screen, notification shade).
       _midnight?.cancel();
     }
   }
@@ -72,7 +79,10 @@ class _BackToTodayState extends State<_BackToTodayControl>
     final p = P.of(c);
     final label = AppLocalizations.of(c)?.homeBackToToday ?? 'Back to today';
     // Extracted from Home. Keep its pill presentation, with a 48 dp target.
-    return PendingStatic(child: Pressable(
+    // Pushed pages put the frame outside their Scaffold, so nothing above this
+    // pill gives it a text style: without a Material it draws MaterialApp's
+    // error underline.
+    return Material(type: MaterialType.transparency, child: PendingStatic(child: Pressable(
       key: const ValueKey('home-back-to-today'),
       semanticLabel: label,
       onTap: () => widget.onSelect(todayLabel(pc.clock.now())),
@@ -83,10 +93,11 @@ class _BackToTodayState extends State<_BackToTodayControl>
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(LucideIcons.calendarDays, size: 16, color: p.on(C.blue)),
           const SizedBox(width: S.x2),
-          Flexible(child: Text(label,
-            style: F.cap.copyWith(color: p.on(C.blue)))),
+          // The Pressable already names the control; the text is not read again.
+          Flexible(child: ExcludeSemantics(child: Text(label,
+            style: F.cap.copyWith(color: p.on(C.blue))))),
         ])),
-    ));
+    )));
   }
 }
 
@@ -160,6 +171,20 @@ class _DayNavigationLayout extends MultiChildLayoutDelegate {
 
 final _openPickers = Expando<bool>();
 
+/// Runs [open] (a date picker) unless one is already open on this navigator,
+/// so a double tap never stacks two dialogs. The latch is released on return
+/// or failure.
+Future<T?> openPickerOnce<T>(BuildContext c, Future<T?> Function() open) async {
+  final navigator = Navigator.of(c);
+  if (_openPickers[navigator] == true) return null;
+  _openPickers[navigator] = true;
+  try {
+    return await open();
+  } finally {
+    _openPickers[navigator] = false;
+  }
+}
+
 /// The day a single-day screen should load: the one it was OPENED with when
 /// that day exists, else the screen's own idea of now, else the newest day on
 /// disk.
@@ -171,7 +196,11 @@ String? pickDay(List<String> days, String? want, [String? prefer]) {
   final d = want ?? prefer;
   // No derived days at all: there is nothing to fall back TO, so the caller's
   // own answer stands or the screen renders its absence.
-  if (days.isEmpty || d == todayLabel()) return d;
+  if (days.isEmpty) return d;
+  // An explicit request for today stands even before today has derived (the
+  // screen shows its empty day). Ordinary landing (no [want]) stays on the
+  // newest day with data, as it always did.
+  if (want != null && want == todayLabel(pc.clock.now())) return want;
   if (d != null && days.contains(d)) return d;
   return days.first;
 }
@@ -179,7 +208,9 @@ String? pickDay(List<String> days, String? want, [String? prefer]) {
 /// 'Today' when it is, otherwise the day itself. Never "N days ago" — a
 /// control you steer with needs the name of the place, not the distance to it.
 String dayNavLabel(String? day, [AppLocalizations? l]) =>
-    day == todayLabel() ? l?.healthToday ?? 'Today' : prettyDay(day, l);
+    day == todayLabel(pc.clock.now())
+        ? l?.healthToday ?? 'Today'
+        : prettyDay(day, l);
 
 /// The calendar, restricted to the days that exist. A picker that offers an
 /// empty day is a dead end, so [days] greys out everything it does not contain.
@@ -191,22 +222,15 @@ Future<String?> chooseDay(
   final first = DateTime.parse(sorted.first);
   final last = DateTime.parse(sorted.last);
   final want = DateTime.tryParse(current ?? '') ?? last;
-  final navigator = Navigator.of(c);
-  if (_openPickers[navigator] == true) return null;
-  _openPickers[navigator] = true;
-  try {
-  final picked = await showDatePicker(
+  final picked = await openPickerOnce(c, () => showDatePicker(
     context: c,
     initialDate: want.isBefore(first) ? first : (want.isAfter(last) ? last : want),
     firstDate: first,
     lastDate: last,
     selectableDayPredicate: (d) => have.contains(dayLabelOf(d)),
     helpText: AppLocalizations.of(c)?.metricDetailChooseDayHelp ?? 'Choose a day',
-  );
+  ));
   return picked == null ? null : dayLabelOf(picked);
-  } finally {
-    _openPickers[navigator] = false;
-  }
 }
 
 /// The day stepper every single-day screen wears under its nav bar.

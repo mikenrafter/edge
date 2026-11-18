@@ -15,6 +15,7 @@ import 'package:provider/provider.dart';
 
 import '../../compute/manual_session.dart';
 import '../../data/assumed_water.dart';
+import '../../data/db.dart' show LocalDb;
 import '../../data/moment_label.dart';
 import '../../data/journal_fields.dart' show kJournalFieldsByKey;
 import '../../gestures/gesture_settings.dart';
@@ -27,6 +28,7 @@ import '../../platform/tasker_moment_export.dart';
 import '../../gestures/symptom_description.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
+import '../day_navigation.dart' show dayReadFailure;
 import '../ui2.dart';
 import '../activity/catalogue.dart';
 import 'home_screen.dart' show repoOf;
@@ -1067,6 +1069,100 @@ class _MomentRow extends StatelessWidget {
             child: Text(pairError!, style: F.cap.copyWith(color: p.ink2)),
           ),
       ]),
+    );
+  }
+}
+
+/// A saved answer and, for a symptom, its stored description. [saved] is null
+/// when no answer with that key is stored any more.
+typedef SavedAnswer = ({MomentLabel? saved, StoredSymptom? symptom});
+
+Future<SavedAnswer> readSavedAnswer(String day, String key) async {
+  final saved = (await LocalDb.momentLabels(date: day))
+      .where((x) => x.key == key)
+      .firstOrNull;
+  final symptom = saved?.label == MomentChoice.symptom.id
+      ? (await LocalDb.symptomEntries(date: day))
+          .where((x) => x.key == key)
+          .firstOrNull
+      : null;
+  return (saved: saved, symptom: symptom);
+}
+
+/// Opens at once and reads the answer [answerKey] of [day] itself, so tapping
+/// an answered row never waits on two stored reads before anything happens.
+/// The row is read when the screen opens, so the editor always sees the answer
+/// as it is now (it refuses to overwrite one that moved on). Pops what
+/// [MomentAnswerEditScreen] pops.
+class MomentAnswerEditLoader extends StatefulWidget {
+  const MomentAnswerEditLoader({
+    super.key,
+    required this.day,
+    required this.answerKey,
+    this.read = readSavedAnswer,
+  });
+
+  final String day, answerKey;
+  final Future<SavedAnswer> Function(String day, String key) read;
+
+  @override
+  State<MomentAnswerEditLoader> createState() => _MomentAnswerEditLoaderState();
+}
+
+class _MomentAnswerEditLoaderState extends State<MomentAnswerEditLoader> {
+  SavedAnswer? _answer;
+  bool _failed = false;
+  int _generation = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final mine = ++_generation;
+    if (_failed) setState(() => _failed = false);
+    try {
+      final a = await widget.read(widget.day, widget.answerKey);
+      if (mounted && mine == _generation) setState(() => _answer = a);
+    } catch (_) {
+      if (mounted && mine == _generation) setState(() => _failed = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    final a = _answer;
+    final saved = a?.saved;
+    if (a != null && saved != null) {
+      return MomentAnswerEditScreen(saved: saved, symptom: a.symptom);
+    }
+    final p = P.of(c);
+    final l = AppLocalizations.of(c);
+    return Scaffold(
+      key: const ValueKey('moment-edit-loading'),
+      backgroundColor: p.bg,
+      body: SafeArea(
+        child: Column(children: [
+          NavBar(l?.momentEditTitle ?? 'Edit marked moment',
+              onBack: () => Navigator.of(c).maybePop()),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x4),
+              children: [
+                if (_failed)
+                  dayReadFailure(c, _load)
+                else if (a != null)
+                  Text(l?.momentEditNotFound ?? 'This answer is no longer saved.',
+                      style: F.body.copyWith(color: p.ink2))
+                else
+                  InlineLoading(status: l?.activityLoading ?? 'Loading…'),
+              ],
+            ),
+          ),
+        ]),
+      ),
     );
   }
 }

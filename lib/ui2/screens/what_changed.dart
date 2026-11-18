@@ -205,7 +205,7 @@ class _WhatChangedScreenState extends State<WhatChangedScreen> with PausedReadRe
         AsyncListSection<Widget>(memoryKey: 'what-changed:${(_day ?? d.day ?? todayLabel()) == todayLabel() ? 'today' : 'past'}', items: _loading && _d == null ? null : whatChangedBody(c, d),
           visibleRows: 5, rowHeight: 100,
           itemBuilder: (_, child) => child, emptyBuilder: (_) => const SizedBox.shrink()),
-    ]);
+    ], framed: true);
   }
 }
 

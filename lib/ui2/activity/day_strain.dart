@@ -303,7 +303,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
               _inputs(p, l, d)),
           ..._zones(p, l, d),
         ])),
-      ],
+      ], framed: true,
 
     );
   }
@@ -483,8 +483,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
         // ceiling, the edges in bpm and the 28-day distribution are all one tap
         // behind it.
         action: l?.dayStrainHowSet ?? 'How these are set',
-        onAction: () => Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => const ZonesDetail())),
+        onAction: () => go(context, const ZonesDetail()),
       ),
     ];
   }

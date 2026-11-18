@@ -30,6 +30,7 @@
 // move. Nothing serves one: the stored lanes are per-minute and 1 Hz is never
 // read back (AGENTS §3.14).
 
+import 'package:clock/clock.dart' as pc;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -39,6 +40,8 @@ import '../../data/read_paused.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/prefs.dart';
 import '../ui2.dart';
+import '../day_navigation.dart'
+    show DayNavigationFrame, openPickerOnce;
 import 'home_screen.dart';
 import 'metric_catalogue.dart';
 import 'explorer_annotations.dart';
@@ -175,11 +178,24 @@ class _Pick {
 /// The Explorer as a pushed screen: a NavBar over [ExplorerView], scrolling.
 /// It is not a Health tab (it is not ready for everyone); the only way in is
 /// the Developer group in Settings.
-class ExplorerScreen extends StatelessWidget {
+class ExplorerScreen extends StatefulWidget {
   const ExplorerScreen({super.key, this.annotationLoader});
 
   /// Injectable for tests, as on [ExplorerView].
   final AnnotationLoader? annotationLoader;
+
+  @override
+  State<ExplorerScreen> createState() => _ExplorerScreenState();
+}
+
+class _ExplorerScreenState extends State<ExplorerScreen> {
+  final _link = ExplorerDayLink();
+
+  @override
+  void dispose() {
+    _link.shown.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext c) => Scaffold(
@@ -188,9 +204,22 @@ class ExplorerScreen extends StatelessWidget {
           child: Column(children: [
             NavBar('Data Explorer'),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x4),
-                children: [ExplorerView(annotationLoader: annotationLoader)],
+              // The same floating "Back to today" every date page wears.
+              child: ValueListenableBuilder<String?>(
+                valueListenable: _link.shown,
+                builder: (c, day, list) => DayNavigationFrame(
+                  selectedDay: day ?? todayLabel(pc.clock.now()),
+                  onSelect: (d) => _link.select?.call(d),
+                  child: list!,
+                ),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x16),
+                  children: [
+                    ExplorerView(
+                        annotationLoader: widget.annotationLoader,
+                        dayLink: _link),
+                  ],
+                ),
               ),
             ),
           ]),
@@ -198,10 +227,22 @@ class ExplorerScreen extends StatelessWidget {
       );
 }
 
+/// Connects [ExplorerView]'s day scale to the screen around it: the screen
+/// reads the shown day ([shown], null on the daily scale or on today) and asks
+/// the view to go to a day ([select]).
+class ExplorerDayLink {
+  final shown = ValueNotifier<String?>(null);
+  ValueChanged<String>? select;
+}
+
 class ExplorerView extends StatefulWidget {
   /// [today] ('YYYY-MM-DD', local) is injectable for tests; null is the real one.
-  const ExplorerView({super.key, this.today, this.annotationLoader});
+  const ExplorerView(
+      {super.key, this.today, this.annotationLoader, this.dayLink});
   final String? today;
+
+  /// Set by [ExplorerScreen] so its floating "Back to today" follows the day.
+  final ExplorerDayLink? dayLink;
 
   /// Reads the journal items drawn on the chart for the local days
   /// `from`..`to` ([loadAnnotations] when null). Injectable so tests need no
@@ -254,6 +295,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
   @override
   void initState() {
     super.initState();
+    widget.dayLink?.select = _setDay;
     watchPausedRead();
     _daily = decodeExploreKeys(Prefs.getString(kExploreMetricsPref, ''),
         valid: _dailyKeys);
@@ -296,7 +338,11 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
   }
 
   @override
-  void dispose() { stopWatchingPausedRead(); super.dispose(); }
+  void dispose() {
+    if (widget.dayLink?.select == _setDay) widget.dayLink!.select = null;
+    stopWatchingPausedRead();
+    super.dispose();
+  }
 
   Future<void> _loadImported() async {
     final rows = [
@@ -497,6 +543,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
       _day = day;
       _full = false;
     });
+    widget.dayLink?.shown.value = day ? _dayLabel : null;
     Prefs.setString(kExploreScalePref, day ? 'day' : 'daily');
     _load();
   }
@@ -537,6 +584,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
       _timelines.clear();
       _cals.clear();
     });
+    widget.dayLink?.shown.value = d;
     _load();
   }
 
@@ -548,12 +596,12 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
   }
 
   Future<void> _pickDay() async {
-    final res = await showDatePicker(
+    final res = await openPickerOnce(context, () => showDatePicker(
       context: context,
       initialDate: DateTime.parse(_dayLabel),
       firstDate: DateTime(2020),
       lastDate: DateTime.parse(_today),
-    );
+    ));
     if (res == null || !mounted) return;
     _setDay(dayLabelOf(res));
   }

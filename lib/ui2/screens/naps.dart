@@ -334,7 +334,7 @@ class _NapsScreenState extends State<NapsScreen>
           icon: LucideIcons.databaseZap,
           onFix: _retry,
         ),
-      ]);
+      ], framed: true);
     }
     if (_paused) {
       return detailScaffold(c, l?.napsTitle ?? 'Naps', [
@@ -343,7 +343,7 @@ class _NapsScreenState extends State<NapsScreen>
           padding: EdgeInsets.only(top: S.x4),
           child: PausedOlderDays(),
         ),
-      ]);
+      ], framed: true);
     }
     final day = d.day;
 
@@ -458,7 +458,7 @@ class _NapsScreenState extends State<NapsScreen>
           emptyBuilder: (_) => const SizedBox.shrink()),
 
       ].map((child) => child is DayNav ? child : PendingContent(pending: _d == null,
-        child: child)).toList(),
+        child: child)).toList(), framed: true,
     );
   }
 

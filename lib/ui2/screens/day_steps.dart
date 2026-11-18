@@ -351,7 +351,7 @@ class _DayStepsDetailState extends State<DayStepsDetail> implements NerdStatsLis
         _chart(c, p, d),
         Section(l?.dayStepsThroughDay ?? 'Through the day', _rows(c, p, d)),
       ],
-    ]);
+    ], framed: true);
   }
 
   // ── nothing to place on a clock ────────────────────────────────────────────

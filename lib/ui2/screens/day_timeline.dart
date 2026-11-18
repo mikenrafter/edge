@@ -35,7 +35,7 @@ import '../../gestures/moment_follow_ups.dart';
 import '../../gestures/moment_review_service.dart';
 import 'day_review.dart';
 import 'typical_day.dart';
-import 'moment_follow_up.dart' show MomentAnswerEditScreen, MomentReviewEditor;
+import 'moment_follow_up.dart' show MomentAnswerEditLoader, MomentReviewEditor;
 import '../../gestures/symptom_description.dart' show StoredSymptom;
 import '../../data/nutrition_store.dart';
 import '../../l10n/app_localizations.dart';
@@ -1249,38 +1249,21 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     final ref = m.editRef, day = _day ?? _d?.day;
     if (ref == null || day == null) return;
     if (ref.startsWith('moment:')) {
-      final key = ref.substring(7);
-      // The stored answer as it is now, not the row as it was drawn: the editor
-      // refuses to overwrite an answer that moved on.
-      final saved = (await LocalDb.momentLabels(date: day))
-          .where((x) => x.key == key)
-          .firstOrNull;
-      if (saved != null && mounted) {
-        final symptom = saved.label == MomentChoice.symptom.id
-            ? (await LocalDb.symptomEntries(date: day))
-                .where((x) => x.key == key)
-                .firstOrNull
-            : null;
-        if (!mounted) return;
-        final changed = await Navigator.of(context).push<bool>(
-            MaterialPageRoute<bool>(
-                builder: (_) =>
-                    MomentAnswerEditScreen(saved: saved, symptom: symptom)));
-        if (changed == true && mounted) bumpInsights(context);
-      }
+      // Opens at once; the editor reads its own row (see MomentAnswerEditLoader).
+      final changed = await go<bool>(context,
+          MomentAnswerEditLoader(day: day, answerKey: ref.substring(7)));
+      if (changed == true && mounted) bumpInsights(context);
     } else if (ref == 'nap') {
       await go(context, NapsScreen(day: day));
     } else if (ref.startsWith('session:')) {
       final parts = ref.substring(8).split('|');
       final l = AppLocalizations.of(context);
-      await Navigator.of(context).push(MaterialPageRoute<void>(
-          builder: (_) => LogWorkout(
-              sessionId: parts.first,
-              start: DateTime.fromMillisecondsSinceEpoch(m.at * 1000),
-              end: DateTime.fromMillisecondsSinceEpoch(
-                  (m.until ?? m.at) * 1000),
-              activity: parts.length > 1 ? activityByName(parts[1]) : null,
-              title: l?.workoutFixTimes ?? 'Fix the times')));
+      await go(context, LogWorkout(
+          sessionId: parts.first,
+          start: DateTime.fromMillisecondsSinceEpoch(m.at * 1000),
+          end: DateTime.fromMillisecondsSinceEpoch((m.until ?? m.at) * 1000),
+          activity: parts.length > 1 ? activityByName(parts[1]) : null,
+          title: l?.workoutFixTimes ?? 'Fix the times'));
     }
     if (mounted && widget.data == null) unawaited(_load());
   }
@@ -1628,7 +1611,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
             _load();
           },
         ),
-      ]);
+      ], framed: true);
     }
     final review = _review;
     final byId = <String, Moment>{

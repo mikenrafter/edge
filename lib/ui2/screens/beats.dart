@@ -536,7 +536,7 @@ class _BeatsState extends State<Beats>
       sub: d.day == null
           ? '\u00a0'
           : (l?.beatsNightOf(prettyDay(d.day, l)) ??
-              'Night of ${prettyDay(d.day, l)}'),
+              'Night of ${prettyDay(d.day, l)}'), framed: true,
     );
   }
 

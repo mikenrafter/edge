@@ -2472,9 +2472,10 @@ class _StepGoalGaugeState extends State<_StepGoalGauge> {
 
 /// Every detail screen is the same frame: a back bar, then a scroll. Keeping it
 /// in one function is the reason the back affordance is in the same place on
-/// all of them.
+/// all of them. A [framed] page wears a [DayNavigationFrame] and keeps extra
+/// room under its last row for the floating "Back to today".
 Widget detailScaffold(BuildContext c, String title, List<Widget> body,
-    {String sub = '', Widget? trailing}) {
+    {String sub = '', Widget? trailing, bool framed = false}) {
   final p = P.of(c);
   return Scaffold(
     backgroundColor: p.bg,
@@ -2486,7 +2487,7 @@ Widget detailScaffold(BuildContext c, String title, List<Widget> body,
               onBack: () => Navigator.of(c).maybePop()),
         Expanded(
           child: PendingSectionScope(pendingSectionName: title, child: ListView(
-              padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x16),
+              padding: EdgeInsets.fromLTRB(S.x4, 0, S.x4, framed ? S.x16 : S.x12),
               children: body)),
         ),
       ]),
