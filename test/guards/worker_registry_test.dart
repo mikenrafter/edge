@@ -17,6 +17,7 @@ const kExpected = <String, Dispatcher>{
   'buildCrossDayArtifactHeavy': Dispatcher.cancellable,
   'trackLearningHeavy': Dispatcher.run,
   'typicalCaffeineHeavy': Dispatcher.run,
+  'compactPulseRefusalsHeavy': Dispatcher.run,
   'detectPulseEpisodesHeavy': Dispatcher.run,
   'preparePulseEvidenceHeavy': Dispatcher.run,
   'decodePulseEvidenceHeavy': Dispatcher.run,

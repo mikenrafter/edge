@@ -127,11 +127,13 @@ PulsePrepared preparePulseEvidenceHeavy(PulsePrepareInput input) {
       final w = windows[at];
       final reason = w == null ? 'unsupported' : w.pending ? 'pending' :
           w.qualityReasons.isEmpty ? null : w.qualityReasons.join(',');
-      if (reason != null) refused.add({
-        'start': at < input.fromMs! ? input.fromMs : at,
-        'end': at + 300000 > input.toMs! ? input.toMs : at + 300000,
-        'reason': reason,
-      });
+      if (reason != null) {
+        refused.add({
+          'start': at < input.fromMs! ? input.fromMs : at,
+          'end': at + 300000 > input.toMs! ? input.toMs : at + 300000,
+          'reason': reason,
+        });
+      }
     }
   }
   final byStart = {for (final w in input.support) w.startMs: w};
@@ -149,6 +151,62 @@ PulsePrepared preparePulseEvidenceHeavy(PulsePrepareInput input) {
       'support': [for (final w in support[e.id]!) w.toJson()],
     }),
   });
+}
+
+@SendableShape('Two refusal JSON strings and range bounds; sendable_compactPulseRefusalsHeavy_test')
+class PulseRefusalInput {
+  const PulseRefusalInput(this.priorJson, this.currentJson, this.fromMs, this.toMs);
+  final String priorJson, currentJson;
+  final int fromMs, toMs;
+}
+
+@SendableShape('Canonical refusal JSON; sendable_compactPulseRefusalsHeavy_test')
+class PulseRefusalsCompacted {
+  const PulseRefusalsCompacted(this.json);
+  final String json;
+}
+
+/// Replace the evaluated range, preserving unrelated refusals and coalescing
+/// adjacent equal reasons. Preparation stays outside the SQLite write lock.
+@heavy
+PulseRefusalsCompacted compactPulseRefusalsHeavy(PulseRefusalInput input) {
+  WorkerInit.ensure(_kPulseWorker);
+  assertWorker();
+  WorkerAudit.entered('compactPulseRefusalsHeavy');
+  final ranges = <PulseRange>[];
+  for (final raw in jsonDecode(input.priorJson) as List) {
+    final r = raw as Map;
+    final start = r['start'] as int, end = r['end'] as int;
+    final reason = r['reason'] as String;
+    if (end <= input.fromMs || start >= input.toMs) {
+      ranges.add(PulseRange(start, end, reason));
+    } else {
+      if (start < input.fromMs) ranges.add(PulseRange(start, input.fromMs, reason));
+      if (end > input.toMs) ranges.add(PulseRange(input.toMs, end, reason));
+    }
+  }
+  for (final raw in jsonDecode(input.currentJson) as List) {
+    final r = raw as Map;
+    final start = r['start'] as int, end = r['end'] as int;
+    if (start < input.fromMs || end > input.toMs || end <= start) {
+      throw StateError('refusal is outside the evaluated range');
+    }
+    ranges.add(PulseRange(start, end, r['reason'] as String));
+  }
+  ranges.sort((a, b) => a.startMs.compareTo(b.startMs));
+  final merged = <PulseRange>[];
+  for (final range in ranges) {
+    if (merged.isNotEmpty && merged.last.reason == range.reason && merged.last.endMs >= range.startMs) {
+      final last = merged.removeLast();
+      merged.add(PulseRange(last.startMs,
+          last.endMs > range.endMs ? last.endMs : range.endMs, range.reason));
+    } else {
+      merged.add(range);
+    }
+  }
+  return PulseRefusalsCompacted(jsonEncode([
+    for (final r in merged) {'start': r.startMs, 'end': r.endMs, 'reason': r.reason},
+  ]));
 }
 
 @SendableShape('Compressed bytes and a checksum string; sendable_decodePulseEvidenceHeavy_test')

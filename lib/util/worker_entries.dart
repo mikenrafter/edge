@@ -70,6 +70,8 @@ class UnresolvedOk {
 /// another package; those closures stay in the guard baseline until each
 /// reader becomes a persisted artifact.
 const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#compactPulseRefusalsHeavy, dispatcher: Dispatcher.run,
+    reason: 'Pulse checkpoint refusal replacement and range coalescing outside the write lock; real isolate round trip'),
   WorkerEntry(#detectPulseEpisodesHeavy, dispatcher: Dispatcher.run,
     reason: 'Pulse episode detection over bounded committed beats; initialized worker, immutable analytics inputs and result with real isolate round trips'),
   WorkerEntry(#preparePulseEvidenceHeavy, dispatcher: Dispatcher.run,

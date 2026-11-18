@@ -83,6 +83,16 @@ Future<void> _sameInWorker<T>(
 }
 
 final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
+  'compactPulseRefusalsHeavy': (
+    roundTrip: () async {
+      const input = PulseRefusalInput('[{"start":0,"end":30,"reason":"pending"}]', '[]', 10, 20);
+      await expectIsolateRoundTrip<PulseRefusalInput>(input,
+          project: (i) => [i.priorJson, i.currentJson, i.fromMs, i.toMs]);
+      final result = await Isolate.run(() => compactPulseRefusalsHeavy(input));
+      expect(result.json, '[{"start":0,"end":10,"reason":"pending"},{"start":20,"end":30,"reason":"pending"}]');
+      await _sameInWorker(() => compactPulseRefusalsHeavy(input), json: (r) => r.json);
+    },
+  ),
   'detectPulseEpisodesHeavy': (
     roundTrip: () async {
       const t0 = 1794268800000;

@@ -349,7 +349,7 @@ void main() {
 
   test('an evaluated batch is pruned at the cutoff even when scheduling is on', () async {
     await admit(100, 200);
-    final stamp = await PulseEpisodeStore.readStamp(db, source: 's', fromMs: 0, toMs: 1);
+    final stamp = await PulseEpisodeStore.readStamp(db, source: 's', fromMs: 0, toMs: 250000);
     await PulseEpisodeStore.advanceCheckpoint(db,
         source: 's', throughMs: 250000, stamp: stamp, detector: 4, nowMs: 9);
     await admit(100, 200, digest: 'late', now: 20);

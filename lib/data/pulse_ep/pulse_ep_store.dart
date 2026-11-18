@@ -7,12 +7,14 @@
 // Delivery itself (claims, handoff) is phase 3. Phase 2 creates and preserves
 // the debt rows and never enables production scheduling ([schedulingEnabled]).
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../../compute/processing_context.dart';
+import '../../compute/pulse_ep_worker.dart' show PulseRefusalInput, compactPulseRefusalsHeavy;
 import 'pulse_ep_codec.dart';
 import 'pulse_ep_types.dart';
 
@@ -59,7 +61,7 @@ class PulseStamp {
   });
   final int inputRev, generation, fromMs, toMs, admissionThrough, admissionCount;
   final String context, source;
-  String get encoded => '$inputRev|$context|$generation|$admissionThrough:$admissionCount';
+  String get encoded => '$source:$fromMs:$toMs|$inputRev|$context|$generation|$admissionThrough:$admissionCount';
   @override
   bool operator ==(Object other) => other is PulseStamp && other.encoded == encoded;
   @override
@@ -296,13 +298,27 @@ class PulseEpisodeStore {
     required int nowMs,
     int? fromMs,
     String refusedJson = '[]',
-  }) => db.transaction((txn) async {
+  }) async {
+    final start = fromMs ?? stamp.fromMs;
+    if (source != stamp.source || start < stamp.fromMs || throughMs > stamp.toMs || throughMs <= start) {
+      throw StateError('Pulse evaluation is outside its snapshot range');
+    }
+    final before = await db.query('pulse_ep_checkpoint',
+        where: 'source = ?', whereArgs: [source], limit: 1);
+    final refusalInput = PulseRefusalInput(
+        before.isEmpty ? '[]' : before.single['refused_json'] as String,
+        refusedJson, start, throughMs);
+    final compacted = await Isolate.run(() => compactPulseRefusalsHeavy(refusalInput));
+    return db.transaction((txn) async {
     final current = await readStamp(txn,
         source: source, fromMs: stamp.fromMs, toMs: stamp.toMs);
     if (current != stamp) throw StateError('Pulse evaluation snapshot changed');
-    final start = fromMs ?? stamp.fromMs;
     final prior = await txn.query('pulse_ep_checkpoint',
         where: 'source = ?', whereArgs: [source], limit: 1);
+    if (before.length != prior.length || (before.isNotEmpty &&
+        ['through_ms', 'refused_json', 'updated_ms', 'stamp'].any((key) => before.single[key] != prior.single[key]))) {
+      throw StateError('Pulse checkpoint changed during preparation');
+    }
     if (prior.isNotEmpty && start > (prior.first['through_ms'] as int)) {
       throw StateError('Pulse evaluation leaves a checkpoint gap');
     }
@@ -314,26 +330,23 @@ class PulseEpisodeStore {
     if (prior.isEmpty) {
       await txn.insert('pulse_ep_checkpoint', {
         'source': source, 'through_ms': throughMs, 'detector': detector,
-        'stamp': stamp.encoded, 'refused_json': refusedJson, 'updated_ms': nowMs,
+        'stamp': stamp.encoded, 'refused_json': compacted.json, 'updated_ms': nowMs,
       });
     } else {
-      final refusals = [
-        ...jsonDecode(prior.first['refused_json'] as String) as List,
-        ...jsonDecode(refusedJson) as List,
-      ];
       await txn.update('pulse_ep_checkpoint', {
         if (throughMs > (prior.first['through_ms'] as int)) ...{
           'through_ms': throughMs, 'detector': detector,
           'stamp': stamp.encoded, 'updated_ms': nowMs,
         },
-        'refused_json': jsonEncode(refusals),
+        'refused_json': compacted.json,
       }, where: 'source = ?', whereArgs: [source]);
     }
     return Sqflite.firstIntValue(await txn.rawQuery(
           'SELECT COUNT(*) FROM pulse_ep_admission WHERE source = ? AND evaluated = 1',
           [source],
         )) ?? 0;
-  });
+    });
+  }
 
   /// Prunes admission batches with decoded retention. Consumed batches go at
   /// [cutoffMs]. Scheduling off: the rest go too, with no refusal (nothing was
