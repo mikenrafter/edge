@@ -13,13 +13,13 @@ import '../l10n/date_text.dart' show prettyDay;
 // selected date and read generation; this control never waits for a repository.
 // CLAIM(day-navigation-immediate): today's action stays available during reads
 // [sleep-structural/spec §2.1; day_navigation_shared_test].
-Widget backToTodayControl({required String selectedDay,
+Widget backToTodayControl({required String? selectedDay,
     required ValueChanged<String> onSelect}) =>
   _BackToTodayControl(selectedDay: selectedDay, onSelect: onSelect);
 
 class _BackToTodayControl extends StatefulWidget {
   const _BackToTodayControl({required this.selectedDay, required this.onSelect});
-  final String selectedDay;
+  final String? selectedDay;
   final ValueChanged<String> onSelect;
   @override
   State<_BackToTodayControl> createState() => _BackToTodayState();
@@ -73,7 +73,8 @@ class _BackToTodayState extends State<_BackToTodayControl>
 
   @override
   Widget build(BuildContext c) {
-    if (widget.selectedDay == todayLabel(pc.clock.now())) {
+    if (widget.selectedDay == null ||
+        widget.selectedDay == todayLabel(pc.clock.now())) {
       return const SizedBox.shrink();
     }
     final p = P.of(c);
@@ -115,13 +116,14 @@ Widget dayReadFailure(BuildContext c, VoidCallback retry) {
   );
 }
 
-/// Floats Home's pill over the page. Existing list/footer padding reserves its
+/// Floats Home's pill over the page. A null selected day hides the pill for
+/// pages showing a range or content without a day. Existing padding reserves its
 /// ordinary height; measured extra height reserves room when its text wraps.
 class DayNavigationFrame extends StatelessWidget {
   const DayNavigationFrame({super.key, required this.selectedDay,
     required this.onSelect, required this.child});
   static const clearance = 48.0 + S.x2;
-  final String selectedDay;
+  final String? selectedDay;
   final ValueChanged<String> onSelect;
   final Widget child;
 

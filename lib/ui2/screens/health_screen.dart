@@ -726,12 +726,11 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
 
   @override
   // Always framed, so entering or leaving Vitals never changes the root widget
-  // (that would remount the list and reset its scroll). Off Vitals the pill is
-  // told today is shown, which hides it.
+  // (that would remount the list and reset its scroll). Only Vitals shows a day.
   Widget build(BuildContext c) => DayNavigationFrame(
       selectedDay: _tab == 3
           ? _vDay ?? _v?.day ?? todayLabel(pc.clock.now())
-          : todayLabel(pc.clock.now()),
+          : null,
       onSelect: _goVitalsDay,
       child: _content(c));
 

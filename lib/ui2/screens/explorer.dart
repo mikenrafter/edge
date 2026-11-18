@@ -208,7 +208,7 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
               child: ValueListenableBuilder<String?>(
                 valueListenable: _link.shown,
                 builder: (c, day, list) => DayNavigationFrame(
-                  selectedDay: day ?? todayLabel(pc.clock.now()),
+                  selectedDay: day,
                   onSelect: (d) => _link.view?.showDay(d),
                   child: list!,
                 ),
@@ -228,7 +228,7 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
 }
 
 /// Connects [ExplorerView]'s day scale to the screen around it: the screen
-/// reads the shown day ([shown], null on the daily scale or on today) and asks
+/// reads the shown day ([shown], null on the daily scale) and asks
 /// the attached [view] to go to a day. An interface rather than a stored
 /// callback: the heavy-work guard cannot resolve a call through a `Function`.
 class ExplorerDayLink {
@@ -298,7 +298,7 @@ class _ExplorerViewState extends State<ExplorerView>
   ExploreWindow? _win;
   String _winFor = '';
 
-  String get _today => widget.today ?? todayLabel();
+  String get _today => widget.today ?? todayLabel(pc.clock.now());
 
   @override
   void initState() {
@@ -321,6 +321,9 @@ class _ExplorerViewState extends State<ExplorerView>
     _loading = _picks.isNotEmpty;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
+        // First mount may restore the day scale. Publish after the ancestor
+        // builder has finished, including today so midnight can reveal the pill.
+        widget.dayLink?.shown.value = _day ? _dayLabel : null;
         _load();
         _loadImported();
       }
