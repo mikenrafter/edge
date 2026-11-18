@@ -243,9 +243,9 @@ void main() {
     final raw = await openDatabase(path, singleInstance: false);
     try {
       expect(await raw.getVersion(), 95);
-      expect(await raw.query('decoded_rr'), [
-        {'sentinel': 'original unreadable history'},
-      ]);
+      // Open repair may add columns; the original row must survive.
+      expect((await raw.query('decoded_rr')).map((r) => r['sentinel']),
+          ['original unreadable history']);
       expect(await raw.query('pulse_ep_upgrade'), isEmpty);
       expect(Directory(env.dbDir).listSync().where((f) =>
           f.path.contains('${LocalDb.dbName}.unopenable-'))
