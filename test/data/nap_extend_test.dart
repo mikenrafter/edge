@@ -46,8 +46,8 @@ void main() {
     );
   });
 
-  Future<void> addNap(int s, int e, {String source = 'manual'}) =>
-      db.insert('sleep_nap', {
+  Future<void> addNap(int s, int e, {String source = 'manual'}) async {
+      await db.insert('sleep_nap', {
         'day_id': dayOf(s),
         'start_ts': s,
         'end_ts': e,
@@ -64,6 +64,8 @@ void main() {
                 'source': source,
               }),
       });
+      await TestSleepWrites.absorbFixtures(db);
+    }
 
   /// A pending nap suggestion at [s]..[e], created BEFORE the overlapping rows
   /// (reconcile would otherwise drop it for overlapping saved sleep).
@@ -204,7 +206,7 @@ void main() {
       expect(live, hasLength(1));
       expect((live.single['start_ts'], live.single['end_ts']), (t0, t0 + 5400));
       expect(live.single['source'], 'manual');
-      expect('${live.single['payload_json']}', isNot(contains('duration_min')));
+      expect(jsonDecode(live.single['payload_json'] as String)['duration_min'],isNull);
       expect((await napRows()).where((r) => r['source'] == 'rejected'),
           hasLength(1));
       expect((await store.get(s.id))!.status, ActivityReviewStatus.confirmed);
@@ -299,7 +301,7 @@ void main() {
     final w = (await store.reconcile(ActivityKind.workout, [
       {'start_ts': on + 600, 'end_ts': on + 2400},
     ])).single;
-    await dayResult(dayOf(off), sleep: {
+    await dayResult(dayOf(off), windowJson:jsonEncode({'onset_ms':on*1000,'offset_ms':off*1000}), sleep: {
       'window': {
         'value': {'onset_ms': on * 1000, 'offset_ms': off * 1000},
       },

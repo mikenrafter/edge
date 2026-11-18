@@ -31,11 +31,11 @@ int noon(String d) {
 }
 
 /// A window inside the night that ends on [d]: 23:00 the evening before to 07:00.
-Future<void> editDay(String d, {String source = 'manual'}) {
+Future<void> editDay(String d, {String source = 'manual',int endDelta=0}) {
   final p = d.split('-').map(int.parse).toList();
   final wake = DateTime(p[0], p[1], p[2], 7).millisecondsSinceEpoch ~/ 1000;
   return TestSleepWrites.putSleepOverride(
-      dayId: d, onsetTs: wake - 8 * 3600, offsetTs: wake, source: source);
+      dayId: d, onsetTs: wake - 8 * 3600, offsetTs: wake+endDelta, source: source);
 }
 
 Future<void> seedRaw(String d) async {
@@ -188,7 +188,7 @@ void main() {
     final app = AppState.forTesting();
     try {
       await app.sleepEditRunner.start().timeout(const Duration(seconds: 60));
-      expect(await phases(), ['$old:done:1/1']);
+      expect(await phases(), ['$old:done:2/2']);
       expect(await SleepEditStore.dirty(old), false);
       expect((await repo.getDayStrain(old))['strain'], isNotNull);
     } finally {
@@ -289,7 +289,7 @@ void main() {
       DerivationEngine.debugRunning = true; // a pass is running: the worker waits
       final run = app.sleepEditRunner.start();
       await Future<void>.delayed(const Duration(milliseconds: 400));
-      await editDay(x); // revision 2 arrives while revision 1 waits
+      await editDay(x,endDelta:60); // revision 2 arrives while revision 1 waits
       DerivationEngine.debugRunning = false;
       await run.timeout(const Duration(seconds: 90));
       expect(derived.where((d) => d == x).length, 1,

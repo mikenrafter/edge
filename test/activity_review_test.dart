@@ -404,6 +404,7 @@ void main() {
       'source': 'manual',
       'created_at': now,
     });
+    await TestSleepWrites.absorbFixtures(db);
     await expectLater(
       repo.confirmActivity(s),
       throwsA(isA<SleepMergeRequiredException>()),
@@ -694,7 +695,8 @@ void main() {
 
   test('stale cross-day output cannot overwrite a newer review', () async {
     final revision = await LocalDb.activityReviewRevision();
-    await store.discard(await detectNap());
+    await repo.confirmActivity(await detectNap());
+    await TestSleepWrites.applyNapWork();
     expect(
       await LocalDb.putReviewedBaseline('crossday', '{}', revision),
       isFalse,
