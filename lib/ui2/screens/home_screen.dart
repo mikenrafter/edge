@@ -3076,14 +3076,12 @@ class _HomeScreenState extends State<HomeScreen>
       const SizedBox(height: S.x5),
       // ── conditional cards, UNDER the header ──
       //
-      // A rebuilt database or a pending main-alarm snooze can come and go.
+      // A rebuilt database can come and go.
       // The header is the same box in every state, so neither may sit above
       // it: that moved the title and first content against every other tab,
       // and left the first card flush
       // against the safe area.
       ?rebuilt,
-      // A pending main-alarm snooze, with the same "I'm up".
-      ?snoozeCardFor(c),
 
       // The day switcher keeps its slot (arrows dimmed) before there is a
       // second day, so the card is there from the first launch.
@@ -3140,6 +3138,7 @@ class _HomeScreenState extends State<HomeScreen>
       const SizedBox(height: S.x3),
       // Natural Wake waits for "I'm up" directly above the activity review.
       // Home owns the following gap; an idle card contributes no space.
+      ?snoozeCardFor(c),
       ?_naturalWakeCard(c),
       // Always there: "Review activities" with the count when something waits
       // (activities, marked moments, assumed water), else "Breakdown of your

@@ -44,7 +44,7 @@ class SnoozeCard extends StatelessWidget {
                   'Snoozed until ${_hhmm(until)}')
               : (l?.snoozeCardBuzzing ?? 'Your alarm is buzzing again');
           return Padding(
-            padding: const EdgeInsets.only(top: S.x3),
+            padding: const EdgeInsets.only(bottom: S.x3),
             child: Surface(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -74,7 +74,7 @@ class SnoozeCard extends StatelessWidget {
 
 /// The card for Home, or null with no AppState above (a golden): the same
 /// null-safe insertion as the Natural Wake card, used as `?snoozeCardFor(c)`
-/// at both of Home's list sites.
+/// below the rings in Home's list.
 Widget? snoozeCardFor(BuildContext c) {
   try {
     final app = c.read<AppState>();
