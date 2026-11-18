@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart';
 
+import '../support/band_handoff.dart' show withBandHandoff;
 import 'snooze_band_rig.dart';
 import 'snooze_r3_support.dart';
 import 'snooze_r4_support.dart';
@@ -256,20 +257,20 @@ void main() {
             rig.clock.at(t.subtract(kSec * 8));
             await c.tick();
             expect(h.quietOpen, isTrue, reason: 'precondition: open');
-            job = h.runJob(1, (token) async {
+            job = withBandHandoff(() => h.runJob(1, (token) async {
               ran = true;
               await token.write(() async => true);
               return BuzzDelivery.complete;
-            }, timeout: const Duration(seconds: 2), settle: Duration.zero);
+            }, timeout: const Duration(seconds: 2), settle: Duration.zero));
           } else {
             rig.clock.at(t.subtract(kSec * 30));
             await c.tick();
             expect(h.quietExpected, isTrue, reason: 'precondition: expected');
-            job = h.runJob(1, (token) async {
+            job = withBandHandoff(() => h.runJob(1, (token) async {
               ran = true;
               await token.write(() async => true);
               return BuzzDelivery.complete;
-            }, timeout: const Duration(seconds: 40), settle: Duration.zero);
+            }, timeout: const Duration(seconds: 40), settle: Duration.zero));
           }
           unawaited(job.then((_) => settled = true, onError: (_) {
             settled = true;

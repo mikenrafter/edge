@@ -141,21 +141,22 @@ HapticPatternStore _store() => HapticPatternStore.decode(
 
 // What the old save paths wrote for the fixtures above, captured from the code
 // before the repository existed (NotificationPrefs.save, HapticPatternStore
-// .save and the relay's channel persistence).
+// .save and the relay's channel persistence), plus the "dndDefaultV" marker the
+// alert-policy change adds to every channel (one deliberate difference).
 const _goldenChannels =
     '{"apps":{"enabled":true,"matchHaptics":false,"fallbackPattern":[0,400,100,400],'
     '"quietStartMinute":null,"quietEndMinute":null,"overrideQuietHours":false,'
-    '"allowDuringDnd":false,"includeVibrate":true,"includeSilent":false,'
+    '"allowDuringDnd":false,"dndDefaultV":2,"includeVibrate":true,"includeSilent":false,'
     '"phoneFallback":false,"buzzSequence":{"offsetsMs":[0,500,1000],'
     '"durationsMs":[0,0,0],"patternId":"p1"},"appSequences":{"com.x":'
     '{"offsetsMs":[0,500,1000],"durationsMs":[0,0,0],"patternId":"p1"}}},'
     '"alarms":{"enabled":false,"matchHaptics":false,"fallbackPattern":[0,400,100,400],'
     '"quietStartMinute":60,"quietEndMinute":120,"overrideQuietHours":true,'
-    '"allowDuringDnd":false,"includeVibrate":true,"includeSilent":false,'
+    '"allowDuringDnd":false,"dndDefaultV":2,"includeVibrate":true,"includeSilent":false,'
     '"phoneFallback":false},"calls":{"enabled":false,"matchHaptics":false,'
     '"fallbackPattern":[0,400,100,400],"quietStartMinute":null,'
     '"quietEndMinute":null,"overrideQuietHours":false,"allowDuringDnd":false,'
-    '"includeVibrate":true,"includeSilent":false,"phoneFallback":false}}';
+    '"dndDefaultV":2,"includeVibrate":true,"includeSilent":false,"phoneFallback":false}}';
 const _goldenPatterns =
     '[{"id":"p1","name":"Calm","sequence":{"offsetsMs":[0,500,1000],'
     '"durationsMs":[0,0,0],"patternId":"p1"}}]';

@@ -19,6 +19,7 @@ import 'package:openstrap_edge/state/prefs.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/app_state_gesture_harness.dart';
+import 'support/band_handoff.dart' show withBandHandoff;
 
 final HapticDeviceProfile _mg = HapticDeviceProfile.whoopMg;
 
@@ -84,7 +85,7 @@ void main() {
           .setDoubleTapActions({DeviceAction.mediaPlayPause});
       await _assign(kGestureConfirmKey, 'Slow', 'N4* R2 N4*');
 
-      await rig.app.gestureCues.confirm();
+      await withBandHandoff(rig.app.gestureCues.confirm);
       expect(_hex(rig.writes.last.body), defaults['confirm'],
           reason: 'nothing has re-read the store yet');
       rig.writes.clear();
@@ -97,7 +98,7 @@ void main() {
           reason: 'the assigned pattern plays');
 
       rig.writes.clear();
-      await rig.app.gestureCues.confirm();
+      await withBandHandoff(rig.app.gestureCues.confirm);
       expect(_bodies(rig), ack,
           reason: 'the cache now holds the assigned pattern');
     });

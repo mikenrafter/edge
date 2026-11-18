@@ -40,7 +40,6 @@
 // whatever the profile says; two gesture jobs run back to back at +0 ms; both
 // files repeat the number.
 
-import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/haptics/gesture_cues.dart';
 import 'package:openstrap_edge/haptics/haptic_profile.dart';
@@ -49,6 +48,7 @@ import 'package:openstrap_edge/haptics/wake_haptics.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
 import 'package:openstrap_edge/wake/wake_settings.dart';
 
+import 'support/band_handoff.dart';
 import 'support/virtual_mg.dart';
 
 final HapticDeviceProfile _mg = HapticDeviceProfile.whoopMg;

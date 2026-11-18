@@ -70,6 +70,14 @@ class ChannelConfig {
     this.buzzSequence,
     this.appSequences = const {},
   });
+
+  /// Version of the Do Not Disturb default a saved config was written under.
+  /// Unmarked configs predate v2 (alarms did not pass Do Not Disturb), so their
+  /// stored `allowDuringDnd` is the old default, not a choice: where the
+  /// channel's default is now to pass it, it reads as true. Every save writes
+  /// the marker, so a false chosen afterwards stays false.
+  static const int dndDefaultVersion = 2;
+
   /// Apps relay once the feature is on; alarms and calls are opt-in.
   factory ChannelConfig.forChannel(String name) =>
       ChannelConfig(enabled: name == 'apps', allowDuringDnd: name == 'alarms');
@@ -195,6 +203,7 @@ class ChannelConfig {
     'quietEndMinute': quietEndMinute,
     'overrideQuietHours': overrideQuietHours,
     'allowDuringDnd': allowDuringDnd,
+    'dndDefaultV': dndDefaultVersion,
     'includeVibrate': includeVibrate,
     'includeSilent': includeSilent,
     'phoneFallback': phoneFallback,
@@ -218,7 +227,12 @@ class ChannelConfig {
         overrideQuietHours:
             j['overrideQuietHours'] as bool? ??
             (j['quietStartMinute'] is int && j['quietEndMinute'] is int),
-        allowDuringDnd: j['allowDuringDnd'] as bool? ?? d.allowDuringDnd,
+        allowDuringDnd: switch (j['dndDefaultV']) {
+          final int v when v >= dndDefaultVersion =>
+            j['allowDuringDnd'] as bool? ?? d.allowDuringDnd,
+          // Written under the old default: a stored false was never a choice.
+          _ => d.allowDuringDnd || (j['allowDuringDnd'] as bool? ?? false),
+        },
         includeVibrate: j['includeVibrate'] as bool? ?? d.includeVibrate,
         includeSilent: j['includeSilent'] as bool? ?? d.includeSilent,
         phoneFallback: j['phoneFallback'] as bool? ?? d.phoneFallback,

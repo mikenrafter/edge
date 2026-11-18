@@ -18,6 +18,7 @@ import 'package:openstrap_edge/gestures/gesture_dispatcher.dart';
 import 'package:openstrap_edge/gestures/gesture_settings.dart';
 import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_edge/notify/alert_dispatcher.dart';
+import 'package:openstrap_edge/notify/alert_policy.dart' show AlertDestination;
 import 'package:openstrap_edge/notify/alert_rule.dart';
 import 'package:openstrap_edge/notify/notification_center.dart';
 import 'package:openstrap_edge/notify/notification_event.dart';
@@ -137,9 +138,11 @@ void main() {
       NotificationCenter.instance.presentSink = savedSink;
     });
 
-    Future<void> setRule(int destinations, {bool enabled = true}) async {
+    Future<void> setRule(int destinations,
+        {bool enabled = true, AlertDestination? fallback}) async {
       final prefs = await NotificationPrefs.load();
       await prefs
+          .copyWith(fallbackDestination: fallback)
           .withAlertRule(AlertRule(
             id: 'health',
             kind: 'health',
@@ -177,12 +180,26 @@ void main() {
       expect(dispatcherPhone, 0);
     });
 
-    test('OFF: a band-only rule stays silent (no implicit phone alert)', () async {
-      await setRule(2);
+    // WHY: the band cannot be reached with the dispatcher off, so a band-only
+    // rule follows the wearer's fallback destination, exactly as the dispatcher
+    // does (alert policy: the fallback is the user's choice, not an addition).
+    test('OFF: a band-only rule stays silent when the fallback is the band',
+        () async {
+      await setRule(2, fallback: AlertDestination.band);
       FeatureFlags.debugSet(FeatureFlag.alertDispatcher, false);
       expect(await NotificationCenter.instance.emit(event('${todayLabel()}:bo')),
           isFalse);
       expect(phoneShown, 0);
+      expect(dispatcherBand, 0);
+    });
+
+    test('OFF: a band-only rule reaches the phone when the fallback is the phone',
+        () async {
+      await setRule(2, fallback: AlertDestination.phone);
+      FeatureFlags.debugSet(FeatureFlag.alertDispatcher, false);
+      expect(await NotificationCenter.instance.emit(event('${todayLabel()}:bp')),
+          isTrue);
+      expect(phoneShown, 1);
       expect(dispatcherBand, 0);
     });
 

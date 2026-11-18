@@ -1,4 +1,6 @@
 // WHY: round-2 regressions must exercise saved policy and real transport hops.
+import 'dart:convert';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/haptics/band_queue.dart';
@@ -8,6 +10,7 @@ import 'package:openstrap_edge/notify/buzz_sequence.dart';
 import 'package:openstrap_edge/notify/notification_center.dart';
 import 'package:openstrap_edge/notify/notification_prefs.dart';
 import 'package:openstrap_edge/notify/notification_relay.dart';
+import 'package:openstrap_edge/settings/settings_repository.dart';
 import 'package:openstrap_edge/state/feature_flags.dart';
 
 import 'backup/backup_support.dart';
@@ -122,6 +125,57 @@ void main() {
       expect(buzzes, allow ? 1 : 0);
     });
   }
+
+  // WHY / CLAIM(dnd-default-v2): the alarms channel is off by default, so every
+  // user who relays alarms saved `allowDuringDnd: false` from the OLD default.
+  // That stored false must read as the new default (true) exactly once; a false
+  // chosen afterwards (the marker is then present) must stay false.
+  const preChangeAlarms = '{"alarms":{"enabled":true,"matchHaptics":false,'
+      '"fallbackPattern":[0,400,100,400],"quietStartMinute":null,'
+      '"quietEndMinute":null,"overrideQuietHours":false,"allowDuringDnd":false,'
+      '"includeVibrate":true,"includeSilent":false,"phoneFallback":false}}';
+  String reencode(Map<String, ChannelConfig> c) =>
+      jsonEncode({for (final e in c.entries) e.key: e.value.toJson()});
+
+  test('stored pre-change alarms config relays during DND', () async {
+    await save();
+    var buzzes = 0;
+    final c = RelayController(dispatcher: production(),
+      buzz: (_) async { buzzes++; return true; }, phone: () async => false,
+      nowMs: () => DateTime.now().millisecondsSinceEpoch,
+      policy: (_) => {'enabled': true, 'dnd': true});
+    addTearDown(c.dispose);
+    c.channels.addAll(SettingsRepository.decodeChannels(preChangeAlarms));
+    expect(c.channels['alarms']!.enabled, isTrue);
+    await c.listenerConnected(const []);
+    await c.handleMetadata(post('alarm'));
+    expect(buzzes, 1);
+  });
+
+  test('the upgrade is one-time: a later false stays false', () {
+    final upgraded = SettingsRepository.decodeChannels(preChangeAlarms);
+    expect(upgraded['alarms']!.allowDuringDnd, isTrue);
+    final chosen = {...upgraded,
+      'alarms': upgraded['alarms']!.copyWith(allowDuringDnd: false)};
+    final stored = reencode(chosen);
+    // Saved again and read again, repeatedly: never flips back.
+    var raw = stored;
+    for (var i = 0; i < 3; i++) {
+      final back = SettingsRepository.decodeChannels(raw);
+      expect(back['alarms']!.allowDuringDnd, isFalse, reason: 'pass $i');
+      raw = reencode(back);
+    }
+    // And an unchanged upgraded config keeps true.
+    expect(SettingsRepository.decodeChannels(reencode(upgraded))['alarms']!
+        .allowDuringDnd, isTrue);
+  });
+
+  test('other channels keep their stored DND choice without a marker', () {
+    final apps = SettingsRepository.decodeChannels(
+        '{"apps":{"allowDuringDnd":false},"calls":{"allowDuringDnd":true}}');
+    expect(apps['apps']!.allowDuringDnd, isFalse);
+    expect(apps['calls']!.allowDuringDnd, isTrue);
+  });
 
   // WHY: skipped breath phases are intentional queue refusals, not alerts.
   // The saved global phone fallback must still cover a refused wake rhythm.
