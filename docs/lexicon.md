@@ -186,6 +186,11 @@ in the same change that introduces it (AGENTS.md §6).
   complete and whose beats pass the fixed floors (SD1/SD2 and pNN70 over enough
   adjacent pairs, coverage, gap and cleaning limits). A pending or refused window
   never votes.
+- **Window support summary**: a compact comparison of a closed window with the
+  same detector run on captured pre-upgrade record identities. It records whether
+  each qualifies and how many novel record keys support the full window. Two
+  consecutive newly qualifying windows authorize new debt; an interior fill can
+  qualify even when the closing record key was already captured.
 - **Evidence revision**: one stored version of an episode's recording (the
   compressed, checksummed beat evidence plus its header). Only the current and
   the actually delivered revisions keep their blob.

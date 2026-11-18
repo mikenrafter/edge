@@ -42,8 +42,9 @@ class PulseDetectInput {
 
 @SendableShape('The immutable analytics detection; sendable_detectPulseEpisodesHeavy_test')
 class PulseDetected {
-  const PulseDetected(this.detection);
+  const PulseDetected(this.detection, {this.support = const []});
   final ana.PulseDetection detection;
+  final List<PulseWindowSupport> support;
 }
 
 @heavy
@@ -51,8 +52,29 @@ PulseDetected detectPulseEpisodesHeavy(PulseDetectInput input) {
   WorkerInit.ensure(_kPulseWorker);
   assertWorker();
   WorkerAudit.entered('detectPulseEpisodesHeavy');
+  final detection = _detectPulseRows(input, input.rows);
+  final capturedRows = [for (final r in input.rows) if (r['pre_upgrade'] == 1) r];
+  final capturedKeys = {for (final r in capturedRows) r['ts_ms'] as int};
+  final before = _detectPulseRows(input, capturedRows);
+  final beforeWindows = {for (final w in before.windows) w.startMs: w};
+  return PulseDetected(detection, support: [
+    for (final w in detection.windows)
+      PulseWindowSupport(startMs: w.startMs, endMs: w.endMs,
+          qualified: !w.pending && w.qualified,
+          preUpgradeQualified: beforeWindows[w.startMs]?.qualified ?? false,
+          novelRecords: {
+            for (final b in w.beats)
+              if (b.featureUse && pulseBeatKeyOf(b.id) != null &&
+                  !capturedKeys.contains(pulseBeatKeyOf(b.id)!.recordTsMs))
+                pulseBeatKeyOf(b.id)!.recordTsMs,
+          }.length),
+  ]);
+}
+
+@heavy
+ana.PulseDetection _detectPulseRows(PulseDetectInput input, List<Map<String, Object?>> rows) {
   final beats = <ana.PulseBeatInput>[];
-  for (final r in input.rows) {
+  for (final r in rows) {
     final ts = (r['ts_ms'] as num).toInt(), bi = (r['beat_index'] as num).toInt();
     final modeled = (r['beat_ts_ms'] as num?)?.toInt();
     beats.add(ana.PulseBeatInput(
@@ -65,29 +87,32 @@ PulseDetected detectPulseEpisodesHeavy(PulseDetectInput input) {
       timestampValid: modeled != null,
     ));
   }
-  return PulseDetected(ana.detectPulseEpisodes(
+  return ana.detectPulseEpisodes(
     beats,
     completeThroughMs: input.completeThroughMs,
     sourceStartMs: input.sourceStartMs,
     sourceEndMs: input.sourceEndMs,
     evaluateFromMs: input.evaluateFromMs,
     evaluateToMs: input.evaluateToMs,
-  ));
+  );
 }
 
 @SendableShape('Immutable analytics detection and primitive heart-rate bins; sendable_preparePulseEvidenceHeavy_test')
 class PulsePrepareInput {
-  const PulsePrepareInput(this.detection, {this.hr = const [], this.fromMs, this.toMs});
+  const PulsePrepareInput(this.detection, {this.hr = const [], this.fromMs, this.toMs, this.support = const []});
   final ana.PulseDetection detection;
   final List<PulseHrBin> hr;
   final int? fromMs, toMs;
+  final List<PulseWindowSupport> support;
 }
 
 @SendableShape('Encoded recordings keyed by episode id; sendable_preparePulseEvidenceHeavy_test')
 class PulsePrepared {
-  const PulsePrepared(this.episodes, {this.refusedJson = '[]'});
+  const PulsePrepared(this.episodes, {this.refusedJson = '[]', this.support = const {}, this.summaries = const {}});
   final Map<String, PulseEncodeResult> episodes;
   final String refusedJson;
+  final Map<String, List<PulseWindowSupport>> support;
+  final Map<String, String> summaries;
 }
 
 @heavy
@@ -109,10 +134,21 @@ PulsePrepared preparePulseEvidenceHeavy(PulsePrepareInput input) {
       });
     }
   }
+  final byStart = {for (final w in input.support) w.startMs: w};
+  final support = {
+    for (final e in input.detection.episodes) e.id: [
+      for (final w in e.windows) if (byStart[w.startMs] != null) byStart[w.startMs]!,
+    ],
+  };
   return PulsePrepared({
     for (final e in input.detection.episodes)
       e.id: encodePulseEvidence(buildPulseEvidenceHeavy(e, input.detection, hr: input.hr)),
-  }, refusedJson: jsonEncode(refused));
+  }, refusedJson: jsonEncode(refused), support: support, summaries: {
+    for (final e in input.detection.episodes) e.id: jsonEncode({
+      'windows': e.windows.length,
+      'support': [for (final w in support[e.id]!) w.toJson()],
+    }),
+  });
 }
 
 @SendableShape('Compressed bytes and a checksum string; sendable_decodePulseEvidenceHeavy_test')
@@ -274,7 +310,9 @@ class PulseEpisodeWorker {
     var tsAfter = fromMs - 1, idxAfter = -1;
     while (true) {
       final page = await db.rawQuery(
-        'SELECT ts_ms, beat_index, beat_ts_ms, rr_ts_ms, rr_ms FROM decoded_rr '
+        'SELECT r.ts_ms, r.beat_index, r.beat_ts_ms, r.rr_ts_ms, r.rr_ms, '
+        'EXISTS(SELECT 1 FROM pulse_ep_upgrade_record u WHERE u.source = r.device_id AND u.ts_ms = r.ts_ms) AS pre_upgrade '
+        'FROM decoded_rr r '
         'WHERE device_id = ? AND ts_ms < ? AND (ts_ms > ? OR (ts_ms = ? AND beat_index > ?)) '
         'ORDER BY ts_ms, beat_index LIMIT 4000',
         [source, toMs, tsAfter, tsAfter, idxAfter],
@@ -326,8 +364,10 @@ class PulseEpisodeWorker {
       evaluateFromMs: fromMs,
       evaluateToMs: toMs,
     );
-    final detection = (await Isolate.run(() => detectPulseEpisodesHeavy(detectInput))).detection;
-    final prepareInput = PulsePrepareInput(detection, hr: hr, fromMs: fromMs, toMs: toMs);
+    final detected = await Isolate.run(() => detectPulseEpisodesHeavy(detectInput));
+    final detection = detected.detection;
+    final prepareInput = PulsePrepareInput(detection, hr: hr, fromMs: fromMs, toMs: toMs,
+        support: detected.support);
     final prepared = await Isolate.run(() => preparePulseEvidenceHeavy(prepareInput));
     final results = <PulseApply>[];
     for (final e in detection.episodes) {
@@ -350,7 +390,8 @@ class PulseEpisodeWorker {
           refusal: enc is PulseEncodeRefused ? 'evidence unavailable: ${enc.reason}' :
               e.alertEligible ? null : 'recording quality',
           origin: origin,
-          summaryJson: '{"windows":${e.windows.length}}',
+          summaryJson: prepared.summaries[e.id]!,
+          windowSupport: prepared.support[e.id]!,
           evidence: enc is PulseEncoded ? enc : null,
           supportKeysMs: {
             for (final b in e.beats)

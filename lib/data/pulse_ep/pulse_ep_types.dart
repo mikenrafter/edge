@@ -99,3 +99,17 @@ class PulseRange {
   @override
   String toString() => 'PulseRange($startMs, $endMs, $reason)';
 }
+
+/// Compact per-window novelty proof from the checked snapshot. The comparison
+/// reruns the same detector on captured record identities, including interiors.
+class PulseWindowSupport {
+  const PulseWindowSupport({required this.startMs, required this.endMs,
+      required this.qualified, required this.preUpgradeQualified, required this.novelRecords});
+  final int startMs, endMs, novelRecords;
+  final bool qualified, preUpgradeQualified;
+  bool get newlyQualifies => qualified && !preUpgradeQualified && novelRecords > 0;
+  Map<String, Object?> toJson() => {
+    'start': startMs, 'end': endMs, 'qualified': qualified,
+    'preUpgradeQualified': preUpgradeQualified, 'novelRecords': novelRecords,
+  };
+}

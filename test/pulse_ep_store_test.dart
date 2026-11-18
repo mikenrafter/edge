@@ -41,6 +41,7 @@ PulsePublication _pub({
   bool eligible = true,
   String origin = 'recentSync',
   List<int>? keys,
+  List<PulseWindowSupport>? windows,
   PulseEncoded? evidence,
   bool noEvidence = false,
   int detector = 4,
@@ -63,6 +64,12 @@ PulsePublication _pub({
   summaryJson: '{"windows":2}',
   evidence: noEvidence ? null : (evidence ?? _enc(sum: sum, episode: id)),
   supportKeysMs: keys ?? [_t0 + start * _min],
+  windowSupport: windows ?? [
+    PulseWindowSupport(startMs: _t0 + start * _min, endMs: _t0 + (start + 5) * _min,
+        qualified: true, preUpgradeQualified: false, novelRecords: 300),
+    PulseWindowSupport(startMs: _t0 + (start + 5) * _min, endMs: _t0 + (start + 10) * _min,
+        qualified: true, preUpgradeQualified: false, novelRecords: 300),
+  ],
   nowMs: now,
 );
 
@@ -206,7 +213,7 @@ void main() {
     await db.insert('pulse_ep_upgrade_record', {'source': 's', 'ts_ms': _t0 + 1000});
     await publish(_pub(id: 's:0', keys: [_t0, _t0 + 1000]));
     expect((await outbox('s:0'))['state'], 'before_version');
-    await publish(_pub(id: 's:200', start: 200, end: 210, keys: [_t0 + 200 * _min, _t0 + 1000]));
+    await publish(_pub(id: 's:200', start: 200, end: 210, windows: const [], keys: [_t0 + 200 * _min, _t0 + 1000]));
     expect((await outbox('s:200'))['state'], 'not_sent');
   });
 

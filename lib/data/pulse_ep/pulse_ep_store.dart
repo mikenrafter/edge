@@ -86,6 +86,7 @@ class PulsePublication {
     required this.supportKeysMs,
     required this.nowMs,
     this.refusal,
+    this.windowSupport = const [],
   });
   final String episodeId, source, startDay, endDay, origin, summaryJson;
   final int seedStartMs, seedEndMs, startMs, endMs, detector, algo, nowMs;
@@ -100,6 +101,7 @@ class PulsePublication {
   /// Distinct record seconds (epoch ms) of this source supporting the
   /// qualifying windows; compared with the upgrade membership.
   final List<int> supportKeysMs;
+  final List<PulseWindowSupport> windowSupport;
 }
 
 /// A rollout boundary could not be captured. Opening must expose this failure:
@@ -415,6 +417,8 @@ class PulseEpisodeStore {
     final gen = Sqflite.firstIntValue(
             await db.rawQuery('SELECT generation FROM pulse_ep_upgrade WHERE id = 1')) ??
         0;
+    final membership = Sqflite.firstIntValue(await db.rawQuery(
+        'SELECT COUNT(*) FROM pulse_ep_upgrade_record WHERE source = ?', [source])) ?? 0;
     final admission = (await db.rawQuery(
       'SELECT COALESCE(MAX(rowid), 0) AS last, COUNT(*) AS n FROM pulse_ep_admission WHERE source = ?',
       [source],
@@ -423,7 +427,7 @@ class PulseEpisodeStore {
       admissionThrough: admission['last'] as int,
       admissionCount: admission['n'] as int,
       inputRev: input,
-      context: '$events:$sleep:${complete.first['n']}:${complete.first['g']}:${complete.first['m']}',
+      context: '$events:$sleep:${complete.first['n']}:${complete.first['g']}:${complete.first['m']}:$membership',
       generation: gen,
       source: source,
       fromMs: fromMs,
@@ -582,10 +586,17 @@ class PulseEpisodeStore {
   ) async {
     final rows = await txn.query('pulse_ep_outbox',
         where: 'episode_id = ?', whereArgs: [id], limit: 1);
-    final eligible = p.alertEligible && p.evidence != null;
+    final newWindows = p.windowSupport.where((w) => w.newlyQualifies).toList()
+        ..sort((a, b) => a.startMs.compareTo(b.startMs));
+    var newPair = false;
+    for (var i = 1; i < newWindows.length; i++) {
+      if (newWindows[i - 1].endMs == newWindows[i].startMs) newPair = true;
+    }
+    final eligible = p.alertEligible && p.evidence != null && newPair;
     final eligibleState = eligible ? PulseDelivery.owed : PulseDelivery.notSent;
     final eligibleReason = eligible ? null :
-        (p.refusal ?? (p.evidence == null ? 'evidence unavailable' : 'recording quality'));
+        (p.refusal ?? (p.evidence == null ? 'evidence unavailable' :
+            !p.alertEligible ? 'recording quality' : 'insufficient new qualifying support'));
     if (rows.isNotEmpty) {
       final cur = rows.first;
       final state = PulseDelivery.parse(cur['state']);
@@ -593,6 +604,7 @@ class PulseEpisodeStore {
       final reason = cur['reason'];
       final reopen = state == PulseDelivery.notSent &&
           (reason == 'retracted' || reason == 'recording quality' ||
+              reason == 'insufficient new qualifying support' ||
               (reason is String && reason.startsWith('evidence unavailable')));
       final next = state == PulseDelivery.held
           ? (eligible ? PulseDelivery.held : PulseDelivery.notSent)
