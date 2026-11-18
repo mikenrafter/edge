@@ -161,8 +161,11 @@ void main() {
       final on = t0, off = t0 + 8 * 3600;
       await dayResult(
         dayOf(off),
+        // The shape day_compute stores: SleepWindow.toJson(), unwrapped.
         windowJson: jsonEncode({
-          'value': {'onset_ms': on * 1000, 'offset_ms': off * 1000},
+          'onset_ms': on * 1000,
+          'offset_ms': off * 1000,
+          'spt_sec': off - on,
         }),
       );
       final r = (await repo.proposeNapKeep(on - 900, on + 600))!;
@@ -238,8 +241,11 @@ void main() {
       final s = await suggest(on - 900, on + 600);
       await dayResult(
         dayOf(off),
+        // The shape day_compute stores: SleepWindow.toJson(), unwrapped.
         windowJson: jsonEncode({
-          'value': {'onset_ms': on * 1000, 'offset_ms': off * 1000},
+          'onset_ms': on * 1000,
+          'offset_ms': off * 1000,
+          'spt_sec': off - on,
         }),
       );
       expect(await LocalDb.getSleepOverride(dayOf(off)), isNull);

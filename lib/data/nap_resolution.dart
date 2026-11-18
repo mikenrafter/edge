@@ -6,8 +6,8 @@
 
 import 'package:sqflite/sqflite.dart';
 
-import '../compute/derivation_engine.dart' show kAlgoVersion;
 import 'day_label.dart';
+import 'db.dart' show LocalDb;
 
 /// One block a kept nap overlaps. [kind] is 'main_sleep' or 'nap'; [day] is the
 /// day_id that owns it.
@@ -81,17 +81,7 @@ class NapResolver {
         endTs: (r['offset_ts'] as num).toInt(),
       ));
     }
-    final detected = await tx.rawQuery(
-      '''SELECT d.day_id,
-        CASE WHEN json_valid(d.window_json)
-          THEN json_extract(d.window_json, '\$.value.onset_ms') END AS on_ms,
-        CASE WHEN json_valid(d.window_json)
-          THEN json_extract(d.window_json, '\$.value.offset_ms') END AS off_ms
-      FROM day_result d
-      WHERE d.day_id BETWEEN ? AND ? AND d.algo_version =
-        (SELECT MAX(r.algo_version) FROM day_result r WHERE r.day_id = d.day_id AND r.algo_version <= ?)''',
-      [first, last, kAlgoVersion],
-    );
+    final detected = await LocalDb.servedMainWindows(tx, first, last);
     for (final r in detected) {
       final day = r['day_id'] as String;
       if (overridden.contains(day)) continue;

@@ -5549,6 +5549,30 @@ class LocalDb {
     return executor == null ? readerRun(read) : read(executor);
   }
 
+  /// The detected main-sleep windows of the days [first]..[last] (inclusive
+  /// day labels), as `{day_id, on_ms, off_ms}`, read the way the screens read
+  /// them: the SERVED version of each day ([_servedDayJoin]), skipped days
+  /// excluded. `window_json` comes in two shapes: the derivation engine stores
+  /// `SleepWindow.toJson()` UNWRAPPED (`{onset_ms, offset_ms, spt_sec}`), older
+  /// fixtures and importers a `{value: {...}}` envelope; both are read. A night
+  /// with no sleep has no onset and yields null columns.
+  static Future<List<Map<String, Object?>>> servedMainWindows(
+    DatabaseExecutor executor,
+    String first,
+    String last,
+  ) => executor.rawQuery(
+    '''SELECT r.day_id AS day_id,
+      CASE WHEN json_valid(r.window_json) THEN COALESCE(
+        json_extract(r.window_json, '\$.value.onset_ms'),
+        json_extract(r.window_json, '\$.onset_ms')) END AS on_ms,
+      CASE WHEN json_valid(r.window_json) THEN COALESCE(
+        json_extract(r.window_json, '\$.value.offset_ms'),
+        json_extract(r.window_json, '\$.offset_ms')) END AS off_ms
+    FROM day_result r $_servedDayJoin
+    WHERE r.skipped = 0 AND r.day_id BETWEEN ? AND ?''',
+    [first, last],
+  );
+
   /// Small SQL projections of detected naps for reminder eligibility. Nap
   /// starts/ends are absolute epoch seconds; no guessed schedule or duration.
   static Future<List<Map<String, Object?>>> reminderNapWindows(String since) => readerRun((db) => db.rawQuery(
