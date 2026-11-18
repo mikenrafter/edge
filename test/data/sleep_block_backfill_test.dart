@@ -55,6 +55,20 @@ void main() {
     final edits=await SleepBlockStore.napEdits(db,fixtureDay);
     expect(edits.single.snapshot?['duration_min'],10);
   });
+  // WHY F2: composition must use the same snapshots as the release reader,
+  // including a NULL snapshot for an empty payload so manual minutes survive.
+  test('F2 B10 store napEdits equals legacy on the full upgraded fixture including empty payload', () async {
+    var db=await reopen(); await seedLegacy(db);
+    await db.insert('sleep_nap',napRow(12000,12600,'manual',payload:'{}'));
+    await rewind(92); db=await reopen();
+    List<Object?> tuples(List<dynamic> edits) => [for(final e in edits)
+      [e.kind.name,e.startSec,e.endSec,e.snapshot]];
+    for(final d in ['2026-10-30','2026-10-31',fixtureDay]) {
+      expect(tuples(await SleepBlockStore.napEdits(db,d)),
+        tuples(await ActivityStore.napEdits(db,d)),reason:d);
+    }
+    expect((await SleepBlockStore.napEdits(db,fixtureDay)).singleWhere((e)=>e.startSec==12000).snapshot,isNull);
+  });
   test('B1 fresh open creates sleep_block and the one-live-main index', () async {
     final db = await reopen();
     await expectBlockTable(db);
