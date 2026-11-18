@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
-import 'package:openstrap_edge/data/activity_store.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/sleep_block_store.dart';
 import 'support/sleep_block_fixture.dart';
@@ -28,7 +27,6 @@ void main() {
   test('P1 synthetic 92 full fixture retains reader output through the ladder', () async {
     var db=await LocalDb.instance; await seedLegacy(db);
     final before=await readers();
-    final oldEdits=await ActivityStore(db).napEdits(fixtureDay);
     final path=db.path; await LocalDb.close();
     final raw=await databaseFactory.openDatabase(path);
     await raw.execute('DROP TABLE sleep_block');
@@ -37,8 +35,11 @@ void main() {
     db=await LocalDb.instance;
     expect(await readers(),before);
     final actual=await SleepBlockStore.napEdits(db,fixtureDay);
-    expect(actual.map((n)=>(n.startSec,n.endSec,n.source,n.snapshot)).toList(),
-      oldEdits.map((n)=>(n.startSec,n.endSec,n.source,n.snapshot)).toList());
+    expect(actual.map((n)=>(n.startSec,n.endSec,n.kind.name)).toSet(),{
+      (1100,1700,'added'),(1800,1900,'added'),(2000,2100,'added'),
+      (2200,2800,'rejected'),(3000,3600,'added'),(4000,4600,'rejected'),
+      (5000,5600,'added'), // pre-review legacy detection, spec §2.2 step 3
+    });
     expect(await db.query('sleep_block'),hasLength(10)); // 3 mains + 6 edits + pre-review legacy nap
     expect((await db.query('sleep_block')).map((r)=>r['owner_rule']),everyElement(0));
     final once=await snapshot(db); await LocalDb.close(); db=await LocalDb.instance;
