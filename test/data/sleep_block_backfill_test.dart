@@ -46,6 +46,10 @@ void main() {
     await expectBlockTable(db);
     expect((await db.rawQuery('PRAGMA index_list(sleep_block)')).map((r) => r['name']),
         contains('idx_sleep_block_live_main'));
+    await db.insert('sleep_block',blockRow('first',kind:'main'));
+    await expectLater(db.insert('sleep_block',blockRow('second',kind:'main')),throwsA(isA<DatabaseException>()));
+    await db.insert('sleep_block',blockRow('removed',kind:'main',state:'removed'));
+    expect(await db.query('sleep_block'),hasLength(2));
   });
   for (final version in [92, 93]) {
     test('B${version == 92 ? 2 : 3} upgrade from $version absorbs a stored main', () async {
@@ -104,6 +108,14 @@ void main() {
       for (final r in order ? pair.reversed : pair) { await db.insert('sleep_block',r); }
       await SleepBlockStore.projectForTest(db,{fixtureDay});
       expect((await db.query('sleep_nap',where:'day_id = ?',whereArgs:[fixtureDay])).single['payload_json'],'a');
+      await projectionMatches(db,fixtureDay);
+      await db.insert('sleep_block',blockRow('merged',state:'merged',updatedAt:200,payload:'merged'));
+      await db.insert('sleep_block',blockRow('newer',state:'removed',updatedAt:18,payload:'newer'));
+      await SleepBlockStore.projectForTest(db,{fixtureDay});
+      expect((await db.query('sleep_nap',where:'day_id = ?',whereArgs:[fixtureDay])).single['payload_json'],'newer');
+      await db.insert('sleep_block',blockRow('live',state:'live',updatedAt:1,payload:'live'));
+      await SleepBlockStore.projectForTest(db,{fixtureDay});
+      expect((await db.query('sleep_nap',where:'day_id = ?',whereArgs:[fixtureDay])).single['payload_json'],'live');
       await projectionMatches(db,fixtureDay);
     }
   });

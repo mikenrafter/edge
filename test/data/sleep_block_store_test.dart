@@ -89,6 +89,13 @@ void main() {
     final r = await SleepBlockStore.read(db,fixtureDay);
     expect(r.entries.map((e)=>(e.id,e.removed)),[('own',true)]);
     expect(r.neighbors.map((b)=>b.id),['neighbor']);
+    await db.delete('sleep_block');
+    await db.insert('sleep_block',blockRow('night',kind:'main',start:start-3600,end:start+25200));
+    await stored('afternoon',at:start+54000);
+    await stored('evening-context',day:'2026-10-31',at:start-7200);
+    final night = await SleepBlockStore.read(db,fixtureDay);
+    expect(night.entries.map((e)=>e.id),['night','afternoon']);
+    expect(night.neighbors.map((b)=>b.id),['evening-context']);
   });
   // catches: deriving suppression from the lossy natural-key projection, or
   // recomputing detected_day from an absorbed misdated nap's start instant.
@@ -106,7 +113,9 @@ void main() {
     await db.insert('sleep_nap',napRow(1,2,'manual',day:'untouched'));
     final before = await db.query('sleep_nap',where:'day_id = ?',whereArgs:['untouched']);
     await stored('main',kind:'main'); await stored('nap');
-    await SleepBlockStore.projectForTest(db,{fixtureDay});
+    await stored('other',day:'2026-11-02');
+    await SleepBlockStore.projectForTest(db,{fixtureDay,'2026-11-02'});
+    await projectionMatches(db,'2026-11-02');
     await projectionMatches(db,fixtureDay);
     expect(await db.query('sleep_nap',where:'day_id = ?',whereArgs:['untouched']),before);
     expect((await db.query('sleep_override')).single['payload_json'],isNull);
