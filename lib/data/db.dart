@@ -38,6 +38,7 @@ import '../compute/groups/input_catalogue.dart' show InputKind, kInputCatalogue;
 import 'db/input_read_tracker.dart';
 import 'pulse_ep/pulse_ep_codec.dart' show kPulseEvidenceMaxBytes, PulseImportedRecording;
 import 'pulse_ep/pulse_ep_store.dart';
+import 'pulse_ep/pulse_ep_types.dart' show PulseApplied, PulseRefused;
 import 'track_model.dart';
 import 'track_range_cut.dart';
 import 'db/group_row_store.dart';

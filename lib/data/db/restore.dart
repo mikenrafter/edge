@@ -2543,8 +2543,11 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                     final key = '_pulse_evidence_${recording.status.wire}';
                     counts[key] = (counts[key] ?? 0) + 1;
                   }
-                  if (await PulseEpisodeStore.mergeImportedRow(txn, t, row, recording: recording)) {
-                    copied++;
+                  final outcome = await PulseEpisodeStore.mergeImportedRow(txn, t, row,
+                      recording: recording, nowMs: DateTime.now().millisecondsSinceEpoch);
+                  if (outcome is PulseApplied) copied++;
+                  if (outcome is PulseRefused && outcome.reason == 'evidence budget full') {
+                    counts['_pulse_evidence_budget_refused'] = (counts['_pulse_evidence_budget_refused'] ?? 0) + 1;
                   }
                   continue;
                 }
@@ -2672,6 +2675,8 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           ImportPerf.write(perfId, 'table_end', 'table=$t path=$perfPath rows=${counts[t] ?? 0} pages=${perfPages[t] ?? 0} serialized_in_rows=${perfSerialized[t] ?? 0} wal_bytes=${await ImportPerf.walBytes(db.path)} ms=${tableWatch.elapsedMilliseconds}');
         }
       }
+      await db.transaction((txn) => PulseEpisodeStore.reconcileImported(txn,
+          nowMs: DateTime.now().millisecondsSinceEpoch));
       ImportPerf.phase('tables', prepWatch, run: perfId);
       plan?.finish();
       if (run != null && order.isNotEmpty) {

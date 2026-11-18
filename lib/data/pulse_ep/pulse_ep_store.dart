@@ -755,6 +755,41 @@ class PulseEpisodeStore {
     return n;
   }
 
+  /// Reconcile ownership even when a resumed import skips every Pulse table.
+  /// CLAIM(pulse-import-retention): imported evidence shares publication's
+  /// current/delivered ownership, original age, byte budget and local claim pins
+  /// [R7 transport tests].
+  static Future<void> reconcileImported(DatabaseExecutor txn, {required int nowMs}) async {
+    await txn.rawUpdate(
+      "UPDATE pulse_ep_revision SET evidence_status = 'expired' WHERE EXISTS ("
+      'SELECT 1 FROM pulse_ep_evidence v WHERE v.episode_id = pulse_ep_revision.episode_id '
+      'AND v.revision = pulse_ep_revision.revision) AND revision <> '
+      '(SELECT revision FROM pulse_ep_episode e WHERE e.id = pulse_ep_revision.episode_id) '
+      'AND revision <> COALESCE((SELECT revision FROM pulse_ep_outbox o '
+      "WHERE o.episode_id = pulse_ep_revision.episode_id AND o.state IN ('pending','unknown','sent','summary')), -1)",
+    );
+    await txn.rawDelete(
+      'DELETE FROM pulse_ep_evidence WHERE revision <> '
+      '(SELECT revision FROM pulse_ep_episode e WHERE e.id = pulse_ep_evidence.episode_id) '
+      'AND revision <> COALESCE((SELECT revision FROM pulse_ep_outbox o '
+      "WHERE o.episode_id = pulse_ep_evidence.episode_id AND o.state IN ('pending','unknown','sent','summary')), -1)",
+    );
+    await retainIn(txn, nowMs: nowMs, budgetBytes: importBudgetBytesForTest ?? kPulseEvidenceBudgetBytes);
+    await txn.rawUpdate(
+      "UPDATE pulse_ep_outbox SET state = 'not_sent', reason = 'evidence unavailable' "
+      "WHERE state IN ('owed','held') AND NOT EXISTS ("
+      'SELECT 1 FROM pulse_ep_evidence v JOIN pulse_ep_revision r '
+      'ON r.episode_id = v.episode_id AND r.revision = v.revision '
+      'WHERE v.episode_id = pulse_ep_outbox.episode_id AND v.revision = pulse_ep_outbox.revision '
+      "AND r.evidence_status IN ('available','partial'))",
+    );
+    final used = Sqflite.firstIntValue(await txn.rawQuery(
+        'SELECT COALESCE(SUM(encoded_bytes), 0) FROM pulse_ep_evidence')) ?? 0;
+    if (used > (importBudgetBytesForTest ?? kPulseEvidenceBudgetBytes)) {
+      throw StateError('Pulse evidence budget is full of pinned recordings');
+    }
+  }
+
   // ---- completeness -------------------------------------------------------------------
   /// Certifies that [source]'s recording is complete over `[startMs, endMs)`
   /// except the declared [holes], at the committed tail the caller measured
@@ -879,70 +914,80 @@ class PulseEpisodeStore {
   /// beats an owed one whichever side holds it, another phone's claim is
   /// meaningless here, and what this phone could not have announced becomes a
   /// silent historical summary. Idempotent, so a resumed import re-runs it.
-  /// Returns true when the row changed this database.
-  static Future<bool> mergeImportedRow(
+  /// Distinguishes applied, unchanged and refused contributions. Source reads
+  /// and worker validation must finish before entering this transaction.
+  static Future<PulseApply> mergeImportedRow(
     DatabaseExecutor txn,
     String table,
     Map<String, Object?> row, {
     PulseImportedRecording? recording,
+    required int nowMs,
   }) async {
+    final identity = '${row['episode_id'] ?? row['id'] ?? row['source'] ?? table}';
+    final revision = (row['revision'] as num?)?.toInt() ?? 0;
+    PulseApply changed(bool applied) => applied
+        ? PulseApplied(identity, revision, created: true) : PulseUnchanged(identity);
     switch (table) {
       case 'pulse_ep_episode':
-        final changed = (await txn.insert('pulse_ep_episode', row,
-                conflictAlgorithm: ConflictAlgorithm.ignore)) > 0;
+        final outcome = changed((await txn.insert('pulse_ep_episode', row, conflictAlgorithm: ConflictAlgorithm.ignore)) > 0);
         if (row['status'] == 'deleted') {
           await _deleteRecording(txn, row['id']);
-          return true;
+          return PulseApplied(identity, revision, created: false);
         }
-        return changed;
+        return outcome;
       case 'pulse_ep_revision':
-        if (await _isDeleted(txn, row['episode_id'])) return false;
-        return (await txn.insert('pulse_ep_revision', row,
-                conflictAlgorithm: ConflictAlgorithm.ignore)) >
-            0;
+        if (await _isDeleted(txn, row['episode_id'])) return const PulseRefused('recording deleted');
+        return changed((await txn.insert('pulse_ep_revision', row, conflictAlgorithm: ConflictAlgorithm.ignore)) > 0);
       case 'pulse_ep_evidence':
         final id = row['episode_id'], rev = row['revision'];
-        if (await _isDeleted(txn, id)) return false;
+        if (await _isDeleted(txn, id)) return const PulseRefused('recording deleted');
         final local = await txn.query('pulse_ep_revision',
-            columns: ['checksum'],
-            where: 'episode_id = ? AND revision = ?',
-            whereArgs: [id, rev],
-            limit: 1);
+            where: 'episode_id = ? AND revision = ?', whereArgs: [id, rev], limit: 1);
         final sum = row['checksum'];
-        // The evidence must belong to the revision header this phone holds.
         if (local.isEmpty || sum is! String || sum.isEmpty || local.first['checksum'] != sum) {
-          return false;
+          return PulseUnchanged(identity);
         }
-        if (recording == null) return false;
+        if (local.first['evidence_status'] == 'expired') return const PulseRefused('recording expired');
+        if (recording == null) return const PulseRefused('unvalidated recording');
+        final present = await txn.rawQuery(
+            'SELECT 1 FROM pulse_ep_evidence WHERE episode_id = ? AND revision = ?', [id, rev]);
         if (!recording.available) {
-          // Preserve valid local content if the foreign contribution is corrupt.
-          final present = await txn.rawQuery(
-              'SELECT 1 FROM pulse_ep_evidence WHERE episode_id = ? AND revision = ?', [id, rev]);
           if (present.isEmpty) {
             await txn.update('pulse_ep_revision', {'evidence_status': recording.status.wire},
                 where: 'episode_id = ? AND revision = ?', whereArgs: [id, rev]);
             await txn.update('pulse_ep_episode', {'refusal': recording.reason},
                 where: 'id = ? AND revision = ?', whereArgs: [id, rev]);
           }
-          return false;
+          return PulseRefused(recording.reason ?? 'recording unavailable');
+        }
+        if (present.isNotEmpty) return PulseUnchanged(identity);
+        final created = recording.row['created_ms'] as int;
+        if (created < nowMs - kPulseEvidenceDays * 86400000) {
+          await txn.update('pulse_ep_revision', {'evidence_status': 'expired'},
+              where: 'episode_id = ? AND revision = ?', whereArgs: [id, rev]);
+          return const PulseRefused('recording expired');
+        }
+        final budget = importBudgetBytesForTest ?? kPulseEvidenceBudgetBytes;
+        final bytes = recording.row['encoded_bytes'] as int;
+        await _evictToBudget(txn, budget - bytes);
+        final used = Sqflite.firstIntValue(await txn.rawQuery(
+            'SELECT COALESCE(SUM(encoded_bytes), 0) FROM pulse_ep_evidence')) ?? 0;
+        if (used + bytes > budget) {
+          await txn.update('pulse_ep_revision', {'evidence_status': 'omitted'},
+              where: 'episode_id = ? AND revision = ?', whereArgs: [id, rev]);
+          return const PulseRefused('evidence budget full');
         }
         await txn.update('pulse_ep_revision', {'evidence_status': recording.status.wire},
             where: 'episode_id = ? AND revision = ?', whereArgs: [id, rev]);
-        return (await txn.insert('pulse_ep_evidence', recording.row,
-                conflictAlgorithm: ConflictAlgorithm.ignore)) > 0;
+        return changed((await txn.insert('pulse_ep_evidence', recording.row, conflictAlgorithm: ConflictAlgorithm.ignore)) > 0);
       case 'pulse_ep_outbox':
-        return _mergeOutbox(txn, row);
+        return changed(await _mergeOutbox(txn, row));
       case 'pulse_ep_admission':
-        // A replacement can never carry recent-sync authority from another phone.
-        return (await txn.insert('pulse_ep_admission', {...row, 'historical': 1, 'evaluated': 0},
-                conflictAlgorithm: ConflictAlgorithm.ignore)) >
-            0;
+        return changed((await txn.insert('pulse_ep_admission', {...row, 'historical': 1, 'evaluated': 0}, conflictAlgorithm: ConflictAlgorithm.ignore)) > 0);
       case 'pulse_ep_upgrade_record':
-        return (await txn.insert('pulse_ep_upgrade_record', row,
-                conflictAlgorithm: ConflictAlgorithm.ignore)) >
-            0;
+        return changed((await txn.insert('pulse_ep_upgrade_record', row, conflictAlgorithm: ConflictAlgorithm.ignore)) > 0);
     }
-    return false;
+    return PulseUnchanged(identity);
   }
 
   static Future<bool> _mergeOutbox(DatabaseExecutor txn, Map<String, Object?> row) async {
