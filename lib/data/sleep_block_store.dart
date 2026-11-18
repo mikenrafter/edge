@@ -359,22 +359,23 @@ abstract final class SleepBlockStore {
       participants.add(w);
     }
     final survivor=participants.first;
-    // Include new nap ranges: they carry an explicit absence of measured history.
+    // New accepted detections contribute their snapshot and measures too;
+    // manual ranges still make the union's measured history unavailable.
     final incoming=p.work.values.where((w)=>w.original==null && !participants.contains(w) &&
       w.row['state']=='live' && (w.row['start_ts'] as int)>=proposal.startTs && (w.row['end_ts'] as int)<=proposal.endTs).toList();
-    final measures=participants.map((w)=>w.original??w.row).toList()..sort((a,b)=>(a['start_ts'] as int).compareTo(b['start_ts'] as int));
+    final measures=[...participants,...incoming].map((w)=>w.original??w.row).toList()..sort((a,b)=>(a['start_ts'] as int).compareTo(b['start_ts'] as int));
     final known=participants.every((w)=>w.row['history']=='known') && incoming.every((w)=>w.row['history']=='known');
     final r=survivor.row;
     if(known) {
       r['history']='known';
-      r['detected_start']=participants.map((w)=>w.row['detected_start'] as int).reduce((a,b)=>a<b?a:b);
-      r['detected_end']=participants.map((w)=>w.row['detected_end'] as int).reduce((a,b)=>a>b?a:b);
+      r['detected_start']=[...participants,...incoming].map((w)=>w.row['detected_start'] as int).reduce((a,b)=>a<b?a:b);
+      r['detected_end']=[...participants,...incoming].map((w)=>w.row['detected_end'] as int).reduce((a,b)=>a>b?a:b);
       r['detected_day']=r['owner_day'];
     } else { r['history']='unavailable';r['detected_start']=null;r['detected_end']=null;r['detected_day']=null; }
     var disjoint=true;
     for(var i=1;i<measures.length;i++) { if((measures[i-1]['end_ts'] as int)>(measures[i]['start_ts'] as int)) disjoint=false; }
     final payloads=[for(final m in measures) await _payload(m['payload_json'])];
-    num? sum(String key)=>known && disjoint && incoming.isEmpty && payloads.every((m)=>m?[key] is num)
+    num? sum(String key)=>known && disjoint && payloads.every((m)=>m?[key] is num)
       ? payloads.fold<num>(0,(v,m)=>v+(m![key] as num)):null;
     r['payload_json']=await JsonPayloadLane.shared.encode({'duration_min':sum('duration_min'),
       'in_bed_min':sum('in_bed_min'),'source':'manual','confidence':null});
