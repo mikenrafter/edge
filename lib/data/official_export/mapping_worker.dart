@@ -8,7 +8,6 @@ import 'profile_target.dart';
 import 'dart:typed_data';
 import '../../util/heavy.dart';
 import '../../util/raw_readers.dart';
-import '../day_label.dart';
 import '../hyrox_plan.dart';
 import '../triathlon_plan.dart';
 import '../../util/worker_init.dart';
@@ -65,7 +64,7 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
   if (input.operation == 'bounds') {
     return MappingOutput([for(final row in input.batch!)
       for(final sec in [row['lo'],row['hi']])
-        {'day':dayLabelOf(DateTime.fromMillisecondsSinceEpoch((sec as int)*1000))},
+        {'sec':sec as int},
     ],const []);
   }
   if (input.operation == 'fileHash') {

@@ -38,6 +38,16 @@ class PrunedBeforeChoice {
 abstract interface class LocalCalendar {
   /// Epoch seconds of the first local midnight at or after [sec].
   int midnightAtOrAfter(int sec);
+
+  /// The `YYYY-MM-DD` label of the local day containing [sec]. The day
+  /// inventory labels days through this, so labels and the cursor share a zone.
+  String dayLabel(int sec);
+
+  /// Epoch seconds of the local midnight that starts [label] (null if malformed).
+  int? dayStartSec(String label);
+
+  /// Epoch seconds of the local midnight that ends [label] (null if malformed).
+  int? dayEndSec(String label);
 }
 
 /// The canonical calendar-day API (`day_label.dart`) in the process zone.
@@ -50,6 +60,13 @@ class DayLabelCalendar implements LocalCalendar {
     final start = localDayStartSec(label)!;
     return start >= sec ? start : localDayEndSec(label)!;
   }
+
+  @override
+  String dayLabel(int sec) => dayLabelOf(DateTime.fromMillisecondsSinceEpoch(sec * 1000));
+  @override
+  int? dayStartSec(String label) => localDayStartSec(label);
+  @override
+  int? dayEndSec(String label) => localDayEndSec(label);
 }
 
 /// The cursor row for the official file (spec §4.3).

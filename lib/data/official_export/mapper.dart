@@ -14,7 +14,6 @@ import 'prune_cursor.dart';
 import 'schema_catalog.dart';
 import 'space_budget.dart';
 import '../json_payload_lane.dart';
-import '../day_label.dart';
 import '../attach_copy.dart';
 import '../db.dart' show LocalDb;
 import '../substrate_archive.dart';
@@ -71,7 +70,7 @@ Future<OfficialMapReport> mapOfficialSnapshot({
     await targetFile.applySql('CREATE TABLE backup_prefs(key TEXT PRIMARY KEY,type TEXT NOT NULL,value TEXT NOT NULL)');
     await targetFile.applySql('CREATE TABLE backup_secrets(key TEXT PRIMARY KEY)');
     final target = await SchemaCatalog.read(dst);
-    final builder = _Mapper(src, targetFile, catalog, target, space);
+    final builder = _Mapper(src, targetFile, catalog, target, space, calendar);
     await builder.readExclusions();
     await builder.prepareLiveOwnership();
     // Parents precede dependent rows. No source ID allocation or generic remap.
@@ -161,7 +160,8 @@ Future<int?> oldestMappedExactSec(DatabaseExecutor db) async =>
     ));
 
 class _Mapper {
-  _Mapper(this.src, this.file, this.source, this.target, this.space);
+  _Mapper(this.src, this.file, this.source, this.target, this.space, this.calendar);
+  final LocalCalendar calendar;
   final Database src;
   final PrivateExportFile file;
   Database get dst => file.read;
@@ -370,14 +370,14 @@ class _Mapper {
     final labels=<String>{};
     final rawBounds=await LocalDb.exportDayBounds(db);
     final metadata=await runMappingWorker(MappingInput('bounds','',const [],batch:rawBounds));
-    labels.addAll([for(final row in metadata.rows) row['day'] as String]);
+    labels.addAll([for(final row in metadata.rows) calendar.dayLabel(row['sec'] as int)]);
     return labels;
   }
 
   Future<Map<String,(int,int)>> dayCounts(Database db,String day) async {
     if (identical(db,src) && (!(source.tables['decoded_onehz']?.columnNames.containsAll(['rec_ts','device_id']) ?? false) ||
         !(source.tables['decoded_rr']?.columnNames.containsAll(['rec_ts','device_id']) ?? false))) { return {}; }
-    final lo=localDayStartSec(day)!,hi=localDayEndSec(day)!;
+    final lo=calendar.dayStartSec(day)!,hi=calendar.dayEndSec(day)!;
     final p=await LocalDb.exportInputCounts(db,beats:false,fromSec:lo,toSec:hi);
     final b=await LocalDb.exportInputCounts(db,beats:true,fromSec:lo,toSec:hi);
     return {for(final device in {...p.keys,...b.keys}) device:(p[device]??0,b[device]??0)};
@@ -397,7 +397,7 @@ class _Mapper {
     if (source.tables.containsKey('spectral_archive')) {
       labels.addAll([for (final row in await src.rawQuery('SELECT DISTINCT day_id FROM spectral_archive')) row['day_id'] as String]);
     }
-    final days=labels.where((day)=>localDayStartSec(day)!=null).toList()..sort();
+    final days=labels.where((day)=>calendar.dayStartSec(day)!=null).toList()..sort();
     final out=<Map<String,Object?>>[];
     for(final day in days) {
       final original=await dayCounts(src,day),mapped=await dayCounts(dst,day);

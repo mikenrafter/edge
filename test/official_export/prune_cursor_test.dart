@@ -26,6 +26,20 @@ class _ZoneCalendar implements LocalCalendar {
             .millisecondsSinceEpoch ~/
         1000;
   }
+  @override
+  String dayLabel(int sec) {
+    final at = tz.TZDateTime.fromMillisecondsSinceEpoch(_loc, sec * 1000);
+    return '${at.year.toString().padLeft(4, '0')}-${at.month.toString().padLeft(2, '0')}-${at.day.toString().padLeft(2, '0')}';
+  }
+  int? _midnight(String label, int plusDays) {
+    final p = label.split('-').map(int.tryParse).toList();
+    if (p.length != 3 || p.contains(null)) { return null; }
+    return tz.TZDateTime(_loc, p[0]!, p[1]!, p[2]! + plusDays).millisecondsSinceEpoch ~/ 1000;
+  }
+  @override
+  int? dayStartSec(String label) => _midnight(label, 0);
+  @override
+  int? dayEndSec(String label) => _midnight(label, 1);
 }
 
 // zone -> label -> epoch seconds (days: 2026-10-20 = d1 … 2026-10-29 = d10).

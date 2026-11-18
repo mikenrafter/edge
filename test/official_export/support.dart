@@ -82,4 +82,17 @@ class FixedOffsetCalendar implements LocalCalendar {
   final int offsetSec;
   @override
   int midnightAtOrAfter(int sec) => ((sec + offsetSec + 86399) ~/ 86400) * 86400 - offsetSec;
+  @override
+  String dayLabel(int sec) => _label(DateTime.fromMillisecondsSinceEpoch((sec + offsetSec) * 1000, isUtc: true));
+  @override
+  int? dayStartSec(String label) => _utcMidnight(label, 0);
+  @override
+  int? dayEndSec(String label) => _utcMidnight(label, 1);
+  int? _utcMidnight(String label, int plusDays) {
+    final p = label.split('-').map(int.tryParse).toList();
+    if (p.length != 3 || p.contains(null)) { return null; }
+    return DateTime.utc(p[0]!, p[1]!, p[2]! + plusDays).millisecondsSinceEpoch ~/ 1000 - offsetSec;
+  }
+  static String _label(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }
