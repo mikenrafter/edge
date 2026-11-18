@@ -496,20 +496,22 @@ class _Mapper {
       archiveAccounting.add({'bucket': id, 'fingerprint': meta['fingerprint'], 'parents': decoded.rows.length, 'beats': meta['rr_rows'],
         'orphan_beats': decoded.notes});
       outcomes[id] = 'verified exact expansion; archive storage represented by decoded rows';
-      if (usable.isEmpty) { continue; }
+      if (usable.isEmpty) { outcomes[id] = 'no admissible archive parents; fully withheld'; continue; }
       var lo = usable.first['ts_ms'] as int, hi = lo;
       for (final c in usable) { final t = c['ts_ms'] as int; if (t < lo) { lo = t; } if (t > hi) { hi = t; } }
       // Buckets arrive in metadata order. A bucket whose CONTENT reaches back
       // into a group already settled cannot be compared with it, so it is
-      // withheld by name rather than risking an unseen conflict.
+      // withheld by name. Earlier output stays kept, so corrupt metadata can
+      // still make bucket order select the earlier claim. [P2 review N4]
       if ((flushed[device] ?? const <(int, int)>[]).any((r) => lo <= r.$2 && hi >= r.$1)) {
+        outcomes[id] = 'bucket content overlaps a settled group; fully withheld';
         for (final c in usable) {
           archiveLedgers.putIfAbsent(id,()=>_RowLedger(-1)).add(c['row_index'] as int,'bucket content overlaps a settled group; withheld');
         }
         continue;
       }
       if (group.isEmpty || group.device != device || lo > group.hi! || hi < group.lo!) {
-        await _settleGroup(group, flushed);
+        await _settleGroup(group, flushed, outcomes);
         group.start(device);
       }
       group.add(id, meta, lo, hi);
@@ -522,7 +524,7 @@ class _Mapper {
         await batch.flush();
       }
     }
-    await _settleGroup(group, flushed);
+    await _settleGroup(group, flushed, outcomes);
     for (final id in outcomes.keys.toList()..sort()) { ledger.add(id, outcomes[id]!); }
     archiveAccounting.addAll([for (final e in archiveLedgers.entries)
       {'bucket': e.key, ...e.value.toJson()}]);
@@ -539,7 +541,7 @@ class _Mapper {
 
   /// Decides every claim of one overlapping group, expands the kept ones, then
   /// empties the claim table so the next group reuses its pages.
-  Future<void> _settleGroup(_ArchiveGroup group, Map<String, List<(int, int)>> flushed) async {
+  Future<void> _settleGroup(_ArchiveGroup group, Map<String, List<(int, int)>> flushed, Map<int, String> outcomes) async {
     if (group.isEmpty) { return; }
     // Equal hashes deduplicate only after an exact re-read compare.
     int? lastIdentity;
@@ -562,7 +564,7 @@ class _Mapper {
       lastIdentity = identities.last['first_claim'] as int;
     }
     // Live parents own the WHOLE beat set, even when it is empty. Every
-    // conflicting archive claim is withheld; no bucket order decides a winner.
+    // conflicting archive claim in this group is withheld before expansion.
     await file.applySql('UPDATE archive_claims AS a SET verdict=CASE '
         'WHEN EXISTS(SELECT 1 FROM live_parent l WHERE l.device_id=a.device_id AND l.ts_ms=a.ts_ms) THEN 1 '
         'WHEN EXISTS(SELECT 1 FROM archive_claims b WHERE b.device_id=a.device_id AND b.ts_ms=a.ts_ms AND b.digest != a.digest) THEN 2 '
@@ -591,6 +593,7 @@ class _Mapper {
     // bucket, selecting at most 20k parents; writes remain 1024-row slices.
     // CLAIM(official-export-bounded-unpack) [archive_claims_test; review N2].
     for (final bucket in group.metas.keys) {
+      var expandedParents = 0;
       int? lastIndex;
       while (true) {
         final selected = await dst.rawQuery('SELECT row_index FROM archive_claims WHERE bucket_id=? AND verdict=0 '
@@ -613,7 +616,7 @@ class _Mapper {
                 'table':table,'beat_index':row['beat_index'],'reason':invalid});
               continue;
             }
-            if(table=='decoded_onehz') {acceptedParents.add((row['device_id'],row['ts_ms']));}
+            if(table=='decoded_onehz') {acceptedParents.add((row['device_id'],row['ts_ms']));expandedParents++;}
             batch.writeRow(table, row);
             expectedCounts[table] = (expectedCounts[table] ?? 0) + 1;
           }
@@ -622,6 +625,7 @@ class _Mapper {
         }
         lastIndex = selected.last['row_index'] as int;
       }
+      if (expandedParents == 0) { outcomes[bucket] = 'no admissible archive parents; fully withheld'; }
     }
     await file.applySql('DELETE FROM archive_claims');
     (flushed[group.device!] ??= []).add((group.lo!, group.hi!));
@@ -629,8 +633,8 @@ class _Mapper {
   }
 }
 
-/// One device's buckets whose archived second ranges overlap. Identity
-/// conflicts can only arise inside a group.
+/// One device's buckets whose archived second ranges overlap. Honest UTC-day
+/// metadata confines conflicts to a group; late overlap is withheld separately.
 class _ArchiveGroup {
   String? device;
   int? lo, hi;
