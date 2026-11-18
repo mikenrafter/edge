@@ -78,13 +78,16 @@ void main() {
     expect([r['id'],r['revision'],r['detected_start'],r['detected_end']],['n',2,a,a+2400]); await parity();
   });
   test('W5 Remove and Restore use the id; repeated Remove is a no-op',() async {
-    await seed('n',a,a+2400);
+    await seed('n',a,a+2400,source:SleepBlockSource.legacy,payload:'{"duration_min":32,"source":"legacy"}');
     expect(await save([const RemoveBlock(StoredBlockRef('n',0))]),isA<SleepSaved>());
     final before=await snapshot();
     expect(await save([const RemoveBlock(StoredBlockRef('n',1))]),isA<SleepNoChange>());
     expect(await snapshot(),before);
     expect(await save([const RestoreRemoved(StoredBlockRef('n',1))]),isA<SleepSaved>());
-    expect((await rows()).single['state'],'live'); await parity();
+    final restored=(await rows()).single;
+    expect([restored['state'],restored['source']],['live','confirmed']);
+    expect(jsonDecode(restored['payload_json'] as String)['duration_min'],32);
+    expect(jsonDecode(restored['payload_json'] as String)['source'],'confirmed'); await parity();
   });
   test('W6 same-start replacement keeps both blocks and exact suppression',() async {
     await seed('d',a,a+3600);
