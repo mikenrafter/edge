@@ -1,8 +1,6 @@
 // Import focus, UI side, round 3: the Explorer readout and annotation lane,
 // a delayed trailing publish, latched paused flags, an atomic journal save,
 // and two screens that waited forever (Body clock, Beats).
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
