@@ -212,6 +212,9 @@ Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, 
         composeAcceptedNaps(bundle, await SleepBlockStore.napEdits(txn, dayId));
         reviewedPayload = jsonEncode(bundle);
         reviewedSeries = {...series, 'nap_min': ((bundle['scalars'] as Map?)?['nap_min'] as num?)?.toDouble()};
+        // Only this branch read the blocks in this transaction [B2]. Skip
+        // markers and source-less backfills leave their nap receipt pending.
+        await txn.rawUpdate('UPDATE sleep_edit_job SET nap_applied_revision = nap_revision WHERE day_id = ?', [dayId]);
       }
       final encodedPayload = SeriesCodec.encodePayloadJson(reviewedPayload);
       storedPayload = encodedPayload;
@@ -305,7 +308,6 @@ Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, 
       if (sleepEditGeneration != null && !partial) {
         await txn.rawUpdate('UPDATE sleep_edit_job SET applied_revision = revision WHERE day_id = ?', [dayId]);
       }
-      await txn.rawUpdate('UPDATE sleep_edit_job SET nap_applied_revision = nap_revision WHERE day_id = ?', [dayId]);
       return true;
     }));
     // Shadow group rows: AFTER the commit, in their own small transaction.

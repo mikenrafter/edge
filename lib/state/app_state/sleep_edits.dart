@@ -21,9 +21,15 @@ extension _AppSleepEdits on AppState {
       }
       rethrow;
     }
-    final status = await SleepEditStore.status(day);
+    var status = await SleepEditStore.status(day);
     if (status?['revision'] != job.revision) return; // a newer edit owns it
     if (status?['nap_revision'] != job.napRevision) return;
+    if(status?['applied_revision']==job.revision &&
+        status?['nap_applied_revision']!=job.napRevision) {
+      await LocalDb.recomposeNaps(day,job.napRevision);
+      status=await SleepEditStore.status(day);
+      if(status?['revision']!=job.revision || status?['nap_revision']!=job.napRevision) return;
+    }
     if (status?['applied_revision'] != job.revision || status?['nap_applied_revision'] != job.napRevision) {
       final fence = _sleepEditPassFence;
       if (fence != null && await SleepEditStore.generation(upTo: day) != fence) {
