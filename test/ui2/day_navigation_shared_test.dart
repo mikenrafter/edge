@@ -15,6 +15,8 @@ import 'package:openstrap_edge/ui2/profile/gallery.dart';
 import 'package:openstrap_edge/data/moment_label.dart';
 import 'package:openstrap_edge/ui2/screens/moment_follow_up.dart' show MomentAnswerEditLoader, SavedAnswer;
 import 'package:openstrap_edge/ui2/screens/screens.dart';
+import 'package:openstrap_edge/ui2/screens/day_review.dart' show DayRowEditListener;
+import 'package:openstrap_edge/ui2/day_navigation.dart' show openPickerOnce;
 import 'package:openstrap_edge/ui2/ui2.dart';
 import '../support/explorer_harness.dart' show ExplorerRepo, initPrefs, loadType;
 
@@ -328,19 +330,19 @@ void main() {
         await frame(t, const DayTimelineScreen(day: past,
           data: TimelineData(day: past, days: days)), observer: counter,
           app: AppState.forTesting()..repo = HeldRepo());
-        final state = t.state(find.byType(DayTimelineScreen)) as dynamic;
+        final state = t.state(find.byType(DayTimelineScreen)) as DayRowEditListener;
         const m = Moment(at: 0, title: 'x', icon: Icons.add, editRef: 'moment:2026-05-19 08:00');
-        unawaited(state.openRowEditor(m) as Future<void>);
-        unawaited(state.openRowEditor(m) as Future<void>);
+        unawaited(state.openRowEditor(m));
+        unawaited(state.openRowEditor(m));
       },
       'workout editor': (counter) async {
         await frame(t, const DayTimelineScreen(day: past,
           data: TimelineData(day: past, days: days)), observer: counter,
           app: AppState.forTesting()..repo = HeldRepo());
-        final state = t.state(find.byType(DayTimelineScreen)) as dynamic;
+        final state = t.state(find.byType(DayTimelineScreen)) as DayRowEditListener;
         const m = Moment(at: 0, title: 'x', icon: Icons.add, editRef: 'session:abc|run');
-        unawaited(state.openRowEditor(m) as Future<void>);
-        unawaited(state.openRowEditor(m) as Future<void>);
+        unawaited(state.openRowEditor(m));
+        unawaited(state.openRowEditor(m));
       },
       'briefing': (counter) async {
         await frame(t, const HomeScreen(data: HomeData()), observer: counter,
@@ -363,6 +365,74 @@ void main() {
       await t.pumpWidget(const SizedBox());
     }
     expect(wrong, isEmpty, reason: 'each destination must open exactly once');
+  });
+
+  // WHY: callers use the route result to invalidate saved data exactly once.
+  // catches: go dropping the pushed route's result, or opening a repeat route.
+  testWidgets('go bool preserves true and returns null for a repeat tap', (t) async {
+    late BuildContext origin;
+    final counter = PushCounter();
+    await frame(t, Builder(builder: (c) {
+      origin = c;
+      return const Scaffold(body: Text('origin'));
+    }), observer: counter);
+    final first = go<bool>(origin, const ResultPage());
+    expect(await go<bool>(origin, const ResultPage()), isNull);
+    expect(counter.pushes, 1);
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 400));
+    await t.tap(find.text('Return true'));
+    expect(await first, isTrue);
+    await t.pumpAndSettle();
+    await t.pumpWidget(const SizedBox());
+  });
+
+  // WHY: an exception during push must release the destination latch so the
+  // same action can be retried. catches: removing go's finally cleanup.
+  testWidgets('go releases its latch when push throws', (t) async {
+    late BuildContext origin;
+    final navigator = GlobalKey<FailingPushNavigatorState>();
+    await frame(t, FailingPushNavigator(key: navigator,
+      onGenerateRoute: (_) => MaterialPageRoute<void>(builder: (c) {
+        origin = c;
+        return const Scaffold(body: Text('origin'));
+      })));
+    await expectLater(go<bool>(origin, const ResultPage()),
+      throwsA(isA<StateError>().having((e) => e.message, 'message', 'push failed')));
+    final retry = go<bool>(origin, const ResultPage());
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 400));
+    expect(find.text('Return true'), findsOneWidget);
+    await t.tap(find.text('Return true'));
+    expect(await retry, isTrue);
+    await t.pumpAndSettle();
+    await t.pumpWidget(const SizedBox());
+  });
+
+  // WHY: a failed picker must not block every later picker on the navigator.
+  // catches: removing openPickerOnce's finally cleanup.
+  testWidgets('openPickerOnce releases its latch when the picker throws', (t) async {
+    late BuildContext origin;
+    await frame(t, Builder(builder: (c) {
+      origin = c;
+      return const Scaffold();
+    }));
+    await expectLater(openPickerOnce<String>(origin,
+      () async => throw StateError('picker failed')), throwsStateError);
+    final pending = Completer<String?>();
+    var opens = 0;
+    final retry = openPickerOnce<String>(origin, () {
+      opens++;
+      return pending.future;
+    });
+    expect(await openPickerOnce<String>(origin, () async {
+      opens++;
+      return 'duplicate';
+    }), isNull);
+    expect(opens, 1);
+    pending.complete('2026-05-20');
+    expect(await retry, '2026-05-20');
+    await t.pumpWidget(const SizedBox());
   });
 
   // WHY (S3): the explorer's own picker must not open twice on a double tap.
@@ -567,4 +637,31 @@ class StepsRepo extends LocalRepository {
   @override
   Future<Map<String, dynamic>> getDaySteps(String day) =>
     day == past ? oldest.future : middle.future;
+}
+
+
+class ResultPage extends StatelessWidget {
+  const ResultPage({super.key});
+  @override
+  Widget build(BuildContext c) => Scaffold(body: TextButton(
+    onPressed: () => Navigator.of(c).pop(true), child: const Text('Return true')));
+}
+
+// The real Navigator.push boundary fails once, before changing route state.
+class FailingPushNavigator extends Navigator {
+  const FailingPushNavigator({super.key, required super.onGenerateRoute});
+  @override
+  NavigatorState createState() => FailingPushNavigatorState();
+}
+
+class FailingPushNavigatorState extends NavigatorState {
+  bool failNext = true;
+  @override
+  Future<T?> push<T extends Object?>(Route<T> route) {
+    if (failNext) {
+      failNext = false;
+      throw StateError('push failed');
+    }
+    return super.push(route);
+  }
 }
