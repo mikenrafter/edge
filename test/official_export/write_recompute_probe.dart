@@ -38,7 +38,8 @@ void main() {
    await db.insert('sleep_override',{'day_id':'2026-10-24','onset_ts':1792796400,'offset_ts':1792825200,'source':'manual','created_at':1});
    await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)'); await LocalDb.close();
    final out=Directory(Platform.environment['CANDIDATES_DIR']!)..createSync(recursive:true);
-   final report=await mapOfficialSnapshot(snapshotPath:path,outputPath:'${out.path}/archive_complete.db',factory:databaseFactoryFfi);
+   final report=await mapOfficialSnapshot(snapshotPath:path,outputPath:'${out.path}/archive_complete.db',factory:databaseFactoryFfi,
+     calendar:const FixedOffsetCalendar(0)); // the 1792713600 literal is a UTC midnight
    expect(report.cursor.sec,1792713600);
    expect(report.targetCounts['decoded_onehz'],216001);
    expect(report.targetCounts['decoded_rr'],216000);

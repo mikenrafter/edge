@@ -17,7 +17,8 @@ void main() {
     try {
       final path = '${File(fx.forkPath).parent.path}/mapped.db';
       final report = await mapOfficialSnapshot(snapshotPath: fx.forkPath,
-          outputPath: path, factory: databaseFactoryFfi);
+          outputPath: path, factory: databaseFactoryFfi,
+          calendar: const FixedOffsetCalendar(0)); // the fixture's literals are UTC epochs
       expect(File(path).existsSync(), isTrue, reason: 'must publish a real file');
       final inventory = await fx.inventoryOf(path);
       expect(checkPayload(inventory, officialProfile,

@@ -20,6 +20,9 @@ void main() {
  TestWidgetsFlutterBinding.ensureInitialized();
  final report=<String,Object?>{};
  tearDownAll(() {File('${Platform.environment['OFFICIAL_PROBE_OUT']}/p2-recompute.json').writeAsStringSync(const JsonEncoder.withIndent('  ').convert(report));});
+ test('process zone is UTC (the epoch literals and day labels are UTC)',() {
+  expect(DateTime.utc(2026,7,1).toLocal().timeZoneOffset,Duration.zero);
+ });
  for(final mode in ['fresh receiver limitation','populated boundary guard','intervening light pass']) {
  final lightFirst=mode=='intervening light pass';
  final populated=mode=='populated boundary guard';

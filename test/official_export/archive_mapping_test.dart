@@ -34,7 +34,8 @@ void main() {
    await db.insert('compute_freshness',{'key':'redrive_excluded_windows','payload_json':'[[1792929600,1792929601]]','updated_at':1});
    await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
    await LocalDb.close();
-   final report=await mapOfficialSnapshot(snapshotPath:path,outputPath:'${File(path).parent.path}/mapped.db',factory:databaseFactoryFfi);
+   final report=await mapOfficialSnapshot(snapshotPath:path,outputPath:'${File(path).parent.path}/mapped.db',factory:databaseFactoryFfi,
+     calendar:const FixedOffsetCalendar(0));
    expect(report.cursor.sec,1792713600); // first UTC midnight after a
    final out=await databaseFactoryFfi.openDatabase(report.path);
    try {
