@@ -231,8 +231,20 @@ Map<String, List<WriteSite>> _scanLib() {
   return out;
 }
 
+// Frozen official-app trigger DDL, replayed only into a newly created private
+// export file by mapOfficialSnapshot -> PrivateExportFile -> LocalDb.exportCopy.
+// It never updates the fork's live day_result. Keep both the file and member
+// exact: const catalogs elsewhere and executable writes remain guarded.
+const _targetCatalogFile = 'lib/data/official_export/profile_target.dart';
+bool _isTargetCatalog(String path, WriteSite s) =>
+    path == _targetCatalogFile &&
+    s.member == 'officialTargetObjects' &&
+    s.table == 'day_result' &&
+    s.verb == 'update';
+
 bool _isAllowed(String path, WriteSite s) =>
-    path == _dbFile && (_allowed[s.table]?[s.member]?.contains(s.verb) ?? false);
+    _isTargetCatalog(path, s) ||
+    (path == _dbFile && (_allowed[s.table]?[s.member]?.contains(s.verb) ?? false));
 
 void main() {
   group('the scanner sees what it guards', () {
@@ -264,6 +276,26 @@ class LocalDb {
         ],
       );
       expect({for (final s in sites) s.member}, {'LocalDb.a'});
+    });
+
+    // WHY: the exception identifies target schema data, never a new live writer.
+    // CLAIM: p21-target-catalog-only. Planted writes still fail the allow-list.
+    test('only the named official target catalog is allow-listed', () {
+      const catalog = "const officialTargetObjects = [(sql: 'CREATE TRIGGER t AFTER INSERT ON x BEGIN UPDATE day_result SET imported=1; END')];";
+      final site = scanWriters(catalog).single;
+      expect(site.member, 'officialTargetObjects');
+      expect(_isAllowed(_targetCatalogFile, site), isTrue);
+      expect(_isAllowed('lib/data/another.dart', site), isFalse);
+      final unrelated = scanWriters(catalog.replaceAll('officialTargetObjects', 'otherCatalog')).single;
+      expect(_isAllowed(_targetCatalogFile, unrelated), isFalse);
+      final inline = scanWriters("class A {void install(Database db) { db.execute('CREATE TRIGGER t AFTER INSERT ON x BEGIN UPDATE day_result SET imported=1; END');}}").single;
+      expect(_isAllowed(_targetCatalogFile, inline), isFalse);
+      const executing = "import 'package:sqflite/sqflite.dart'; "
+          "$catalog Future<void> install(Database db) async { await db.execute(officialTargetObjects.first.sql); }";
+      expect(scanDynamicWriters(executing).single.member, 'install');
+      final actual = _scanLib()[_targetCatalogFile]!;
+      expect(actual, hasLength(2), reason: 'pin both imported-flag triggers');
+      expect(actual.every((s) => _isTargetCatalog(_targetCatalogFile, s)), isTrue);
     });
 
     test('statements split across adjacent string literals are one statement',
@@ -738,7 +770,8 @@ class Queue {
       final updates = <(String, WriteSite)>[];
       _scanLib().forEach((path, sites) {
         for (final s in sites) {
-          if (s.table == 'day_result' && s.verb == 'update') {
+          if (s.table == 'day_result' && s.verb == 'update' &&
+              !_isTargetCatalog(path, s)) {
             updates.add((path, s));
           }
         }

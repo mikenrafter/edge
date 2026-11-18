@@ -174,6 +174,24 @@ String _verbOf(String word) {
   return 'delete';
 }
 
+// Name const catalog initializers so callers can allow-list an exact file and
+// member. This class only attributes hits; const SQL remains visible to scans.
+class _ConstCatalogMembers extends RecursiveAstVisitor<void> {
+  final ranges = <(int, int, String)>[];
+  @override
+  void visitTopLevelVariableDeclaration(TopLevelVariableDeclaration node) {
+    if (node.variables.isConst) {
+      for (final variable in node.variables.variables) {
+        final value = variable.initializer;
+        if (value != null) {
+          ranges.add((value.offset, value.end, variable.name.lexeme));
+        }
+      }
+    }
+    super.visitTopLevelVariableDeclaration(node);
+  }
+}
+
 /// Every write to `day_result` / `baselines` in [src].
 List<WriteSite> scanWriters(String src) {
   final text = _joinAdjacentLiterals(blankComments(src));
@@ -200,6 +218,8 @@ List<WriteSite> scanWriters(String src) {
   // table argument: parentheses, raw strings, triple quotes and adjacent
   // literals all spell the same table.
   final unit = parseString(content: src, throwIfDiagnostics: false).unit;
+  final catalogs = _ConstCatalogMembers();
+  unit.accept(catalogs);
   final apiCalls = <MethodInvocation>[];
   unit.accept(_LiteralApiWrites(apiCalls));
   final apiMembers = <int, String>{};
@@ -219,7 +239,12 @@ List<WriteSite> scanWriters(String src) {
   return [
     for (final h in hits)
       WriteSite(
-        member: apiMembers[h.at] ?? _memberAt(code, h.at),
+        member: apiMembers[h.at] ??
+            catalogs.ranges
+                .where((r) => h.at >= r.$1 && h.at < r.$2)
+                .map((r) => r.$3)
+                .firstOrNull ??
+            _memberAt(code, h.at),
         table: h.table,
         verb: h.verb,
         line: lineOf(code, h.at),
