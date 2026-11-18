@@ -122,6 +122,9 @@ void main() {
   // catches: upsert bumps revisions/jobs or rewrites projections on repeat.
   test('B6 repeated backfill is byte and revision identical', () async {
     var db = await reopen(); await seedLegacy(db); await rewind(93); db = await reopen();
+    await db.update('sleep_block',{'revision':3});
+    await db.insert('sleep_edit_job',{'day_id':fixtureDay,'revision':4,'applied_revision':2,
+      'nap_revision':9,'nap_applied_revision':8,'phase':'failed','error':'kept'});
     final before = await snapshot(db);
     await SleepBlockStore.backfill(db);
     expect(await snapshot(db),before);
@@ -200,7 +203,7 @@ void main() {
   // rewrites any existing projection, or moves unrelated input revisions.
   test('B15 upgrade changes only step-3 nap input revision, no jobs/headline', () async {
     var db = await reopen(); await seedLegacy(db);
-    await db.insert('sleep_edit_job',{'day_id':fixtureDay,'revision':4,'applied_revision':4,'phase':'done'});
+    await db.insert('sleep_edit_job',{'day_id':fixtureDay,'revision':4,'applied_revision':4,'nap_revision':7,'nap_applied_revision':6,'phase':'done'});
     await db.insert('sync_cursor',{'name':LocalDb.kFrozenHeadlineCursor,'value':'{"day":"2026-11-01","score":72}'});
     final jobs = await db.query('sleep_edit_job'), cursor = await db.query('sync_cursor');
     final revisions = await db.query('input_revision');
@@ -213,7 +216,8 @@ void main() {
     // Independently compare all rows; the only allowed change is sleep_nap on D.
     expect(changed.where((r)=>!(r['source']=='sleep_nap' && r['scope']==fixtureDay)),
       revisions.where((r)=>!(r['source']=='sleep_nap' && r['scope']==fixtureDay)));
-    expect(changed, isNot(revisions));
+    final oldNapRev = revisions.where((r)=>r['source']=='sleep_nap' && r['scope']==fixtureDay).single['rev'] as int;
+    expect(changed.where((r)=>r['source']=='sleep_nap' && r['scope']==fixtureDay).single['rev'],oldNapRev+1);
   });
   // catches: same-version repair creates an empty owner and silently unpins it.
   test('B16 missing table reabsorbs, present empty table never reabsorbs', () async {
