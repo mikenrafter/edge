@@ -77,11 +77,14 @@ void main() {
   });
   // catches: projections override block truth, or an empty block table hides old rows.
   test('T2 blocks win over projections and empty table falls back', () async {
-    final path=await backup([block('stable')]);
+    final path=await backup([{...block('stable'),'revision':17,'merged_into':''}]);
     final src=await databaseFactory.openDatabase(path);
     await src.update('sleep_nap',{'end_ts':start+9000}); await src.close();
     await restoreBackup(path);
     expect((await rows()).single['id'],'stable');
+    expect((await rows()).single['revision'],0,reason:'foreign counters do not become local receipts');
+    expect((await rows()).single['merged_into'],isNull);
+    expect((await rows()).single['owner_rule'],1);
     expect((await db.query('sleep_nap')).single['end_ts'],start+2400);
     await clear();
     final raw=await databaseFactory.openDatabase(path);
