@@ -215,6 +215,43 @@ void main() {
     });
   });
 
+  // WHY: every page must keep its arrows live while a replacement read is
+  // pending. A fresh date list must not be needed for the next tap.
+  testWidgets('all seeded date pages accept another arrow during a read', (t) async {
+    final pages = <String, Widget>{
+      'Sleep': const SleepDetail(day: '2026-05-22',
+        data: SleepData(day: '2026-05-22', days: days)),
+      'Timeline': const DayTimelineScreen(day: '2026-05-22',
+        data: TimelineData(day: '2026-05-22', days: days)),
+      'Steps': const DayStepsDetail(day: '2026-05-22',
+        data: DayStepsData(day: '2026-05-22', days: days)),
+      'Strain': DayStrainDetail(day: '2026-05-22',
+        data: DayStrainData(day: DateTime(2026, 5, 22), days: days)),
+      'Beats': const Beats(day: '2026-05-22',
+        data: BeatsData(day: '2026-05-22', days: days)),
+      'Investigate': const Investigate('hrv', day: '2026-05-22',
+        data: InvestigateData(day: '2026-05-22', days: days)),
+      'What changed': const WhatChangedScreen(day: '2026-05-22',
+        data: WhatChangedData(day: '2026-05-22', days: days)),
+      'Vitals': const Scaffold(body: HealthScreen(data: HealthData(),
+        vitals: VitalsData(day: '2026-05-22', days: days), tab: 3)),
+    };
+    for (final entry in pages.entries) {
+      final app = AppState.forTesting()..repo = HeldRepo();
+      await frame(t, entry.value, app: app);
+      t.widget<DayNav>(find.byType(DayNav)).onDay('2026-05-20');
+      await t.pump();
+      expect(t.widget<DayNav>(find.byType(DayNav)).days, days,
+        reason: '${entry.key} lost its arrows during a read');
+      await t.tap(find.byKey(const ValueKey('day-nav-previous')));
+      await t.pump();
+      expect(t.widget<DayNav>(find.byType(DayNav)).day, past,
+        reason: '${entry.key} blocked a second arrow');
+      await t.pumpWidget(const SizedBox());
+      app.dispose();
+    }
+  });
+
   // WHY: the gallery must demonstrate the production component, not a copy.
   testWidgets('gallery includes back to today', (t) async {
     final cases = galleryCases();
