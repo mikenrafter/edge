@@ -21241,5 +21241,53 @@
   "@coachApiFormatHelp": {
     "description": "Coach AI settings: helper text under the provider API format dropdown (Responses / Chat Completions are API names, keep untranslated)"
   },
-  "@olderVersionMonthGridRow": {}
+  "@olderVersionMonthGridRow": {},
+  "dayActivitiesFilter": "Filtrer",
+  "dayActivitiesShow": "Afficher les activités",
+  "dayActivitiesPending": "En attente",
+  "dayActivitiesSaved": "Enregistrées",
+  "dayActivitiesDiscarded": "Écartées",
+  "dayActivitiesPendingDetail": "Détectées, en attente de votre avis",
+  "dayActivitiesSavedDetail": "Conservées dans votre journée",
+  "dayActivitiesDiscardedDetail": "Marquées comme non-activités",
+  "dayActivitiesFilterCount": "Filtre, {count, plural, =1{1 type sélectionné} other{{count} types sélectionnés}}",
+  "@dayActivitiesFilterCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timelineSemanticsRange": "Chronologie de {start} à {end}",
+  "@timelineSemanticsRange": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "timelineSemanticsScrub": "Chronologie de {start} à {end}, sélection à {at}",
+  "@timelineSemanticsScrub": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      },
+      "at": {
+        "type": "String"
+      }
+    }
+  },
+  "timelineZoomIn": "Agrandir",
+  "timelineResetZoom": "Réinitialiser le zoom",
+  "timelineChooseRange": "Choisissez une plage, puis activez à nouveau",
+  "timelineNoMatches": "Aucune activité ne correspond à ces filtres",
+  "timelineMovementShare": "Mouvement (% du temps en mouvement)",
+  "timelineMovementNote": "Le mouvement est la part de chaque période de 5 minutes pendant laquelle votre poignet a tourné de plus de 5° entre les mesures. Ce ne sont ni des pas ni un effort.",
+  "timelineHere": "Ici"
 }

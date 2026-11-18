@@ -398,6 +398,8 @@ class Motion {
   static bool enabled(BuildContext c) =>
       MediaQuery.maybeDisableAnimationsOf(c) != true;
 
+  static Duration timelineGlideTime(int milliseconds) =>
+      Duration(milliseconds:milliseconds.clamp(1500,2000));
   static const fast = Duration(milliseconds: 120);
   static const base = Duration(milliseconds: 180);
   static const slow = Duration(milliseconds: 280);

@@ -1,3 +1,4 @@
+import 'package:openstrap_edge/ui2/day_timeline/timeline_chart.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -34,7 +35,7 @@ void main() {
   /// The chart and its range control are inline in the page: scroll them into
   /// view and they can be hit.
   Future<void> chartControlsReachable(WidgetTester t) async {
-    for (final f in [find.byType(ChartScrub), find.byType(RangeSlider)]) {
+    for (final f in [find.byKey(const ValueKey('shared-timeline-plot')), find.byKey(const ValueKey('timeline-zoom'))]) {
       expect(f, findsOneWidget);
       await t.ensureVisible(f);
       await t.pump();
@@ -55,7 +56,7 @@ void main() {
         final list = t.getRect(apk2Key(apk2List));
         expect(list.height, greaterThanOrEqualTo(size.height * .2));
         await chartControlsReachable(t);
-        expect(t.getRect(find.byType(ChartScrub)).height, greaterThan(24));
+        expect(t.getRect(find.byKey(const ValueKey('shared-timeline-plot'))).height, greaterThan(24));
         await apk2Show(t, apk2NapA);
         await apk2Tap(t, apk2Keep(apk2NapA));
         await t.ensureVisible(apk2Key('apk2-review-savebar'));
@@ -83,23 +84,24 @@ void main() {
     final errors = captureFlutterErrors();
     final r = await Apk2Rig.create(t);
     await r.mount(t);
-    final slider = find.byType(RangeSlider);
+    final chart = t.widget<SharedTimelineChart>(find.byType(SharedTimelineChart));
+    final controller = chart.controller;
+    final start = controller.home.start.toInt();
     // How many chart annotations are drawn at all.
     final marks = find.byWidgetPredicate((w) => w.key is ValueKey<String> &&
         (w.key! as ValueKey<String>).value.startsWith('annotation-icon:'));
     final whole = marks.evaluate().length;
     expect(whole, greaterThan(1));
-    t.widget<RangeSlider>(slider).onChanged!(const RangeValues(540, 600));
+    controller.selectRange(start+540*60,start+600*60);
     await t.pumpAndSettle();
     final zoomed = marks.evaluate().length;
     expect(zoomed, lessThan(whole), reason: '09:00-10:00 hides the other marks');
     t.view.physicalSize = const Size(640, 360) * 3;
     await t.pumpAndSettle();
     await chartControlsReachable(t);
-    final values = t.widget<RangeSlider>(slider).values;
-    expect((values.start, values.end), (540.0, 600.0));
+    expect(controller.view,TimelineView((start+540*60).toDouble(),(start+600*60).toDouble()));
     expect(marks.evaluate().length, zoomed);
-    t.widget<RangeSlider>(slider).onChanged!(const RangeValues(0, 1440));
+    await t.tap(find.byKey(const ValueKey('timeline-zoom')));
     await t.pumpAndSettle();
     expect(marks.evaluate().length, greaterThan(zoomed));
     await t.ensureVisible(marks.first);
@@ -176,7 +178,7 @@ void main() {
           reason: 'the tap must scroll to a row outside the viewport');
       Color? tint(String id) => t.widget<Container>(apk2Row(id)).color;
       expect(tint(apk2Answered), isNull);
-      await apk2TapAnnotation(t, 'moment:${apk2At(20, 45)}');
+      await apk2TapAnnotation(t, apk2Answered);
       expect(tint(apk2Answered), isNotNull, reason: 'the tapped row is tinted');
       expect(tint(apk2Meal), isNull, reason: 'no other row is');
       _rowStartsInside(t, target, apk2Key(apk2List));

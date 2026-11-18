@@ -21289,5 +21289,53 @@
   "tracksCreate": "Create track",
   "loadingImportHistory": "Importing your history",
   "dayReviewAlreadyReviewed": "Already reviewed",
-  "@olderVersionMonthGridRow": {}
+  "@olderVersionMonthGridRow": {},
+  "dayActivitiesFilter": "ตัวกรอง",
+  "dayActivitiesShow": "แสดงกิจกรรม",
+  "dayActivitiesPending": "รอตรวจสอบ",
+  "dayActivitiesSaved": "บันทึกแล้ว",
+  "dayActivitiesDiscarded": "ละทิ้งแล้ว",
+  "dayActivitiesPendingDetail": "ตรวจพบและกำลังรอให้คุณตรวจสอบ",
+  "dayActivitiesSavedDetail": "เก็บไว้เป็นส่วนหนึ่งของวันของคุณ",
+  "dayActivitiesDiscardedDetail": "ทำเครื่องหมายว่าไม่ใช่กิจกรรม",
+  "dayActivitiesFilterCount": "ตัวกรอง เลือกไว้ {count} ประเภท",
+  "@dayActivitiesFilterCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timelineSemanticsRange": "ไทม์ไลน์ตั้งแต่ {start} ถึง {end}",
+  "@timelineSemanticsRange": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "timelineSemanticsScrub": "ไทม์ไลน์ตั้งแต่ {start} ถึง {end} เลือก {at}",
+  "@timelineSemanticsScrub": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      },
+      "at": {
+        "type": "String"
+      }
+    }
+  },
+  "timelineZoomIn": "ขยาย",
+  "timelineResetZoom": "รีเซ็ตการขยาย",
+  "timelineChooseRange": "เลือกช่วงเวลา แล้วแตะอีกครั้ง",
+  "timelineNoMatches": "ไม่มีกิจกรรมที่ตรงกับตัวกรองเหล่านี้",
+  "timelineMovementShare": "การเคลื่อนไหว (% ของเวลาที่เคลื่อนไหว)",
+  "timelineMovementNote": "การเคลื่อนไหวคือสัดส่วนของแต่ละช่วง 5 นาทีที่ข้อมือหมุนมากกว่า 5° ระหว่างการอ่านค่า ไม่ใช่จำนวนก้าวหรือความหนักของกิจกรรม",
+  "timelineHere": "ที่นี่"
 }
