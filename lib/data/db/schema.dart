@@ -201,6 +201,7 @@ Future<Database> _ldbPrivOpen() async {
         await LocalDb._createWorkoutSuggestions(db);
         await LocalDb._createSleepOverride(db);
         await LocalDb._createSleepNap(db);
+        await LocalDb._createSleepBlock(db);
         await LocalDb._createVendorSleepEpoch(db);
         await ImportJournal.ensureSchema(db);
         await ActivityStore.create(db);
@@ -1095,6 +1096,10 @@ Future<Database> _ldbPrivOpen() async {
         }
         // Rung 93: sleep_override.payload_json (the checked sleep-edit envelope).
         if (oldV < 93) await LocalDb._createSleepOverride(db);
+        if (oldV < 94) {
+          await LocalDb._createSleepBlock(db);
+          await SleepBlockStore.backfill(db);
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);
@@ -1190,6 +1195,13 @@ Future<void> _ldbPrivRepairOpenSchema(Database db) async {
     await LocalDb._createVendorSleepEpoch(db);
     await ImportJournal.ensureSchema(db);
     await ActivityStore.create(db);
+    final hadSleepBlocks = (await db.rawQuery(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sleep_block'",
+    )).isNotEmpty;
+    await db.transaction((tx) async {
+      await LocalDb._createSleepBlock(tx);
+      if (!hadSleepBlocks) await SleepBlockStore.backfill(tx);
+    });
     await LocalDb._createWorkoutRoute(db);
     await LocalDb._ensureWorkoutRouteSpeed(db);
     await LocalDb._createWorkoutSplit(db);
@@ -1317,7 +1329,7 @@ Future<void> _ldbPrivCreateLiveWorkoutTally(Database db) async {
     ''');
   }
 
-Future<void> _ldbPrivAddColumnIfMissing(Database db, String table, String column, String ddlType) async {
+Future<void> _ldbPrivAddColumnIfMissing(DatabaseExecutor db, String table, String column, String ddlType) async {
     if ((await LocalDb._columnsOf(db, table)).contains(column)) return;
     try {
       await db.execute('ALTER TABLE $table ADD COLUMN $column $ddlType');
@@ -3776,3 +3788,21 @@ Future<void> _ldbCreateNightCheckpoint(Database db) async {
       'rev_vec BLOB NOT NULL, state BLOB NOT NULL, night_ref TEXT, '
       'computed_at INTEGER NOT NULL, PRIMARY KEY(day_id, algo_version))');
   }
+
+// CLAIM(sleep-block-owner): one live main per stored owner day [spec §1.1; B1].
+Future<void> _ldbPrivCreateSleepBlock(DatabaseExecutor db) async {
+  await SleepEditStore.create(db);
+  await db.execute('''CREATE TABLE IF NOT EXISTS sleep_block (
+    id TEXT PRIMARY KEY, kind TEXT NOT NULL, owner_day TEXT NOT NULL,
+    start_ts INTEGER NOT NULL, end_ts INTEGER NOT NULL,
+    source TEXT NOT NULL, state TEXT NOT NULL, merged_into TEXT,
+    history TEXT NOT NULL, detected_start INTEGER, detected_end INTEGER,
+    detected_day TEXT, payload_json TEXT, revision INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+  )''');
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_sleep_block_span ON sleep_block(start_ts, end_ts)');
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_sleep_block_owner ON sleep_block(owner_day, kind, state)');
+  await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_sleep_block_live_main ON sleep_block(owner_day) WHERE kind = 'main' AND state = 'live'");
+  await LocalDb._addColumnIfMissing(db, 'sleep_edit_job', 'nap_revision', 'INTEGER NOT NULL DEFAULT 0');
+  await LocalDb._addColumnIfMissing(db, 'sleep_edit_job', 'nap_applied_revision', 'INTEGER NOT NULL DEFAULT 0');
+}

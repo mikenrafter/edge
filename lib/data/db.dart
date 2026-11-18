@@ -1,6 +1,7 @@
 import '../util/callable.dart';
 import 'json_payload_lane.dart';
 import 'sleep_block_writer.dart';
+import 'sleep_block_store.dart';
 import 'sleep_edit_codec.dart';
 import 'sleep_editor.dart';
 import 'sleep_import_rules.dart';
@@ -671,7 +672,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 93;
+  static const int schemaVersion = 94;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -990,7 +991,7 @@ class LocalDb {
   /// way out. Check first; swallow a lost race (SQLite does statement-level
   /// rollback, so a caught failure never poisons the surrounding transaction).
   static Future<void> _addColumnIfMissing(
-    Database db,
+    DatabaseExecutor db,
     String table,
     String column,
     String ddlType,
@@ -1848,6 +1849,8 @@ class LocalDb {
   /// one they removed — the window is stored so it keeps suppressing that nap
   /// even after the detector's bounds shift by a minute).
   static Future<void> _createSleepNap(Database db) => _ldbPrivCreateSleepNap(db);
+
+  static Future<void> _createSleepBlock(DatabaseExecutor db) => _ldbPrivCreateSleepBlock(db);
 
   /// A band's own hypnogram, one row per epoch, stages already in our
   /// `stages4` words. `night_onset_ts` chains an epoch onto the night of the
