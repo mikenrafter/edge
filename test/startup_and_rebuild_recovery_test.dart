@@ -277,7 +277,7 @@ void main() {
         'created_at': 1,
       });
       await db.insert('sleep_block', {
-        'id': 'saved-main', 'kind': 'main', 'owner_day': '2026-08-01',
+        'id': 'saved-main', 'kind': 'main', 'owner_day': '2026-08-01', 'owner_rule': 0,
         'start_ts': 1000, 'end_ts': 2000, 'source': 'manual', 'state': 'live',
         'history': 'unavailable', 'revision': 0, 'created_at': 1, 'updated_at': 1,
       });

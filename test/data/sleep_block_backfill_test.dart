@@ -237,10 +237,22 @@ void main() {
     expect((await db.rawQuery('PRAGMA table_info(sleep_block)')).map((r)=>r['name']),
       contains('owner_rule'));
     expect((await db.query('sleep_block')).map((r)=>r['owner_rule']).toSet(),{0});
-    await db.insert('sleep_block',{...blockRow('new-rule',start:8000,end:8600),'owner_rule':1});
+    await db.insert('sleep_block',SleepBlockStore.encodeBlock(
+      const SleepBlock(id:'new-rule',kind:SleepBlockKind.nap,day:fixtureDay,startTs:8000,endTs:8600),
+      source:SleepBlockSource.manual,state:SleepBlockState.live,createdAt:19));
     db = await reopen();
     expect((await db.query('sleep_block',where:'id = ?',whereArgs:['new-rule'])).single['owner_rule'],1);
     expect((await db.query('sleep_block',where:'id = ?',whereArgs:['legacy:nap:$fixtureDay:1100'])).single['owner_rule'],0);
+    final read = await SleepBlockStore.read(db,fixtureDay);
+    expect(read.entries.where((e)=>e.id=='new-rule').single.ownerRule,1);
+    expect(read.entries.where((e)=>e.id=='legacy:nap:$fixtureDay:1100').single.ownerRule,0);
+    final legacy = (await SleepBlockStore.live(db,1100,1200)).single;
+    expect(SleepBlockStore.encodeBlock(legacy,source:SleepBlockSource.confirmed,
+      state:SleepBlockState.live,createdAt:17)['owner_rule'],0);
+    // A same-version creator repairs the additive column without relabeling.
+    await db.execute('ALTER TABLE sleep_block DROP COLUMN owner_rule');
+    db = await reopen();
+    expect((await db.query('sleep_block')).map((r)=>r['owner_rule']).toSet(),{0});
   });
 
 }

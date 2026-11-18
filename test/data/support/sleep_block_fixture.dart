@@ -49,7 +49,7 @@ Map<String,Object?> blockRow(String id, {String kind = 'nap', String day = fixtu
     int start = 1000, int end = 1600, String source = 'manual', String state = 'live',
     String history = 'unavailable', int? detectedStart, int? detectedEnd,
     String? detectedDay, String? mergedInto, String? payload, int updatedAt = 17}) => {
-  'id':id, 'kind':kind, 'owner_day':day, 'start_ts':start, 'end_ts':end,
+  'id':id, 'kind':kind, 'owner_day':day, 'owner_rule':0, 'start_ts':start, 'end_ts':end,
   'source':source, 'state':state, 'merged_into':mergedInto, 'history':history,
   'detected_start':detectedStart, 'detected_end':detectedEnd, 'detected_day':detectedDay,
   'payload_json':payload, 'revision':0, 'created_at':17, 'updated_at':updatedAt,

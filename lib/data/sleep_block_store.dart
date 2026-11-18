@@ -26,7 +26,7 @@ class _StoredBlock {
         ? SleepBlockState.removed : rawState;
     block = SleepBlock(
       id: row['id'] as String, kind: kind ?? SleepBlockKind.nap,
-      day: row['owner_day'] as String, startTs: row['start_ts'] as int,
+      day: row['owner_day'] as String, ownerRule: row['owner_rule'] as int, startTs: row['start_ts'] as int,
       endTs: row['end_ts'] as int, revision: row['revision'] as int,
       provenance: switch (source) {
         SleepBlockSource.manual => SleepEntryProvenance.manual,
@@ -50,6 +50,37 @@ class _StoredBlock {
 }
 
 abstract final class SleepBlockStore {
+  /// Shared row codec for absorption and new assertions. Callers choose the
+  /// owner day through SleepOwnership; an existing block retains its rule.
+  /// CLAIM(sleep-block-owner-rule): new assertions use rule 1; absorption
+  /// preserves legacy rule 0 [owner decision 2026-11-18; B17].
+  static Map<String, Object?> encodeBlock(SleepBlock block, {
+    required SleepBlockSource source,
+    required SleepBlockState state,
+    required int createdAt,
+    int? updatedAt,
+    DetectedHistory history = const DetectedUnavailable('no retained detection'),
+    String? mergedInto,
+    String? payload,
+  }) {
+    if (block.id == null) throw ArgumentError('a stored block needs an id');
+    return {
+      'id': block.id, 'kind': block.kind.name, 'owner_day': block.day,
+      'owner_rule': block.ownerRule ?? SleepOwnership.currentRule,
+      'start_ts': block.startTs, 'end_ts': block.endTs,
+      'source': source.name, 'state': state.name, 'merged_into': mergedInto,
+      'history': switch (history) {
+        DetectedKnown() => 'known', DetectedAbsent() => 'absent',
+        DetectedUnavailable() => 'unavailable',
+      },
+      'detected_start': history is DetectedKnown ? history.startTs : null,
+      'detected_end': history is DetectedKnown ? history.endTs : null,
+      'detected_day': history is DetectedKnown ? history.sourceDay : null,
+      'payload_json': payload, 'revision': block.revision,
+      'created_at': createdAt, 'updated_at': updatedAt ?? createdAt,
+    };
+  }
+
   static Future<Map<String, dynamic>?> _payload(Object? value) async {
     if (value is! String || value.trim().isEmpty) return null;
     try {
@@ -81,13 +112,15 @@ abstract final class SleepBlockStore {
     Map<String, Object?> row(String id, String kind, String day, int start,
         int end, String source, String state, int created, {
         String history = 'unavailable', int? detectedStart, int? detectedEnd,
-        String? payload}) => {
-      'id': id, 'kind': kind, 'owner_day': day, 'start_ts': start, 'end_ts': end,
-      'source': source, 'state': state, 'merged_into': null, 'history': history,
-      'detected_start': detectedStart, 'detected_end': detectedEnd,
-      'detected_day': history == 'known' ? day : null, 'payload_json': payload,
-      'revision': 0, 'created_at': created, 'updated_at': created,
-    };
+        String? payload}) => encodeBlock(SleepBlock(id: id,
+          kind: SleepBlockKind.values.byName(kind), day: day,
+          ownerRule: SleepOwnership.legacyRule, startTs: start, endTs: end),
+        source: SleepBlockSource.values.byName(source),
+        state: SleepBlockState.values.byName(state), createdAt: created,
+        history: history == 'known'
+          ? DetectedKnown(startTs: detectedStart!, endTs: detectedEnd!, sourceDay: day)
+          : const DetectedUnavailable('legacy detection unavailable'),
+        payload: payload);
     Future<bool> insertBlock(Map<String, Object?> block) async {
       if ((await tx.query('sleep_block', columns: ['id'], where: 'id = ?',
           whereArgs: [block['id']])).isNotEmpty) {
@@ -221,7 +254,7 @@ abstract final class SleepBlockStore {
       final survivor = r.row['merged_into'];
       final attached = survivor is String && survivor.isNotEmpty &&
         (await tx.query('sleep_block', columns: ['id'], where: 'id = ?', whereArgs: [survivor])).isNotEmpty;
-      entries.add(SleepEditorEntry(id: b.id, revision: b.revision,
+      entries.add(SleepEditorEntry(id: b.id, revision: b.revision, ownerRule: b.ownerRule,
         mergedInto: attached ? survivor : null,
         ref: SleepEntryRef(kind: b.kind, day: day, startTs: b.kind == SleepBlockKind.nap ? b.startTs : null,
           expectedEndTs: b.endTs, expectedSource: r.row['source'] as String),

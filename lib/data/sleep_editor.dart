@@ -28,11 +28,14 @@ class SleepBlock {
     required this.endTs,
     this.id,
     this.revision = 0,
+    this.ownerRule,
     this.provenance = SleepEntryProvenance.automatic,
   });
 
   final String? id;
   final int revision;
+  /// Null for an automatic window that has not been stored as an assertion.
+  final int? ownerRule;
   final SleepEntryProvenance provenance;
   String get ownerDay => day;
   final SleepBlockKind kind;
@@ -51,6 +54,7 @@ class SleepBlock {
       other is SleepBlock &&
       other.id == id &&
       other.revision == revision &&
+      other.ownerRule == ownerRule &&
       other.provenance == provenance &&
       other.kind == kind &&
       other.day == day &&
@@ -58,7 +62,7 @@ class SleepBlock {
       other.endTs == endTs;
 
   @override
-  int get hashCode => Object.hash(id, revision, provenance, kind, day, startTs, endTs);
+  int get hashCode => Object.hash(id, revision, ownerRule, provenance, kind, day, startTs, endTs);
 
   @override
   String toString() => '$key..$endTs';
@@ -366,10 +370,12 @@ class SleepEditorEntry {
     required this.removed,
     this.id,
     this.revision = 0,
+    this.ownerRule,
     this.mergedInto,
   });
   final String? id, mergedInto;
   final int revision;
+  final int? ownerRule;
   final SleepEntryRef ref;
   final int startTs, endTs;
   final SleepEntryProvenance provenance;

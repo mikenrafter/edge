@@ -3794,12 +3794,15 @@ Future<void> _ldbPrivCreateSleepBlock(DatabaseExecutor db) async {
   await SleepEditStore.create(db);
   await db.execute('''CREATE TABLE IF NOT EXISTS sleep_block (
     id TEXT PRIMARY KEY, kind TEXT NOT NULL, owner_day TEXT NOT NULL,
+    owner_rule INTEGER NOT NULL,
     start_ts INTEGER NOT NULL, end_ts INTEGER NOT NULL,
     source TEXT NOT NULL, state TEXT NOT NULL, merged_into TEXT,
     history TEXT NOT NULL, detected_start INTEGER, detected_end INTEGER,
     detected_day TEXT, payload_json TEXT, revision INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
   )''');
+  // Pre-decision development rows preserve their recorded labels as legacy.
+  await LocalDb._addColumnIfMissing(db, 'sleep_block', 'owner_rule', 'INTEGER NOT NULL DEFAULT 0');
   await db.execute('CREATE INDEX IF NOT EXISTS idx_sleep_block_span ON sleep_block(start_ts, end_ts)');
   await db.execute('CREATE INDEX IF NOT EXISTS idx_sleep_block_owner ON sleep_block(owner_day, kind, state)');
   await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_sleep_block_live_main ON sleep_block(owner_day) WHERE kind = 'main' AND state = 'live'");

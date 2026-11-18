@@ -5,6 +5,11 @@ import 'day_label.dart';
 import 'sleep_editor.dart';
 
 abstract final class SleepOwnership {
+  /// Stored labels preserved from legacy projections; never re-evaluated.
+  static const legacyRule = 0;
+  /// Explicit main day; nap local start date (owner decision, 2026-11-18).
+  static const currentRule = 1;
+
   // CLAIM(sleep-ownership-one-rule): naps belong to their local start date
   // [phase2_5-spec §3.7; sleep_block_store_test S11].
   static String dayOf(SleepBlockKind kind, int startSec, int endSec) {

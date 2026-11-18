@@ -197,6 +197,7 @@ in the same change that introduces it (AGENTS.md §6).
 ## Sleep ownership
 
 - **Sleep block**: an interval of main sleep or a nap the wearer can act on, stored with a stable id in `sleep_block`.
+- **Owner rule**: the integer version of the rule that assigned a block’s owner day. `0` preserves a legacy stored label; `1` uses the caller’s main day or a nap’s local start date. Stored blocks retain their rule when read or encoded.
 - **Owner day**: the local day label that owns a block. Main sleep keeps the caller's day; a new nap uses `SleepOwnership.dayOf`.
 - **Projection**: legacy `sleep_nap` and `sleep_override` rows written from sleep blocks for existing readers and exports.
 - **Absorb**: turn legacy sleep rows into blocks while retaining their stored owner days.
