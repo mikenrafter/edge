@@ -209,7 +209,7 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
                 valueListenable: _link.shown,
                 builder: (c, day, list) => DayNavigationFrame(
                   selectedDay: day ?? todayLabel(pc.clock.now()),
-                  onSelect: (d) => _link.select?.call(d),
+                  onSelect: (d) => _link.view?.showDay(d),
                   child: list!,
                 ),
                 child: ListView(
@@ -229,10 +229,16 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
 
 /// Connects [ExplorerView]'s day scale to the screen around it: the screen
 /// reads the shown day ([shown], null on the daily scale or on today) and asks
-/// the view to go to a day ([select]).
+/// the attached [view] to go to a day. An interface rather than a stored
+/// callback: the heavy-work guard cannot resolve a call through a `Function`.
 class ExplorerDayLink {
   final shown = ValueNotifier<String?>(null);
-  ValueChanged<String>? select;
+  ExplorerDayView? view;
+}
+
+/// What [ExplorerScreen] may ask of the explorer's day scale.
+abstract interface class ExplorerDayView {
+  void showDay(String day);
 }
 
 class ExplorerView extends StatefulWidget {
@@ -261,7 +267,9 @@ class ExplorerView extends StatefulWidget {
   State<ExplorerView> createState() => _ExplorerViewState();
 }
 
-class _ExplorerViewState extends State<ExplorerView> with RevisionReload, PausedReadReload<ExplorerView> {
+class _ExplorerViewState extends State<ExplorerView>
+    with RevisionReload, PausedReadReload<ExplorerView>
+    implements ExplorerDayView {
   late bool _day = Prefs.getString(kExploreScalePref, '') == 'day';
   late ExploreRange _range;
   String? _from, _to;
@@ -295,7 +303,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
   @override
   void initState() {
     super.initState();
-    widget.dayLink?.select = _setDay;
+    widget.dayLink?.view = this;
     watchPausedRead();
     _daily = decodeExploreKeys(Prefs.getString(kExploreMetricsPref, ''),
         valid: _dailyKeys);
@@ -339,7 +347,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
 
   @override
   void dispose() {
-    if (widget.dayLink?.select == _setDay) widget.dayLink!.select = null;
+    if (identical(widget.dayLink?.view, this)) widget.dayLink!.view = null;
     stopWatchingPausedRead();
     super.dispose();
   }
@@ -575,6 +583,9 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
         kExploreRangePref, encodeExploreRange(_range, from: _from, to: _to));
     _ensureAnnotations();
   }
+
+  @override
+  void showDay(String day) => _setDay(day);
 
   /// A different day is read afresh each time: a day already seen may have been
   /// derived again since, and the read is one stored row.
