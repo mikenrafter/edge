@@ -52,12 +52,14 @@ class PulseStamp {
     required this.context,
     required this.generation,
     this.source = '',
+    this.admissionThrough = 0,
+    this.admissionCount = 0,
     this.fromMs = 0,
     this.toMs = 0,
   });
-  final int inputRev, generation, fromMs, toMs;
+  final int inputRev, generation, fromMs, toMs, admissionThrough, admissionCount;
   final String context, source;
-  String get encoded => '$inputRev|$context|$generation';
+  String get encoded => '$inputRev|$context|$generation|$admissionThrough:$admissionCount';
   @override
   bool operator ==(Object other) => other is PulseStamp && other.encoded == encoded;
   @override
@@ -164,6 +166,11 @@ class PulseEpisodeStore {
       generation INTEGER NOT NULL DEFAULT 0)''');
     await db.execute('''CREATE TABLE IF NOT EXISTS pulse_ep_upgrade_record (
       source TEXT NOT NULL, ts_ms INTEGER NOT NULL, PRIMARY KEY(source, ts_ms))''');
+    // Short-lived per-batch completion belongs to admission, never record keys.
+    final admissionColumns = await db.rawQuery('PRAGMA table_info(pulse_ep_admission)');
+    if (!admissionColumns.any((c) => c['name'] == 'evaluated')) {
+      await db.execute('ALTER TABLE pulse_ep_admission ADD COLUMN evaluated INTEGER NOT NULL DEFAULT 0');
+    }
     await db.execute('CREATE INDEX IF NOT EXISTS pulse_ep_episode_time ON pulse_ep_episode(start_ms, id)');
     await db.execute('CREATE INDEX IF NOT EXISTS pulse_ep_episode_day ON pulse_ep_episode(start_day, end_day)');
     await db.execute('CREATE INDEX IF NOT EXISTS pulse_ep_evidence_age ON pulse_ep_evidence(created_ms)');
@@ -267,10 +274,10 @@ class PulseEpisodeStore {
     return PulseAdmission(records: bearing.length, novel: novel);
   }
 
-  /// Moves the evaluated-through watermark forward (never back). A batch is
-  /// consumed once the watermark covers it AND it was admitted before this
-  /// checkpoint; a later replacement behind the watermark stays unconsumed.
-  /// Returns how many batches are now consumed for [source].
+  /// Commits this snapshot's evaluation/refusals. Only admission batches wholly
+  /// covered by this range are consumed; an older pass cannot certify a newer
+  /// replacement behind a prior watermark. Throws if the snapshot raced or the
+  /// range would leave a gap in the watermark.
   static Future<int> advanceCheckpoint(
     Database db, {
     required String source,
@@ -278,28 +285,45 @@ class PulseEpisodeStore {
     required PulseStamp stamp,
     required int detector,
     required int nowMs,
+    int? fromMs,
+    String refusedJson = '[]',
   }) => db.transaction((txn) async {
+    final current = await readStamp(txn,
+        source: source, fromMs: stamp.fromMs, toMs: stamp.toMs);
+    if (current != stamp) throw StateError('Pulse evaluation snapshot changed');
+    final start = fromMs ?? stamp.fromMs;
     final prior = await txn.query('pulse_ep_checkpoint',
         where: 'source = ?', whereArgs: [source], limit: 1);
-    final through = prior.isEmpty
-        ? throughMs
-        : (prior.first['through_ms'] as int) > throughMs
-            ? prior.first['through_ms'] as int
-            : throughMs;
-    await txn.rawInsert(
-      'INSERT OR IGNORE INTO pulse_ep_checkpoint(source, through_ms, detector, stamp, refused_json, updated_ms) '
-      "VALUES (?,?,?,?,'[]',?)",
-      [source, through, detector, stamp.encoded, nowMs],
-    );
+    if (prior.isNotEmpty && start > (prior.first['through_ms'] as int)) {
+      throw StateError('Pulse evaluation leaves a checkpoint gap');
+    }
     await txn.rawUpdate(
-      'UPDATE pulse_ep_checkpoint SET through_ms = ?, detector = ?, stamp = ?, updated_ms = ? WHERE source = ?',
-      [through, detector, stamp.encoded, nowMs, source],
+      'UPDATE pulse_ep_admission SET evaluated = 1 WHERE source = ? '
+      'AND start_ms >= ? AND end_ms <= ? AND rowid <= ?',
+      [source, start, throughMs, stamp.admissionThrough],
     );
+    if (prior.isEmpty) {
+      await txn.insert('pulse_ep_checkpoint', {
+        'source': source, 'through_ms': throughMs, 'detector': detector,
+        'stamp': stamp.encoded, 'refused_json': refusedJson, 'updated_ms': nowMs,
+      });
+    } else {
+      final refusals = [
+        ...jsonDecode(prior.first['refused_json'] as String) as List,
+        ...jsonDecode(refusedJson) as List,
+      ];
+      await txn.update('pulse_ep_checkpoint', {
+        if (throughMs > (prior.first['through_ms'] as int)) ...{
+          'through_ms': throughMs, 'detector': detector,
+          'stamp': stamp.encoded, 'updated_ms': nowMs,
+        },
+        'refused_json': jsonEncode(refusals),
+      }, where: 'source = ?', whereArgs: [source]);
+    }
     return Sqflite.firstIntValue(await txn.rawQuery(
-          'SELECT COUNT(*) FROM pulse_ep_admission WHERE source = ? AND end_ms <= ? AND admitted_ms <= ?',
-          [source, through, nowMs],
-        )) ??
-        0;
+          'SELECT COUNT(*) FROM pulse_ep_admission WHERE source = ? AND evaluated = 1',
+          [source],
+        )) ?? 0;
   });
 
   /// Prunes admission batches with decoded retention. Consumed batches go at
@@ -314,10 +338,7 @@ class PulseEpisodeStore {
     bool holdEnabled = schedulingEnabled,
   }) async {
     var deleted = await txn.rawDelete(
-      'DELETE FROM pulse_ep_admission WHERE end_ms <= ? AND EXISTS ('
-      'SELECT 1 FROM pulse_ep_checkpoint c WHERE c.source = pulse_ep_admission.source '
-      'AND c.through_ms >= pulse_ep_admission.end_ms '
-      'AND c.updated_ms >= pulse_ep_admission.admitted_ms)',
+      'DELETE FROM pulse_ep_admission WHERE end_ms <= ? AND evaluated = 1',
       [cutoffMs],
     );
     if (!holdEnabled) {
@@ -391,7 +412,13 @@ class PulseEpisodeStore {
     final gen = Sqflite.firstIntValue(
             await db.rawQuery('SELECT generation FROM pulse_ep_upgrade WHERE id = 1')) ??
         0;
+    final admission = (await db.rawQuery(
+      'SELECT COALESCE(MAX(rowid), 0) AS last, COUNT(*) AS n FROM pulse_ep_admission WHERE source = ?',
+      [source],
+    )).single;
     return PulseStamp(
+      admissionThrough: admission['last'] as int,
+      admissionCount: admission['n'] as int,
       inputRev: input,
       context: '$events:$sleep:${complete.first['n']}:${complete.first['g']}:${complete.first['m']}',
       generation: gen,
@@ -892,7 +919,7 @@ class PulseEpisodeStore {
         return _mergeOutbox(txn, row);
       case 'pulse_ep_admission':
         // A replacement can never carry recent-sync authority from another phone.
-        return (await txn.insert('pulse_ep_admission', {...row, 'historical': 1},
+        return (await txn.insert('pulse_ep_admission', {...row, 'historical': 1, 'evaluated': 0},
                 conflictAlgorithm: ConflictAlgorithm.ignore)) >
             0;
       case 'pulse_ep_upgrade_record':

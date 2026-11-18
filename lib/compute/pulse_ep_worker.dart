@@ -4,6 +4,7 @@
 // bounded committed beats, runs those entries, and hands the result to
 // PulseEpisodeStore in one publication. It has NO scheduler: production
 // scheduling stays disabled until phase 3 (PulseEpisodeStore.schedulingEnabled).
+import 'dart:convert';
 import 'dart:isolate';
 
 import 'package:openstrap_analytics/onehz.dart' as ana;
@@ -76,15 +77,17 @@ PulseDetected detectPulseEpisodesHeavy(PulseDetectInput input) {
 
 @SendableShape('Immutable analytics detection and primitive heart-rate bins; sendable_preparePulseEvidenceHeavy_test')
 class PulsePrepareInput {
-  const PulsePrepareInput(this.detection, {this.hr = const []});
+  const PulsePrepareInput(this.detection, {this.hr = const [], this.fromMs, this.toMs});
   final ana.PulseDetection detection;
   final List<PulseHrBin> hr;
+  final int? fromMs, toMs;
 }
 
 @SendableShape('Encoded recordings keyed by episode id; sendable_preparePulseEvidenceHeavy_test')
 class PulsePrepared {
-  const PulsePrepared(this.episodes);
+  const PulsePrepared(this.episodes, {this.refusedJson = '[]'});
   final Map<String, PulseEncodeResult> episodes;
+  final String refusedJson;
 }
 
 @heavy
@@ -92,10 +95,24 @@ PulsePrepared preparePulseEvidenceHeavy(PulsePrepareInput input) {
   WorkerInit.ensure(_kPulseWorker);
   assertWorker();
   WorkerAudit.entered('preparePulseEvidenceHeavy');
+  final refused = <Map<String, Object?>>[];
+  if (input.fromMs != null && input.toMs != null) {
+    final windows = {for (final w in input.detection.windows) w.startMs: w};
+    for (var at = (input.fromMs! ~/ 300000) * 300000; at < input.toMs!; at += 300000) {
+      final w = windows[at];
+      final reason = w == null ? 'unsupported' : w.pending ? 'pending' :
+          w.qualityReasons.isEmpty ? null : w.qualityReasons.join(',');
+      if (reason != null) refused.add({
+        'start': at < input.fromMs! ? input.fromMs : at,
+        'end': at + 300000 > input.toMs! ? input.toMs : at + 300000,
+        'reason': reason,
+      });
+    }
+  }
   return PulsePrepared({
     for (final e in input.detection.episodes)
       e.id: encodePulseEvidence(buildPulseEvidenceHeavy(e, input.detection, hr: input.hr)),
-  });
+  }, refusedJson: jsonEncode(refused));
 }
 
 @SendableShape('Compressed bytes and a checksum string; sendable_decodePulseEvidenceHeavy_test')
@@ -267,7 +284,7 @@ class PulseEpisodeWorker {
       evaluateToMs: toMs,
     );
     final detection = (await Isolate.run(() => detectPulseEpisodesHeavy(detectInput))).detection;
-    final prepareInput = PulsePrepareInput(detection);
+    final prepareInput = PulsePrepareInput(detection, fromMs: fromMs, toMs: toMs);
     final prepared = await Isolate.run(() => preparePulseEvidenceHeavy(prepareInput));
     final results = <PulseApply>[];
     for (final e in detection.episodes) {
@@ -301,9 +318,14 @@ class PulseEpisodeWorker {
       ));
     }
     if (results.every((r) => r is! PulseFailed && r is! PulseRefused)) {
-      await PulseEpisodeStore.advanceCheckpoint(db,
-          source: source, throughMs: toMs, stamp: stamp,
-          detector: ana.pulseDetectorVersion, nowMs: nowMs);
+      try {
+        await PulseEpisodeStore.advanceCheckpoint(db,
+            source: source, fromMs: fromMs, throughMs: toMs, stamp: stamp,
+            refusedJson: prepared.refusedJson,
+            detector: ana.pulseDetectorVersion, nowMs: nowMs);
+      } on StateError catch (error) {
+        results.add(PulseRefused(error.message.toString()));
+      }
     }
     return results;
   }
