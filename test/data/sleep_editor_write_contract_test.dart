@@ -1,315 +1,216 @@
-// Sleep structural phase 2, W group (storage and writes): the table writers
-// themselves enforce the 30-minute separation between ANY two sleep blocks, and
-// a removed block keeps the origin a later write lands on.
-//
-// Real SQLite through the public writers. Each case states WHY and a plausible
-// wrong implementation it catches. Owner decision 2026-11-17: a change that
-// creates or narrows a gap under 30 minutes is refused unless the caller
-// explicitly authorizes the merge; a kept or widened historical gap saves
-// normally; exactly 30:00 is allowed.
+// WHY: every mutation must preserve identity, history, projections and intent.
+// CLAIM(sleep-block-owner), CLAIM(sleep-block-projection),
+// CLAIM(sleep-block-explicit-merge), CLAIM(sleep-editor-draft-generation).
 import 'dart:convert';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart' show kAlgoVersion;
+import 'package:openstrap_edge/compute/nap_edits.dart';
 import 'package:openstrap_edge/data/db.dart';
-import 'package:openstrap_edge/models/activity_suggestion.dart'
-    show ActivityReviewException;
+import 'package:openstrap_edge/data/sleep_block_store.dart';
+import 'package:openstrap_edge/data/sleep_draft_fence.dart';
+import 'package:openstrap_edge/data/sleep_editor.dart';
+import 'support/sleep_projection.dart';
 
-// A fixed local afternoon, far in the past so nothing here is "in the future".
-final _a0 = DateTime(2026, 10, 12, 14, 0).millisecondsSinceEpoch ~/ 1000;
-const _day = '2026-10-12';
-const _min = 60;
-
-/// Every application table a write could touch, as comparable JSON.
-Future<String> _everything(Database db) async {
-  final out = <String, Object?>{};
-  for (final t in [
-    'sleep_nap',
-    'sleep_override',
-    'sleep_edit_job',
-    'activity_review_days',
-    'activity_review_meta',
-    'wake_confirmation',
-    'activity_suggestions',
-  ]) {
-    final rows = await db.query(t);
-    // activated_at is stamped lazily on first use; it is not a write.
-    out[t] = [
-      for (final r in rows) {for (final e in r.entries) e.key: e.value}
-    ];
-  }
-  return jsonEncode(out);
-}
-
+const day = '2026-10-12';
+final a = DateTime(2026, 10, 12, 14).millisecondsSinceEpoch ~/ 1000;
 void main() {
   late Database db;
-
-  setUpAll(() {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  });
+  setUpAll(() { sqfliteFfiInit(); databaseFactory = databaseFactoryFfi; });
   setUp(() async {
-    await LocalDb.close();
-    LocalDb.dbName = 'sleep_editor_write_contract_test.db';
-    await databaseFactory.deleteDatabase(
-      p.join(await databaseFactory.getDatabasesPath(), LocalDb.dbName),
-    );
+    await LocalDb.close(); LocalDb.dbName = 'sleep_editor_write_contract_test.db';
+    await databaseFactory.deleteDatabase(p.join(await databaseFactory.getDatabasesPath(), LocalDb.dbName));
     db = await LocalDb.instance;
-    await db.update('activity_review_meta', {'activated_at': _a0 - 86400});
   });
-  tearDown(() async {
-    await LocalDb.close();
-    await databaseFactory.deleteDatabase(
-      p.join(await databaseFactory.getDatabasesPath(), LocalDb.dbName),
-    );
+  tearDown(() async { await LocalDb.close(); });
+  Future<String> snapshot() async => jsonEncode({for (final t in [
+    'sleep_block','sleep_nap','sleep_override','sleep_edit_job','activity_review_days',
+    'activity_review_meta','wake_confirmation','activity_suggestions','input_revision','sync_cursor'])
+      t: await db.query(t)});
+  Future<List<Map<String,Object?>>> rows() => db.query('sleep_block',orderBy:'start_ts,id');
+  Future<void> seed(String id, int s, int e, {String owner = day,
+      SleepBlockKind kind = SleepBlockKind.nap, SleepBlockState state = SleepBlockState.live,
+      SleepBlockSource source = SleepBlockSource.confirmed, int rule = 1,
+      DetectedHistory? history, String? payload}) async {
+    await db.insert('sleep_block',SleepBlockStore.encodeBlock(
+      SleepBlock(id:id,kind:kind,day:owner,ownerRule:rule,startTs:s,endTs:e),
+      source:source,state:state,createdAt:1,
+      history:history ?? DetectedKnown(startTs:s,endTs:e,sourceDay:owner),payload:payload));
+    await SleepBlockStore.projectForTest(db,{owner});
+  }
+  Future<void> detection({bool nap=false}) async {
+    await LocalDb.putDayResult(dayId:day,algoVersion:kAlgoVersion,
+      payloadJson:jsonEncode({'naps':{'value':nap?[{'start':a,'end':a+3600,'duration_min':47}]:[]}}),
+      windowJson:jsonEncode(nap?{}:{'onset_ms':a*1000,'offset_ms':(a+3600)*1000}),
+      finalized:false,source:'band');
+  }
+  SleepEditorPlan plan(List<SleepEditorCommand> commands,{Map<String,int?> revisions=const {}}) =>
+    SleepEditorPlan(dayId:day,commands:commands,expectedRevisions:revisions,
+      draftGeneration:SleepDraftFence.shared.generationOf(day));
+  Future<SleepEditorOutcome> save(List<SleepEditorCommand> commands,{SleepMergeAuthorization? merge}) =>
+    db.transaction((tx)=>SleepBlockStore.apply(plan(commands),tx:tx,merge:merge));
+  Future<void> parity() async {
+    for (final d in {for(final r in await rows()) r['owner_day'] as String}) { await projectionMatches(db,d); }
+  }
+  test('W1 unchanged Save writes nothing',() async {
+    await seed('n',a,a+2400); final before=await snapshot();
+    expect(await save([SetIntervals(const StoredBlockRef('n',0),a,a+2400)]),isA<SleepNoChange>());
+    expect(await snapshot(),before);
   });
-
-  Future<void> rawNap(int s, int e,
-          {String source = 'manual', String? payload, String day = _day}) =>
-      db.insert('sleep_nap', {
-        'day_id': day,
-        'start_ts': s,
-        'end_ts': e,
-        'source': source,
-        'created_at': _a0,
-        'payload_json': payload,
-      });
-
-  Future<void> rawMain(int s, int e,
-          {String day = _day, String source = 'manual'}) =>
-      db.insert('sleep_override', {
-        'day_id': day,
-        'onset_ts': s,
-        'offset_ts': e,
-        'source': source,
-        'created_at': _a0,
-      });
-
-  Future<void> putNap(int s, int e, {String source = 'manual'}) =>
-      LocalDb.putNapEdit(dayId: _day, startTs: s, endTs: e, source: source);
-
-  group('CLAIM(sleep-block-separation) nap writer', () {
-    // WHY: two blocks 29:59 apart are one sleep to the wearer; the owner wants
-    // that decided by a person, never saved as two. Catches a writer that only
-    // refuses overlap.
-    test('a nap 29:59 after another is refused and nothing is written',
-        () async {
-      await rawNap(_a0, _a0 + 40 * _min);
-      final before = await _everything(db);
-      await expectLater(
-        putNap(_a0 + 40 * _min + 30 * _min - 1, _a0 + 100 * _min),
-        throwsA(isA<ActivityReviewException>()),
-      );
-      expect(await _everything(db), before);
-    });
-
-    // WHY: touching naps used to be silently unioned (grow mode). Catches an
-    // implementation that keeps the silent union beneath the writer.
-    test('touching naps are refused, not silently unioned', () async {
-      await rawNap(_a0, _a0 + 40 * _min);
-      final before = await _everything(db);
-      await expectLater(
-        putNap(_a0 + 40 * _min, _a0 + 90 * _min),
-        throwsA(isA<ActivityReviewException>()),
-      );
-      expect(await _everything(db), before);
-    });
-
-    test('an overlapping nap is refused and the existing row is untouched',
-        () async {
-      await rawNap(_a0, _a0 + 40 * _min);
-      final before = await _everything(db);
-      await expectLater(
-        putNap(_a0 + 20 * _min, _a0 + 90 * _min),
-        throwsA(isA<ActivityReviewException>()),
-      );
-      expect(await _everything(db), before);
-    });
-
-    // WHY: the owner chose "under 1800 s", so exactly 30:00 is two blocks.
-    // Catches an off-by-one (<=) that refuses a legal separate nap.
-    test('exactly 30:00 apart saves as two separate rows', () async {
-      await rawNap(_a0, _a0 + 40 * _min);
-      await putNap(_a0 + 70 * _min, _a0 + 110 * _min);
-      final rows = await db.query('sleep_nap', orderBy: 'start_ts');
-      expect([for (final r in rows) r['start_ts']],
-          [_a0, _a0 + 70 * _min]);
-    });
-
-    // WHY: a historical close pair stays visible and its far ends may move.
-    // Catches a writer that refuses ANY row near another block.
-    test('a far-end edit of a historical close pair saves normally',
-        () async {
-      await rawNap(_a0, _a0 + 40 * _min);
-      await rawNap(_a0 + 60 * _min, _a0 + 100 * _min); // 20 min gap, historical
-      await putNap(_a0 + 60 * _min, _a0 + 130 * _min); // later end only
-      final r = await db.query('sleep_nap',
-          where: 'start_ts = ?', whereArgs: [_a0 + 60 * _min]);
-      expect(r.single['end_ts'], _a0 + 130 * _min);
-    });
-
-    // WHY: a gap that would shrink is "narrowed" and needs a decision, even
-    // when the pair was already under 30 minutes.
-    test('moving the near end of a historical close pair closer is refused',
-        () async {
-      await rawNap(_a0, _a0 + 40 * _min);
-      await rawNap(_a0 + 60 * _min, _a0 + 100 * _min);
-      final before = await _everything(db);
-      // The first nap now ends 10 minutes later: the 20-minute gap narrows to 10.
-      await expectLater(
-        putNap(_a0, _a0 + 50 * _min),
-        throwsA(isA<ActivityReviewException>()),
-      );
-      expect(await _everything(db), before);
-    });
-
-    // WHY: a removal only widens gaps, so it is never refused for spacing.
-    test('removing a nap that sits in a close pair is allowed', () async {
-      await rawNap(_a0, _a0 + 40 * _min);
-      await rawNap(_a0 + 60 * _min, _a0 + 100 * _min);
-      await putNap(_a0 + 60 * _min, _a0 + 100 * _min, source: 'rejected');
-      final rows = await db.query('sleep_nap',
-          where: "source = 'rejected'");
-      expect(rows, hasLength(1));
-    });
+  test('W2 add then remove in one Save has no durable effect',() async {
+    final before=await snapshot();
+    expect(await save([AddNap(a,a+2400),RemoveBlock(DetectedNapRef(day,a,a+2400))]),isA<SleepNoChange>());
+    expect(await snapshot(),before);
   });
-
-  group('CLAIM(sleep-block-separation) main writer', () {
-    // WHY: main and nap are the same kind of block for spacing. Catches a
-    // check that only compares nap with nap.
-    test('a nap 29:59 after a main sleep is refused', () async {
-      await rawMain(_a0 - 9 * 3600, _a0 - 3600);
-      final before = await _everything(db);
-      await expectLater(
-        putNap(_a0 - 3600 + 30 * _min - 1, _a0 - 3600 + 80 * _min),
-        throwsA(isA<ActivityReviewException>()),
-      );
-      expect(await _everything(db), before);
-    });
-
-    // WHY: the override writer is the other table writer; a main edit that
-    // brings the night to within 20 minutes of a nap is refused too.
-    test('a main edit that closes within 20 minutes of a nap is refused',
-        () async {
-      await rawMain(_a0 - 9 * 3600, _a0 - 2 * 3600);
-      await rawNap(_a0, _a0 + 40 * _min);
-      final before = await _everything(db);
-      await expectLater(
-        LocalDb.putSleepOverride(
-          dayId: _day,
-          onsetTs: _a0 - 9 * 3600,
-          offsetTs: _a0 - 20 * _min,
-          source: 'manual',
-        ),
-        throwsA(isA<ActivityReviewException>()),
-      );
-      expect(await _everything(db), before);
-    });
-
-    // WHY: moving the main's far end later widens nothing it should not;
-    // the near gap stays. Catches a writer that refuses all edits near a nap.
-    test('a main edit that widens the gap to a nap saves', () async {
-      await rawMain(_a0 - 9 * 3600, _a0 - 40 * _min);
-      await rawNap(_a0, _a0 + 40 * _min); // 40 min gap
-      await LocalDb.putSleepOverride(
-        dayId: _day,
-        onsetTs: _a0 - 9 * 3600,
-        offsetTs: _a0 - 90 * _min,
-        source: 'manual',
-      );
-      final r = (await db.query('sleep_override')).single;
-      expect(r['offset_ts'], _a0 - 90 * _min);
-    });
+  test('W3 first automatic main edit snapshots the served detection',() async {
+    await detection();
+    expect(await save([SetIntervals(DetectedMainRef(day,a,a+3600),a-600,a+3600)]),isA<SleepSaved>());
+    final r=(await rows()).single;
+    expect([r['kind'],r['source'],r['history'],r['detected_start'],r['detected_end'],r['detected_day'],r['owner_rule']],
+      ['main','detected','known',a,a+3600,day,1]); await parity();
   });
-
-  group('CLAIM(sleep-block-separation) detected main, real stored shape', () {
-    // day_compute stores `SleepWindow.toJson()` UNWRAPPED in window_json
-    // ({onset_ms, offset_ms, spt_sec}); only older fixtures used the
-    // {value: {...}} envelope. Both shapes must be read.
-    Future<void> detectedNight(int on, int off, {bool wrapped = false}) {
-      final window = {'onset_ms': on * 1000, 'offset_ms': off * 1000, 'spt_sec': off - on};
-      return LocalDb.putDayResult(
-        dayId: _day,
-        algoVersion: kAlgoVersion,
-        payloadJson: jsonEncode({
-          'scalars': {'rhr': 53, 'readiness': 74, 'nap_min': 0},
-          'naps': {'value': [], 'count': 0},
-        }),
-        windowJson: jsonEncode(wrapped ? {'value': window} : window),
-        finalized: true,
-        source: 'band',
-        rhr: 53,
-        readiness: 74,
-        series: {'rhr': 53, 'readiness': 74, 'nap_min': 0},
-      );
+  test('W4 a second edit preserves the first snapshot and stable id',() async {
+    await seed('n',a,a+2400);
+    expect(await save([SetIntervals(const StoredBlockRef('n',0),a+60,a+2400)]),isA<SleepSaved>());
+    expect(await save([SetIntervals(const StoredBlockRef('n',1),a+120,a+2460)]),isA<SleepSaved>());
+    final r=(await rows()).single;
+    expect([r['id'],r['revision'],r['detected_start'],r['detected_end']],['n',2,a,a+2400]); await parity();
+  });
+  test('W5 Remove and Restore use the id; repeated Remove is a no-op',() async {
+    await seed('n',a,a+2400);
+    expect(await save([const RemoveBlock(StoredBlockRef('n',0))]),isA<SleepSaved>());
+    final before=await snapshot();
+    expect(await save([const RemoveBlock(StoredBlockRef('n',1))]),isA<SleepNoChange>());
+    expect(await snapshot(),before);
+    expect(await save([const RestoreRemoved(StoredBlockRef('n',1))]),isA<SleepSaved>());
+    expect((await rows()).single['state'],'live'); await parity();
+  });
+  test('W6 same-start replacement keeps both blocks and exact suppression',() async {
+    await seed('d',a,a+3600);
+    await save([const RemoveBlock(StoredBlockRef('d',0))]);
+    expect(await save([AddNap(a,a+2400)]),isA<SleepSaved>());
+    expect(await rows(),hasLength(2));
+    expect((await db.query('sleep_nap')).single['end_ts'],a+2400);
+    final manual=(await rows()).singleWhere((r)=>r['id']!='d');
+    await save([RemoveBlock(StoredBlockRef(manual['id'] as String,manual['revision'] as int))]);
+    final edits=await SleepBlockStore.napEdits(db,day);
+    expect(applyNapEdits([{'start':a+2700,'end':a+3300}],edits),isEmpty); await parity();
+  });
+  test('W7 midnight move re-owns even a misdated absorbed nap and suppresses stored origin',() async {
+    final old=DateTime(2026,10,11,23,30).millisecondsSinceEpoch~/1000;
+    await seed('n',old,old+2400,rule:0);
+    final moved=DateTime(2026,10,13,0,10).millisecondsSinceEpoch~/1000;
+    final out=await save([SetIntervals(const StoredBlockRef('n',0),moved,moved+2400)]);
+    expect((out as SleepSaved).days,{day,'2026-10-13'});
+    final r=(await rows()).single;
+    expect([r['owner_day'],r['owner_rule'],r['detected_day']],['2026-10-13',1,day]);
+    expect(applyNapEdits([{'start':old,'end':old+2400}],await SleepBlockStore.napEdits(db,day)),isEmpty);
+    expect(await SleepBlockStore.napEdits(db,'2026-10-11'),isEmpty);
+    expect(await db.query('sleep_edit_job'),hasLength(2)); await parity();
+  });
+  test('W8 29:59 touching and overlap all refuse with every table unchanged',() async {
+    await seed('n',a,a+2400);
+    for(final offset in [4199,2400,1200]) {
+      final before=await snapshot();
+      final out=await save([AddNap(a+offset,a+offset+2400)]);
+      expect(out,isA<SleepRefused>());
+      expect((out as SleepRefused).reason,SleepRefusalReason.mergeRequired);
+      expect(await snapshot(),before);
     }
-
-    // WHY: with no user override the night is known only from the stored
-    // window. Catches a lookup that reads only the wrapped shape: a nap logged
-    // 10 minutes after waking would then save with no Merge prompt.
-    test('a nap 10 minutes after an UNWRAPPED detected night needs a merge',
-        () async {
-      final wake = _a0 - 3600;
-      await detectedNight(wake - 8 * 3600, wake);
-      final before = await _everything(db);
-      await expectLater(
-        putNap(wake + 10 * _min, wake + 50 * _min),
-        throwsA(isA<ActivityReviewException>()),
-      );
-      expect(await _everything(db), before);
-    });
-
-    test('the wrapped shape older fixtures used is still read', () async {
-      final wake = _a0 - 3600;
-      await detectedNight(wake - 8 * 3600, wake, wrapped: true);
-      await expectLater(
-        putNap(wake + 10 * _min, wake + 50 * _min),
-        throwsA(isA<ActivityReviewException>()),
-      );
-    });
-
-    // WHY: exactly 30:00 after the stored wake is two blocks, in the real shape.
-    test('exactly 30:00 after an unwrapped detected night saves', () async {
-      final wake = _a0 - 3600;
-      await detectedNight(wake - 8 * 3600, wake);
-      await putNap(wake + 30 * _min, wake + 70 * _min);
-      expect(await db.query('sleep_nap'), hasLength(1));
-    });
   });
-
-  group('CLAIM(sleep-editor-nap-key) tombstone origin', () {
-    // WHY: remove detected 14:00-15:00, add manual 14:00-14:40 at the SAME
-    // start key, remove it again. The key is one row, so the detected
-    // snapshot and the suppression it carried must survive every step.
-    // Catches a writer that REPLACEs the tombstone with a null payload.
-    test('remove detected, add manual at the same start, remove manual',
-        () async {
-      final detEnd = _a0 + 60 * _min;
-      await rawNap(_a0, detEnd,
-          source: 'confirmed',
-          payload: jsonEncode({
-            'start': _a0,
-            'end': detEnd,
-            'duration_min': 47,
-            'in_bed_min': 55,
-            'confidence': 0.6,
-            'source': 'confirmed',
-          }));
-      await putNap(_a0, detEnd, source: 'rejected');
-      await putNap(_a0, _a0 + 40 * _min); // manual over the tombstone
-      var row = (await db.query('sleep_nap')).single;
-      expect(row['source'], 'manual');
-      expect(row['payload_json'], isNotNull,
-          reason: 'the replacement row must carry the tombstone origin');
-      expect('${row['payload_json']}', contains('$detEnd'));
-      await putNap(_a0, _a0 + 40 * _min, source: 'rejected');
-      row = (await db.query('sleep_nap')).single;
-      expect(row['source'], 'rejected');
-      final text = '${row['payload_json']}';
-      expect(text, contains('$detEnd'), reason: 'detected end survives');
-      expect(text, contains('47'), reason: 'detected measurement survives');
-    });
+  test('W9 exactly 30 minutes is accepted separately',() async {
+    await seed('n',a,a+2400);
+    expect(await save([AddNap(a+4200,a+6600)]),isA<SleepSaved>());
+    expect((await rows()).where((r)=>r['state']=='live'),hasLength(2)); await parity();
+  });
+  test('W10 authorized transitive merge keeps one live survivor and links participants',() async {
+    for(final (id,s,e) in [('a',a,a+1200),('b',a+3000,a+4200),('c',a+5400,a+6600)]) {
+      await seed(id,s,e);
+    }
+    final commands=[SetIntervals(const StoredBlockRef('a',0),a,a+1801)];
+    final pre=await SleepBlockStore.preflight(db,plan(commands));
+    expect(pre,isA<SleepProposalMergeRequired>());
+    final proposal=(pre as SleepProposalMergeRequired).proposal;
+    expect(proposal.participants.map((b)=>b.id).toSet(),{'a','b','c'});
+    expect(await save(commands,merge:proposal.authorization),isA<SleepSaved>());
+    final all=await rows();
+    expect(all.where((r)=>r['state']=='live'),hasLength(1));
+    expect(all.where((r)=>r['state']=='merged').map((r)=>r['merged_into']).toSet(),{'a'});
+    final survivor=all.singleWhere((r)=>r['id']=='a');
+    expect([survivor['start_ts'],survivor['end_ts'],survivor['history'],survivor['detected_start'],survivor['detected_end']],
+      [a,a+6600,'known',a,a+6600]); await parity();
+  });
+  test('W11 stale row revision day revision and draft generation refuse atomically',() async {
+    await seed('n',a,a+2400); final before=await snapshot();
+    expect((await save([SetIntervals(const StoredBlockRef('n',7),a,a+2500)]) as SleepRefused).reason,SleepRefusalReason.staleEntry);
+    expect((await db.transaction((tx)=>SleepBlockStore.apply(plan([AddNap(a+7200,a+9600)],revisions:{day:9}),tx:tx)) as SleepRefused).reason,SleepRefusalReason.staleEntry);
+    final stale=plan([AddNap(a+7200,a+9600)]); SleepDraftFence.shared.invalidateDays({day});
+    expect((await db.transaction((tx)=>SleepBlockStore.apply(stale,tx:tx)) as SleepRefused).reason,SleepRefusalReason.staleDraft);
+    expect(await snapshot(),before);
+  });
+  test('W12 transaction abort rolls back blocks projections and jobs; commit keeps intent',() async {
+    final before=await snapshot();
+    await expectLater(db.transaction((tx) async {
+      expect(await SleepBlockStore.apply(plan([AddNap(a,a+2400)]),tx:tx),isA<SleepSaved>());
+      throw StateError('crash before commit');
+    }),throwsStateError);
+    expect(await snapshot(),before);
+    expect(await save([AddNap(a,a+2400)]),isA<SleepSaved>());
+    expect(await db.query('sleep_edit_job'),hasLength(1)); await parity();
+  });
+  test('W13 disjoint measured participants sum; overlapping measured participants abstain',() async {
+    for(final overlap in [false,true]) {
+      await db.delete('sleep_block'); await db.delete('sleep_nap'); await db.delete('sleep_edit_job');
+      await seed('a',a,a+2400,payload:jsonEncode({'duration_min':30,'in_bed_min':40}));
+      await seed('b',a+(overlap?1200:3600),a+6000,payload:jsonEncode({'duration_min':35,'in_bed_min':40}));
+      final commands=[SetIntervals(const StoredBlockRef('a',0),a,a+3000)];
+      final pre=await SleepBlockStore.preflight(db,plan(commands));
+      final proposal=(pre as SleepProposalMergeRequired).proposal;
+      expect(await save(commands,merge:proposal.authorization),isA<SleepSaved>());
+      final payload=jsonDecode((await rows()).singleWhere((r)=>r['state']=='live')['payload_json'] as String) as Map;
+      expect(payload['duration_min'],overlap?null:65); await parity();
+    }
+  });
+  test('W14 ClearMain reveals detection; dangling merged participants become restorable',() async {
+    await detection(); await seed('m',a,a+3600,kind:SleepBlockKind.main);
+    await seed('n',a+4200,a+5400,state:SleepBlockState.merged);
+    await db.update('sleep_block',{'merged_into':'m'},where:"id='n'");
+    expect(await save([const ClearMain(day)]),isA<SleepSaved>());
+    final read=await SleepBlockStore.read(db,day);
+    expect(read.entries.where((e)=>e.id==null),hasLength(1));
+    expect(read.entries.singleWhere((e)=>e.id=='n').mergedInto,isNull);
+    expect(await save([const RestoreRemoved(StoredBlockRef('n',0))]),isA<SleepSaved>()); await parity();
+  });
+  test('W15 AddMain on an empty night is manual with explicitly absent history',() async {
+    expect(await save([AddMain(day,a,a+3600)]),isA<SleepSaved>());
+    final r=(await rows()).single;
+    expect([r['kind'],r['source'],r['history'],r['owner_rule']],['main','manual','absent',1]); await parity();
+  });
+  test('W16 Not sleep on an empty night writes the legacy one-second placeholder',() async {
+    expect(await save([const RemoveBlock(NoDetectionMainRef(day))]),isA<SleepSaved>());
+    final midnight=DateTime(2026,10,12).millisecondsSinceEpoch~/1000;
+    final r=(await rows()).single;
+    expect([r['state'],r['history'],r['start_ts'],r['end_ts']],['removed','absent',midnight,midnight+1]); await parity();
+  });
+  test('W17 removing a bundle-only nap snapshots it before tombstoning',() async {
+    await detection(nap:true);
+    expect(await save([RemoveBlock(DetectedNapRef(day,a,a+3600))]),isA<SleepSaved>());
+    final r=(await rows()).single;
+    expect([r['kind'],r['source'],r['state'],r['history'],r['detected_day']],['nap','detected','removed','known',day]); await parity();
+  });
+  test('W18 a second main refuses without an index exception or any writes',() async {
+    await seed('m',a,a+3600,kind:SleepBlockKind.main); final before=await snapshot();
+    final out=await save([AddMain(day,a+7200,a+10800)]);
+    expect(out,isA<SleepRefused>()); expect((out as SleepRefused).reason,SleepRefusalReason.mainExists);
+    expect(await snapshot(),before);
+  });
+  test('W19 time wheels revive a rejected main; ConfirmMain keeps its id and history',() async {
+    await seed('m',a,a+3600,kind:SleepBlockKind.main,state:SleepBlockState.removed);
+    expect(await save([SetIntervals(const StoredBlockRef('m',0),a+60,a+3600)]),isA<SleepSaved>());
+    expect((await rows()).single['source'],'manual');
+    expect(await save([ConfirmMain(day,a+120,a+3660)]),isA<SleepSaved>());
+    final r=(await rows()).single;
+    expect([r['id'],r['source'],r['history'],r['detected_start']],['m','confirmed','known',a]); await parity();
   });
 }
