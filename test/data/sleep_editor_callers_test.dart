@@ -711,4 +711,29 @@ class _RefusingRangeWriter extends FakeRangeWriter {
       endTs: endSec,
     ));
   }
+  // WHY B1: a stale Discard must never delete the main/older nap survivor.
+  test('B1 Discard refuses a kept nap merged into another sleep',() async {
+    for(final kind in [SleepBlockKind.main,SleepBlockKind.nap]) {
+      for(final t in ['sleep_block','sleep_nap','sleep_override','sleep_edit_job','activity_suggestions']) { await db.delete(t); }
+      await db.insert('sleep_block',SleepBlockStore.encodeBlock(
+        SleepBlock(id:'survivor',kind:kind,day:_day,startTs:_a0,endTs:_a0+2400),
+        source:SleepBlockSource.manual,state:SleepBlockState.live,createdAt:1));
+      await SleepBlockStore.projectForTest(db,{_day});
+      final store=ActivityStore(db);
+      final suggestion=(await store.reconcile(ActivityKind.nap,[
+        {'start':_a0+3600,'end':_a0+6000,'duration_min':40}])).single;
+      SleepMergeProposal? proposal;
+      try { await store.confirm(suggestion,startTs:_a0+3600,endTs:_a0+6000); }
+      on SleepMergeRequiredException catch(e) { proposal=e.proposal; }
+      expect(proposal,isNotNull);
+      await store.confirm(suggestion,startTs:_a0+3600,endTs:_a0+6000,merge:proposal!.authorization);
+      final kept=(await store.get(suggestion.id))!;
+      final before=await db.query('sleep_block');
+      await expectLater(store.discard(kept),throwsA(isA<ActivityReviewException>()));
+      expect(await db.query('sleep_block'),before);
+      expect((await store.get(suggestion.id))!.status,ActivityReviewStatus.confirmed);
+      expect((await db.query('sleep_block',where:'id = ?',whereArgs:['survivor'])).single['state'],'live');
+    }
+  });
+
 }
