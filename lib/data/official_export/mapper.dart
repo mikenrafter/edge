@@ -85,6 +85,7 @@ Future<OfficialMapReport> mapOfficialSnapshot({
     if (catalog.tables.containsKey('decoded_rr')) { await builder.copyTable('decoded_rr'); }
     await builder.captureLiveDays();
     if (catalog.tables.containsKey('substrate_archive')) { await builder.expandArchives(); }
+    await targetFile.applySql('DROP TABLE live_parent');
     final forkRow = catalog.tables.containsKey('sync_cursor')
         ? await src.query('sync_cursor', where: "name='decoded_pruned_before'") : <Map<String, Object?>>[];
     final forkCursor = forkRow.isEmpty ? null : int.tryParse('${forkRow.single['value']}');
@@ -218,7 +219,7 @@ class _Mapper {
   }
 
   Future<void> prepareLiveOwnership() async {
-    await file.applySql('CREATE TEMP TABLE live_parent(device_id TEXT NOT NULL,ts_ms INTEGER NOT NULL,PRIMARY KEY(device_id,ts_ms))');
+    await file.applySql('CREATE TABLE live_parent(device_id TEXT NOT NULL,ts_ms INTEGER NOT NULL,PRIMARY KEY(device_id,ts_ms))');
     final shape=source.tables['decoded_onehz'];
     if (shape==null) {return;}
     if (shape.rowidAlias==null || !shape.columnNames.containsAll(['device_id','ts_ms'])) {
@@ -526,7 +527,6 @@ class _Mapper {
     archiveAccounting.addAll([for (final e in archiveLedgers.entries)
       {'bucket': e.key, ...e.value.toJson()}]);
     await file.applySql('DROP TABLE archive_claims');
-    await file.applySql('DROP TABLE temp.live_parent');
     ledger.verify(); reports['substrate_archive'] = ledger.toJson();
   }
 
