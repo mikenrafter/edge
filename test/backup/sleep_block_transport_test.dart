@@ -205,11 +205,13 @@ void main() {
   test('T12 malformed legacy rows are retained and reported', () async {
     final report=await db.transaction((tx)=>SleepBlockStore.absorb(tx,
       overrides:[{'day_id':day,'onset_ts':100,'offset_ts':101,'source':'rejected','created_at':5}],
-      naps:[{'day_id':day,'start_ts':200,'end_ts':300,'source':'future','created_at':5,'payload_json':'{bad'}],
+      naps:[{'day_id':day,'start_ts':200,'end_ts':300,'source':'future','created_at':5,'payload_json':'{bad'},
+        {'day_id':day,'start_ts':2000,'end_ts':2600,'source':'confirmed','created_at':5,
+          'payload_json':'{"start":1900,"end":2700,"duration_min":10}'}],
       mode:AbsorbMode.importFile));
     expect(report.map((e)=>e.kind),containsAll(['placeholder_bounds','unknown_source','malformed_payload']));
-    expect((await rows()).map((r)=>r['state']),everyElement('removed'));
-    expect((await rows()).map((r)=>r['history']),everyElement('unavailable'));
+    expect((await rows()).map((r)=>(r['state'],r['history'])),
+      [('removed','unavailable'),('removed','unavailable'),('live','known')]);
   });
   // catches: interactive spacing incorrectly refuses historical source pairs.
   test('T13 source internal twenty minute pair imports whole', () async {
