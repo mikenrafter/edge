@@ -32,6 +32,8 @@ void main() {
       'd876c427ce59eed95b5e54411e3b69253f294ae6',
       // Native bill cache supplies the compensated/canonical sums cited by 125.
       '6b2f68692aac27d3901be275bb8fab7e8fa4bd93',
+      // Pulse v4 detector (structural phase 1) sits on top of the cache fixes.
+      '6c45f3b0894e23bf5047f7cc0e34e533d0802417',
     ]) {
       final result = await Process.run('git',
           ['merge-base', '--is-ancestor', parent, kAnalyticsPin],

@@ -632,7 +632,10 @@ dependencies:
       # 3 -> 4. Cardio output is unchanged (kAlgoVersion 119).
       # Merge main a438df40 into fork d876c427; reviewed policy/codec fixes
       # and fork HMM/wake behavior together (kAlgoVersion 125).
-      ref: 6b2f68692aac27d3901be275bb8fab7e8fa4bd93
+      # REPIN @ 6c45f3b (feat/pulse, on 6b2f68692): Pulse v4 detector, respiratory
+      # fit and range-stable closure (Pulse structural phase 1). Edge stores its
+      # episodes under kAlgoVersion 126; existing analytics outputs are unchanged.
+      ref: 6c45f3b0894e23bf5047f7cc0e34e533d0802417
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8

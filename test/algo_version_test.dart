@@ -32,9 +32,10 @@ void main() {
     return out;
   }
 
-  test('merged analytics repin uses kAlgoVersion 125', () {
-    expect(kAlgoVersion, 125);
-    expect(int.parse(m.group(1)!), 125);
+  test('Pulse structural repin uses kAlgoVersion 126', () {
+    expect(kAlgoVersion, 126);
+    expect(int.parse(m.group(1)!), 126);
+    expect(block().join('\n'), contains('125 → 126 (Pulse structural)'));
   });
 
   test('the 114 entry is kept: names its base and the decisions it covers', () {
