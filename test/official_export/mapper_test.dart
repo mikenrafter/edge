@@ -34,6 +34,8 @@ void main() {
         expect((await db.query('journal_metric', where: 'field=?', whereArgs: [def['key']])).single['value'], 0.2);
         expect((await db.query('device', where: "id=''")).single['wearing'], 2);
         expect((await db.query('device', where: "id=''")).single['remote_id'], isNull);
+        expect((await db.query('compute_freshness',where:"key='substrate_archive_policy'")).single['payload_json'],
+          '{"keepDays":null}',reason:'archive policy bytes transfer verbatim');
       } finally { await db.close(); }
     } finally { await fx.dispose(); }
   }, timeout: const Timeout(Duration(minutes: 8)));

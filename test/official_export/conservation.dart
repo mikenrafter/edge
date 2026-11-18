@@ -2,6 +2,7 @@
 // SQL projections; it never calls a projection or archive-expansion worker.
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/official_export/mapper.dart';
 import 'package:openstrap_edge/data/official_export/profile_tables.dart';
@@ -36,13 +37,54 @@ Future<void> verifyConservation(String sourcePath,OfficialMapReport report) asyn
    // Rewritten fields have separate literal unit-key/reference proofs. Every
    // unmodified source field still participates in this typed-value comparison.
    final projection=[for(final c in columns) '${q(c)},typeof(${q(c)})'].join(',');
-   for(final r in ranges) {
-    final missing=await out.rawQuery('SELECT $projection FROM original.${q(e.key)} WHERE rowid BETWEEN ? AND ? '
-       'EXCEPT SELECT $projection FROM main.${q(e.value.dest!)} LIMIT 1',[(r as List)[0],r[1]]);
-    expect(missing,isEmpty,reason:'${e.key} source identities ${r[0]}..${r[1]} kept fields');
-   }
+   // Source rowids can be very sparse after INSERT OR REPLACE. A complete
+   // target EXCEPT per range rescans millions of expanded rows repeatedly.
+   // CROSS JOIN fixes ranges as the outer loop, then compares the union once.
+   await out.execute('CREATE TEMP TABLE p2_ranges(__p2lo INTEGER,__p2hi INTEGER)');
+   final batch=out.batch();
+   for(final r in ranges) {batch.insert('p2_ranges',{'__p2lo':(r as List)[0],'__p2hi':r[1]});}
+   await batch.commit(noResult:true);
+   final missing=await out.rawQuery('SELECT $projection FROM temp.p2_ranges CROSS JOIN original.${q(e.key)} AS source_rows '
+      'WHERE source_rows.rowid BETWEEN __p2lo AND __p2hi EXCEPT SELECT $projection FROM main.${q(e.value.dest!)} LIMIT 1');
+   expect(missing,isEmpty,reason:'${e.key} exact mapped source identities and kept fields');
+   await out.execute('DROP TABLE temp.p2_ranges');
   }
   await out.execute('DETACH DATABASE original');
+  // Frame hashes are transport identities, not a value oracle. Independently
+  // reconstruct exact bytes/text and compare both content and mapped metadata.
+  for(final table in ['raw_archive','raw_archive_legacy','raw_archive_frames']) {
+   final stats=report.tables[table];
+   if(stats is! Map || stats['rowid_ranges'] is! Map) {continue;}
+   for(final group in (stats['rowid_ranges'] as Map).entries) {
+    final mapped=(group.key as String).startsWith('mapped;');
+    final overlap=(group.key as String).startsWith('exact frame overlap;');
+    if(!mapped && !overlap) {continue;}
+    for(final range in group.value as List) {
+     int? after;
+     while(true) {
+      final page=await src.rawQuery('SELECT rowid AS source_id,* FROM ${q(table)} WHERE rowid BETWEEN ? AND ? ${after==null ? '' : 'AND rowid>?'} ORDER BY rowid LIMIT 256',
+       [(range as List)[0],range[1],?after]);
+      if(page.isEmpty) {break;}
+      for(final row in page) {
+       final text=row['hex'] as String?;
+       final bytes=text==null ? row['frame'] as Uint8List :
+         RegExp(r'^(?:[0-9a-f]{2})+$').hasMatch(text)
+           ? Uint8List.fromList([for(var i=0;i<text.length;i+=2) int.parse(text.substring(i,i+2),radix:16)]) : null;
+       final hash=Uint8List.fromList(sha1.convert(bytes ?? utf8.encode('text:$text')).bytes);
+       final actual=(await out.query('raw_archive_frames',where:'device_id=? AND hash=?',whereArgs:[row['device_id'],hash])).single;
+       expect(actual['frame'],bytes,reason:'$table exact bytes at source ${row['source_id']}');
+       expect(actual['hex'],bytes==null ? text:null,reason:'$table exact noncanonical text');
+       if(mapped) {
+        for(final c in ['device_id','counter','packet_type','rec_ts','captured_at','reason']) {
+         expect(actual[c],row[c],reason:'$table mapped frame metadata $c');
+        }
+       }
+      }
+      after=page.last['source_id'] as int;
+     }
+    }
+   }
+  }
   final exclusions=await src.query('compute_freshness',where:"key='redrive_excluded_windows'");
   final windows=exclusions.isEmpty ? <List>[]:(jsonDecode(exclusions.single['payload_json'] as String) as List).cast<List>();
   bool deleted(Object? sec)=>sec is num && windows.any((w)=>sec>=(w[0] as num)&&sec<(w[1] as num));

@@ -20,18 +20,22 @@ Future<void> bucket(Database db, int day, List<Map<String,Object?>> parents,
     'blob':w.blob,'created_at':1,'updated_at':1});
 }
 Map<String,Object?> parent(int sec, int hr) => {'device_id':'','ts_ms':sec*1000,'rec_ts':sec,'counter':sec,'hr':hr};
-Map<String,Object?> beat(int sec, int n) => {'device_id':'','ts_ms':sec*1000,'rec_ts':sec,'beat_index':n,'rr_ms':800.0,'rr_ts_ms':sec*1000+n*800};
+Map<String,Object?> beat(int sec, int n) => {'device_id':'','ts_ms':sec*1000,'rec_ts':sec,'beat_index':n,'rr_ms':800,'rr_ts_ms':sec*1000+n*800};
 void main() {
  TestWidgetsFlutterBinding.ensureInitialized();
  test('verified expansion, live-empty wins, conflicting claims, deletion and corruption', () async {
   await withFreshForkDb((db,path) async {
    // UTC epoch literals: 2026-10-22 noon, then complete subsequent days.
-   const a=1792670400, b=1792756800, c=1792843200, d=1792929600, e=1793016000;
-   await db.insert('decoded_onehz',parent(b,72)); // deliberately EMPTY live beats
-   await bucket(db,1,[parent(a,55),parent(b,56),parent(c,57),parent(d,58)],
-       [beat(a,0),beat(b,0),beat(c,0),beat(d,0),beat(e,0)]);
+   const a=1792670400, b=1792756800, c=1792843200, d=1792929600, e=1793016000, f=1793102400, g=1793188800;
+   await db.insert('decoded_onehz',parent(b,72));
+   await db.insert('decoded_onehz',{...parent(f,60),'hr':'unsupported'}); // deliberately EMPTY live beats
+   await bucket(db,1,[parent(a,55),parent(b,56),parent(c,57),parent(d,58),parent(f,59)],
+       [beat(a,0),beat(b,0),beat(c,0),beat(d,0),beat(e,0),beat(f,0)]);
    await bucket(db,2,[parent(c,99)],[beat(c,0)]); // contradictory exact claim
    await bucket(db,3,[parent(e,80)],[],corrupt:true);
+   // A verified codec does not make a malformed parent admissible. Its beats
+   // must be withheld with it, rather than becoming orphan target input.
+   await bucket(db,4,[{...parent(g,60),'hr':'unsupported'}],[beat(g,0)]);
    await db.insert('sync_cursor',{'name':'decoded_pruned_before','value':'1793145600','updated_at':1});
    await db.insert('compute_freshness',{'key':'redrive_excluded_windows','payload_json':'[[1792929600,1792929601]]','updated_at':1});
    await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
