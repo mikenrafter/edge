@@ -90,7 +90,9 @@ abstract final class SleepBlockStore {
     };
     Future<bool> insertBlock(Map<String, Object?> block) async {
       if ((await tx.query('sleep_block', columns: ['id'], where: 'id = ?',
-          whereArgs: [block['id']])).isNotEmpty) return false;
+          whereArgs: [block['id']])).isNotEmpty) {
+        return false;
+      }
       // An explicit pre-check reports uniqueness refusal; OR IGNORE would hide it.
       if (block['kind'] == 'main' && block['state'] == 'live' &&
           (await tx.query('sleep_block', columns: ['id'],
@@ -143,10 +145,14 @@ abstract final class SleepBlockStore {
       for (final nap in values.whereType<Map>()) {
         final a = nap['start'], b = nap['end'];
         if (a is! num || b is! num || b <= a || a >= cutoff ||
-            nap['source'] == 'manual' || nap['source'] == 'confirmed') continue;
+            nap['source'] == 'manual' || nap['source'] == 'confirmed') {
+          continue;
+        }
         final start = a.toInt(), end = b.toInt();
         if ((await tx.query('sleep_block', columns: ['id'],
-            where: 'start_ts < ? AND end_ts > ?', whereArgs: [end, start])).isNotEmpty) continue;
+            where: 'start_ts < ? AND end_ts > ?', whereArgs: [end, start])).isNotEmpty) {
+          continue;
+        }
         final payload = await JsonPayloadLane.shared.encode({...nap, 'source': 'legacy'});
         if (payload == null) throw StateError('legacy nap payload could not be encoded');
         if (await insertBlock(row('legacy:nap:$day:$start', 'nap', day, start, end,
@@ -216,7 +222,7 @@ abstract final class SleepBlockStore {
       final attached = survivor is String && survivor.isNotEmpty &&
         (await tx.query('sleep_block', columns: ['id'], where: 'id = ?', whereArgs: [survivor])).isNotEmpty;
       entries.add(SleepEditorEntry(id: b.id, revision: b.revision,
-        mergedInto: attached ? survivor as String : null,
+        mergedInto: attached ? survivor : null,
         ref: SleepEntryRef(kind: b.kind, day: day, startTs: b.kind == SleepBlockKind.nap ? b.startTs : null,
           expectedEndTs: b.endTs, expectedSource: r.row['source'] as String),
         startTs: b.startTs, endTs: b.endTs, provenance: b.provenance,
