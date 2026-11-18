@@ -21184,5 +21184,9 @@
   "timelineNoMatches": "इन फ़िल्टर से मेल खाने वाली कोई गतिविधि नहीं है",
   "timelineMovementShare": "गतिविधि (कलाई हिलने वाले समय का %)",
   "timelineMovementNote": "गतिविधि हर 5 मिनट का वह हिस्सा है जिसमें दो रीडिंग के बीच आपकी कलाई 5° से ज़्यादा घूमी। यह कदमों या मेहनत का माप नहीं है।",
-  "timelineHere": "यहाँ"
+  "timelineHere": "यहाँ",
+  "pilotLabel": "प्रायोगिक",
+  "@pilotLabel": {
+    "description": "Badge for an experimental feature kept in this build"
+  }
 }

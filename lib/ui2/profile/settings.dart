@@ -824,6 +824,11 @@ class MoreSettingsView extends StatelessWidget {
                 SetRow(LucideIcons.slidersHorizontal, C.teal,
                     l?.tracksTitle ?? 'Tracks',
                     sub: l?.tracksSubtitle ?? 'Your activities, timing and context',
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Pill(l?.pilotLabel ?? 'Pilot', C.blue),
+                      const SizedBox(width: S.x2),
+                      Icon(LucideIcons.chevronRight, size: 17, color: p.ink3),
+                    ]),
                     onTap: () => go(c, const TracksScreen())),
                 // Step-by-step guides that walk the real screens (live guides).
                 SetRow(LucideIcons.circleHelp, C.blue,

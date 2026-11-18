@@ -21232,5 +21232,9 @@
   "timelineNoMatches": "ไม่มีกิจกรรมที่ตรงกับตัวกรองเหล่านี้",
   "timelineMovementShare": "การเคลื่อนไหว (% ของเวลาที่เคลื่อนไหว)",
   "timelineMovementNote": "การเคลื่อนไหวคือสัดส่วนของแต่ละช่วง 5 นาทีที่ข้อมือหมุนมากกว่า 5° ระหว่างการอ่านค่า ไม่ใช่จำนวนก้าวหรือความหนักของกิจกรรม",
-  "timelineHere": "ที่นี่"
+  "timelineHere": "ที่นี่",
+  "pilotLabel": "ทดลอง",
+  "@pilotLabel": {
+    "description": "Badge for an experimental feature kept in this build"
+  }
 }

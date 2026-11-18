@@ -21184,5 +21184,9 @@
   "timelineNoMatches": "没有符合这些筛选条件的活动",
   "timelineMovementShare": "活动（活动时间百分比）",
   "timelineMovementNote": "活动表示每5分钟内手腕在两次读数之间转动超过5°的时间比例。它不代表步数或运动强度。",
-  "timelineHere": "此处"
+  "timelineHere": "此处",
+  "pilotLabel": "试验版",
+  "@pilotLabel": {
+    "description": "Badge for an experimental feature kept in this build"
+  }
 }

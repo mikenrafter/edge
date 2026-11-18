@@ -21184,5 +21184,9 @@
   "timelineNoMatches": "Ninguna actividad coincide con estos filtros",
   "timelineMovementShare": "Movimiento (% del tiempo en movimiento)",
   "timelineMovementNote": "Movimiento es la proporción de cada 5 minutos en la que tu muñeca giró más de 5° entre lecturas. No son pasos ni esfuerzo.",
-  "timelineHere": "Aquí"
+  "timelineHere": "Aquí",
+  "pilotLabel": "Piloto",
+  "@pilotLabel": {
+    "description": "Badge for an experimental feature kept in this build"
+  }
 }

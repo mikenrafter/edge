@@ -21184,5 +21184,9 @@
   "timelineNoMatches": "Aucune activité ne correspond à ces filtres",
   "timelineMovementShare": "Mouvement (% du temps en mouvement)",
   "timelineMovementNote": "Le mouvement est la part de chaque période de 5 minutes pendant laquelle votre poignet a tourné de plus de 5° entre les mesures. Ce ne sont ni des pas ni un effort.",
-  "timelineHere": "Ici"
+  "timelineHere": "Ici",
+  "pilotLabel": "Pilote",
+  "@pilotLabel": {
+    "description": "Badge for an experimental feature kept in this build"
+  }
 }

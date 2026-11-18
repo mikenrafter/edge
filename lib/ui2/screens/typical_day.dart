@@ -102,7 +102,12 @@ class _TypicalDayScreenState extends State<TypicalDayScreen> {
         TextButton(onPressed: _load, child: Text(l?.typicalRetry ?? 'Try again')),
       ] else ...[
         TextButton(onPressed: () => go(context, const TracksScreen()),
-          child: Text(l?.tracksTitle ?? 'Tracks')),
+          style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(l?.tracksTitle ?? 'Tracks'),
+            const SizedBox(width: S.x2),
+            Pill(l?.pilotLabel ?? 'Pilot', C.blue),
+          ])),
         TextButton(onPressed: () => go(context, const AlarmScreen()),
           child: Text(l?.alarmNavTitle ?? 'Alarm')),
         Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

@@ -31,6 +31,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../gestures/gesture_settings.dart';
+import '../../l10n/app_localizations.dart';
 import '../../gestures/gesture_slots.dart';
 import '../../gestures/hardware_probe_runner.dart';
 import '../../gestures/hardware_probes.dart';
@@ -303,11 +304,18 @@ class DeviceLabView extends StatelessWidget {
                   (i) => select(tabs[i]),
                   color: C.blue,
                   dense: true,
+                  minHeight: 48,
+                  badges: {
+                    if (tabs.contains(LabTab.motion))
+                      tabs.indexOf(LabTab.motion): Pill(
+                        AppLocalizations.of(c)?.pilotLabel ?? 'Pilot', C.blue),
+                  },
                   itemKeys: [
                     for (final t in tabs) ValueKey('device-lab-tab:${t.id}'),
                   ],
                   semanticLabels: [
-                    for (final t in tabs) '${t.label}, Device lab',
+                    for (final t in tabs) '${t.label}, Device lab'
+                      '${t == LabTab.motion ? ', ${AppLocalizations.of(c)?.pilotLabel ?? 'Pilot'}' : ''}',
                   ],
                 ),
               ),

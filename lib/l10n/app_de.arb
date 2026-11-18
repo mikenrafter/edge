@@ -21184,5 +21184,9 @@
   "timelineNoMatches": "Keine Aktivitäten entsprechen diesen Filtern",
   "timelineMovementShare": "Bewegung (% der Zeit in Bewegung)",
   "timelineMovementNote": "Bewegung ist der Anteil jedes 5-Minuten-Abschnitts, in dem sich dein Handgelenk zwischen Messungen um mehr als 5° gedreht hat. Das sind keine Schritte oder Anstrengung.",
-  "timelineHere": "Hier"
+  "timelineHere": "Hier",
+  "pilotLabel": "Pilot",
+  "@pilotLabel": {
+    "description": "Badge for an experimental feature kept in this build"
+  }
 }

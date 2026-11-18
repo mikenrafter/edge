@@ -20626,5 +20626,9 @@
   "timelineNoMatches": "Нет занятий с такими фильтрами",
   "timelineMovementShare": "Движение (% времени в движении)",
   "timelineMovementNote": "Движение — доля каждых 5 минут, когда запястье поворачивалось более чем на 5° между измерениями. Это не шаги и не нагрузка.",
-  "timelineHere": "Здесь"
+  "timelineHere": "Здесь",
+  "pilotLabel": "Пилот",
+  "@pilotLabel": {
+    "description": "Badge for an experimental feature kept in this build"
+  }
 }

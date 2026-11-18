@@ -21243,5 +21243,9 @@
   "timelineNoMatches": "No activities match these filters",
   "timelineMovementShare": "Movement (% of time moving)",
   "timelineMovementNote": "Movement is the share of each 5 minutes in which your wrist turned more than 5° between readings. It is not steps or effort.",
-  "timelineHere": "Here"
+  "timelineHere": "Here",
+  "pilotLabel": "Pilot",
+  "@pilotLabel": {
+    "description": "Badge for an experimental feature kept in this build"
+  }
 }
