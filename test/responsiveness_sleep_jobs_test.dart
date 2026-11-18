@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 import 'support/sleep_edit_effects.dart';
 // WHY: a durable assertion receipt must not wait for its worker; old workers
 // cannot publish under newer times. CLAIM(sleep-edit-fence), CLAIM(sleep-receipt).
@@ -18,7 +19,7 @@ import 'package:openstrap_edge/ui2/screens/sleep_detail.dart';
 import 'backup/backup_support.dart';
 
 const day = '2026-11-13';
-Future<void> edit(int start) => LocalDb.putSleepOverride(
+Future<void> edit(int start) => TestSleepWrites.putSleepOverride(
   dayId: day,
   onsetTs: start,
   offsetTs: start + 3600,
@@ -257,7 +258,7 @@ void main() {
       const later = '2026-11-14';
       final onset = DateTime(2026, 11, 12, 23).millisecondsSinceEpoch ~/ 1000;
       final wake = DateTime(2026, 11, 13, 7).millisecondsSinceEpoch ~/ 1000;
-      await LocalDb.putSleepOverride(
+      await TestSleepWrites.putSleepOverride(
         dayId: day,
         onsetTs: onset,
         offsetTs: wake,

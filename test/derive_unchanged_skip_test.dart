@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // A heavy pass leaves a pending day alone when nothing it reads has moved
 // since a derive of it that changed nothing it reads. That is only allowed if
 // it is invisible: the same passes with every day derived must store exactly
@@ -223,7 +224,7 @@ void main() {
 
     // The user's own sleep window on a pending day.
     final d = _days[1];
-    await LocalDb.putSleepOverride(
+    await TestSleepWrites.putSleepOverride(
       dayId: '2026-07-14',
       onsetTs: SyntheticDay.sec(d.sleepOnset) + 600,
       offsetTs: SyntheticDay.sec(d.sleepOffset),

@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 import 'dart:convert';
 import 'dart:isolate';
 
@@ -179,7 +180,7 @@ void main() {
         });
       }
       await batch.commit(noResult: true);
-      await LocalDb.putSleepOverride(
+      await TestSleepWrites.putSleepOverride(
         dayId: _day,
         onsetTs: _start,
         offsetTs: _start + 600,

@@ -1,3 +1,4 @@
+import '../../../support/sleep_writes.dart';
 // The REAL range writer against a real (ffi) database and a stub repository:
 // where a nap that spans local midnight is filed, how an existing nap is read,
 // and the workout call with its type.
@@ -119,7 +120,7 @@ void main() {
   test('re-applying a range that was NOT recorded as attempted finds its own '
       'stored row as the union: no error, still one row', () async {
     final q = MomentReviewQueue.empty.withRange(mA, mB, MomentChoice.nap);
-    await LocalDb.putNapEdit(
+    await TestSleepWrites.putNapEdit(
         dayId: '2026-10-06',
         startTs: sec(2026, 10, 6, 9, 15),
         endTs: sec(2026, 10, 6, 10, 5),
@@ -132,12 +133,12 @@ void main() {
 
   test('existingNaps: the day\'s merged naps plus stored manual edits',
       () async {
-    await LocalDb.putNapEdit(
+    await TestSleepWrites.putNapEdit(
         dayId: '2026-10-06',
         startTs: sec(2026, 10, 6, 15, 0),
         endTs: sec(2026, 10, 6, 15, 30),
         source: 'manual');
-    await LocalDb.putNapEdit(
+    await TestSleepWrites.putNapEdit(
         dayId: '2026-10-06',
         startTs: sec(2026, 10, 6, 16, 0),
         endTs: sec(2026, 10, 6, 16, 30),
@@ -156,7 +157,7 @@ void main() {
 
   test('a nap overlapping a stored manual edit is refused for spacing: no '
       'window written, the range is not left in progress', () async {
-    await LocalDb.putNapEdit(
+    await TestSleepWrites.putNapEdit(
         dayId: '2026-10-06',
         startTs: sec(2026, 10, 6, 9, 30),
         endTs: sec(2026, 10, 6, 9, 50),

@@ -1,10 +1,8 @@
-import 'json_payload_lane.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 import '../gestures/moment_follow_ups.dart';
 import 'package:sqflite/sqflite.dart';
 import '../compute/manual_session.dart';
-import '../compute/derivation_engine.dart' show kAlgoVersion;
 import '../compute/nap_edits.dart';
 import '../models/activity_suggestion.dart';
 import 'day_label.dart';
@@ -375,7 +373,7 @@ class ActivityStore {
           where: 'id = ?',
           whereArgs: [expected.id],
         );
-        await _changed(tx, row['day_id'] as String);
+        if(expected.kind!=ActivityKind.nap) await _changed(tx, row['day_id'] as String);
         if (expected.kind == ActivityKind.track && expected.isPrompt) {
           await TrackActivity.answerNo(tx, expected, row['day_id'] as String);
         }

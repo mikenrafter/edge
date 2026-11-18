@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // What keeps a settled day settled (engine/settled.dart).
 //
 //  F. A re-pass that DECLINES a day settles it on the raw fingerprint taken
@@ -162,7 +163,7 @@ void main() {
     expect(await e.debugSettledDays(), contains(_day),
         reason: 'precondition: declined and settled');
 
-    await LocalDb.putSleepOverride(
+    await TestSleepWrites.putSleepOverride(
       dayId: _day,
       onsetTs: _localSec(_day, 1),
       offsetTs: _localSec(_day, 7),

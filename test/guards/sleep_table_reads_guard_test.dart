@@ -11,19 +11,13 @@ const _kept = <String,Set<String>>{
     'LocalDb._mergeFromDbFileBody','LocalDb.exportFilteredCopy','LocalDb.dayInputSignature'},
   'lib/data/tracks_schema.dart': {'createTrackTables'},
   'lib/data/sleep_edit_store.dart': {'SleepEditStore.reuseMeasuredNightIfCurrent'},
-  'lib/data/sleep_block_store.dart': {'SleepBlockStore.backfill','SleepBlockStore.absorb'},
+  'lib/data/sleep_block_store.dart': {'SleepBlockStore.backfill','SleepBlockStore.absorb',
+    'SleepBlockStore._project'},
 };
-// Slice A cannot retire legacy readers before B redirects their writers. This
-// closed list is temporary: remove each entry as its slice-B/C caller moves.
+// The literal scan intentionally does not infer interpolated SQL or queryCursor.
+// C retires the remaining import comparison when it introduces its sleep stage.
 const _untilCallersMove = <String,Set<String>>{
-  'lib/data/activity_store.dart': {'ActivityStore._overlapsSleep',
-    'ActivityStore.preserveLegacyNaps','ActivityStore.napEdits'},
-  'lib/data/nap_resolution.dart': {'NapResolver._blocks'},
-  'lib/data/sleep_block_writer.dart': {'SleepBlockWriter.napRow','SleepBlockWriter.mainRow'},
   'lib/data/sleep_import_rules.dart': {'SleepImportRules.freeze'},
-  'lib/data/local_repository_impl.dart': {'LocalRepositoryImpl.readSleepEditor'},
-  'lib/health/health_nap_export.dart': {'HealthNapExporter._defaultNapRow'},
-  'lib/data/db.dart': {'LocalDb.deleteNapEdit'},
 };
 bool allowed(String path,SleepReadSite site) =>
     (_kept[path]?.contains(site.member) ?? false) ||
@@ -41,13 +35,13 @@ class Screen {
     db.rawDelete('DELETE FROM sleep_nap WHERE day_id = ?');
   }
 }
-void _ldbDeleteNapEdit(db) { db.query('sleep_nap'); }
+void _ldbGetSleepOverride(db) { db.query('sleep_nap'); }
 ''';
     final sites = scanSleepReads(source);
     expect(sites.map((s)=>(s.table,s.member)),[
       ('sleep_nap','Screen.load'),('sleep_override','Screen.load'),
       ('sleep_nap','Screen.load'),('sleep_override','Screen.load'),
-      ('sleep_nap','LocalDb.deleteNapEdit'),
+      ('sleep_nap','LocalDb.getSleepOverride'),
     ]);
     expect(allowed('lib/ui2/screens/planted.dart',sites.first),isFalse);
     expect(allowed('lib/data/db.dart',sites.last),isTrue);

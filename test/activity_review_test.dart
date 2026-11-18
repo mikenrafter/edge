@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 import 'dart:io';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
@@ -91,7 +92,7 @@ void main() {
     final workout = (await store.reconcile(ActivityKind.workout, [
       {'start_ts': start, 'end_ts': start + 1800},
     ])).single;
-    await LocalDb.putNapEdit(
+    await TestSleepWrites.putNapEdit(
       dayId: day,
       startTs: start + 300,
       endTs: start + 1500,
@@ -412,7 +413,7 @@ void main() {
 
   test('a manually logged nap supersedes the pending detection', () async {
     final s = await detectNap();
-    await LocalDb.putNapEdit(
+    await TestSleepWrites.putNapEdit(
       dayId: day,
       startTs: start + 60,
       endTs: start + 900,
@@ -564,8 +565,8 @@ void main() {
       'onset_ms': (start - 6 * 3600) * 1000,
       'offset_ms': (start + 3600) * 1000,
     });
-    await LocalDb.putNapEdit(dayId: day, startTs: start, endTs: start + 1800, source: 'rejected');
-    await LocalDb.deleteNapEdit(day, start);
+    await TestSleepWrites.putNapEdit(dayId: day, startTs: start, endTs: start + 1800, source: 'rejected');
+    await TestSleepWrites.deleteNapEdit(day, start);
     await LocalDb.applyPendingActivityReviews();
     final saved = jsonDecode((await LocalDb.dayResult(day))!['payload_json'] as String);
     expect((await LocalDb.napEdits(day)).single['source'], 'confirmed');

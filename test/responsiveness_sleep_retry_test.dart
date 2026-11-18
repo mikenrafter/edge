@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 import 'support/sleep_edit_effects.dart';
 // WHY: a recalculation that did not finish must come back on its own. A
 // refused or interrupted run is requeued, a failed one is retried in-process
@@ -12,7 +13,7 @@ import 'package:openstrap_edge/state/sleep_edit_runner.dart';
 import 'backup/backup_support.dart';
 
 const day = '2026-11-13';
-Future<void> edit(String d, [int start = 1000]) => LocalDb.putSleepOverride(
+Future<void> edit(String d, [int start = 1000]) => TestSleepWrites.putSleepOverride(
     dayId: d, onsetTs: start, offsetTs: start + 3600, source: 'manual');
 Future<void> finish(SleepEditJob job) async {
   await (await LocalDb.instance).rawUpdate(

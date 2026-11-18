@@ -18,7 +18,6 @@ import 'package:openstrap_edge/data/sleep_draft_fence.dart';
 import 'package:openstrap_edge/data/sleep_editor.dart';
 import 'package:openstrap_edge/data/sleep_block_store.dart';
 import 'package:openstrap_edge/state/app_state.dart';
-import 'package:openstrap_edge/data/track_model.dart';
 import 'package:openstrap_edge/data/tracks_store.dart';
 import 'package:openstrap_edge/gestures/moment_follow_ups.dart';
 import 'package:openstrap_edge/gestures/moment_review_apply.dart';
@@ -376,7 +375,7 @@ void main() {
       final before = await _everything(db);
       final out = await repo.saveSleepEditor(plan([
         SetIntervals(
-            StoredBlockRef('legacy:nap:$_day:${_a0}',0),
+            StoredBlockRef('legacy:nap:$_day:$_a0',0),
             _a0,
             _a0 + 60 * _min),
       ]));
@@ -397,8 +396,6 @@ void main() {
         SetIntervals(ref(_a0, _a0 + 50 * _min), _a0 + 5 * _min, _a0 + 50 * _min),
       ]));
       expect(out, isA<SleepSaved>());
-      final row = (await db.query('sleep_nap',
-          where: 'start_ts = ?', whereArgs: [_a0 + 5 * _min])).single;
       final block=(await db.query('sleep_block')).single;
       expect((block['detected_start'],block['detected_end']),(_a0,_a0+60*_min));
       expect(block['id'],'legacy:nap:$_day:$_a0');
@@ -410,7 +407,7 @@ void main() {
     test('reset to detected needs history', () async {
       await rawNap(_a0, _a0 + 60 * _min); // manual: no history
       final out = await repo.saveSleepEditor(plan([
-        ResetToDetected(StoredBlockRef('legacy:nap:$_day:${_a0}',0)),
+        ResetToDetected(StoredBlockRef('legacy:nap:$_day:$_a0',0)),
       ]));
       expect(out, isA<SleepRefused>());
       expect((out as SleepRefused).reason, SleepRefusalReason.missingHistory);
@@ -422,7 +419,7 @@ void main() {
       await confirmedNap(_a0, _a0 + 60 * _min);
       final out = await repo.saveSleepEditor(plan([
         SetIntervals(
-            StoredBlockRef('legacy:nap:$_day:${_a0}',7), // the row ends at +60
+            StoredBlockRef('legacy:nap:$_day:$_a0',7), // the row ends at +60
             _a0,
             _a0 + 30 * _min),
       ]));
@@ -445,7 +442,7 @@ void main() {
     // back with its retained measurement, through the same writer.
     test('remove then restore returns the original block', () async {
       await confirmedNap(_a0, _a0 + 60 * _min);
-      final ref = StoredBlockRef('legacy:nap:$_day:${_a0}',0);
+      final ref = StoredBlockRef('legacy:nap:$_day:$_a0',0);
       expect(await repo.saveSleepEditor(plan([RemoveBlock(ref)])),
           isA<SleepSaved>());
       var read = await repo.readSleepEditor(_day);
@@ -486,7 +483,7 @@ void main() {
       await rawNap(late, late + 30 * _min);
       final out = await repo.saveSleepEditor(plan([
         SetIntervals(
-            StoredBlockRef('legacy:nap:$_day:${late}',0),
+            StoredBlockRef('legacy:nap:$_day:$late',0),
             late + 60 * _min,
             late + 90 * _min),
       ]));

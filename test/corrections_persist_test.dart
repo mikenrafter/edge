@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // "It got it wrong" corrections are stored as user overrides and must outlive
 // a full re-analysis: the force pass re-runs detection and replays it through
 // the same reconcile / nap-edit / sleep-override seams these tests drive.
@@ -78,7 +79,7 @@ void main() {
     final s = (await store.reconcile(ActivityKind.nap, [nap()])).single;
     await repo.confirmActivity(s);
     final saved = (await LocalDb.napEdits(day)).single;
-    await LocalDb.putNapEdit(
+    await TestSleepWrites.putNapEdit(
       dayId: day,
       startTs: saved['start_ts'] as int,
       endTs: saved['end_ts'] as int,
@@ -97,13 +98,13 @@ void main() {
   test('"Not sleep" and "I was asleep" stay as overrides every pass reads',
       () async {
     const rejectedDay = '2026-01-10', addedDay = '2026-01-11';
-    await LocalDb.putSleepOverride(
+    await TestSleepWrites.putSleepOverride(
       dayId: rejectedDay,
       onsetTs: 1000,
       offsetTs: 2000,
       source: 'rejected',
     );
-    await LocalDb.putSleepOverride(
+    await TestSleepWrites.putSleepOverride(
       dayId: addedDay,
       onsetTs: 3000,
       offsetTs: 30000,

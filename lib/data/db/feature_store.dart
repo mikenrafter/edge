@@ -1326,12 +1326,12 @@ Future<void> _ldbRecomposeNaps(String day,int napRevision) async {
     await tx.rawUpdate('UPDATE sleep_edit_job SET nap_applied_revision = ? WHERE day_id = ? AND nap_revision = ?',
       [napRevision,day,napRevision]);
   });
-}
+  }
 
 Future<Map<String,int>> _ldbApplyPendingActivityReviews() async => {
   for(final r in await (await LocalDb.instance).query('activity_review_days',orderBy:'day_id',limit:25))
     r['day_id'] as String:r['revision'] as int,
-};
+  };
 
 Future<void> _ldbUpdateBreathingWindows({required int startedAt, required double? preRmssd, required double? postRmssd}) async {
     final db = await LocalDb.instance;

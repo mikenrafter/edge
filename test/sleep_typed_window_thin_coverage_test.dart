@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // A typed sleep window that reaches past the recorded data (D27 revised).
 //
 // The wearer types a window starting 2 h before the band's first sample. The
@@ -51,7 +52,7 @@ void main() {
       final s = samples.where((x) => x.tsEpoch >= _firstSec).toList();
       if (s.isNotEmpty) await LocalDb.commitSyncBatch(r, s);
     }
-    await LocalDb.putSleepOverride(
+    await TestSleepWrites.putSleepOverride(
         dayId: _dayId, onsetTs: _onset, offsetTs: _offset, source: 'manual');
     expect(await DerivationEngine().runDays(_profile, {_dayId}, force: true), 1);
     b = await _payload();

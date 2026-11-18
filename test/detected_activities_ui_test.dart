@@ -10,7 +10,7 @@ import 'package:openstrap_edge/data/assumed_water.dart';
 import 'package:openstrap_edge/gestures/moment_review_queue.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'package:openstrap_edge/ui2/screens/moment_follow_up.dart';
-import 'package:openstrap_edge/data/nap_resolution.dart';
+import 'package:openstrap_edge/data/activity_store.dart';
 import 'package:openstrap_edge/compute/manual_session.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
 import 'package:openstrap_edge/state/app_state.dart';

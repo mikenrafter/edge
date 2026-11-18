@@ -127,8 +127,6 @@ import '../gps/gps_source.dart';
 import '../gps/route_tracker.dart';
 import '../gps/screen_wake.dart';
 import '../data/local_repository_impl.dart';
-import '../data/activity_store.dart'
-    show ActivitiesChangedListener, MainSleepExtendedListener;
 import '../data/bundle_store.dart';
 import '../notify/battery_forecast.dart';
 import '../notify/buzz_sequence.dart';
@@ -503,7 +501,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     engine: () => _derive,
     profile: () => _profile,
     log: _log,
-    notify: notifyListeners,
+    notify: () {
+      if(!_disposed && !_derive.running) unawaited(sleepEditRunner.start(restart:true).catchError((Object e)=>_log('[sleep edit] $e')));
+      notifyListeners();
+    },
     isDisposed: () => _disposed,
     repo: () => repo,
     warmHeld: () => _liveSessionActive || _background,
@@ -4190,10 +4191,11 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     final day = job.day;
     if ((await SleepEditStore.status(day))?['revision'] != job.revision) return;
     try {
+      await _waitForDerivation(limit:sleepEditWaitLimit);
       if(job.mainPending) {
         await _deriveSleepDay(job);
       } else if(!await _derive.refreshNapEdits(_profile,day,job.napRevision)) {
-        throw const SleepEditRequeue('another calculation is still running',counts:false);
+        throw const SleepEditRequeue('nap rollup did not complete');
       }
     } on SyncFailureError catch (e) {
       // Waiting out a long pass is not a fault of the edit.
@@ -9550,7 +9552,10 @@ class _ActivitiesRefresh implements ActivitiesChangedListener {
   _ActivitiesRefresh(this.app);
   final AppState app;
   @override
-  Future<void> activitiesChanged() => app.refreshActivityReviews();
+  Future<void> activitiesChanged() async {
+    unawaited(app.sleepEditRunner.start(restart:true).catchError((Object e)=>app._log('[sleep edit] $e')));
+    await app.refreshActivityReviews();
+  }
 }
 
 class _NapExtendsSleep implements MainSleepExtendedListener {

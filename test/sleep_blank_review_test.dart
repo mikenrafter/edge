@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // Review follow-ups to "Not sleep" blanking the night.
 // "I'd rather absence than wrong data": a blanked night shows nothing and is in
 // no score or baseline afterwards.
@@ -85,7 +86,7 @@ Future<void> _derive(String day) =>
     DerivationEngine().runDays(const Profile(), {day}, force: true);
 
 Future<void> _override(String day, int onset, int offset, String source) =>
-    LocalDb.putSleepOverride(
+    TestSleepWrites.putSleepOverride(
       dayId: day,
       onsetTs: onset,
       offsetTs: offset,

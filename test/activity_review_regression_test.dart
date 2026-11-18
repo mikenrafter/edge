@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
@@ -85,7 +86,7 @@ void main() {
     );
     expect(await LocalDb.napOverlapsMainSleep(start, start + 1800), isTrue);
     await expectLater(
-      LocalDb.putNapEdit(
+      TestSleepWrites.putNapEdit(
         dayId: day,
         startTs: start,
         endTs: start + 1800,
@@ -97,7 +98,7 @@ void main() {
     // The part after getting up is still a nap.
     expect(await LocalDb.napOverlapsMainSleep(start + 900, start + 1800),
         isFalse);
-    await LocalDb.putNapEdit(
+    await TestSleepWrites.putNapEdit(
       dayId: day,
       startTs: start + 900,
       endTs: start + 1800,
@@ -212,7 +213,7 @@ void main() {
             },
           }),
         });
-        await LocalDb.putNapEdit(
+        await TestSleepWrites.putNapEdit(
           dayId: day,
           startTs: start,
           endTs: start + 1800,
@@ -297,7 +298,7 @@ void main() {
       dates.add(label);
       await result(label);
       final ts = date.millisecondsSinceEpoch ~/ 1000;
-      await LocalDb.putNapEdit(
+      await TestSleepWrites.putNapEdit(
         dayId: label,
         startTs: ts,
         endTs: ts + 1800,
@@ -338,7 +339,7 @@ void main() {
     'applying a batch rejects summaries started before its day writes',
     () async {
       await result(day);
-      await LocalDb.putNapEdit(
+      await TestSleepWrites.putNapEdit(
         dayId: day,
         startTs: start,
         endTs: start + 1800,
@@ -442,7 +443,7 @@ void main() {
   test(
     'a backup without the suggestion ledger still restores manual naps',
     () async {
-      await LocalDb.putNapEdit(
+      await TestSleepWrites.putNapEdit(
         dayId: day,
         startTs: start,
         endTs: start + 1800,
@@ -491,7 +492,7 @@ void main() {
         await LocalDb.finishActivityReviews(jobs);
       }
       // These are the same writes used by NapsScreen's remove/restore actions.
-      await LocalDb.putNapEdit(
+      await TestSleepWrites.putNapEdit(
         dayId: day,
         startTs: start,
         endTs: start + 1800,
@@ -516,7 +517,7 @@ void main() {
       await LocalDb.close();
       db = await LocalDb.instance;
       store = ActivityStore(db);
-      await LocalDb.deleteNapEdit(day, start);
+      await TestSleepWrites.deleteNapEdit(day, start);
       jobs = await LocalDb.applyPendingActivityReviews();
       await LocalDb.finishActivityReviews(jobs);
       bundle = jsonDecode(
@@ -547,7 +548,7 @@ void main() {
       'created_at': 1,
     });
     await db.update('activity_review_meta', {'activated_at': start + 3600});
-    await LocalDb.deleteNapEdit(day, start);
+    await TestSleepWrites.deleteNapEdit(day, start);
     final jobs = await LocalDb.applyPendingActivityReviews();
     await LocalDb.finishActivityReviews(jobs);
     // The old detection is never offered for review again, so the restore
@@ -564,14 +565,14 @@ void main() {
 
   test('deleting a manually logged nap still removes it permanently', () async {
     await result(day);
-    await LocalDb.putNapEdit(
+    await TestSleepWrites.putNapEdit(
       dayId: day,
       startTs: start,
       endTs: start + 1800,
       source: 'manual',
     );
     await LocalDb.applyPendingActivityReviews();
-    await LocalDb.deleteNapEdit(day, start);
+    await TestSleepWrites.deleteNapEdit(day, start);
     await LocalDb.applyPendingActivityReviews();
     expect(await LocalDb.napEdits(day), isEmpty);
     final bundle = jsonDecode(
@@ -600,7 +601,7 @@ void main() {
         },
       }),
     );
-    await LocalDb.putNapEdit(
+    await TestSleepWrites.putNapEdit(
       dayId: day,
       startTs: start,
       endTs: start + 1800,
@@ -611,7 +612,7 @@ void main() {
       (await LocalDb.dayResult(day))!['payload_json'] as String,
     );
     expect(bundle['naps']['value'], hasLength(1));
-    await LocalDb.deleteNapEdit(day, start);
+    await TestSleepWrites.deleteNapEdit(day, start);
     await LocalDb.applyPendingActivityReviews();
     bundle = jsonDecode(
       (await LocalDb.dayResult(day))!['payload_json'] as String,

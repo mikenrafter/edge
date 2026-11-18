@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // A sleep correction has to reach the derived day: it must not be dropped
 // because another derive pass holds the latch, and the morning readiness pin
 // must not keep showing the uncorrected night.
@@ -145,7 +146,7 @@ void main() {
       windowJson: '{}',
     );
     await LocalDb.setFrozenHeadline('2026-09-30', 45);
-    await LocalDb.putSleepOverride(
+    await TestSleepWrites.putSleepOverride(
       dayId: '2026-09-29',
       onsetTs: 1000,
       offsetTs: 2000,
@@ -154,7 +155,7 @@ void main() {
     expect((await LocalDb.frozenHeadline())?.value, 45,
         reason: 'another day\'s edit leaves today\'s pin alone');
 
-    await LocalDb.putSleepOverride(
+    await TestSleepWrites.putSleepOverride(
       dayId: '2026-09-30',
       onsetTs: 1000,
       offsetTs: 2000,
@@ -163,7 +164,7 @@ void main() {
     expect(await LocalDb.frozenHeadline(), isNull);
 
     await LocalDb.setFrozenHeadline('2026-09-30', 62);
-    await LocalDb.deleteSleepOverride('2026-09-30');
+    await TestSleepWrites.deleteSleepOverride('2026-09-30');
     expect(await LocalDb.frozenHeadline(), isNull);
   });
 

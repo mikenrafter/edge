@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // Sleep block finalization (owner rule 2026-10-07, part of incremental 3b).
 //
 // A sleep block ends, and its night is FINAL, at the first DOUBLE wake
@@ -534,7 +535,7 @@ void main() {
       final tst = ((await payload())['scalars'] as Map)['tst_min'] as num;
 
       // The user says the night was 23:30 to 02:30.
-      await LocalDb.putSleepOverride(
+      await TestSleepWrites.putSleepOverride(
         dayId: label,
         onsetTs: h(-0.5),
         offsetTs: h(2.5),

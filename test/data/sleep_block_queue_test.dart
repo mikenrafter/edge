@@ -130,9 +130,9 @@ void main() {
   test('Q14 nap recompose handles absent skipped and partial days without a measured-night shortcut', () async {
     for(final shape in ['absent','skipped','partial']) {
       await db.delete('day_result'); await db.delete('sleep_block'); await db.delete('sleep_edit_job');
-      if(shape!='absent') await LocalDb.putDayResult(dayId:day,algoVersion:kAlgoVersion,
+      if(shape!='absent') { await LocalDb.putDayResult(dayId:day,algoVersion:kAlgoVersion,
         payloadJson:shape=='skipped'?' {"skipped":true}':'{}',windowJson:'{}',source:'band',
-        finalized:false,partial:true,skipped:shape=='skipped');
+        finalized:false,partial:true,skipped:shape=='skipped'); }
       await block(); await db.transaction((tx)=>SleepEditStore.enqueue(tx,day,main:false));
       await LocalDb.recomposeNaps(day,1);
       final row=await LocalDb.dayResult(day);

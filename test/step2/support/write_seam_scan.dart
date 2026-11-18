@@ -117,7 +117,7 @@ String _joinAdjacentLiterals(String s) => s.replaceAllMapped(
 /// The lookahead keeps `day_result_other` and `"day_resultx"` out.
 const _quote = '["`\\[]';
 const _quoteEnd = '["`\\]]';
-const _tables = '(?:$_quote?main$_quoteEnd?\\s*\\.\\s*)?$_quote?(day_result|baselines)'
+const _tables = '(?:$_quote?main$_quoteEnd?\\s*\\.\\s*)?$_quote?(day_result|baselines|sleep_block|sleep_nap|sleep_override|sleep_edit_job)'
     '$_quoteEnd?(?![A-Za-z0-9_])';
 
 /// INSERT [OR x] INTO, REPLACE INTO, UPDATE [OR x], DELETE FROM. `UPDATE OF col
@@ -164,7 +164,7 @@ String? _literalTable(MethodInvocation call) {
   final at = call.methodName.name == 'deleteByIn' ? 1 : 0;
   if (positional.length <= at) return null;
   final v = _stringValue(positional[at]);
-  return v == 'day_result' || v == 'baselines' ? v : null;
+  return const {'day_result','baselines','sleep_block','sleep_nap','sleep_override','sleep_edit_job'}.contains(v) ? v : null;
 }
 
 String _verbOf(String word) {

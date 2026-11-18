@@ -26,8 +26,8 @@ import '../guards/support/db_source.dart';
 /// may use. The migration ladder's one-time `derived_day` copy runs inside
 /// `_open`, before schema 71 and its triggers exist, and is allowed for that
 /// reason only.
-const _allowed = <String, Map<String, Set<String>>>{
-  'day_result': {
+const _allowed = <String, Map<String, Map<String, Set<String>>>>{
+  'day_result': {'lib/data/db.dart': {
     'LocalDb.putDayResult': {'insert'},
     'LocalDb._open': {'insert'},
     'LocalDb.deleteDays': {'delete'},
@@ -44,15 +44,37 @@ const _allowed = <String, Map<String, Set<String>>>{
     //   finalized flag in one transaction with the review queue).
     'LocalDb._scrubImportedSkinTempZ': {'update'},
     'LocalDb.rewriteDayPayload': {'update'},
-    'LocalDb.applyPendingActivityReviews': {'insert'},
-  },
-  'baselines': {
+    'LocalDb.recomposeNaps': {'insert'},
+  }},
+  'baselines': {'lib/data/db.dart': {
     'LocalDb.putBaselines': {'insert'},
     'LocalDb.updateBaseline': {'insert'},
     'LocalDb.touchBaseline': {'update'},
     // Upstream's activity review (log D19): a baselines write refused when a
     // review landed since the calculation started.
     'LocalDb.putReviewedBaseline': {'insert'},
+   }},
+  'sleep_block': {
+    'lib/data/sleep_block_store.dart': {
+      'SleepBlockStore.apply': {'insert','update'},
+      'SleepBlockStore.absorb': {'insert'},
+      'SleepBlockStore._clearMain': {'delete'},
+    },
+  },
+  'sleep_nap': {
+    'lib/data/sleep_block_store.dart': {'SleepBlockStore._project': {'insert','delete'},'SleepBlockStore.absorb': {'insert'}},
+    'lib/data/db.dart': {'LocalDb.deleteDays': {'delete'}},
+  },
+  'sleep_override': {
+    'lib/data/sleep_block_store.dart': {'SleepBlockStore._project': {'insert','delete'}},
+    'lib/data/db.dart': {'LocalDb.deleteDays': {'delete'}},
+  },
+  'sleep_edit_job': {
+    'lib/data/sleep_edit_store.dart': {
+      'SleepEditStore.enqueue': {'insert','update'},'SleepEditStore.cancel': {'update'},
+      'SleepEditStore.advance': {'update'},'SleepEditStore.markAppliedIfCurrent': {'update'},
+    },
+    'lib/data/db.dart': {'LocalDb.putDayResult': {'update'},'LocalDb.recomposeNaps': {'update'}},
   },
 };
 
@@ -75,7 +97,7 @@ const _pinnedDynamicWriters = <String, String>{
   'lib/data/db.dart LocalDb._mergeFromDbFileBody':
       'DATA: restore and salvage walk _restoreTables / _salvageTables; reaches day_result and baselines by design',
   'lib/data/db.dart LocalDb.deleteDays':
-      'DATA: deleteByIn(txn, <literal table>, ...) helper (day_result is allow-listed by the literal scan) and the fixed session child-table loop',
+      'DATA: sleep_block and projections through deleteByIn(txn, <literal table>, ...) helper (day_result is allow-listed by the literal scan) and the fixed session child-table loop',
   'lib/data/db.dart LocalDb.exportDaysDb':
       'DATA: writes the EXPORT file, not the store; fixed table list',
   'lib/data/db.dart LocalDb.pruneSupersededIntermediates':
@@ -232,9 +254,18 @@ Map<String, List<WriteSite>> _scanLib() {
 }
 
 bool _isAllowed(String path, WriteSite s) =>
-    path == _dbFile && (_allowed[s.table]?[s.member]?.contains(s.verb) ?? false);
+    (_allowed[s.table]?[path]?[s.member]?.contains(s.verb) ?? false);
 
 void main() {
+  // WHY G1: a new direct nap writer must fail even inside ActivityStore.
+  test('G1 sleep table writers require the exact owner member and file', () {
+    final sites=scanWriters("class ActivityStore { void planted(db) { db.insert('sleep_nap', {}); db.rawUpdate('UPDATE sleep_block SET revision=2'); } }");
+    expect(sites.map((s)=>s.table),['sleep_nap','sleep_block']);
+    expect(sites.every((s)=>!_isAllowed('lib/data/activity_store.dart',s)),true);
+    final owner=scanWriters("class SleepBlockStore { void apply(db) { db.insert('sleep_block', {}); } }").single;
+    expect(_isAllowed('lib/data/sleep_block_store.dart',owner),true);
+    expect(_isAllowed('lib/data/activity_store.dart',owner),false);
+  });
   group('the scanner sees what it guards', () {
     test('API writes, raw SQL writes and the deleteByIn helper', () {
       const src = '''
@@ -699,16 +730,17 @@ class Queue {
 
     test('every allow-listed writer actually writes (the list is not stale)',
         () {
-      final found = <String>{};
-      for (final s in _scanLib()[_dbFile] ?? const <WriteSite>[]) {
-        found.add('${s.table} ${s.member} ${s.verb}');
-      }
+      final found = <String>{
+        for(final path in _scanLib().entries)
+          for(final s in path.value) '${path.key} ${s.table} ${s.member} ${s.verb}',
+      };
       final missing = <String>[
-        for (final t in _allowed.entries)
-          for (final m in t.value.entries)
-            for (final v in m.value)
-              if (!found.contains('${t.key} ${m.key} $v'))
-                '${t.key} ${m.key} $v',
+        for(final t in _allowed.entries)
+          for(final file in t.value.entries)
+            for(final m in file.value.entries)
+              for(final v in m.value)
+                if(!found.contains('${file.key} ${t.key} ${m.key} $v'))
+                  '${file.key} ${t.key} ${m.key} $v',
       ];
       expect(missing, isEmpty);
     });

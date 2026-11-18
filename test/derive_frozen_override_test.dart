@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // At the engine, override and skip-marker writers. A user override
 // re-derive still writes a finalized (day, V) row (`run(force: true)` is what
 // `_reanalyzeForOverride` calls; "Not sleep" on a finalized night whose raw is
@@ -81,7 +82,7 @@ Future<void> _sentinel(
 );
 
 Future<void> _override(String day, int onset, int offset, String source) =>
-    LocalDb.putSleepOverride(
+    TestSleepWrites.putSleepOverride(
       dayId: day,
       onsetTs: onset,
       offsetTs: offset,

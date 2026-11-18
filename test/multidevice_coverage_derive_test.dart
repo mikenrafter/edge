@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // M5's DB-backed integration gate (spec-m5.md §8.1/§8.2): a hand-built
 // two-device night derives through the REAL pipeline (DerivationEngine.
 // runDays -> _prepareTargetDay -> _derivePreparedDay -> LocalDb.putDayResult)
@@ -184,7 +185,7 @@ void main() {
     // Force the sleep window rather than relying on auto-staging over
     // synthetic accel — this test's claim is about OWNERSHIP RESOLUTION,
     // not staging quality.
-    await LocalDb.putSleepOverride(
+    await TestSleepWrites.putSleepOverride(
       dayId: _dayId,
       onsetTs: _primaryStart,
       offsetTs: _ringEnd,
@@ -277,7 +278,7 @@ void main() {
         'end_ts': end,
       });
     }
-    await LocalDb.putSleepOverride(
+    await TestSleepWrites.putSleepOverride(
       dayId: dayId,
       onsetTs: start,
       offsetTs: end,
@@ -349,7 +350,7 @@ void main() {
       await priority(sig, _ring, 1);
     }
 
-    await LocalDb.putSleepOverride(dayId: dayId, onsetTs: t0, offsetTs: t3, source: 'manual');
+    await TestSleepWrites.putSleepOverride(dayId: dayId, onsetTs: t0, offsetTs: t3, source: 'manual');
 
     final done = await DerivationEngine().runDays(const Profile(), {dayId}, force: true);
     expect(done, 1);

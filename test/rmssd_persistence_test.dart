@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // An abstaining sleep-session RMSSD persists as NULL — over a stored number,
 // and on every re-derive.
 //
@@ -99,7 +100,7 @@ void main() {
     await _seedNight(db);
     // 'confirmed': a staged window that agrees with the app, so this test does
     // not depend on the typed-window ('manual') path.
-    await LocalDb.putSleepOverride(
+    await TestSleepWrites.putSleepOverride(
         dayId: _dayId, onsetTs: _onset, offsetTs: _offset, source: 'confirmed');
     // A real prior night for the baseline, and a same-day number written by
     // the old fallback.

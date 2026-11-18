@@ -47,7 +47,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../compute/nap_edits.dart' show manualNapWindowIsValid;
 import '../data/sleep_block_store.dart';
 import '../data/sleep_editor.dart';
-import '../data/day_label.dart';
 import '../data/db.dart';
 import 'health_export.dart' show HealthExporter, kHealthSyncPref;
 
@@ -235,10 +234,14 @@ class HealthNapExporter {
   /// Export the nap stored at ([dayId], [startTs]) — its [endTs] is read from
   /// the row. Used after "put back" restores a rejected nap to 'confirmed'.
   /// Never throws; false when nothing was written.
-  static Future<bool> exportNapRow({
-    required String dayId,
-    required int startTs,
-  }) => shared.exportNapRowAt(dayId: dayId, startTs: startTs);
+  static Future<bool> exportNapRow({required String blockId}) async {
+    try {
+    final rows=await (await LocalDb.instance).query('sleep_block',where:'id = ?',whereArgs:[blockId]);
+    final r=rows.firstOrNull;
+    if(r==null || r['kind']!='nap' || r['state']!='live') return false;
+    return shared.exportNapRowAt(dayId:r['owner_day'] as String,startTs:r['start_ts'] as int);
+    } catch(e) { debugPrintSynchronously('[health] export nap block $blockId: $e'); return false; }
+  }
 
   /// Instance-level [exportNapRow] — a failing row read returns false
   /// instead of throwing into the caller (e.g. the restore flow).
@@ -605,9 +608,10 @@ class HealthNapExporter {
   }
 
   static Future<List<Map<String,dynamic>>> _defaultDayNapRows(String dayId) async => [
-    for(final b in await SleepBlockStore.live(await LocalDb.instance,localDayStartSec(dayId)!,localDayEndSec(dayId)!))
-      if(b.kind==SleepBlockKind.nap && b.day==dayId)
-        {'id':b.id,'day_id':b.day,'start_ts':b.startTs,'end_ts':b.endTs,'source':b.provenance.name},
+    for(final b in (await SleepBlockStore.read(await LocalDb.instance,dayId)).entries)
+      if(b.ref.kind==SleepBlockKind.nap && !b.removed)
+        {'id':b.id,'day_id':dayId,'start_ts':b.startTs,'end_ts':b.endTs,
+          'source':b.provenance==SleepEntryProvenance.automatic?'confirmed':b.provenance.name},
   ];
   static Future<bool> _defaultOverlapsMainSleep(int startTs,int endTs) async =>
     (await SleepBlockStore.live(await LocalDb.instance,startTs,endTs)).any((b)=>b.kind==SleepBlockKind.main && b.startTs<endTs && b.endTs>startTs);

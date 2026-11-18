@@ -2204,7 +2204,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                   // Foreign revision counters never become local identities.
                   // Recreate only unfinished intent against the restored edit.
                   if (row['phase'] != 'done' || row['applied_revision'] != row['revision']) {
-                    await SleepEditStore.enqueue(txn, row['day_id'] as String);
+                    await SleepEditStore.enqueue(txn, row['day_id'] as String,main:true);
                   }
                   copied++;
                   continue;

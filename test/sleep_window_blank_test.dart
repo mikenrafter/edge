@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // A sleep window the samples do not cover is a NIGHT NOT RECORDED.
 //
 // Saving never depends on samples; every sleep metric for that night is blank;
@@ -148,7 +149,7 @@ void main() {
     test('set twice on a no-data night: persisted, metrics null, same result',
         () async {
       final c = SleepCoordinator(
-        persist: (day, start, end) => LocalDb.putSleepOverride(
+        persist: (day, start, end) => TestSleepWrites.putSleepOverride(
           dayId: day,
           onsetTs: start,
           offsetTs: end,

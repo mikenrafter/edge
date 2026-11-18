@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 import 'support/test_callable.dart';
 import 'support/sleep_edit_effects.dart';
 // WHY: review round 1 of responsiveness stages 1-2. The recalculation intent
@@ -6,9 +7,9 @@ import 'support/sleep_edit_effects.dart';
 // later days. Drives the production AppState runner and the real engine.
 // CLAIM(sleep-edit-fence), CLAIM(sleep-edit-masking) [F1 F2 F3 F15].
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/data/sleep_block_writer.dart';
+import 'package:openstrap_edge/data/sleep_block_store.dart';
 import 'package:openstrap_edge/data/sleep_editor.dart';
-import 'package:openstrap_edge/data/sleep_spacing.dart';
+
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/derive_prepare.dart';
 import 'package:openstrap_edge/compute/profile.dart';
@@ -34,7 +35,7 @@ int noon(String d) {
 Future<void> editDay(String d, {String source = 'manual'}) {
   final p = d.split('-').map(int.parse).toList();
   final wake = DateTime(p[0], p[1], p[2], 7).millisecondsSinceEpoch ~/ 1000;
-  return LocalDb.putSleepOverride(
+  return TestSleepWrites.putSleepOverride(
       dayId: d, onsetTs: wake - 8 * 3600, offsetTs: wake, source: source);
 }
 
@@ -325,17 +326,11 @@ void main() {
     // The approved merge of a nap reaching the main sleep: one transaction with
     // the override and its job (the owner's explicit-merge rule).
     await db.transaction((tx) async {
-      final merge = (await SleepBlockWriter.preflight(tx,
-          changes: [
-            BlockChange(
-                after: SleepBlock(
-                    kind: SleepBlockKind.nap,
-                    day: x,
-                    startTs: wake - 1800,
-                    endTs: wake + 1800)),
-          ],
-          editingDay: x))!;
-      await SleepBlockWriter.applyMerge(tx, merge);
+      final plan=await SleepBlockStore.plan(tx,x,[AddNap(wake-1800,wake+1800)]);
+      final proposal=await SleepBlockStore.preflight(tx,plan);
+      expect(proposal,isA<SleepProposalMergeRequired>());
+      requireSleepSaved(await SleepBlockStore.apply(plan,tx:tx,
+        merge:(proposal as SleepProposalMergeRequired).proposal.authorization));
     });
   }
 

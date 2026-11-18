@@ -168,23 +168,6 @@ class DetectedUnavailable extends DetectedHistory {
   final String reason;
 }
 
-/// An interval a removed or replaced entry still suppresses.
-@immutable
-class SuppressedInterval {
-  const SuppressedInterval(this.day, this.startTs, this.endTs);
-  final String day;
-  final int startTs, endTs;
-}
-
-/// Where an entry came from: the intervals it suppresses and, for an absorbed
-/// entry, the survivor that now contains it.
-@immutable
-class OriginRef {
-  const OriginRef({this.suppressed = const [], this.mergedInto});
-  final List<SuppressedInterval> suppressed;
-  final String? mergedInto;
-}
-
 /// Stages measured for exactly [startTs]..[endTs]; reused only when the
 /// entry's bounds still equal them.
 @immutable
@@ -198,75 +181,15 @@ class StageResult {
   final Map<String, Object?> payload;
 }
 
-@immutable
-class SleepEditEnvelope {
-  const SleepEditEnvelope({
-    this.version = kSleepEditEnvelopeVersion,
-    this.origin = const OriginRef(),
-    this.detected = const DetectedAbsent(),
-    this.stages,
-  });
-  final int version;
-  final OriginRef origin;
-  final DetectedHistory detected;
-  final StageResult? stages;
-}
-
-const int kSleepEditEnvelopeVersion = 1;
-
-/// A decoded stored payload: the retained measurement keys, kept verbatim, and
-/// the namespaced envelope when it is present and valid.
-sealed class EnvelopeRead {
-  const EnvelopeRead(this.retained);
-  final Map<String, Object?> retained;
-}
-
-class EnvelopeOk extends EnvelopeRead {
-  const EnvelopeOk(super.retained, this.envelope);
-  final SleepEditEnvelope envelope;
-}
-
-/// No usable envelope: history is unavailable, [retained] is still served.
-class EnvelopeUnavailable extends EnvelopeRead {
-  const EnvelopeUnavailable(super.retained, this.reason);
-  final String reason;
-}
-
 // ── Editor read, plan, commands and outcome ─────────────────────────────────
 
 enum SleepEntryProvenance { automatic, manual, confirmed, retained, legacy, unknown }
 
-/// Names one entry. [expectedEndTs] and [expectedSource] pin the row the plan
-/// was built against, so a changed row is a stale refusal, not a lost edit.
-@immutable
-class SleepEntryRef extends SleepBlockRef {
-  const SleepEntryRef({
-    required this.kind,
-    required this.day,
-    this.startTs,
-    this.expectedEndTs,
-    this.expectedSource,
-  });
-
-  final SleepBlockKind kind;
-  final String day;
-
-  /// A nap's start (the key); null for a main sleep, which one day owns once.
-  final int? startTs;
-  final int? expectedEndTs;
-  final String? expectedSource;
-
-  String get key => kind == SleepBlockKind.main ? 'main:$day' : 'nap:$day:$startTs';
-}
-
 sealed class SleepBlockRef {
   const SleepBlockRef();
-  SleepBlockKind get kind => throw UnsupportedError('legacy ref');
-  String get day => throw UnsupportedError('legacy ref');
-  int? get startTs => null;
-  int? get expectedEndTs => null;
-  String? get expectedSource => null;
-  String get key => throw UnsupportedError('legacy ref');
+  SleepBlockKind get kind => SleepBlockKind.nap;
+  String get day;
+
 }
 final class StoredBlockRef extends SleepBlockRef {
   const StoredBlockRef(this.id, this.expectedRevision, {this.kind=SleepBlockKind.nap,this.day=''});
@@ -281,6 +204,7 @@ final class DetectedMainRef extends SleepBlockRef {
   @override
   SleepBlockKind get kind => SleepBlockKind.main;
   const DetectedMainRef(this.day, this.expectedStartTs, this.expectedEndTs);
+  @override
   final String day;
   final int expectedStartTs, expectedEndTs;
 }
@@ -288,10 +212,12 @@ final class NoDetectionMainRef extends SleepBlockRef {
   @override
   SleepBlockKind get kind => SleepBlockKind.main;
   const NoDetectionMainRef(this.day);
+  @override
   final String day;
 }
 final class DetectedNapRef extends SleepBlockRef {
   const DetectedNapRef(this.day, this.expectedStartTs, this.expectedEndTs);
+  @override
   final String day;
   final int expectedStartTs, expectedEndTs;
 }
@@ -300,8 +226,7 @@ sealed class SleepEditorCommand {
   const SleepEditorCommand();
 }
 
-/// Moves or creates an interval. A null [SleepEntryRef.startTs] on a nap is an
-/// Add; [startTs]/[endTs] are the new bounds.
+/// Changes the bounds of an existing stored or served entry.
 class SetIntervals extends SleepEditorCommand {
   const SetIntervals(this.target, this.startTs, this.endTs);
   final SleepBlockRef target;
@@ -357,8 +282,8 @@ class ClearMain extends SleepEditorCommand {
   final String day;
 }
 class AutoLogNap extends AddNap {
-  const AutoLogNap(String suggestionId, int startTs, int endTs, String payload)
-    : super(startTs, endTs, source: 'confirmed', payload: payload, suggestionId: suggestionId);
+  const AutoLogNap(String suggestionId, super.startTs, super.endTs, String payload)
+    : super( source: 'confirmed', payload: payload, suggestionId: suggestionId);
 }
 
 /// Explicit merge: the approved set from a [SleepMergeProposal].
@@ -500,7 +425,7 @@ void requireSleepSaved(SleepEditorOutcome outcome) {
   switch(outcome) {
     case SleepSaved() || SleepNoChange(): return;
     case SleepRefused(:final proposal) when proposal!=null:
-      throw SleepMergeRequiredException(proposal!);
+      throw SleepMergeRequiredException(proposal);
     case SleepRefused(:final reason): throw ActivityReviewException('Sleep change refused: ${reason.name}.');
     case SleepFailed(:final error): throw error;
   }

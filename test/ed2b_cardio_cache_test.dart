@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 @Timeout(Duration(minutes: 10))
 library;
 import 'support/test_callable.dart';
@@ -214,7 +215,7 @@ void main() {
       });
     }
     test('E7-E11 real runDays retains night streams across worker dispatches', () async {
-      await LocalDb.putSleepOverride(dayId: _day, onsetTs: _sec(1),
+      await TestSleepWrites.putSleepOverride(dayId: _day, onsetTs: _sec(1),
         offsetTs: _sec(1) + 1200, source: 'confirmed');
       var observed = 0;
       final e = DerivationEngine()..debugNightStreams = Ed2bStreamDiagnostics();
@@ -242,7 +243,7 @@ void main() {
 
     for (final change in ['revision', 'generation', 'algorithm']) {
       test('E7-E11 engine $change misses then retains the replacement worker state', () async {
-        await LocalDb.putSleepOverride(dayId: _day, onsetTs: _sec(1),
+        await TestSleepWrites.putSleepOverride(dayId: _day, onsetTs: _sec(1),
           offsetTs: _sec(1) + 1200, source: 'confirmed');
         final e = DerivationEngine()..debugNightStreams = Ed2bStreamDiagnostics()
           ..debugOnNightBundle = TestCall2(_checkNightOutput);

@@ -15,7 +15,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/backup_extras.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/sleep_editor.dart';
-import 'package:openstrap_edge/data/sleep_editor_write.dart';
+import 'package:openstrap_edge/data/sleep_block_store.dart';
 import 'package:openstrap_edge/data/sleep_import_rules.dart';
 import 'package:openstrap_edge/gestures/moment_follow_ups.dart';
 import 'package:openstrap_edge/gestures/moment_review_queue.dart';
@@ -38,7 +38,7 @@ Future<String> _snapshot(String name) async {
 }
 
 Future<void> _clear(Database db) async {
-  for (final t in ['sleep_override', 'sleep_nap', 'sleep_edit_job']) {
+  for (final t in ['sleep_block','sleep_override', 'sleep_nap', 'sleep_edit_job']) {
     await db.delete(t);
   }
 }
@@ -166,36 +166,24 @@ void main() {
     });
   });
 
-  group('CLAIM(sleep-editor-transport) the envelope travels with its row', () {
-    final env = SleepEditEnvelope(
-      origin: OriginRef(suppressed: [SuppressedInterval(_day, _t0, _t0 + 3600)]),
-      detected: DetectedKnown(
-          startTs: _t0, endTs: _t0 + 3600, sourceDay: _day,
-          measures: const {'duration_min': 47}),
-    );
-
-    // WHY: a full backup carries the nap and main snapshots whole, and a
-    // restore into an empty install reads them back with the same meaning.
-    test('a backup round-trips main and nap envelopes into an empty database',
-        () async {
+  group('CLAIM(sleep-editor-transport) block history travels with its row', () {
+    // WHY: retained history is now typed columns, independent of payload bytes.
+    test('a backup round-trips main and nap block history into an empty database', () async {
       await _clear(db);
-      final napPayload = await SleepEditCodec.write(const {}, env);
-      await db.insert('sleep_nap',
-          _nap(_t0, _t0 + 40 * _min, payload: napPayload));
-      await db.insert('sleep_override', {
-        'day_id': _day, 'onset_ts': _t0 - 9 * 3600, 'offset_ts': _t0 - 3600,
-        'source': 'manual', 'created_at': 5,
-        'payload_json': await SleepEditCodec.write(const {}, env),
-      });
-      final backup = await _snapshot('sleep_envelope.db');
-      await _clear(db);
-      await LocalDb.importFromDbFile(backup);
-      for (final table in ['sleep_nap', 'sleep_override']) {
-        final row = (await db.query(table)).single;
-        final read = await SleepEditCodec.read(row['payload_json'] as String?);
-        final d = (read as EnvelopeOk).envelope.detected as DetectedKnown;
-        expect((d.startTs, d.endTs), (_t0, _t0 + 3600), reason: table);
-        expect(read.envelope.origin.suppressed.single.endTs, _t0 + 3600);
+      for(final kind in SleepBlockKind.values) {
+        await db.insert('sleep_block',SleepBlockStore.encodeBlock(
+          SleepBlock(id:kind.name,kind:kind,day:_day,startTs:_t0,endTs:_t0+2400),
+          source:SleepBlockSource.manual,state:SleepBlockState.live,createdAt:5,
+          history:DetectedKnown(startTs:_t0,endTs:_t0+3600,sourceDay:_day)));
+      }
+      await SleepBlockStore.projectForTest(db,{_day});
+      final backup=await _snapshot('sleep_blocks.db');
+      await _clear(db); await LocalDb.importFromDbFile(backup);
+      final rows=await db.query('sleep_block',orderBy:'id');
+      expect(rows,hasLength(2));
+      for(final row in rows) {
+        expect([row['history'],row['detected_start'],row['detected_end'],row['detected_day']],
+          ['known',_t0,_t0+3600,_day]);
       }
     });
 
@@ -219,8 +207,7 @@ void main() {
       final main = (await db.query('sleep_override')).single;
       expect(main['payload_json'], isNull);
       expect(main['onset_ts'], _t0 - 9 * 3600);
-      expect(await SleepEditCodec.read(main['payload_json'] as String?),
-          isA<EnvelopeUnavailable>());
+      expect(main['payload_json'],isNull,reason:'no history is fabricated from an old projection');
       expect(await db.query('sleep_nap'), hasLength(1));
     });
 

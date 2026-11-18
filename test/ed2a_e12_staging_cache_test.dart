@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 @Timeout(Duration(minutes: 10))
 library;
 import 'support/test_callable.dart';
@@ -119,17 +120,17 @@ void main() {
     'family': (_) async { await (await LocalDb.instance).update(
       'decoded_onehz', {'device_family': 'gen5'}); },
     'history at 14 distinct nights': (_) => _history(shift: 60),
-    'manual override': (_) => LocalDb.putSleepOverride(dayId: edDay,
+    'manual override': (_) => TestSleepWrites.putSleepOverride(dayId: edDay,
         onsetTs: edStart, offsetTs: edStart + 900, source: 'manual'),
-    'confirmed wake override': (_) => LocalDb.putSleepOverride(dayId: edDay,
+    'confirmed wake override': (_) => TestSleepWrites.putSleepOverride(dayId: edDay,
         onsetTs: edStart, offsetTs: edStart + 900, source: 'confirmed'),
-    'override onset edit': (_) => LocalDb.putSleepOverride(dayId: edDay,
+    'override onset edit': (_) => TestSleepWrites.putSleepOverride(dayId: edDay,
         onsetTs: edStart + 30, offsetTs: edStart + 900, source: 'manual'),
-    'override offset edit': (_) => LocalDb.putSleepOverride(dayId: edDay,
+    'override offset edit': (_) => TestSleepWrites.putSleepOverride(dayId: edDay,
         onsetTs: edStart, offsetTs: edStart + 960, source: 'manual'),
-    'override source edit': (_) => LocalDb.putSleepOverride(dayId: edDay,
+    'override source edit': (_) => TestSleepWrites.putSleepOverride(dayId: edDay,
         onsetTs: edStart, offsetTs: edStart + 900, source: 'rejected'),
-    'override removal': (_) => LocalDb.deleteSleepOverride(edDay),
+    'override removal': (_) => TestSleepWrites.deleteSleepOverride(edDay),
     'vendor source': (_) async { await (await LocalDb.instance).update(
         'vendor_sleep_epoch', {'source': 'miband234'}); },
     'vendor decode revision': (_) async { await (await LocalDb.instance).update(
@@ -152,7 +153,7 @@ void main() {
   for (final entry in changes.entries) {
     test('${entry.key}: miss, exact output, then hit on the new key', () async {
       if (entry.key == 'override removal' || entry.key.startsWith('override ') && entry.key.endsWith(' edit')) {
-        await LocalDb.putSleepOverride(dayId: edDay, onsetTs: edStart,
+        await TestSleepWrites.putSleepOverride(dayId: edDay, onsetTs: edStart,
             offsetTs: edStart + 900, source: 'manual');
       }
       if (entry.key == 'priority') await edPriorityOrder(['', 'other']);

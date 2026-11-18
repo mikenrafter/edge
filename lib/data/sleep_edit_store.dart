@@ -75,10 +75,11 @@ class SleepEditStore {
     CREATE TABLE IF NOT EXISTS sleep_edit_job (
       day_id TEXT PRIMARY KEY, revision INTEGER NOT NULL,
       phase TEXT NOT NULL DEFAULT 'queued', error TEXT,
-      applied_revision INTEGER NOT NULL DEFAULT 0)
+      applied_revision INTEGER NOT NULL DEFAULT 0,
+      nap_revision INTEGER NOT NULL DEFAULT 0, nap_applied_revision INTEGER NOT NULL DEFAULT 0)
   ''');
 
-  static Future<void> enqueue(DatabaseExecutor tx, String day, {bool main = true}) async {
+  static Future<void> enqueue(DatabaseExecutor tx, String day, {required bool main}) async {
     await tx.rawInsert(
       'INSERT INTO sleep_edit_job(day_id, revision) SELECT ?, 0 '
       'WHERE NOT EXISTS (SELECT 1 FROM sleep_edit_job WHERE day_id = ?)',
@@ -266,7 +267,8 @@ class SleepEditStore {
     String day,
     int generation, {
     required int algoVersion,
-  }) async => LocalDb.timedTransaction(
+  }) async {
+    final reusable=await LocalDb.timedTransaction(
     await LocalDb.instance,
     'sleep edit measured window',
     InlineTransactionWork((tx) async {
@@ -293,18 +295,21 @@ class SleepEditStore {
           ''',
         [day, day, algoVersion],
       );
-      if (measured.isEmpty) return false;
-      await tx.rawUpdate(
-        'UPDATE sleep_edit_job SET applied_revision = revision WHERE day_id = ?',
-        [day],
-      );
-      return true;
+      return measured.isNotEmpty;
     }),
   );
+    if(!reusable) return false;
+    await markAppliedIfCurrent(day,generation);
+    return !await dirty(day);
+  }
 
   /// [markApplied] for the engine, fenced like its other writes: only while
   /// nothing at or before [day] has been edited since [generation].
   static Future<void> markAppliedIfCurrent(String day, int generation) async {
+    final job=await status(day);
+    if(job!=null && (job['nap_applied_revision'] as int)<(job['nap_revision'] as int)) {
+      await LocalDb.recomposeNaps(day,job['nap_revision'] as int);
+    }
     final db = await LocalDb.instance;
     await LocalDb.timedTransaction(
       db,

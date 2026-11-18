@@ -64,7 +64,7 @@ class _SleepWork {
 }
 class _PreparedSleep {
   final work= <String,_SleepWork>{};
-  final deleted=<String>{},stageDays=<String>{};
+  final deleted=<String>{},stageDays=<String>{},mergedNapDays=<String>{},stageMainDays=<String>{};
   SleepRefused? refusal;
   SleepMergeProposal? merge;
 }
@@ -96,8 +96,8 @@ abstract final class SleepBlockStore {
     if (proposal != null) await _mergeRows(tx, p, proposal);
     final changed = p.work.values.where((w)=>w.dirty).toList();
     if (changed.isEmpty && p.deleted.isEmpty && p.stageDays.isEmpty) return const SleepNoChange();
-    final days = <String>{...p.stageDays};
-    final mainDays = <String>{...p.stageDays};
+    final days = <String>{...p.stageDays,...p.mergedNapDays};
+    final mainDays = <String>{...p.stageMainDays};
     final deletes = <Map<String,dynamic>>[], exports = <Map<String,dynamic>>[];
     for (final day in p.deleted) {
       final old = await tx.query('sleep_block',where:"kind = 'main' AND owner_day = ?",whereArgs:[day]);
@@ -242,7 +242,7 @@ abstract final class SleepBlockStore {
           }
           await add(SleepBlockKind.main,day,startTs,endTs,'manual');
         case ConfirmMain(:final day,:final startTs,:final endTs):
-          final existing=(await read(tx,day)).entries.where((e)=>e.ref.kind==SleepBlockKind.main).firstOrNull;
+          final existing=(await read(tx,day)).entries.where((e)=>e.ref.kind==SleepBlockKind.main && !e.removed).firstOrNull;
           if(existing==null) { refuse(SleepRefusalReason.staleEntry);break; }
           final w=await bind(existing.ref);
           if(w!=null) { w.row['start_ts']=startTs;w.row['end_ts']=endTs;w.row['source']='confirmed';w.row['state']='live'; }
@@ -292,7 +292,8 @@ abstract final class SleepBlockStore {
             if(w.row['kind']=='nap') { w.row['owner_day']=SleepOwnership.dayOf(SleepBlockKind.nap,w.row['start_ts'] as int,w.row['end_ts'] as int);w.row['owner_rule']=SleepOwnership.currentRule; }
           } else { refuse(SleepRefusalReason.missingHistory,target); }
         case CalculateStages(:final target):
-          final w=await bind(target);if(w!=null) p.stageDays.add(w.row['owner_day'] as String);
+          final w=await bind(target);if(w!=null) { p.stageDays.add(w.row['owner_day'] as String);
+            if(w.row['kind']=='main') p.stageMainDays.add(w.row['owner_day'] as String); }
       }
     }
     if(p.refusal!=null) return p;
@@ -365,7 +366,7 @@ abstract final class SleepBlockStore {
     r['start_ts']=proposal.startTs;r['end_ts']=proposal.endTs;r['state']='live';r['source']='manual';r['merged_into']=null;
     if(r['kind']=='nap') { r['owner_day']=SleepOwnership.dayOf(SleepBlockKind.nap,proposal.startTs,proposal.endTs);r['owner_rule']=SleepOwnership.currentRule; }
     for(final w in participants.skip(1)) { w.row['state']='merged';w.row['merged_into']=r['id']; }
-    for(final w in incoming) { p.work.removeWhere((k,v)=>identical(v,w)); }
+    for(final w in incoming) { p.mergedNapDays.add(w.row['owner_day'] as String);p.work.removeWhere((k,v)=>identical(v,w)); }
     // A materialized automatic survivor needs its new id before participants link.
     if((r['id'] as String).startsWith('new:')) {
       r['id']=const Uuid().v4();

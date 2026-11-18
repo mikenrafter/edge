@@ -44,7 +44,10 @@ extension _EngineDayCompute on DerivationEngine {
       forceFinalize:forceFinalize,suppliedSubstrate:suppliedSubstrate,calculationMode:calculationMode,
       reason:reason,batchReference:batchReference,onStaleTonight:onStaleTonight,
       deferReview:(work)=>review=work);
-    if(result==DayDerive.committed && review!=null) await _publishDayReview(review!);
+    if(result==DayDerive.committed && review!=null) {
+      try { await _publishDayReview(review!); }
+      catch(e) { _log('day review failed for ${day.date}: $e'); }
+    }
     return result;
   }
 
@@ -916,9 +919,9 @@ extension _EngineDayCompute on DerivationEngine {
           ],
         );
       }
-      if(!batchReference) deferReview(_DayReviewWork(day.date,
+      if(!batchReference) { deferReview(_DayReviewWork(day.date,
         blocks.napSuggestions,blocks.suggestionsToPersist,blocks.mealSuggestions,
-        dataNowSec,forceFinalize,batchReference));
+        dataNowSec,forceFinalize,batchReference)); }
 
       if (!batchReference) {
         await _persistWakeDayFeatures(dayId: day.date, wake: blocks.wake);

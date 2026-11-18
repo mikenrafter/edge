@@ -1,3 +1,4 @@
+import '../support/sleep_writes.dart';
 // Keeping a nap within 30 minutes of another sleep block needs an explicit,
 // approved merge (owner decisions 2026-11-17); nothing is unioned silently.
 import 'dart:convert';
@@ -146,7 +147,7 @@ void main() {
 
     test('a sleep_override main sleep is the survivor of a merge', () async {
       final on = t0, off = t0 + 8 * 3600;
-      await LocalDb.putSleepOverride(
+      await TestSleepWrites.putSleepOverride(
         dayId: dayOf(off),
         onsetTs: on,
         offsetTs: off,
@@ -213,7 +214,7 @@ void main() {
         () async {
       final on = t0, off = t0 + 8 * 3600;
       final s = await suggest(off - 600, off + 900);
-      await LocalDb.putSleepOverride(
+      await TestSleepWrites.putSleepOverride(
         dayId: dayOf(off),
         onsetTs: on,
         offsetTs: off,

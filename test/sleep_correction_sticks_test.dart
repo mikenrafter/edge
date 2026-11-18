@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // A sleep correction has to reach the stored day. End to end on the synthetic
 // day: the band night is detected, then a typed window replaces it with
 // exactly the typed times and is staged inside them, then "Not sleep" removes
@@ -79,7 +80,7 @@ void main() {
 
     final onset = SyntheticDay.sec(_truth.sleepOnset) - 40 * 60;
     final offset = SyntheticDay.sec(_truth.sleepOffset) + 25 * 60;
-    await LocalDb.putSleepOverride(
+    await TestSleepWrites.putSleepOverride(
         dayId: _dayId, onsetTs: onset, offsetTs: offset, source: 'manual');
     expect(await DerivationEngine().runDays(_profile, {_dayId}, force: true), 1);
 
@@ -123,7 +124,7 @@ void main() {
 
   test('"Not sleep" over a stored night leaves the day with no night',
       () async {
-    await LocalDb.putSleepOverride(
+    await TestSleepWrites.putSleepOverride(
       dayId: _dayId,
       onsetTs: SyntheticDay.sec(_truth.sleepOnset),
       offsetTs: SyntheticDay.sec(_truth.sleepOffset),

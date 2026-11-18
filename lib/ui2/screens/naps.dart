@@ -262,7 +262,9 @@ class _NapsScreenState extends State<NapsScreen>
         await HealthNapExporter.shared.synchronized(() async {
           _must(await _repo.deleteNap(day, start));
           // "Put it back" restores the row as 'confirmed' — re-export it.
-          await HealthNapExporter.exportNapRow(dayId: day, startTs: start);
+          final read=await _repo.readSleepEditor(day);
+          final block=read.entries.where((e)=>e.startTs==start && !e.removed).firstOrNull;
+          if(block?.id case final String id) await HealthNapExporter.exportNapRow(blockId:id);
         });
       });
 

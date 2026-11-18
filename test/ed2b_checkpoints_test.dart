@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // E16 RED contracts. The standalone night/cardio payload uses format 2;
 // fork day/minute/awake accumulator formats and schema numbers do not transfer.
 @Timeout(Duration(minutes: 10))
@@ -76,7 +77,7 @@ int get _manualBeatCount => math.min(_nightSeconds, _manualOffsetSeconds);
 
 Future<void> _night() async {
   await edRows(edStart, edStart + _nightSeconds, hr: 60, az: 1);
-  await LocalDb.putSleepOverride(dayId: edDay,
+  await TestSleepWrites.putSleepOverride(dayId: edDay,
       onsetTs: edStart, offsetTs: edStart + _manualOffsetSeconds, source: 'manual');
   final db = await LocalDb.instance;
   final batch = db.batch();

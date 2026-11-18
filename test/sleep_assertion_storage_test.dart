@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -26,7 +27,7 @@ void main() {
     'absent recordings preserve every persisted manual edit through real read seam',
     () async {
       final c = SleepCoordinator(
-        persist: (day, start, end) => LocalDb.putSleepOverride(
+        persist: (day, start, end) => TestSleepWrites.putSleepOverride(
           dayId: day,
           onsetTs: start,
           offsetTs: end,
