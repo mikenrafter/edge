@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/activity_store.dart';
+import 'package:openstrap_edge/compute/nap_edits.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/sleep_block_store.dart';
 import 'package:openstrap_edge/data/sleep_editor.dart';
@@ -61,7 +62,7 @@ void main() {
     var db=await reopen(); await seedLegacy(db);
     await db.insert('sleep_nap',napRow(12000,12600,'manual',payload:'{}'));
     await rewind(92); db=await reopen();
-    List<Object?> tuples(List<dynamic> edits) => [for(final e in edits)
+    List<Object?> tuples(List<NapEdit> edits) => [for(final e in edits)
       [e.kind.name,e.startSec,e.endSec,e.snapshot]];
     for(final d in ['2026-10-30','2026-10-31',fixtureDay]) {
       expect(tuples(await SleepBlockStore.napEdits(db,d)),
