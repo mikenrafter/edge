@@ -444,10 +444,14 @@ abstract final class SleepBlockStore {
     Iterable<Map<String, Object?>> servedDayResults = const [],
     List<Map<String, Object?>> blocks = const [],
     required AbsorbMode mode,
+    List<Map<String, Object?>> suggestions = const [],
   }) async {
-    if (mode != AbsorbMode.backfill) {
-      throw UnsupportedError('Import absorption requires the slice-C transport stage');
-    }
+    final importing = mode == AbsorbMode.importFile;
+    // Freeze before inserting: historical pairs from one source travel whole.
+    final local = importing ? await tx.query('sleep_block') : <Map<String,Object?>>[];
+    final decisions = importing ? await tx.query('activity_suggestions',
+      where: "status <> 'pending'") : <Map<String,Object?>>[];
+    final inserted = <Map<String,Object?>>[];
     final report = <SleepImportEntry>[];
     void note(String kind, String table, String day, int start, int end) {
       report.add(SleepImportEntry(kind: kind, table: table, day: day,
@@ -465,22 +469,79 @@ abstract final class SleepBlockStore {
           ? DetectedKnown(startTs: detectedStart!, endTs: detectedEnd!, sourceDay: day)
           : const DetectedUnavailable('legacy detection unavailable'),
         payload: payload);
-    Future<bool> insertBlock(Map<String, Object?> block) async {
-      if ((await tx.query('sleep_block', columns: ['id'], where: 'id = ?',
-          whereArgs: [block['id']])).isNotEmpty) {
+    Future<bool> insertBlock(Map<String, Object?> block, {String table = 'sleep_block'}) async {
+      final id = block['id'], day = block['owner_day'] as String;
+      final start = block['start_ts'] as int, end = block['end_ts'] as int;
+      void refused(String reason) => report.add(SleepImportEntry(kind:'refused',
+        table:table,day:day,startTs:start,endTs:end,other:reason));
+      final existing = importing ? local.where((r)=>r['id']==id).firstOrNull
+          : (await tx.query('sleep_block',where:'id = ?',whereArgs:[id])).firstOrNull;
+      if(existing != null) {
+        if(importing && block.entries.any((e)=>!const {'revision','created_at','updated_at'}.contains(e.key) && existing[e.key]!=e.value)) {
+          refused('identity_conflict');
+        }
         return false;
       }
-      // An explicit pre-check reports uniqueness refusal; OR IGNORE would hide it.
+      if(importing) {
+        if(block['kind']=='nap') {
+          final links={id,'$day:$start'};
+          final owners={for(final s in suggestions) if(links.contains(s['linked_id'])) s['id']};
+          if(decisions.any((d)=>links.contains(d['linked_id']) || owners.contains(d['id']))) {
+            refused('decided_locally'); return false;
+          }
+          if(local.any((r)=>(r['start_ts'] as int)<end && (r['end_ts'] as int)>start)) {
+            refused('overlap'); return false;
+          }
+        } else if(local.any((r)=>r['kind']=='main' && r['owner_day']==day)) {
+          refused('main_exists'); return false;
+        }
+      }
+      // A malformed source can contain two live mains on one day. Report it
+      // explicitly instead of swallowing the partial-unique-index conflict.
       if (block['kind'] == 'main' && block['state'] == 'live' &&
           (await tx.query('sleep_block', columns: ['id'],
             where: "kind = 'main' AND state = 'live' AND owner_day = ?",
-            whereArgs: [block['owner_day']])).isNotEmpty) {
-        note('refused', 'sleep_block', block['owner_day'] as String,
-          block['start_ts'] as int, block['end_ts'] as int);
-        return false;
+            whereArgs: [day])).isNotEmpty) {
+        refused('main_exists'); return false;
       }
       await tx.insert('sleep_block', block);
+      inserted.add(block);
       return true;
+    }
+    Future<List<SleepImportEntry>> finish() async {
+      if(!importing) return report;
+      int gap(Map<String,Object?> a, Map<String,Object?> b) {
+        final s=(a['start_ts'] as int)>(b['start_ts'] as int)?a['start_ts'] as int:b['start_ts'] as int;
+        final e=(a['end_ts'] as int)<(b['end_ts'] as int)?a['end_ts'] as int:b['end_ts'] as int;
+        return s-e;
+      }
+      for(var i=0;i<inserted.length;i++) {
+        final r=inserted[i], day=r['owner_day'] as String;
+        note('imported','sleep_block',day,r['start_ts'] as int,r['end_ts'] as int);
+        if(r['state']!='live') continue;
+        for(final pair in [
+          for(final l in local) if(l['state']=='live' && gap(r,l)>=0 && gap(r,l)<kMinSleepGapSec) (l,'close-with-local'),
+          for(final l in inserted.take(i)) if(l['state']=='live' && gap(r,l)<kMinSleepGapSec) (l,'close-in-source'),
+        ]) {
+          report.add(SleepImportEntry(kind:pair.$2,table:'sleep_block',day:day,
+            startTs:r['start_ts'] as int,endTs:r['end_ts'] as int,other:pair.$1['id'] as String));
+        }
+      }
+      final days={for(final r in inserted) r['owner_day'] as String};
+      await _project(tx,days);
+      for(final day in days) {
+        await SleepEditStore.enqueue(tx,day,main:inserted.any((r)=>r['owner_day']==day && r['kind']=='main'));
+      }
+      return report;
+    }
+    if(importing && blocks.isNotEmpty) {
+      final cols={for(final r in await tx.rawQuery('PRAGMA table_info(sleep_block)')) r['name']};
+      for(final incoming in blocks) {
+        final block=<String,Object?>{for(final e in incoming.entries) if(cols.contains(e.key)) e.key:e.value};
+        block.putIfAbsent('owner_rule',()=>0);
+        await insertBlock(block);
+      }
+      return finish();
     }
     for (final legacy in overrides) {
       final day = legacy['day_id'] as String, start = legacy['onset_ts'] as int;
@@ -489,7 +550,7 @@ abstract final class SleepBlockStore {
       if (!known && source != 'rejected') note('unknown_source', 'sleep_override', day, start, end);
       if (source == 'rejected' && end - start == 1) note('placeholder_bounds', 'sleep_override', day, start, end);
       await insertBlock(row('legacy:main:$day', 'main', day, start, end,
-        known ? source as String : 'detected', known ? 'live' : 'removed', legacy['created_at'] as int));
+        known ? source as String : 'detected', known ? 'live' : 'removed', legacy['created_at'] as int),table:'sleep_override');
     }
     for (final legacy in naps) {
       final day = legacy['day_id'] as String, start = legacy['start_ts'] as int;
@@ -508,11 +569,11 @@ abstract final class SleepBlockStore {
         history: known ? 'known' : 'unavailable',
         detectedStart: known ? source == 'legacy' ? start : (a as num).toInt() : null,
         detectedEnd: known ? source == 'legacy' ? end : (b as num).toInt() : null,
-        payload: raw));
+        payload: raw),table:'sleep_nap');
     }
     final meta = await tx.query('activity_review_meta', columns: ['activated_at']);
     final cutoff = meta.firstOrNull?['activated_at'];
-    if (cutoff is! int) return report;
+    if (cutoff is! int) return finish();
     for (final served in servedDayResults) {
       final day = served['day_id'] as String;
       Object? values;
@@ -539,14 +600,14 @@ abstract final class SleepBlockStore {
         if (await insertBlock(row('legacy:nap:$day:$start', 'nap', day, start, end,
             'legacy', 'live', cutoff, history: 'known', detectedStart: start,
             detectedEnd: end, payload: payload))) {
-          // The sole projection write in backfill. Existing source rows are kept.
-          await tx.rawInsert('INSERT INTO sleep_nap(day_id,start_ts,end_ts,source,created_at,payload_json) '
+          // Import projects the touched day once, after all blocks land.
+          if (!importing) await tx.rawInsert('INSERT INTO sleep_nap(day_id,start_ts,end_ts,source,created_at,payload_json) '
             "SELECT ?,?,?,'legacy',?,? WHERE NOT EXISTS (SELECT 1 FROM sleep_nap WHERE day_id = ? AND start_ts = ?)",
             [day, start, end, cutoff, payload, day, start]);
         }
       }
     }
-    return report;
+    return finish();
   }
 
   /// Read the narrow legacy input from either the local or import connection.

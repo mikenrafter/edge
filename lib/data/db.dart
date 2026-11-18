@@ -9939,8 +9939,9 @@ class LocalDb {
     'lab_result': (['marker', 'taken_on'], 'updated_at'),
     'cycle_symptom': (['date'], 'updated_at'),
     // Local wins (owner 2026-11-17): no edit stamp decides this table now;
-    // SleepImportRules reports a refused entry instead.
+    // SleepBlockStore.absorb reports a refused entry instead.
     'sleep_override': (['day_id'], null),
+    'sleep_block': (['id'], null),
     // A dose slot is re-marked in place (taken, skipped, cleared), so an older
     // backup would flip a dose logged since back to what it said then.
     'med_dose': (['med_key', 'date', 'slot_min'], 'updated_at'),

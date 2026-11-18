@@ -446,6 +446,14 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
         final (startSec, endSec) = LocalDb._localDayWindow(dayId);
         await copyRawRange(startSec, endSec);
         await copyRows('day_result', where: 'day_id = ?', whereArgs: [dayId]);
+        // Pull only assertion dependencies; another owner's measurements stay
+        // out of the selected-day export [spec §6.1; T8]. UNION breaks cycles.
+        await copyRows('sleep_block',where:"""id IN (
+          WITH RECURSIVE included(id) AS (
+            SELECT id FROM sleep_block WHERE owner_day = ? OR (start_ts < ? AND end_ts > ?)
+            UNION SELECT b.merged_into FROM sleep_block b JOIN included i ON b.id = i.id
+              WHERE b.state = 'merged' AND b.merged_into IS NOT NULL
+          ) SELECT id FROM included)""",whereArgs:[dayId,endSec,startSec]);
         for (final table in ['sleep_nap', 'activity_suggestions', 'activity_review_days']) {
           await copyRows(table, where: 'day_id = ?', whereArgs: [dayId]);
         }
@@ -930,6 +938,7 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
       // day" must not leave the user's own logged health data behind.
       await deleteByIn(txn, 'cycle_symptom', 'date', sorted);
       await deleteByIn(txn, 'workout_suggestions', 'date', sorted);
+      await deleteByIn(txn, 'sleep_block', 'owner_day', sorted);
       await deleteByIn(txn, 'sleep_override', 'day_id', sorted);
       for (final day in sorted) { await SleepEditStore.cancel(txn, day); }
       await deleteByIn(txn, 'wake_confirmation', 'day_id', sorted);
@@ -1078,7 +1087,7 @@ ImportStage _ldbPrivImportStageOf(String table) => switch (table) {
         'imported_workout' ||
         'imported_measurement' =>
           ImportStage.workouts,
-        'sleep_override' || 'sleep_edit_job' || 'sleep_nap' || 'vendor_sleep_epoch' =>
+        'sleep_block' || 'sleep_override' || 'sleep_edit_job' || 'sleep_nap' || 'vendor_sleep_epoch' =>
           ImportStage.sleep,
         'samples' ||
         'decoded_onehz' ||
@@ -1190,13 +1199,51 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       }
     }
     final counts = <String, int>{};
-    // The local sleep assertions as they stand BEFORE any table copies: local
-    // wins, and spacing is judged against this frozen set only (never against
-    // rows this same import already wrote).
-    final sleepPre = order.contains('sleep_nap') || order.contains('sleep_override')
-        ? await SleepImportRules.freeze(db)
-        : null;
+    const sleepTables = {'sleep_block','sleep_override','sleep_nap','sleep_edit_job'};
+    final hasSleepStage = order.any(sleepTables.contains);
+    var sleepStageRan = false;
     final sleepNotes = <SleepImportEntry>[];
+    Future<void> mergeSleepStage(int index) async {
+      // Source connection reads precede the main transaction (RULES B.8).
+      Future<List<Map<String,Object?>>> readSource(String table) async {
+        try { return await src.query(table); }
+        on DatabaseException catch(e) {
+          if(tolerant || e.isNoSuchTableError()) return [];
+          rethrow;
+        }
+      }
+      final blocks = await readSource('sleep_block');
+      final overrides = blocks.isEmpty ? await readSource('sleep_override') : <Map<String,Object?>>[];
+      final naps = blocks.isEmpty ? await readSource('sleep_nap') : <Map<String,Object?>>[];
+      final suggestions = await readSource('activity_suggestions');
+      List<Map<String,Object?>> served = [];
+      if(blocks.isEmpty) {
+        try {
+          served = await SleepBlockStore.legacyNapInputs(src);
+        } on DatabaseException catch(e) {
+          if(!tolerant && !e.isNoSuchTableError()) rethrow;
+        }
+      }
+      final notes = await src.mainTransaction(db,(tx) async {
+        await beforePageCommit(tx);
+        final notes = await SleepBlockStore.absorb(tx,overrides:overrides,naps:naps,
+          blocks:blocks,servedDayResults:served,suggestions:suggestions,mode:AbsorbMode.importFile);
+        for(final day in {for(final e in notes) if(e.other=='decided_locally') e.day}) {
+          await ActivityStore.markDayChanged(tx,day);
+        }
+        if(run!=null) await ImportJournal.advance(tx,run,index,order[index],1,
+          notes.where((e)=>e.kind=='imported').length);
+        final hook=ImportHooks.chunk;
+        if(hook!=null) await hook.call(tx,const ImportChunk('sleep_block',0,0,1));
+        return notes;
+      });
+      pageCommitted();
+      sleepNotes.addAll(notes);
+      counts['sleep_block']=notes.where((e)=>e.kind=='imported').length;
+      // Keep the report outside the page transaction: its persistence helper
+      // acquires the main connection [phase2 hang fix a6afc9365].
+      await SleepImportReport.save(sleepNotes,unionWithStored:resumed);
+    }
     // DISTINCT DAYS ACTUALLY WRITTEN — the number the caller reports as
     // "N days imported".
     //
@@ -1923,6 +1970,13 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
         try {
           plan?.start(t);
           await ImportHooks.table?.beforeTable(t);
+          if(sleepTables.contains(t)) {
+            if(!sleepStageRan) {
+              await mergeSleepStage(index);
+              sleepStageRan=true;
+            }
+            continue;
+          }
           if (t == 'raw_archive') {
             counts[t] = await LocalDb._mergeRawArchive(src, db,
               beforePageCommit: beforePageCommit,
@@ -2200,19 +2254,9 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                     if (cols.contains(e.key)) e.key: e.value,
                 };
                 if (row.isEmpty) continue;
-                if (t == 'sleep_edit_job') {
-                  // Foreign revision counters never become local identities.
-                  // Recreate only unfinished intent against the restored edit.
-                  if (row['phase'] != 'done' || row['applied_revision'] != row['revision']) {
-                    await SleepEditStore.enqueue(txn, row['day_id'] as String,main:true);
-                  }
-                  copied++;
-                  continue;
-                }
-                if (t == 'sleep_nap' || t == 'sessions' || t == 'moment_label') {
+                if (t == 'sessions' || t == 'moment_label') {
                   var keepLocalDecision = false;
-                  final link = t == 'sleep_nap'
-                      ? '${row['day_id']}:${row['start_ts']}' : t == 'moment_label'
+                  final link = t == 'moment_label'
                           ? '${row['date']} ${row['hhmm']}' : row['id'];
                   final owners = activityOwners[link];
                   for (final chunk in LocalDb._sqlVarChunks(owners ?? <String>[])) {
@@ -2227,25 +2271,8 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                     }
                   }
                   if (keepLocalDecision) {
-                    // The decision merge below keeps this local answer. Do not
-                    // import the losing answer's activity, including after discard.
-                    // Recompose any day bundle that the backup may bring back.
-                    if (t == 'sleep_nap') {
-                      await ActivityStore.markDayChanged(txn, row['day_id'] as String);
-                    }
                     continue;
                   }
-                }
-                if ((t == 'sleep_nap' || t == 'sleep_override') && sleepPre != null) {
-                  // LOCAL WINS (owner S7): a differing local row keeps its
-                  // columns and payload together, whichever created_at is
-                  // newer; identical rows skip silently; refusals are listed.
-                  final v = SleepImportRules.judge(t, row, sleepPre);
-                  if (v == SleepImportVerdict.refuseConflict ||
-                      v == SleepImportVerdict.refuseOverlap) {
-                    sleepNotes.add(SleepImportRules.refusal(t, row, v));
-                  }
-                  if (v != SleepImportVerdict.copy) continue;
                 }
                 if (edited != null) {
                   final key = editKey(row);
@@ -2626,23 +2653,6 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           }
         }
       }
-      if (sleepPre != null) {
-        try {
-          final srcNaps = await src.query('sleep_nap');
-          final srcOverrides = await src.query('sleep_override');
-          sleepNotes.addAll(SleepImportRules.closePairs(
-            srcNaps: srcNaps,
-            srcOverrides: srcOverrides,
-            pre: sleepPre,
-            refused: {
-              for (final n in sleepNotes)
-                if (n.refused) SleepImportRules.refusedId(n),
-            },
-          ));
-        } on DatabaseException {
-          /* the export lacks one of the sleep tables: nothing to list */
-        }
-      }
       restoreFailed = false;
     } finally {
       await cleanupRestore(protectedRows: impAttached, rrRows: impAttached,
@@ -2656,7 +2666,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     final cleanupWatch = Stopwatch()..start();
     // The report outlives the import screen. A resumed run adds to what the
     // interrupted one already listed.
-    if (sleepPre != null) {
+    if (hasSleepStage) {
       await SleepImportReport.save(sleepNotes, unionWithStored: resumed);
     }
     if (order.contains('decoded_onehz') || order.contains('sync_cursor')) {
@@ -2679,20 +2689,16 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       await ActivityStore(db).migrateLegacy();
     }
     ImportPerf.phase('migrate_activities', cleanupWatch, run: perfId);
-    if (had('sleep_nap') || had('activity_suggestions')) {
-      // Imported day bundles may be older than a decision we kept locally.
-      // Recompose accepted naps after the merge, in bounded transactions.
-      String cursor = '';
-      while (true) {
-        final days = await db.rawQuery('''SELECT DISTINCT day_id FROM sleep_nap
-          WHERE day_id > ? ORDER BY day_id LIMIT 100''', [cursor]);
-        if (days.isEmpty) break;
-        await db.transaction((tx) async {
-          for (final day in days) {
-            await ActivityStore.markDayChanged(tx, day['day_id'] as String);
-          }
-        });
-        cursor = days.last['day_id'] as String;
+    // A newly imported bundle can carry accepted sleep behind a local discard.
+    // Absorb itself only enqueues inserted blocks; this is new result input,
+    // and needs composition even when every foreign assertion was refused.
+    for(final day in importedDays ?? <String>{}) {
+      final decisions=await db.query('activity_suggestions',columns:['id'],
+        where:"kind = 'nap' AND status <> 'pending' AND day_id = ?",whereArgs:[day],limit:1);
+      if(decisions.isEmpty) continue;
+      final jobs=await db.query('sleep_edit_job',where:'day_id = ?',whereArgs:[day]);
+      if(jobs.isEmpty || jobs.single['nap_revision']==jobs.single['nap_applied_revision']) {
+        await db.transaction((tx)=>SleepEditStore.enqueue(tx,day,main:false));
       }
     }
     ImportPerf.phase('review_days', cleanupWatch, run: perfId);

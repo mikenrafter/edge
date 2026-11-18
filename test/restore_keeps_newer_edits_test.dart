@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/sleep_block_store.dart';
 import 'package:openstrap_edge/data/sleep_import_rules.dart';
 
 const _day = '2026-10-12';
@@ -29,6 +30,9 @@ Future<void> _clear() async {
     'journal_metric',
     'lab_result',
     'sleep_override',
+    'sleep_block',
+    'sleep_nap',
+    'sleep_edit_job',
     'cycle_symptom',
     'cycle_log',
     'sessions',
@@ -127,6 +131,7 @@ void main() {
     await db.update('sessions', {'status': 'done', 'end_ts': 900});
     await db.delete('strength_set', where: 'seq = 2');
 
+    await SleepBlockStore.backfill(db);
     await LocalDb.importFromDbFile(backup);
 
     final journal = await db.query('journal', orderBy: 'date');
@@ -165,6 +170,7 @@ void main() {
     await db.update('sleep_override',
         {'onset_ts': 100, 'offset_ts': 200, 'created_at': 1000});
 
+    await SleepBlockStore.backfill(db);
     await LocalDb.importFromDbFile(backup);
 
     final fields = await db.query('journal_metric');
@@ -196,6 +202,7 @@ void main() {
         'med_dose', {'taken_ts': 50, 'skipped': 0, 'updated_at': 2000},
         where: 'slot_min = 480');
 
+    await SleepBlockStore.backfill(db);
     await LocalDb.importFromDbFile(backup);
 
     final rows = await db.query('med_dose', orderBy: 'slot_min');
@@ -222,6 +229,7 @@ void main() {
     await db.update('med_def', {'schedule_json': '[540]'});
     await db.update('food_entry', {'kcal': 450.0, 'updated_at': 2000});
 
+    await SleepBlockStore.backfill(db);
     await LocalDb.importFromDbFile(backup);
 
     expect((await db.query('med_def')).single['schedule_json'], '[540]');
@@ -243,6 +251,7 @@ void main() {
     await db.insert('step_calibration', profile(0.97, 24, 2000),
         conflictAlgorithm: ConflictAlgorithm.replace);
 
+    await SleepBlockStore.backfill(db);
     await LocalDb.importFromDbFile(backup);
 
     final row = (await db.query('step_calibration')).single;
@@ -263,6 +272,7 @@ void main() {
     await db.insert('step_calibration', profile(1.12, 10, 1000),
         conflictAlgorithm: ConflictAlgorithm.replace);
 
+    await SleepBlockStore.backfill(db);
     await LocalDb.importFromDbFile(backup);
 
     final row = (await db.query('step_calibration')).single;

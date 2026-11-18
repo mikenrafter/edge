@@ -65,6 +65,7 @@ const _allowed = <String, Map<String, Set<String>>>{
 final _allowedByFile = <String, Map<String, Map<String, Set<String>>>>{
   for(final table in _allowed.entries) table.key:{'lib/data/db.dart':table.value},
   'sleep_block': {
+    'lib/data/db.dart': {'LocalDb.deleteDays': {'delete'}},
     'lib/data/sleep_block_store.dart': {
       'SleepBlockStore.apply': {'insert','update'},
       'SleepBlockStore.absorb': {'insert'},

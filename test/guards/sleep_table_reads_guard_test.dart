@@ -14,14 +14,8 @@ const _kept = <String,Set<String>>{
   'lib/data/sleep_block_store.dart': {'SleepBlockStore.backfill','SleepBlockStore.absorb',
     'SleepBlockStore._project'},
 };
-// The literal scan intentionally does not infer interpolated SQL or queryCursor.
-// C retires the remaining import comparison when it introduces its sleep stage.
-const _untilCallersMove = <String,Set<String>>{
-  'lib/data/sleep_import_rules.dart': {'SleepImportRules.freeze'},
-};
 bool allowed(String path,SleepReadSite site) =>
-    (_kept[path]?.contains(site.member) ?? false) ||
-    (_untilCallersMove[path]?.contains(site.member) ?? false);
+    _kept[path]?.contains(site.member) ?? false;
 void main() {
   test('scanner finds query/FROM/JOIN including quotes, adjacent strings and parts', () {
     const source = '''

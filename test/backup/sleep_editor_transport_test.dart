@@ -87,6 +87,7 @@ void main() {
       final backup = await _snapshot('sleep_newer_override.db');
       await db.update('sleep_override',
           {'onset_ts': 100, 'offset_ts': 200, 'created_at': 1000});
+      await SleepBlockStore.backfill(db);
       await LocalDb.importFromDbFile(backup);
       final row = (await db.query('sleep_override')).single;
       expect(row['onset_ts'], 100);
@@ -102,6 +103,7 @@ void main() {
       final backup = await _snapshot('sleep_same_key.db');
       await db.update('sleep_nap',
           {'end_ts': _t0 + 40 * _min, 'created_at': 1000});
+      await SleepBlockStore.backfill(db);
       await LocalDb.importFromDbFile(backup);
       final row = (await db.query('sleep_nap')).single;
       expect(row['end_ts'], _t0 + 40 * _min);
@@ -117,6 +119,7 @@ void main() {
       final backup = await _snapshot('sleep_overlap.db');
       await db.update('sleep_nap',
           {'start_ts': _t0, 'end_ts': _t0 + 60 * _min, 'created_at': 1000});
+      await SleepBlockStore.backfill(db);
       await LocalDb.importFromDbFile(backup);
       final rows = await db.query('sleep_nap');
       expect(rows, hasLength(1));
@@ -132,6 +135,7 @@ void main() {
       final backup = await _snapshot('sleep_tombstone.db');
       await db.update('sleep_nap',
           {'source': 'rejected', 'created_at': 1000});
+      await SleepBlockStore.backfill(db);
       await LocalDb.importFromDbFile(backup);
       expect((await db.query('sleep_nap')).single['source'], 'rejected');
     });
@@ -146,6 +150,7 @@ void main() {
       final backup = await _snapshot('sleep_identical.db');
       await db.delete('sleep_nap',
           where: 'start_ts = ?', whereArgs: [_t0 + 5 * 3600]);
+      await SleepBlockStore.backfill(db);
       await LocalDb.importFromDbFile(backup);
       final rows = await db.query('sleep_nap', orderBy: 'start_ts');
       expect(rows, hasLength(2));
@@ -161,6 +166,7 @@ void main() {
           _nap(_t0 + 60 * _min, _t0 + 100 * _min));
       final backup = await _snapshot('sleep_close_pair.db');
       await _clear(db);
+      await SleepBlockStore.backfill(db);
       await LocalDb.importFromDbFile(backup);
       expect(await db.query('sleep_nap'), hasLength(2));
     });
@@ -178,7 +184,8 @@ void main() {
       }
       await SleepBlockStore.projectForTest(db,{_day});
       final backup=await _snapshot('sleep_blocks.db');
-      await _clear(db); await LocalDb.importFromDbFile(backup);
+      await _clear(db); await SleepBlockStore.backfill(db);
+      await LocalDb.importFromDbFile(backup);
       final rows=await db.query('sleep_block',orderBy:'id');
       expect(rows,hasLength(2));
       for(final row in rows) {
@@ -203,6 +210,7 @@ void main() {
       await raw.execute('ALTER TABLE sleep_nap DROP COLUMN payload_json');
       await raw.close();
       await _clear(db);
+      await SleepBlockStore.backfill(db);
       await LocalDb.importFromDbFile(backup);
       final main = (await db.query('sleep_override')).single;
       expect(main['payload_json'], isNull);
@@ -224,8 +232,10 @@ void main() {
       await db.insert('sleep_nap', _nap(_t0, _t0 + 60 * _min));
       final backup = await _snapshot('sleep_twice.db');
       await db.update('sleep_nap', {'end_ts': _t0 + 30 * _min});
+      await SleepBlockStore.backfill(db);
       await LocalDb.importFromDbFile(backup);
       final once = await db.query('sleep_nap');
+      await SleepBlockStore.backfill(db);
       await LocalDb.importFromDbFile(backup);
       expect(await db.query('sleep_nap'), once);
       expect((await SleepImportReport.load()).where((e) => e.refused),
@@ -241,6 +251,7 @@ void main() {
       await db.insert('sleep_nap', _nap(_t0 + 60 * _min, _t0 + 100 * _min));
       final backup = await _snapshot('sleep_pair_report.db');
       await _clear(db);
+      await SleepBlockStore.backfill(db);
       await LocalDb.importFromDbFile(backup);
       final report = await SleepImportReport.load();
       expect(report.where((e) => e.kind == 'close-in-source'), hasLength(1));
