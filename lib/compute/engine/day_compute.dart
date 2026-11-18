@@ -429,7 +429,10 @@ extension _EngineDayCompute on DerivationEngine {
       // typed on the day; the stage ranges, if staging wrote them, say any
       // stage is possible for all of it.
       final sleep = bundle['sleep'];
-      final ov = blankSource == 'manual'
+      // Bounds edits retain a confirmed block's provenance. Both accepted
+      // sources still carry the wearer's asserted window when raw is gone
+      // [sleep_blank_review_test: manual window with no decoded rows].
+      final ov = userReplacesNight(blankSource)
           ? await LocalDb.getSleepOverride(day.date)
           : null;
       if (ov != null && sleep is Map && sleep['window'] is Map) {
