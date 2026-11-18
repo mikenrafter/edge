@@ -5,8 +5,10 @@
 # (LocalDb.importFromDbFile) on each. Samples disk use every 2 s for the peak.
 #   OWNER_ORIGINAL  default /home/user/owner-rh/original.db (never modified)
 source "$(dirname "$0")/common.sh"
-export OWNER_ORIGINAL="${OWNER_ORIGINAL:-/home/user/owner-rh/original.db}"
-export OWNER_WORK="${OWNER_WORK:-/home/user/owner-rh/work}"
+export TZ='MST7MDT,M3.2.0,M11.1.0'
+export TZDIR=/usr/share/zoneinfo
+export OWNER_ORIGINAL="${OWNER_ORIGINAL:-$FORK_ROOT/build/owner-p2/original.db}"
+export OWNER_WORK="${OWNER_WORK:-$FORK_ROOT/build/owner-p2/work}"
 [ -f "$OWNER_ORIGINAL" ] || { echo "owner original missing: $OWNER_ORIGINAL" >&2; exit 2; }
 mkdir -p "$OWNER_WORK"
 bash "$(dirname "$0")/prepare_target.sh"
@@ -27,7 +29,7 @@ rc=$up
 if [ $up -eq 0 ]; then
   mkdir -p "$TARGET_DIR/test/official_export"
   rm -f "$TARGET_DIR"/test/official_export/*.dart
-  cp test/official_export/target/owner_receiver_probe.dart "$TARGET_DIR/test/official_export/owner_receiver_test.dart"
+  cp test/official_export/target/p2_receiver_probe.dart "$TARGET_DIR/test/official_export/owner_receiver_test.dart"
   cd "$TARGET_DIR"
   OFFICIAL_PROBE_OUT="$OUT_DIR/target" flutter test --concurrency=1 test/official_export/owner_receiver_test.dart
   rc=$?

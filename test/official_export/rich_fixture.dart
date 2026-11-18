@@ -227,7 +227,7 @@ Map<String, List<Map<String, Object?>>> _specificRows() {
       {'reading_id': 'ecg-1', 'ordinal': 0, 'sequence': 1, 'sample_count': 2, 'samples': Uint8List.fromList([1, 0, 2, 0]), 'inner_hex': 'AA'},
     ],
     'hyrox_session': [
-      {'id': 'hy-1', 'kind': 'race', 'preset': 'open', 'status': 'completed', 'plan_json': '{}', 'created_at': dayStart(6), 'updated_at': dayStart(6)},
+      {'id': 'hy-1', 'kind': 'race', 'preset': 'open', 'status': 'finished', 'plan_json': '{}', 'created_at': dayStart(6), 'updated_at': dayStart(6)},
     ],
     'hyrox_segment': [
       {'session_id': 'hy-1', 'idx': 0, 'kind': 'run'},

@@ -1,0 +1,246 @@
+// Owns pure field projection and verified archive decoding. SQL/file lifetimes
+// belong to mapper.dart. CLAIM(official-export-no-fork-results) [spec §4.3].
+import 'dart:convert';
+import 'dart:isolate';
+import 'dart:io';
+import 'package:crypto/crypto.dart';
+import 'profile_target.dart';
+import 'dart:typed_data';
+import '../../util/heavy.dart';
+import '../../util/worker_init.dart';
+import '../../util/worker_audit.dart';
+import '../db.dart';
+import '../substrate_archive_codec.dart';
+import 'profile_tables.dart';
+
+const mappingWorkerInputs = WorkerInputs(nowEpochMs: 0, zoneId: 'explicit-caller-calendar', localeTag: 'en');
+
+// UTF-8 hex with a separator is injective in the pair (original key, unit).
+// Existing qualified keys are also encoded: arbitrary original keys cannot
+// collide with another original's encoded spelling. [mapper_test]
+String qualifiedCustomKey(String key, String unit) {
+  if (!key.startsWith('custom_') || unit.isEmpty) { return key; }
+  String hex(String s) => utf8.encode(s).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  return 'custom_u1_${hex(key)}_${hex(unit)}';
+}
+
+@SendableShape('SQLite row maps, exact archive bytes and manifest JSON')
+class MappingInput {
+  const MappingInput(this.operation, this.table, this.rows, {this.blob, this.codec = 1, this.fingerprint, this.json});
+  final String operation, table;
+  final List<Map<String, Object?>> rows;
+  final Uint8List? blob;
+  final int codec;
+  final int? fingerprint;
+  final Object? json;
+}
+
+@SendableShape('Projected SQLite rows, archive rows and explicit omissions')
+class MappingOutput {
+  const MappingOutput(this.rows, this.notes, {this.text});
+  final List<Map<String, Object?>> rows;
+  final List<Map<String, Object?>> notes;
+  final String? text;
+}
+
+Future<MappingOutput> runMappingWorker(MappingInput input) =>
+    Isolate.run(() => officialMappingHeavy(mappingWorkerInputs, input));
+
+@heavy
+Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput input) async {
+  WorkerInit.ensure(inputs);
+  assertWorker();
+  WorkerAudit.entered('officialMappingHeavy');
+  if (input.operation == 'fileHash') {
+    final digest = await sha256.bind(File(input.json as String).openRead()).first;
+    return MappingOutput(const [], const [], text: digest.toString());
+  }
+  if (input.operation == 'profileHash') {
+    final text = jsonEncode({
+      'tables': {for (final e in officialProfile.tables.entries) e.key: {
+        'policy': e.value.policy.code, 'columns': {for (final c in e.value.columns.entries) c.key: c.value.name},
+        'destination': e.value.dest, 'rule': e.value.rowRule, 'transforms': e.value.transforms,
+        'constants': e.value.emptyConstants,
+      }},
+      'target_objects': [for (final o in officialTargetObjects) o.sql],
+      'enums': [for (final e in officialProfile.enums) [e.table,e.column,e.targetValues.toList(),e.onOther.name]],
+    });
+    return MappingOutput(const [], const [], text: sha256.convert(utf8.encode(text)).toString());
+  }
+  if (input.operation == 'json') {
+    return MappingOutput(const [], const [], text: jsonEncode(input.json));
+  }
+  if (input.operation == 'archive') {
+    final bucket = SubstrateArchiveCodec.decode(input.blob!, codec: input.codec);
+    if (bucket == null || SubstrateArchiveCodec.fingerprint(bucket) != input.fingerprint) {
+      return const MappingOutput([], [{'reason': 'unreadable codec or fingerprint mismatch'}]);
+    }
+    final parents = <Object?, List<int>>{};
+    for (var i = 0; i < bucket.onehz.rowCount; i++) {
+      (parents[bucket.onehz.valueAt('ts_ms', i)] ??= []).add(i);
+    }
+    final beats = <Object?, List<Map<String, Object?>>>{};
+    final notes = <Map<String, Object?>>[];
+    for (var i = 0; i < bucket.rr.rowCount; i++) {
+      final ts = bucket.rr.valueAt('ts_ms', i);
+      if (!parents.containsKey(ts)) {
+        notes.add({'beat_index': i, 'reason': 'archive orphan beat'});
+      } else {
+        (beats[ts] ??= []).add(bucket.rr.rowAt(i));
+      }
+    }
+    Map<String, Object?> sorted(Map<String, Object?> row) => {
+      for (final k in row.keys.toList()..sort()) k: row[k],
+    };
+    return MappingOutput([
+      for (var i = 0; i < bucket.onehz.rowCount; i++) {
+        'device_id': bucket.onehz.valueAt('device_id', i),
+        'ts_ms': bucket.onehz.valueAt('ts_ms', i),
+        'rec_ts': bucket.onehz.valueAt('rec_ts', i),
+        'row_index': i,
+        'claim': jsonEncode({
+          'parent': sorted(bucket.onehz.rowAt(i)),
+          'beats': [for (final beat in (beats[bucket.onehz.valueAt('ts_ms', i)] ?? <Map<String, Object?>>[])
+              ..sort((a, b) => (a['beat_index'] as int).compareTo(b['beat_index'] as int))) sorted(beat)],
+        }),
+      },
+    ], notes);
+  }
+  if (input.operation == 'unpack') {
+    final rows = <Map<String, Object?>>[];
+    for (final claim in input.rows) {
+      final content = jsonDecode(claim['claim'] as String) as Map;
+      for (final table in ['decoded_onehz', 'decoded_rr']) {
+        final sourceRows = table == 'decoded_onehz' ? [content['parent']] : content['beats'] as List;
+        for (final row in sourceRows) {
+          rows.add({'table': table, 'bucket':claim['bucket_id'], 'parent_index':claim['row_index'], 'row': {
+            for (final c in officialProfile.tables[table]!.keep) c: (row as Map)[c],
+          }});
+        }
+      }
+    }
+    return MappingOutput(rows, const []);
+  }
+  final policy = officialProfile.tables[input.table]!;
+  final rows = <Map<String, Object?>>[];
+  final notes = <Map<String, Object?>>[];
+  for (final source in input.rows) {
+    final rowid = source['__export_rowid'];
+    try {
+    String? refusal;
+    for (final rule in officialProfile.enums.where((e) => e.table == input.table)) {
+      final v = source[rule.column];
+      if (v != null && !rule.targetValues.contains(v)) { refusal = 'unsupported ${rule.column}: $v'; }
+    }
+    switch (input.table) {
+      case 'observation':
+        if (!{'vendor','entered','imported'}.contains(source['source_kind']) ||
+            (source['key'] == null && source['vendor_key'] == null)) { refusal = 'unsupported observation provenance or identity'; }
+      case 'sessions':
+        if (!{'done', 'completed'}.contains(source['status']) ||
+            source['start_ts'] is! num || source['end_ts'] is! num ||
+            (source['end_ts'] as num) <= (source['start_ts'] as num) ||
+            source['end_ts_fabricated'] == 1) { refusal = 'unfinished or fabricated session end'; }
+      case 'hyrox_session' || 'triathlon_session':
+        if (!{'finished', 'finalized', 'abandoned', 'discarded'}.contains(source['status'])) { refusal = 'unfinished race'; }
+        // A parsed plan is required by the tagged models. Keep unsupported
+        // plans in the snapshot, never turn them into another preset.
+        try {
+          if (jsonDecode(source['plan_json'] as String) is! Map) { refusal = 'unsupported race plan'; }
+        } catch (_) { refusal = 'unsupported race plan'; }
+      case 'activity_suggestions':
+        if (source['status'] == 'pending') { refusal = 'pending inference'; }
+      case 'workout_suggestions':
+        if (source['dismissed'] != 1 && source['dismissed'] != 2) { refusal = 'pending workout inference'; }
+      case 'sleep_nap':
+        if (!{'manual', 'confirmed', 'rejected', 'auto_confirmed'}.contains(source['source'])) { refusal = 'unconfirmed nap inference'; }
+      case 'sleep_override':
+        if (source['onset_ts'] is! num || source['offset_ts'] is! num ||
+            (source['offset_ts'] as num) <= (source['onset_ts'] as num)) { refusal = 'unsupported sleep boundaries'; }
+      case 'live_step_calibration_run':
+        if (source['counter_version'] != 2 ||
+            !{'slow', 'brisk', 'jog', 'everyday'}.contains(source['category']) ||
+            !{'wearerCount', 'phonePedometer'}.contains(source['reference'])) { refusal = 'unsupported calibration counter/category/reference'; }
+      case 'backup_prefs':
+        if (!_portablePreference(source)) { refusal = 'unsupported or nonportable preference'; }
+      case 'backup_secrets':
+        if (!{'coach_api_key', 'coach_chatgpt', 'coach_base_url'}.contains(source['key'])) { refusal = 'unknown presence marker'; }
+      case 'sync_cursor':
+        if (source['name'] != 'decoded_pruned_before') { refusal = 'install-local cursor'; }
+      case 'compute_freshness':
+        if (source['key'] != 'substrate_archive_policy') { refusal = 'fork freshness or deletion metadata'; }
+    }
+    if (refusal != null) {
+      notes.add({'rowid': rowid, 'reason': refusal, 'omitted': true});
+      continue;
+    }
+    final out = <String, Object?>{
+      '__export_rowid': rowid,
+      for (final c in [...policy.keep, ...policy.rewrite]) c: source[c],
+      for (final c in policy.provenance) c: null,
+      for (final c in policy.clear) c: policy.emptyConstants.containsKey(c) ? '{}' : null,
+    };
+    // These columns have receiver defaults that are NOT NULL. Omitting a
+    // cleared value invokes that default, whereas explicitly NULL would fail.
+    for (final c in policy.clear) {
+      if (c == 'revision' || c == 'legacy_migrated' || c == 'trace_samples') { out.remove(c); }
+    }
+    if (input.table == 'hyrox_segment' || input.table == 'triathlon_segment') {
+      if ({'gps','user'}.contains(source['distance_source']) && source['distance_m'] is num) {
+        out['distance_m'] = source['distance_m'];
+        out['distance_source'] = source['distance_source'];
+      }
+      if ({'band','strap'}.contains(source['hr_source'])) { out['hr_source'] = source['hr_source']; }
+    }
+    if (input.table == 'journal_field_def' || input.table == 'lab_marker_def') {
+      out['key'] = qualifiedCustomKey(source['key'] as String, source['unit'] as String? ?? '');
+    }
+    if (input.table == 'raw_archive_frames' || input.table == 'raw_archive_legacy' || input.table == 'raw_archive') {
+      final bytes = source['frame'];
+      final hex = source['hex'] as String? ?? (bytes is Uint8List
+          ? bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join() : null);
+      if (hex == null) {
+        notes.add({'rowid': rowid, 'reason': 'missing exact frame', 'omitted': true});
+        continue;
+      }
+      out.clear();
+      out.addAll(LocalDb.rawArchiveRow(deviceId: source['device_id'] as String,
+          hex: hex, counter: source['counter'] as int?, packetType: source['packet_type'] as int,
+          recTs: source['rec_ts'] as int?, capturedAt: source['captured_at'] as int,
+          reason: source['reason'] as String));
+      out['__export_rowid'] = rowid;
+    }
+    final changed = [
+      for (final c in [...policy.clear, ...policy.omit, ...policy.provenance])
+        if (source[c] != null && (policy.omit.contains(c) || out[c] != source[c])) c,
+    ];
+    notes.add({'rowid': rowid, 'reason': 'mapped', 'columns': changed,
+      if (input.table == 'journal_field_def' || input.table == 'lab_marker_def')
+        'key_map': {'original': source['key'], 'mapped': out['key'], 'unit': source['unit']}});
+    rows.add(out);
+    } catch (error) {
+      notes.add({'rowid':rowid,'reason':'unsupported stored value type: ${error.runtimeType}','omitted':true});
+    }
+  }
+  return MappingOutput(rows, notes);
+}
+
+// Closed audited subset. The official fallback accepts arbitrary types/keys;
+// accepting that fallback would turn fork settings into implicit permissions.
+bool _portablePreference(Map<String, Object?> r) {
+  const types = {
+    'clock_format': 'string', 'theme_choice': 'string', 'locale_override': 'string',
+    'units_system': 'string', 'local_profile_json': 'string',
+    'cycle_tracking_enabled': 'bool', 'sleep_hmm_stages': 'bool',
+    'rough_night.ask': 'string', 'rough_night.dismissed': 'string',
+    'ui.wearable_show_estimates': 'bool', 'ui.wearable_side_by_side': 'bool',
+  };
+  if (types[r['key']] != r['type']) { return false; }
+  final value = r['value'];
+  if (value is! String) { return false; }
+  if (r['type'] == 'bool') { return value == 'true' || value == 'false'; }
+  if (r['key'] == 'local_profile_json') {
+    try { if (jsonDecode(value) is! Map) return false; } catch (_) { return false; }
+  }
+  return true;
+}

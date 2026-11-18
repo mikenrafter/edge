@@ -46,7 +46,19 @@ Future<void> _ldbPurgeDemoRows() async {
     });
   }
 
-Future<String> _ldbExportCopy({required bool includeSubstrateArchive, required BackupExtras extras, Directory? into, AttachedCopy? attached}) async {
+Future<String> _ldbExportCopy({required bool includeSubstrateArchive, required BackupExtras extras, Directory? into, AttachedCopy? attached, ExportFileWrite? privateWrite}) async {
+    if (privateWrite != null) {
+      // This capability is minted only by exclusive creation of a new file.
+      // No live-store handle enters this branch. Keep dynamic file SQL at the
+      // existing export seam rather than creating a second unrestricted writer.
+      final batch = privateWrite.file.read.batch();
+      for (final statement in privateWrite.statements) {
+        batch.execute(statement.sql, statement.arguments);
+      }
+      await batch.commit(noResult: true);
+      return privateWrite.file.path;
+    }
+
     // File-to-file SQL has one owner. The destination is opened here, never
     // obtained from LocalDb.instance, so dynamic schema copying cannot write
     // derived rows in the live store.

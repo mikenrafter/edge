@@ -5716,8 +5716,10 @@ class LocalDb {
     Directory? into,
     bool includePrefs = true,
     AttachedCopy? attached,
+    ExportFileWrite? privateWrite,
   }) => _ldbExportCopy(
-      includeSubstrateArchive: includeSubstrateArchive, extras: includePrefs ? extras : BackupExtras.none, into: into, attached: attached);
+      includeSubstrateArchive: includeSubstrateArchive, extras: includePrefs ? extras : BackupExtras.none,
+      into: into, attached: attached, privateWrite: privateWrite);
 
   /// Test seam: fail [exportCopy] after the copy exists, before it is cleaned.
   @visibleForTesting

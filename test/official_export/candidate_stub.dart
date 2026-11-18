@@ -11,18 +11,9 @@ import 'dart:io';
 import 'package:openstrap_edge/data/official_export/profile_target.dart';
 import 'package:openstrap_edge/data/official_export/profile_tables.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:sqflite/sqflite.dart' show Sqflite;
+export 'package:openstrap_edge/data/official_export/mapper.dart' show oldestMappedExactSec;
 
 import 'rich_fixture.dart';
-
-/// P1 has no archive expansion; query the decoded rows after its mapping.
-/// NULL/non-positive rec_ts is not exact, regardless of ts_ms.
-Future<int?> oldestMappedExactSec(DatabaseExecutor db) async =>
-    Sqflite.firstIntValue(await db.rawQuery(
-      'SELECT MIN(rec_ts) FROM ('
-      'SELECT rec_ts FROM decoded_onehz WHERE rec_ts > 0 UNION ALL '
-      'SELECT rec_ts FROM decoded_rr WHERE rec_ts > 0)',
-    ));
 
 Future<Database> _createTargetShaped(String path, {int userVersion = 62}) async {
   await databaseFactoryFfi.deleteDatabase(path);

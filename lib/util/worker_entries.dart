@@ -70,6 +70,8 @@ class UnresolvedOk {
 /// another package; those closures stay in the guard baseline until each
 /// reader becomes a persisted artifact.
 const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#officialMappingHeavy, dispatcher: Dispatcher.run,
+    reason: 'official export field projection, archive verification/expansion and manifest encoding; initialized row-map worker with round-trip proof'),
   WorkerEntry(#segmentCalendarDaysHeavy, dispatcher: Dispatcher.run,
     reason: 'import calendar-day staging runs off the UI isolate; initialized worker with populated substrate and sleep/day result round trips'),
   WorkerEntry(#buildCrossDayArtifactHeavy, dispatcher: Dispatcher.cancellable,

@@ -8,6 +8,7 @@ import 'package:openstrap_edge/data/official_export/profile_tables.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'rich_fixture.dart';
 import 'support.dart';
+import 'conservation.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +25,7 @@ void main() {
           expectedPrunedBefore: fx.expectedPrunedBefore), isEmpty);
       expect(report.cursor.sec, fx.expectedPrunedBefore);
       expect(report.tables.keys, contains('decoded_onehz'));
+      await verifyConservation(fx.forkPath,report);
       final db = await databaseFactoryFfi.openDatabase(path);
       try {
         final def = (await db.query('journal_field_def', where: "unit='g'")).single;
