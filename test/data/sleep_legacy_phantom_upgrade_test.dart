@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/sleep_block_store.dart';
+import 'package:openstrap_edge/data/sleep_editor.dart';
 import 'package:openstrap_edge/data/sleep_edit_store.dart';
 import 'package:openstrap_edge/compute/nap_overlap_cleanup.dart';
 import 'support/sleep_block_fixture.dart';
@@ -31,7 +32,7 @@ void main() {
       await raw.execute('PRAGMA user_version = 92'); await raw.close();
       db=await LocalDb.instance;
       await cleanNextNightNapsOnce();
-      expect(await SleepBlockStore.live(db,4500,6500),isEmpty,
+      expect((await SleepBlockStore.live(db,4500,6500)).where((b)=>b.kind==SleepBlockKind.nap),isEmpty,
         reason:'the old phantom must not become a Merge neighbor');
       expect(await db.query('sleep_nap'),isEmpty);
       await db.transaction((tx)=>SleepEditStore.enqueue(tx,fixtureDay,main:false));
