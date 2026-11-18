@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/state/app_state.dart';
-import 'package:openstrap_edge/sync/dev_log.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/compute/step_calibration_fit.dart';
@@ -49,7 +48,7 @@ void main() {
     await LocalDb.close();
    }
    report['file_open_reopen']='passed';
-  } finally {await LocalDb.close();await DevLog.instance.flush();await dir.delete(recursive:true);}
+  } finally {await LocalDb.close();await dir.delete(recursive:true);}
  },timeout:const Timeout(Duration(minutes:10)));
  for(final populated in [false,true]) {
   test('production owner file, ${populated ? 'populated' : 'fresh'} receiver',() async {
@@ -169,7 +168,7 @@ void main() {
     expect((await db.rawQuery('PRAGMA integrity_check')).single.values.single,'ok');
     expect(LocalDb.lastRebuild,isNull);
     r['reopened_results']=await count(db,'day_result');
-   } finally {await LocalDb.close();await DevLog.instance.flush();await root.delete(recursive:true);}
+   } finally {await LocalDb.close();await root.delete(recursive:true);}
   },timeout:const Timeout(Duration(minutes:60)));
  }
 }

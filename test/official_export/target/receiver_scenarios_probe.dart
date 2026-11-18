@@ -18,7 +18,6 @@ import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/data/hyrox_store.dart';
 import 'package:openstrap_edge/ecg/ecg_models.dart';
 import 'package:openstrap_edge/data/db.dart';
-import 'package:openstrap_edge/sync/dev_log.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -57,7 +56,7 @@ Future<T> _withFreshTarget<T>(
     return await body(db);
   } finally {
     await LocalDb.close();
-    await DevLog.instance.flush();
+    
     await root.delete(recursive: true);
   }
 }

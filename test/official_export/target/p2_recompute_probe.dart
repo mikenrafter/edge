@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/state/app_state.dart';
-import 'package:openstrap_edge/sync/dev_log.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -91,7 +90,7 @@ void main() {
    } finally {state.dispose();}
    await LocalDb.close();db=await LocalDb.instance;
    expect((await db.rawQuery('PRAGMA integrity_check')).single.values.single,'ok');
-  } finally {await LocalDb.close();await DevLog.instance.flush();await root.delete(recursive:true);}
+  } finally {await LocalDb.close();await root.delete(recursive:true);}
  },timeout:const Timeout(Duration(minutes:40)));
  }
 }

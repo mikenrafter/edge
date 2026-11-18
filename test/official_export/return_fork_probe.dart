@@ -7,7 +7,7 @@ import 'package:openstrap_edge/data/db.dart';
 import 'rich_fixture.dart';
 void main() {
  TestWidgetsFlutterBinding.ensureInitialized();
- test('official return keeps the qualified definition beside the original',() async {
+ test('official return documents the original-key conflict and retains its qualified sibling',() async {
   final fx=await RichFixture.build();
   try {
    LocalDb.dbName=fx.forkPath;final db=await LocalDb.instance;
@@ -18,6 +18,10 @@ void main() {
    final note=(await db.query('journal',where:"date='2026-10-21'")).single;
    expect(note['note'],'Later official edit');
    final metrics=await db.query('journal_metric',where:"date='2026-10-21'");
+   expect(metrics.single['field'],'custom_caffeine');
+   expect(metrics.single['value'],0.2);
+   expect(metrics.single['updated_at'],1,
+     reason:'the equal-stamp local metric set remains under the original key, now defined in mg');
    final out=Directory(Platform.environment['OFFICIAL_PROBE_OUT']!)..createSync(recursive:true);
    File('${out.path}/return-fork.json').writeAsStringSync(const JsonEncoder.withIndent('  ').convert({
      'definitions':defs,'date_metric_set':metrics,'journal':note,
