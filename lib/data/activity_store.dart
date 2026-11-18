@@ -362,8 +362,16 @@ class ActivityStore {
 
   Future<void> discard(ActivitySuggestion expected, {Transaction? transaction}) {
     Future<void> write(Transaction tx) async {
-        final row = await _check(tx, expected, 'discarded');
+        final row = await _check(tx, expected, 'discarded',allowConfirmed:expected.kind==ActivityKind.nap);
         if (row == null) return;
+        if(row['status']=='confirmed' && expected.kind==ActivityKind.nap) {
+          final blocks=await tx.query('sleep_block',where:'id = ?',whereArgs:[row['linked_id']]);
+          if(blocks.isEmpty) throw const ActivityReviewException('This saved nap is no longer available.');
+          final block=blocks.single;
+          final plan=await SleepBlockStore.plan(tx,block['owner_day'] as String,
+            [RemoveBlock(StoredBlockRef(block['id'] as String,block['revision'] as int))]);
+          requireSleepSaved(await SleepBlockStore.apply(plan,tx:tx));
+        }
         await tx.update(
           'activity_suggestions',
           {
@@ -387,7 +395,7 @@ class ActivityStore {
   static Future<Map<String, dynamic>?> _check(
     DatabaseExecutor tx,
     ActivitySuggestion expected,
-    String done,
+    String done, {bool allowConfirmed=false}
   ) async {
     var rows = await tx.query(
       'activity_suggestions', where: 'id = ?', whereArgs: [expected.id]);
@@ -414,7 +422,7 @@ class ActivityStore {
     }
     final row = rows.single;
     if (row['status'] == done) return null;
-    if (row['status'] != 'pending') {
+    if (row['status'] != 'pending' && !(allowConfirmed && row['status']=='confirmed')) {
       throw const ActivityReviewException(
         'This suggestion is no longer available.',
       );
