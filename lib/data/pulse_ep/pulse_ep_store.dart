@@ -854,15 +854,21 @@ class PulseEpisodeStore {
   ) async {
     switch (table) {
       case 'pulse_ep_episode':
-        return (await txn.insert('pulse_ep_episode', row,
-                conflictAlgorithm: ConflictAlgorithm.ignore)) >
-            0;
+        final changed = (await txn.insert('pulse_ep_episode', row,
+                conflictAlgorithm: ConflictAlgorithm.ignore)) > 0;
+        if (row['status'] == 'deleted') {
+          await _deleteRecording(txn, row['id']);
+          return true;
+        }
+        return changed;
       case 'pulse_ep_revision':
+        if (await _isDeleted(txn, row['episode_id'])) return false;
         return (await txn.insert('pulse_ep_revision', row,
                 conflictAlgorithm: ConflictAlgorithm.ignore)) >
             0;
       case 'pulse_ep_evidence':
         final id = row['episode_id'], rev = row['revision'];
+        if (await _isDeleted(txn, id)) return false;
         final local = await txn.query('pulse_ep_revision',
             columns: ['checksum'],
             where: 'episode_id = ? AND revision = ?',
@@ -939,6 +945,25 @@ class PulseEpisodeStore {
     return false;
   }
 
+  static Future<bool> _isDeleted(DatabaseExecutor txn, Object? id) async =>
+      (await txn.rawQuery("SELECT 1 FROM pulse_ep_episode WHERE id = ? AND status = 'deleted'", [id])).isNotEmpty;
+
+  // CLAIM(pulse-deletion-import): both local deletion and imported tombstones
+  // remove all measurements [R1 transport and resume tests].
+  static Future<void> _deleteRecording(DatabaseExecutor txn, Object? id) async {
+        await txn.rawDelete('DELETE FROM pulse_ep_evidence WHERE episode_id = ?', [id]);
+        await txn.rawDelete('DELETE FROM pulse_ep_revision WHERE episode_id = ?', [id]);
+        await txn.rawUpdate(
+          "UPDATE pulse_ep_episode SET status = 'deleted', refusal = NULL, ongoing = 0 WHERE id = ?",
+          [id],
+        );
+        await txn.rawUpdate(
+          "UPDATE pulse_ep_outbox SET state = 'deleted', reason = 'recording deleted', token = NULL "
+          "WHERE episode_id = ? AND state IN ('owed','held','not_sent')",
+          [id],
+        );
+  }
+
   // ---- deletion --------------------------------------------------------------------------
   /// Deletes every recording that intersects any of [windows] (local day label,
   /// epoch-second start and end). The whole episode goes, including its other-day
@@ -956,17 +981,7 @@ class PulseEpisodeStore {
       );
       for (final e in hit) {
         final id = e['id'];
-        await txn.rawDelete('DELETE FROM pulse_ep_evidence WHERE episode_id = ?', [id]);
-        await txn.rawDelete('DELETE FROM pulse_ep_revision WHERE episode_id = ?', [id]);
-        await txn.rawUpdate(
-          "UPDATE pulse_ep_episode SET status = 'deleted', refusal = NULL, ongoing = 0 WHERE id = ?",
-          [id],
-        );
-        await txn.rawUpdate(
-          "UPDATE pulse_ep_outbox SET state = 'deleted', reason = 'recording deleted', token = NULL "
-          "WHERE episode_id = ? AND state IN ('owed','held','not_sent')",
-          [id],
-        );
+        await _deleteRecording(txn, id);
       }
       await txn.rawDelete(
         'DELETE FROM pulse_ep_admission WHERE start_ms < ? AND end_ms > ?',
