@@ -310,6 +310,37 @@ void main() {
   });
 
   group('the reconnect loop', () {
+    // WHY: a reconnect entry must not retire a pairing/connect already in
+    // flight, even if a link-drop callback arrives during that window.
+    // Proves CLAIM(reconnect-busy-guard).
+    test('a busy session refuses reconnect until the connect window ends',
+        _case((h, timers) async {
+      await h.sync.openSession();
+      await h.waitFor(() => h.engine.count('host:armAlarm') == 2);
+      h.engine.drop();
+      h.engine.events.clear();
+      h.sync.busy = true;
+      h.sync.onLinkDropped();
+      expect(h.engine.count('markReconnecting'), 0);
+      expect(h.engine.count('connect'), 0);
+      h.sync.busy = false;
+      h.sync.onLinkDropped();
+      await h.waitFor(() => h.engine.count('connect') == 1);
+    }));
+
+    // WHY: the busy guard refuses a disconnect edge during failed setup.
+    // Retry that setup only after releasing busy, without waiting for the
+    // supervisor's timer. The AppState session test also covers the real edge.
+    test('a failed setup retries after its busy window ends',
+        _case((h, timers) async {
+      h.engine.batteryThrowsOnce = StateError('no reply');
+      await h.sync.openSession();
+      await h.waitFor(() => h.engine.count('runSync') == 1);
+      expect(h.sync.busy, isFalse);
+      expect(h.engine.count('connect'), 2);
+      expect(h.engine.isConnected, isTrue);
+    }));
+
     test('a link drop starts a loop; endSession retires it and a late failure '
         'does not touch the flags', _case((h, timers) async {
       await h.sync.openSession();

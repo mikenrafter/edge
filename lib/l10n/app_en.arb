@@ -20136,6 +20136,7 @@
   "importStageResults": "calculated results",
   "importStageArchive": "raw band records",
   "importStageOther": "other data",
+  "statusLineUpdatingDatabaseIndex": "Updating the database index (one time)",
   "statusLineImporting": "Importing · {status}",
   "@statusLineImporting": {
     "placeholders": {

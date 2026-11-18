@@ -430,11 +430,9 @@ class DayBundleInput {
   /// meaningful on a FORCED window — see `sol_sec` below.
   final String sleepSource;
 
-  /// EXPERIMENTAL, default OFF (PR #628 review): when true, the per-second
-  /// stage labels are re-derived by the HMM/Viterbi classifier
-  /// (`sleep_pipeline_hmm.dart`) from the sleep-window HR/RR substrate instead
-  /// of using the coordinator-supplied [hypnoStages]. Off by default so the
-  /// shipped heuristic stays the source of truth until the HMM is validated.
+  /// Legacy serialized input, ignored. The coordinator's [hypnoStages] are
+  /// authoritative; HMM selection belongs to StagingMethod.hmm628.
+  /// CLAIM(day-bundle-stage-owner) [day_bundle_stage_owner_test].
   final bool useHmmStages;
 
   const DayBundleInput({

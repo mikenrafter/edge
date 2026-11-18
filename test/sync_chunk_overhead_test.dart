@@ -69,7 +69,8 @@ var _counting = false;
 Completer<void>? _indexStarted;
 Completer<void>? _resumeIndex;
 Completer<void>? _commitStarted;
-int? _maintenanceId;
+int? _indexOwnerId;
+int? _writerProbeId;
 
 void _mark(String m) {
   if (_counting) _log.add(_Ev.mark(m));
@@ -289,12 +290,15 @@ void main() {
     final native = databaseFactoryFfi as SqfliteInvokeHandler;
     final delayedNative = buildDatabaseFactory(invokeMethod: (method, [args]) async {
       final sql = args is Map ? args['sql'] : null;
+      if (sql == 'SELECT 123 AS index_writer_identity') {
+        _writerProbeId = (args as Map)['id'] as int;
+      }
       if (_indexStarted != null && sql is String &&
           sql.startsWith('CREATE INDEX IF NOT EXISTS idx_day_result_finalized_payload')) {
-        _maintenanceId = (args as Map)['id'] as int;
+        _indexOwnerId = (args as Map)['id'] as int;
         // Simulate an arbitrarily long index build while holding the REAL WAL
         // writer lock on the same native connection. No sleeps/size threshold.
-        final nativeArgs = {'id': _maintenanceId, 'sql': 'BEGIN IMMEDIATE'};
+        final nativeArgs = {'id': _indexOwnerId, 'sql': 'BEGIN IMMEDIATE'};
         await native.invokeMethod<Object?>('execute', nativeArgs);
         _mark('index-lock-held');
         _indexStarted!.complete();
@@ -302,13 +306,13 @@ void main() {
         try {
           return await native.invokeMethod<Object?>(method, args);
         } finally {
-          await native.invokeMethod<Object?>('execute', {'id': _maintenanceId, 'sql': 'COMMIT'});
+          await native.invokeMethod<Object?>('execute', {'id': _indexOwnerId, 'sql': 'COMMIT'});
           _mark('index-complete');
         }
       }
       final result = await native.invokeMethod<Object?>(method, args);
-      if (method == 'closeDatabase' && args is Map && args['id'] == _maintenanceId) {
-        _mark('maintenance-closed');
+      if (method == 'closeDatabase' && args is Map && args['id'] == _indexOwnerId) {
+        _mark('index-writer-closed');
       }
       return result;
     });
@@ -354,7 +358,7 @@ void main() {
     _indexStarted = null;
     _resumeIndex = null;
     _commitStarted = null;
-    _maintenanceId = null;
+    _indexOwnerId = null;
     _counting = false;
     for (final r in _rigs) {
       await r.engine.disconnect();
@@ -366,10 +370,12 @@ void main() {
   // WHY: a large CREATE INDEX holds SQLite's one WAL writer lock; an incoming
   // HISTORY_END still must commit and echo its exact token, without BUSY.
   // CLAIM(index-sync-exclusion); catches: missing commit gate, early release,
-  // a leaked maintenance connection, or an import admitted before teardown.
+  // closing the borrowed writer, or an import admitted before completion.
   test('index build racing HISTORY_END commits before ACK and releases imports/lifecycle', () async {
     final db = await LocalDb.instance;
     await LocalDb.setForeground(true);
+    await db.rawQuery('SELECT 123 AS index_writer_identity');
+    expect(_writerProbeId, isNotNull);
     // 12k history/version rows, with a 2KiB payload: a 24MiB+ real index input.
     await db.rawInsert('WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM n WHERE i<12000) '
       'INSERT INTO day_result(day_id,algo_version,payload_json,window_json,finalized,computed_at) '
@@ -382,6 +388,7 @@ void main() {
     final maintenance = const FinalizedDayIndexMaintenance().call();
     try {
       await _indexStarted!.future;
+      expect(_indexOwnerId, _writerProbeId, reason: 'one writer queue');
       expect((ImportGate.check('race') as SyncRefused).reason, ImportBlock.maintenance);
       final r = _Rig();
       r.engine.debugClaimHistoryTask();
@@ -406,16 +413,18 @@ void main() {
       expect(await _count('decoded_onehz'), 3);
       expect(await LocalDb.getCursor('strap_trim'), isNotNull);
       expect(r.acks.single.take(9).toList(), [1, 2, 0xB6, 0, 0, 0x18, 0, 0, 0]);
-      final closed = _log.indexWhere((e) => e.mark == 'maintenance-closed');
+      final indexed = _log.indexWhere((e) => e.mark == 'index-complete');
       final committed = _log.indexWhere((e) => e.mark == 'commit-end');
       final ack = _log.indexWhere((e) => e.mark == 'ack');
-      expect(closed, greaterThan(_log.indexWhere((e) => e.mark == 'index-complete')));
-      expect(committed, greaterThan(closed));
+      expect(indexed, greaterThanOrEqualTo(0));
+      expect(committed, greaterThan(indexed));
       expect(ack, greaterThan(committed));
       expect(await db.rawQuery("SELECT name FROM sqlite_master WHERE name='idx_day_result_finalized_payload'"), hasLength(1));
-      final closes = _log.where((e) => e.mark == 'maintenance-closed').length;
-      await const FinalizedDayIndexMaintenance().call(); // background never opens one
-      expect(_log.where((e) => e.mark == 'maintenance-closed').length, closes);
+      expect(db.isOpen, isTrue);
+      expect(_log.where((e) => e.mark == 'index-writer-closed'), isEmpty);
+      final builds = _log.where((e) => e.mark == 'index-complete').length;
+      await const FinalizedDayIndexMaintenance().call(); // background never builds
+      expect(_log.where((e) => e.mark == 'index-complete').length, builds);
     } finally {
       if (!_resumeIndex!.isCompleted) _resumeIndex!.complete();
       await maintenance;

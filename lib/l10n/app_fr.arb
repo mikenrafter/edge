@@ -4362,6 +4362,7 @@
   "importStageResults": "résultats calculés",
   "importStageArchive": "enregistrements bruts du bracelet",
   "importStageOther": "autres données",
+  "statusLineUpdatingDatabaseIndex": "Mise à jour de l’index de la base de données (une seule fois)",
   "statusLineImporting": "Import · {status}",
   "statusLineImportingStep": "Import · {status} · étape {index} sur {count}",
   "healthObservationsNotYet": "Commence après votre première nuit évaluée",

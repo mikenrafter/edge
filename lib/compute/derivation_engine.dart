@@ -2028,6 +2028,8 @@ part 'engine/settled.dart';
 // Version 125 is one unreleased merge step, including this analytics repin.
 // Clock-reset merge repair: background frequency feeds independently of RSA;
 // RSA/CVHR refuse unordered clocks and breathing bins use the correction owner.
+// Pending-day merge repair: rescan and quiet re-passes share the pool fence,
+// preventing waking metrics from freezing before the next night is derived.
 const int kAlgoVersion = 125;
 
 enum SleepEditCalculation { complete, incomplete, superseded }
@@ -3077,7 +3079,6 @@ class DerivationEngine {
           if (stored == before) {
             lastRunUnchangedDays++;
             _diag['unchanged_days'] = lastRunUnchangedDays;
-            _passPendingDays.remove(dayId);
             onDayDone?.call(dayId, ++completed, orderedDays.length);
             return;
           }
@@ -3175,7 +3176,6 @@ class DerivationEngine {
           failures++;
         }
         activeDays.remove(dayId);
-        _passPendingDays.remove(dayId);
         _diag['active_days'] = activeDays.toList();
         if (reportDone) {
           completed++;
@@ -3183,19 +3183,13 @@ class DerivationEngine {
         }
       }
 
-      _passPendingDays = orderedDays.toSet();
-      try {
-        await runWithConcurrency(orderedDays, _deriveConcurrency, processDay);
-      } finally {
-        _passPendingDays = <String>{};
-      }
+      await _runDayPool(orderedDays, processDay);
       if (staleTonight.isNotEmpty) {
         _diag['stage'] = 'tonight_repass';
         _log('derive: ${staleTonight.length} day(s) again, tonight\'s sleep '
             'moved under them');
-        await runWithConcurrency(
+        await _runDayPool(
             [for (final d in orderedDays) if (staleTonight.contains(d)) d],
-            _deriveConcurrency,
             (d) => processDay(d, repass: true));
       }
       // BEFORE the prune below: a day still owed a strain score is re-scored
@@ -3579,7 +3573,6 @@ class DerivationEngine {
           failures++;
         }
         activeDays.remove(dayId);
-        _passPendingDays.remove(dayId);
         _diag['active_days'] = activeDays.toList();
         if (reportDone) {
           completed++;
@@ -3587,17 +3580,11 @@ class DerivationEngine {
         }
       }
 
-      _passPendingDays = orderedDays.toSet();
-      try {
-        await runWithConcurrency(orderedDays, _deriveConcurrency, processDay);
-      } finally {
-        _passPendingDays = <String>{};
-      }
+      await _runDayPool(orderedDays, processDay);
       // As in [run]: days that would have finalized on a moved tonight.
       if (staleTonight.isNotEmpty) {
-        await runWithConcurrency(
+        await _runDayPool(
             [for (final d in orderedDays) if (staleTonight.contains(d)) d],
-            _deriveConcurrency,
             (d) => processDay(d, repass: true));
       }
       done += await _quietLevelRepass(profile, dataNowSec);
@@ -3737,7 +3724,7 @@ class DerivationEngine {
 
   /// The days of the running pass's pool that have not committed yet. A day
   /// whose next day is among them does not finalize this round.
-  Set<String> _passPendingDays = <String>{};
+  final Set<String> _passPendingDays = <String>{};
 
   /// [next] (the following day's main sleep) when it is TONIGHT's from this
   /// day's side: begun inside this day and after its own sleep ended.
@@ -4400,15 +4387,17 @@ class DerivationEngine {
       var done = 0;
       var completed = 0;
 
-      Future<void> processDay(String dayId) async {
+      final staleTonight = <String>{};
+      Future<void> processDay(String dayId, {bool repass = false}) async {
         var reportDone = true;
         try {
           final prepared = await _prepareTargetDayTimed(dayId, reuse: true);
           if (prepared != null) {
             final committed = await _derivePreparedDayTimed(
-                prepared, profile, dataNowSec, history);
+                prepared, profile, dataNowSec, history,
+                onStaleTonight: repass ? null : staleTonight);
             if (committed == DayDerive.committed) {
-              done++;
+              if (!repass) done++;
               await _recordDerivedFingerprint(dayId, dayFp[dayId], committed: true);
             } else if (committed == DayDerive.declined || committed == DayDerive.reused) {
               await _recordDerivedFingerprint(dayId, dayFp[dayId]);
@@ -4422,13 +4411,18 @@ class DerivationEngine {
           // Do NOT mark-skipped here — a finalized day already has a good row;
           // overwriting it with a skip marker would DISCARD real structure.
         }
-        if (reportDone) {
+        if (reportDone && !repass) {
           completed++;
           onDayDone?.call(dayId, completed, orderedDays.length);
         }
       }
 
-      await runWithConcurrency(orderedDays, _deriveConcurrency, processDay);
+      await _runDayPool(orderedDays, processDay);
+      if (staleTonight.isNotEmpty) {
+        await _runDayPool(
+            [for (final d in orderedDays) if (staleTonight.contains(d)) d],
+            (d) => processDay(d, repass: true));
+      }
 
       _calcStage('Baselines');
       await _refreshBaselines();
@@ -10380,42 +10374,29 @@ class DerivationEngine {
             existing['readiness'] != null);
   }
 
-  /// Bounded worker-pool size for concurrent per-day derivation. Days within
-  /// a single run share ONE frozen baseline snapshot (`_BaselineHistoryCache`
-  /// is loaded once before the loop, refreshed once after — see `run()`) and
-  /// each writes to an independent, day_id-keyed `day_result` row — there is
-  /// no cross-day ordering dependency within a run. A multi-day backlog sweep
-  /// was previously fully sequential (one day's prepare-isolate + prepare
-  /// substrate loads + compute-isolate all finishing before the next day even
-  /// started), which wastes every core beyond the one doing the current day's
-  /// work. Running several days' isolate work genuinely concurrently gets
-  /// real wall-clock speedup from the device's other cores — in the FOREGROUND.
-  /// A headless background slot has no spare cores to soak up, so it takes one
-  /// lane; [DerivePacing] owns that decision and explains it.
-  /// The days this pass's pool has not finished yet ([_runDayPool]).
-  final Set<String> _passUnfinished = {};
-
   /// Test seam: days prepared as [PreparedDerivationDay.tonightPending]
   /// whatever the next day's state, so a hold can be exercised without
   /// racing two workers. Empty in production.
   @visibleForTesting
   static Set<String> debugHoldTonight = {};
 
+  /// CLAIM(tonight-pool-membership): every day pool feeds the finalization
+  /// fence [derive_tonight_pending_test].
   /// [runWithConcurrency] over [days], tracking which are still unfinished so
   /// a day can tell its next day is mid-derive ([_prepareTargetDay]).
   Future<void> _runDayPool(
       List<String> days, Future<void> Function(String dayId) body) async {
-    _passUnfinished.addAll(days);
+    _passPendingDays.addAll(days);
     try {
       await runWithConcurrency(days, _deriveConcurrency, (dayId) async {
         try {
           await body(dayId);
         } finally {
-          _passUnfinished.remove(dayId);
+          _passPendingDays.remove(dayId);
         }
       });
     } finally {
-      _passUnfinished.removeAll(days);
+      _passPendingDays.removeAll(days);
     }
   }
 

@@ -4362,6 +4362,7 @@
   "importStageResults": "计算结果",
   "importStageArchive": "手环原始记录",
   "importStageOther": "其他数据",
+  "statusLineUpdatingDatabaseIndex": "正在更新数据库索引（仅一次）",
   "statusLineImporting": "导入 · {status}",
   "statusLineImportingStep": "导入 · {status} · 第 {index} 步，共 {count} 步",
   "healthObservationsNotYet": "首个已评分的夜晚之后开始",

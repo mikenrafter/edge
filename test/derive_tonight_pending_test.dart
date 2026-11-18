@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'support/test_callable.dart';
 // A day old enough to finalize, whose next day has not stored its window yet
 // in the same pass, is held: not finalized and not recorded as unchanged, so
@@ -60,6 +62,63 @@ void main() {
     DerivationEngine.debugSecondHalfHook = null;
     await LocalDb.close();
   });
+
+  // WHY: rescans and quiet re-passes must populate the same pending pool as
+  // run/runDays. Hold the next worker before its window commits. The earlier
+  // day must retain that prepare-time hold when the next worker later fails.
+  // Proves CLAIM(tonight-pool-membership), without debugHoldTonight.
+  for (final path in ['rescan', 'quiet']) {
+    test('$path keeps a day provisional while its next worker is pending', () async {
+      await _seed('tonight_pool_$path.db');
+      const next = '2026-07-13';
+      final prepared = Completer<void>();
+      final nextEntered = Completer<void>();
+      var inQuiet = false;
+      for (final day in ['2026-07-09', '2026-07-10', '2026-07-11']) {
+        await LocalDb.putMetricSeriesValue(day, 'quiet_hrr', 0.2);
+      }
+      Future<void> holdNext(String day) async {
+        if (day != next) return;
+        if (!nextEntered.isCompleted) nextEntered.complete();
+        await prepared.future;
+        throw StateError('next day failed before its window committed');
+      }
+      final engine = DerivationEngine();
+      engine.debugDayHook = (day) async {
+        if (path == 'quiet') throw StateError('leave first pool for quiet retry');
+      };
+      DerivationEngine.debugSecondHalfHook = TestCall1((day) async {
+        if (path == 'rescan' && day == next) await holdNext(day);
+        if (day == _held && (path == 'rescan' || inQuiet)) {
+          await nextEntered.future;
+          if (!prepared.isCompleted) prepared.complete();
+        }
+      });
+      DerivationEngine.debugQuietRepassHook = (day) async {
+        if (day == null) inQuiet = true;
+        if (day != null) await holdNext(day);
+      };
+      addTearDown(() {
+        if (!prepared.isCompleted) prepared.complete();
+        DerivationEngine.debugQuietRepassHook = null;
+      });
+      if (path == 'rescan') {
+        expect(await engine.rescanRecent(_profile), greaterThan(0));
+      } else {
+        for (final day in [_held, next]) {
+          await LocalDb.putComputeFreshness(
+              '${DerivationEngine.kQuietRepassKeyPrefix}$day', 'owed');
+        }
+        await engine.run(_profile, heavy: true);
+        expect(inQuiet, isTrue);
+      }
+      expect(prepared.isCompleted, isTrue, reason: 'earlier day really computed');
+      final row = await LocalDb.dayResult(_held);
+      expect(row, isNotNull);
+      expect(row!['partial'], 0, reason: 'a successful second half is held');
+      expect(row['finalized'], 0, reason: 'next day had no committed window when this day prepared');
+    }, timeout: const Timeout(Duration(minutes: 5)));
+  }
 
   test(
     'a held day never finalizes or receives a skip key, then settles',

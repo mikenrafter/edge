@@ -3,7 +3,7 @@
 // is. Always present, so a progress change swaps text inside the box and never
 // moves anything (0 layout shift).
 //
-// First that applies: import progress > derive progress (running) > a sync
+// First that applies: index maintenance > import progress > derive progress (running) > a sync
 // running > "Synced through ...". Counts appear only where the source reported
 // them. Tap opens the sync details, as Home's sync row does. With no AppState
 // above (fixtures) the row keeps its height and shows nothing.
@@ -42,6 +42,7 @@ class StatusLine extends StatelessWidget {
   /// row ([HomeSyncStatus]) with its "Sync now" / "Show details" actions, in
   /// the same fixed-height slot. The other tabs carry the text alone.
   final bool syncActions;
+
   final String? idleLabel;
   final double? slotHeight;
 
@@ -114,13 +115,16 @@ class StatusLine extends StatelessWidget {
       valueListenable: app.importProgress,
       builder: (c, imp, _) => ValueListenableBuilder<DeriveProgress?>(
         valueListenable: app.deriveProgress,
-        builder: (c, der, _) => _text(c, app, imp, der),
+        builder: (c, der, _) => ValueListenableBuilder<bool>(
+          valueListenable: app.indexMaintenanceActive,
+          builder: (c, indexActive, _) => _text(c, app, imp, der, indexActive),
+        ),
       ),
     );
   }
 
   Widget _text(BuildContext c, AppState app, ImportProgress? imp,
-      DeriveProgress? der) {
+      DeriveProgress? der, bool indexActive) {
     final l = AppLocalizations.of(c);
     final p = P.of(c);
     // Only the fields this line needs, so AppState's heartbeat does not
@@ -137,7 +141,10 @@ class StatusLine extends StatelessWidget {
     // what the app is doing now.
     final importing = imp != null &&
         (imp is ImportCalculating || imp is! ImportDone && imp is! ImportFailed);
-    if (importing) {
+    if (indexActive) {
+      text = l?.statusLineUpdatingDatabaseIndex ??
+          'Updating the database index (one time)';
+    } else if (importing) {
       text = imp is ImportCalculating
           ? (deriveProgressLine(der, l) ?? importLine(l, imp))
           : importLine(l, imp);
@@ -149,6 +156,7 @@ class StatusLine extends StatelessWidget {
       text = idleLabel ?? syncedThroughLabel(sync.$3, todayId ?? todayLabel(), l);
     }
     if (syncActions &&
+        !indexActive &&
         !importing &&
         deriveProgressLine(der, l) == null) {
       // No wrapper box: the row's HitOverhang must be the render child of the

@@ -13,6 +13,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/derive_progress.dart';
 import 'package:openstrap_edge/ui2/shared_slot.dart';
 import 'package:openstrap_edge/ui2/status_line.dart';
+import 'package:openstrap_edge/ui2/sync_control.dart' show HomeSyncStatus;
 import 'package:openstrap_edge/ui2/theme.dart';
 
 import 'support/shift_run.dart';
@@ -25,6 +26,9 @@ class _App extends AppState {
   SyncPresentationState pres;
   final DateTime? at;
   final derive = ValueNotifier<DeriveProgress?>(null);
+  final index = ValueNotifier<bool>(false);
+  @override
+  ValueListenable<bool> get indexMaintenanceActive => index;
 
   @override
   SyncPresentationState get syncPresentation => pres;
@@ -37,9 +41,10 @@ class _App extends AppState {
 const _syncing = SyncPresentationState(
     phase: 'downloading', busy: true, contactedBand: true);
 
-Widget _host(AppState? app, {double scale = 1}) {
+Widget _host(AppState? app, {double scale = 1, bool syncActions = false}) {
   Widget body = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-    StatusLine(todayId: '2026-10-04', now: _t0),
+    StatusLine(todayId: '2026-10-04', now: _t0,
+        syncActions: syncActions),
     const SharedSlot('below', child: SizedBox(height: 40)),
   ]);
   if (app != null) {
@@ -81,6 +86,37 @@ void main() {
     app.derive.value = const DeriveProgress(dayIndex: 3, dayTotal: 12);
     await t.pumpWidget(_host(app));
     expect(_text(t), 'Calculating sleep, recovery and strain · day 3 of 12');
+  });
+
+  // WHY: a save queued behind the one-time index waits silently on its own
+  // screen, so the header must say why the app is busy (owner: work never
+  // runs hidden). This is the production host: HeaderRows uses syncActions.
+  testWidgets('the header shows the index build in place of the sync row', (t) async {
+    final app = _App(_syncing);
+    addTearDown(app.dispose);
+    await t.pumpWidget(_host(app, syncActions: true));
+    expect(find.byType(HomeSyncStatus), findsOneWidget);
+    app.index.value = true;
+    await t.pump();
+    expect(find.text('Updating the database index (one time)'), findsOneWidget);
+    expect(find.byType(HomeSyncStatus), findsNothing);
+    app.index.value = false;
+    await t.pump();
+    expect(find.byType(HomeSyncStatus), findsOneWidget);
+  });
+
+  // WHY: the plain (non-header) line names the same one-time work.
+  // CLAIM(index-writer-queue): maintenance replaces sync and clears afterward.
+  testWidgets('index build is visible until queued saves can resume', (t) async {
+    final app = _App(_syncing);
+    addTearDown(app.dispose);
+    await t.pumpWidget(_host(app));
+    app.index.value = true;
+    await t.pump();
+    expect(_text(t), 'Updating the database index (one time)');
+    app.index.value = false;
+    await t.pump();
+    expect(_text(t), 'Downloading…');
   });
 
   testWidgets('import beats derive; copying shows stage and step', (t) async {

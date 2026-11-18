@@ -180,6 +180,16 @@ void main() {
     expect((await reader.rawQuery('PRAGMA journal_mode')).first.values.first, 'wal');
   });
 
+  // WHY: WAL recovery can briefly hold a reader; restore the fork's retry
+  // and bounded reader cache on the actual published connection.
+  // Proves CLAIM(reader-connection-settings).
+  test('reader has a two-second busy wait and a 16000 KiB page cache', () async {
+    final reader = await LocalDb.readExecutor();
+    expect(identical(reader, await LocalDb.instance), isFalse);
+    expect((await reader.rawQuery('PRAGMA busy_timeout')).single.values.single, 2000);
+    expect((await reader.rawQuery('PRAGMA cache_size')).single.values.single, -16000);
+  });
+
   test('cold reader waits for writer open and same-version schema repair', () async {
     final writer = await LocalDb.instance;
     final path = writer.path;

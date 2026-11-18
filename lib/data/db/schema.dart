@@ -82,6 +82,11 @@ Future<Database?> _ldbPrivOpenReader(Database writer, int epoch) async {
       candidate = await ((LocalDb.debugReaderOpener ?? LocalDb.readerOpenerForTest)?.call(writer.path) ??
           openDatabase(writer.path, singleInstance: false));
       await candidate.execute('PRAGMA query_only=ON');
+      // CLAIM(reader-connection-settings): transient WAL recovery waits instead
+      // of failing a screen read [wal_reader_connection_test]. Negative cache
+      // sizes are KiB, independent of the database page size.
+      await candidate.rawQuery('PRAGMA busy_timeout=2000');
+      await candidate.rawQuery('PRAGMA cache_size=-16000');
       // Read, never change, journal mode. A rollback-journal connection cannot
       // provide the concurrent committed reads this connection exists for.
       final mode = await candidate.rawQuery('PRAGMA journal_mode');
@@ -137,6 +142,10 @@ Future<Database> _ldbPrivOpen() async {
     final opened = await openDatabase(
       path,
       onConfigure: (db) async {
+        // Bound waits for other SQLite connections. Index maintenance instead
+        // shares this writer queue so UI/live writes wait without contention.
+        // CLAIM(index-derive-exclusion) [finalized_day_ids_index_test].
+        await db.rawQuery('PRAGMA busy_timeout=30000');
         // WRITE PERFORMANCE. The default rollback journal (journal_mode=delete)
         // with synchronous=FULL fsyncs the whole DB on every commit — brutal for
         // the high-volume sync-ingest and the raw re-decode migration on a large

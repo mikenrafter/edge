@@ -18101,6 +18101,7 @@
   "@ecgTimelineMissing": {
     "description": "WHOOP MG ECG: missing second"
   },
+  "statusLineUpdatingDatabaseIndex": "กำลังอัปเดตดัชนีฐานข้อมูล (ครั้งเดียว)",
   "statusLineImporting": "Importing · {status}",
   "loadingExportCsv": "Exporting your data as CSV",
   "tracksSave": "Save",
