@@ -180,6 +180,18 @@ void main() {
       final payload=jsonDecode((await rows()).singleWhere((r)=>r['state']=='live')['payload_json'] as String) as Map;
       expect(payload['duration_min'],overlap?null:65); await parity();
     }
+    // A newly accepted detection is measured too, even before it has a row.
+    await db.delete('sleep_block');await db.delete('sleep_nap');await db.delete('sleep_edit_job');
+    await seed('first',a,a+2400,payload:jsonEncode({'duration_min':30,'in_bed_min':40}));
+    final incoming=[AddNap(a+3600,a+6000,source:'confirmed',payload:jsonEncode({
+      'start':a+3600,'end':a+6000,'duration_min':35,'in_bed_min':40}))];
+    final pre=await SleepBlockStore.preflight(db,plan(incoming));
+    expect(pre,isA<SleepProposalMergeRequired>());
+    expect(await save(incoming,merge:(pre as SleepProposalMergeRequired).proposal.authorization),isA<SleepSaved>());
+    final merged=(await rows()).singleWhere((r)=>r['state']=='live');
+    expect([merged['history'],merged['detected_start'],merged['detected_end']],['known',a,a+6000]);
+    expect(jsonDecode(merged['payload_json'] as String)['duration_min'],65);
+    await parity();
   });
   test('W14 ClearMain reveals detection; dangling merged participants become restorable',() async {
     await detection(); await seed('m',a,a+3600,kind:SleepBlockKind.main);
