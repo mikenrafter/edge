@@ -17,8 +17,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
-import 'package:openstrap_edge/gestures/gesture_settings.dart'
-    show TapCountMethod;
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart'
@@ -52,14 +50,14 @@ Future<void> _pump(
   Set<DeviceAction> chosen = const {},
   Set<DeviceAction> replay = const {},
   bool ecg = false,
-  TapCountMethod? method,
+
   bool extraTaps = true,
   bool? devMode,
   Map<int, Set<DeviceAction>> tapActions = const {},
   void Function(DeviceAction, bool)? onToggle,
   Future<void> Function(int, DeviceAction, bool)? onTapToggle,
   void Function(DeviceAction, bool)? onReplay,
-  ValueChanged<TapCountMethod>? onTapMethod,
+
   VoidCallback? onHaptics,
   VoidCallback? onDeviceLab,
   double width = 390,
@@ -76,8 +74,7 @@ Future<void> _pump(
         chosen: chosen,
         supported: _supported,
         replay: replay,
-        ecgSupported: ecg,
-        tapMethod: method,
+
         extraTaps: extraTaps,
         // ECG options are developer mode only: an ECG band here is in it,
         // unless a test says otherwise.
@@ -86,7 +83,7 @@ Future<void> _pump(
         onToggle: onToggle,
         onTapToggle: onTapToggle,
         onReplay: onReplay,
-        onTapMethod: onTapMethod,
+
         onHaptics: onHaptics,
         onDeviceLab: onDeviceLab,
       ),
@@ -130,24 +127,6 @@ void main() {
   setUp(() => Prefs.setString(kGesturesTabPref, ''));
 
   group('settings above the tabs', () {
-    testWidgets('the intro and "Count extra taps with" sit above the tab row',
-        (t) async {
-      await _pump(t, ecg: true);
-      final tabsTop = t.getTopLeft(find.byType(SubTabs)).dy;
-      expect(find.text('Tap the band twice'), findsOneWidget);
-      expect(t.getBottomLeft(find.text('Tap the band twice')).dy,
-          lessThan(tabsTop));
-      expect(sectionTitles(t), ['Count extra taps with']);
-      for (final id in const ['ecg', 'repeat']) {
-        final m = find.byKey(ValueKey('tap-method:$id'));
-        expect(m, findsOneWidget, reason: id);
-        expect(t.getBottomLeft(m).dy, lessThan(tabsTop), reason: id);
-      }
-      // The MG note is a setting-level explanation, not a tab's.
-      expect(find.text('What needs a WHOOP MG'), findsOneWidget);
-      expect(t.getBottomLeft(find.text('What needs a WHOOP MG')).dy,
-          lessThan(tabsTop));
-    });
 
     testWidgets('the old accordions and the tap-count picker are gone',
         (t) async {
@@ -159,25 +138,6 @@ void main() {
       }
     });
 
-    testWidgets('choosing a method reports it', (t) async {
-      final picked = <TapCountMethod>[];
-      await _pump(t, ecg: true, onTapMethod: picked.add);
-      await t.tap(find.text('ECG sensor touches'));
-      await t.tap(find.text('More double taps'));
-      expect(picked, [TapCountMethod.ecg, TapCountMethod.repeat]);
-    });
-
-    testWidgets('without extra taps: no method choice, no MG note, no tab row, '
-        'and the double tap content is still there', (t) async {
-      await _pump(t, extraTaps: false, devMode: true);
-      expect(find.byType(SubTabs), findsNothing);
-      expect(sectionTitles(t), isEmpty);
-      expect(find.text('What needs a WHOOP MG'), findsNothing);
-      expect(_nameText(t), 'Double tap');
-      expect(_row('Mark a moment'), findsOneWidget);
-      expect(_haptics, findsOneWidget);
-      expect(_lab, findsOneWidget);
-    });
   });
 
   group('one tab per gesture', () {
@@ -207,34 +167,6 @@ void main() {
       }
     });
 
-    testWidgets('ECG touches: Double tap, +1, +2, +3 ECG, named in full',
-        (t) async {
-      await _pump(t, ecg: true, method: TapCountMethod.ecg);
-      final s = _tabs(t);
-      expect(s.items, ['Double tap', '+1 ECG', '+2 ECG', '+3 ECG']);
-      expect(s.semanticLabels, [
-        'Double tap, gesture',
-        'Double tap + 1 ECG tap, gesture',
-        'Double tap + 2 ECG taps, gesture',
-        'Double tap + 3 ECG taps, gesture',
-      ]);
-      for (final (n, name) in const [
-        (2, 'Double tap'),
-        (3, 'Double tap + 1 ECG tap'),
-        (4, 'Double tap + 2 ECG taps'),
-        (5, 'Double tap + 3 ECG taps'),
-      ]) {
-        await _select(t, n);
-        expect(_nameText(t), name, reason: 'tab $n');
-      }
-    });
-
-    testWidgets('a band without the ECG sensor counts double taps even if '
-        'ECG was asked for', (t) async {
-      await _pump(t, ecg: false, method: TapCountMethod.ecg);
-      expect(_tabs(t).items, ['Double tap', '×2', '×3', '×4']);
-    });
-
     testWidgets('no tab is marked Draft: the count gestures are finished',
         (t) async {
       await _pump(t);
@@ -253,14 +185,6 @@ void main() {
       expect(t.widget<Text>(how).data, contains('Double tap 3 times in a row'));
     });
 
-    testWidgets('the ECG how-to names the sensor touches', (t) async {
-      await _pump(t, ecg: true, method: TapCountMethod.ecg);
-      await _select(t, 4);
-      final how =
-          t.widget<Text>(find.byKey(const ValueKey('gestures-tab-how'))).data!;
-      expect(how, contains('ECG sensor'));
-      expect(how, contains('2 times'));
-    });
   });
 
   group('every tab has the same layout', () {
@@ -547,14 +471,13 @@ void main() {
   });
 
   group('layout', () {
-    for (final method in TapCountMethod.values) {
+    {
       testWidgets('360 pt at 1.3x text, every tab, developer mode on, '
-          'everything on: no overflow (${method.name})', (t) async {
+          'everything on: no overflow', (t) async {
         await _pump(t,
             width: 360,
             scale: 1.3,
             ecg: true,
-            method: method,
             devMode: true,
             chosen: {for (final a in _supported) a}..remove(DeviceAction.none),
             replay: {DeviceAction.markMoment},
@@ -570,31 +493,12 @@ void main() {
           await _select(t, n);
           await t.ensureVisible(_lab);
           await t.pumpAndSettle();
-          expect(_faults(), isEmpty, reason: '${method.name} tab $n');
+          expect(_faults(), isEmpty, reason: 'tab $n');
           expect(find.byType(SwitchRow), findsWidgets);
         }
       });
     }
 
-    testWidgets('the tab row scrolls rather than overflowing at 360 pt, 2x',
-        (t) async {
-      await _pump(t, width: 360, scale: 2, ecg: true, method: TapCountMethod.ecg);
-      expect(_faults(), isEmpty);
-      // At 2x the settings above push the row below the fold, and the last
-      // tab is off the edge until the row is scrolled to it.
-      await t.scrollUntilVisible(find.byType(SubTabs), 200,
-          scrollable: find.byType(Scrollable).first);
-      await t.drag(find.byType(SubTabs), const Offset(-400, 0));
-      await t.pumpAndSettle();
-      await _select(t, 5);
-      expect(_faults(), isEmpty);
-      expect(_tabs(t).index, 3);
-    });
   });
 
-  testWidgets('the only accordion above the tabs is the method choice',
-      (t) async {
-    await _pump(t, ecg: true);
-    expect(find.byType(SettingsAccordion), findsOneWidget);
-  });
 }

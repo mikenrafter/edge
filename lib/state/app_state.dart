@@ -147,7 +147,7 @@ import '../health/health_export.dart';
 import '../health/phone_pedometer.dart';
 import '../import/noop_import.dart';
 import '../import/whoop_import.dart';
-import '../gestures/ecg_tap_begin.dart';
+import '../gestures/ecg_probe_begin.dart';
 import '../gestures/alarm_slot_probe.dart';
 import '../gestures/termination_probe.dart';
 import '../gestures/hardware_probe_runner.dart';
@@ -450,7 +450,6 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     // The Device lab's touch counter and ECG touch probe read the same live
     // packets (RAM only). At most one of them holds the stream.
     c.onFrame = (r) {
-      _gestures.onEcgFrame(r);
       hardwareProbes.onFrame(r);
     };
     return c;
@@ -540,47 +539,22 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// Band-gesture → action mapping (double-tap, etc.). Exposed for the settings UI.
   final GestureSettings gestureSettings = GestureSettings();
 
-  /// The band-gesture seam: the dispatcher, the two tap-counting
-  /// sessions, the cues and the failure store. Assigned in both constructors,
+  /// The band-gesture seam: the dispatcher, the repeated-double-tap
+  /// session, the cues and the failure store. Assigned in both constructors,
   /// before the engine, as the dispatcher was.
   late final GestureController _gestures;
 
-  GestureController _newGestureController() {
-    // The same test the dispatcher's ecgSupported callback makes: a stored lab
-    // switch only owns the double tap where ECG gestures exist.
-    gestureSettings.ecgInForce = () => engine.isMaverick && devMode;
-    return _buildGestureController();
-  }
+  GestureController _newGestureController() => _buildGestureController();
 
   GestureController _buildGestureController() => GestureController(
         settings: gestureSettings,
         haptics: haptics,
         deviceLab: deviceLab,
         alertDispatcher: () => alertDispatcher,
-        ecg: () => ecg,
-        // ECG gestures (the capture on a double tap, counting touches) are a
-        // developer-mode option on a band with the sensor. Without developer
-        // mode the dispatcher sees no ECG: a stored ECG choice falls back to
-        // the double-tap chain for the same actions, none is dropped.
-        ecgSupported: () => engine.isMaverick && devMode,
-        clockRef: () => engine.clockRef,
         log: _log,
         onMarkMoment: _markMomentFromGesture,
         onWorkoutToggle: _toggleWorkoutFromGesture,
         onSlotAction: _slotActionFromGesture,
-        // The stream makes the band save raw ECG that history sync delivers
-        // later; keep the interval (no samples) so it is labelled gesture
-        // contact.
-        recordEcgSession: (r) async {
-          await LocalDb.recordEcgGestureSession(
-            deviceId: LocalDb.kPrimaryDeviceId,
-            strapStart: r.strapStart,
-            strapEnd: r.strapEnd,
-            finalCount: r.finalCount,
-            reason: r.reason,
-            createdAtMs: DateTime.now().millisecondsSinceEpoch,
-          );
-        },
         loadPatterns: () => SettingsRepository.instance.patterns(),
         readCueAssignments: () => Prefs.getString(Prefs.hapticsCueAssign, ''),
         readFailures: () => Prefs.getString(Prefs.gestureFailures, ''),
@@ -782,7 +756,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     sendPattern: _probePattern,
     isConnected: () => engine.isConnected,
     ecgSupported: () => engine.isMaverick,
-    ecgBusy: () => _gestures.ecgTapActive || ecg.isCapturing,
+    ecgBusy: () => ecg.isCapturing,
     beginEcg: _beginEcgForProbe,
     endEcg: () async {
       try {
@@ -896,7 +870,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
 
   /// The ECG touch probe's stream: the gesture's start path (wrist, guard,
   /// generation checks), persist off, with its own "still wanted" test.
-  Future<bool> _beginEcgForProbe() => beginEcgForTap(
+  Future<bool> _beginEcgForProbe() => beginEcgProbeStream(
         isCurrent: () => hardwareProbes.running == ProbeKind.ecg,
         isCapturing: () => ecg.isCapturing,
         lookupWrist: () async {

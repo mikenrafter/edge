@@ -672,13 +672,11 @@ void main() {
       // The ECG touch counter and its failure buzz.
       // The count buzz is the gesture cues', whose delivery is a queue
       // job (compiled: haptics.deliver; no profile: haptics.runJob).
-      expect(bodyOf(gestures, 'Future<bool> _ecgTapBuzz('),
+      expect(bodyOf(gestures, 'Future<bool> _tapFollowUpBuzz('),
           contains('cues.followUp'));
       final cues = File('lib/haptics/gesture_cues.dart').readAsStringSync();
       expect(cues, contains('haptics.deliver('));
       expect(cues, contains('haptics.runJob('));
-      expect(bodyOf(gestures, 'Future<bool> _ecgTapFailBuzz('),
-          contains('cues.failed'));
       // The alarm and fixed pattern of _dispatchBandAlert, and the rule
       // rhythm it plays: only reachable from a workout, a breathing session or
       // a wake, which need a live band session.

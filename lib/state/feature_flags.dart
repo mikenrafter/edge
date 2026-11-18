@@ -14,8 +14,7 @@
 //                     the Android Relay UI is hidden.
 //   sourceResolverUi  No Source catalog / resolved-data entry; the priority
 //                     editor shows only when two devices contend, as before.
-//   tapClassifiers    A double tap is just a double tap: no ECG touch counting,
-//                     no repeated-double-tap window, no lab modes, and the 3-5
+//   tapClassifiers    A double tap is just a double tap: no repeated-double-tap window, no lab modes, and the 3-5
 //                     tap rows are hidden.
 //   naturalWake       No Natural Wake: its row and the upgrade card are
 //                     hidden, the orchestrator is given no Natural window, and

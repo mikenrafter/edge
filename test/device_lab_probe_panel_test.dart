@@ -108,7 +108,7 @@ void main() {
       theme: buildTheme(Brightness.light),
       home: DeviceLabView(
         initialTab: LabTab.probes,
-        ecgSupported: true,
+
         probes: HardwareProbePanel(
         runner: _runner(DeviceLabLog()),
         logText: () => '',

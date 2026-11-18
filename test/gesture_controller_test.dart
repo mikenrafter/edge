@@ -80,16 +80,14 @@ class FakeHost {
       haptics: haptics,
       deviceLab: lab,
       alertDispatcher: () => dispatcher,
-      ecg: () => ecg,
-      ecgSupported: () => supported,
-      clockRef: () => clockRef,
+
       log: logged.add,
       onMarkMoment: (e) async => acted.add('mark'),
       onWorkoutToggle: (e) async {
         acted.add('workout');
         if (workoutThrows) throw StateError('no workout');
       },
-      recordEcgSession: (r) async => sessions.add((r.finalCount, r.reason)),
+
       loadPatterns: () async {
         loads++;
         if (loadThrows) throw StateError('no patterns');
@@ -163,7 +161,7 @@ void main() {
     addTearDown(h.dispose);
     // The app's default is repeated double taps; an ECG band here counts
     // touches, as one whose wearer chose them.
-    if (supported) await h.settings.setTapMethod(TapCountMethod.ecg);
+
     return h;
   }
 
@@ -193,46 +191,6 @@ void main() {
       expect(h.acted, isEmpty);
     });
 
-    test('with 3 taps mapped on an ECG band the tap is counted by the ECG '
-        'route, and the action of the final count runs', () async {
-      await newHost();
-      await h.settings.setActionsForTaps(2, {DeviceAction.markMoment});
-      await h.settings.setActionsForTaps(3, {DeviceAction.workoutToggle});
-      final done = h.controller.handle(h.doubleTap());
-      await until(() => h.order.contains('ecg:start'));
-      expect(h.controller.ecgTapActive, isTrue);
-      // A steady stream with the finger on the sensor.
-      await feedEcgOpening(h.controller.onEcgFrame);
-      final out = await done.timeout(const Duration(seconds: 15));
-      expect(out.single.taps, 3);
-      expect(h.acted, ['workout']);
-      expect(h.sessions.single.$1, 3);
-      expect(h.sessions.single.$2, isNull);
-      await until(() => !h.controller.ecgTapActive);
-      await settleMs(50);
-    });
-  });
-
-  group('the start cue plays before the ECG stream begins', () {
-    test('the cue write is the first band write of the gesture and PREPARE '
-        'follows it', () async {
-      await newHost();
-      await h.settings.setActionsForTaps(3, {DeviceAction.workoutToggle});
-      final done = h.controller.handle(h.doubleTap());
-      await until(() => h.order.contains('ecg:start'));
-      expect(h.order.first, 'cue');
-      expect(h.order.indexOf('cue'), lessThan(h.order.indexOf('ecg:prepare')));
-      // A steady stream with the finger on the sensor.
-      await feedEcgOpening(h.controller.onEcgFrame);
-      await done.timeout(const Duration(seconds: 15));
-      // Start, one follow-up (2 to 3) and the confirm.
-      await until(() => h.order.where((l) => l == 'cue').length == 3);
-      expect(h.ecg.begins, [false], reason: 'never persisted');
-      expect(h.ecg.prepares.single, isNot(contains('rawSaveOn')),
-          reason: 'Keep waveform is off: no raw save for a gesture either');
-      await until(() => !h.controller.ecgTapActive);
-      await settleMs(50);
-    });
   });
 
   group('failures', () {
@@ -245,7 +203,7 @@ void main() {
       expect(out.single.action, DeviceAction.markMoment);
       expect(h.acted, ['mark']);
       final f = h.controller.failures.all.single;
-      expect(f.kind, GestureFailureKind.ecg);
+      expect(f.kind, GestureFailureKind.doubleTap);
       expect(f.reason, 'start_failed');
       expect(f.log, contains('start_failed'));
       await until(() => h.written.isNotEmpty);
@@ -286,89 +244,6 @@ void main() {
       expect(h.assignmentReads, 2);
     });
 
-    test('a cue that cannot be read is no failure: loadCues never throws and '
-        'the cue still plays', () async {
-      await newHost();
-      h.loadThrows = true;
-      await expectLater(h.controller.loadCues(), completes);
-      expect(h.assignmentReads, 0);
-      await h.settings.setActionsForTaps(3, {DeviceAction.workoutToggle});
-      final done = h.controller.handle(h.doubleTap());
-      await until(() => h.order.contains('ecg:start'));
-      // A steady stream with the finger on the sensor.
-      await feedEcgOpening(h.controller.onEcgFrame);
-      await done.timeout(const Duration(seconds: 15));
-      expect(h.order, contains('cue'));
-      await until(() => !h.controller.ecgTapActive);
-      await settleMs(50);
-    });
-
-    test('every cue of a gesture reloads the wearer\'s assignments first',
-        () async {
-      await newHost();
-      await h.settings.setActionsForTaps(3, {DeviceAction.workoutToggle});
-      final done = h.controller.handle(h.doubleTap());
-      await until(() => h.order.contains('ecg:start'));
-      // A steady stream with the finger on the sensor.
-      await feedEcgOpening(h.controller.onEcgFrame);
-      await done.timeout(const Duration(seconds: 15));
-      await until(() => h.order.where((l) => l == 'cue').length == 3);
-      expect(h.loads, 3, reason: 'the start, follow-up and confirm cues');
-      await until(() => !h.controller.ecgTapActive);
-      await settleMs(50);
-    });
   });
 
-  group('the pending tap count', () {
-    test('a second double tap while one is being counted is ignored: it runs '
-        'nothing and the first still completes with its own count', () async {
-      await newHost();
-      await h.settings.setActionsForTaps(3, {DeviceAction.workoutToggle});
-      final first = h.controller.handle(h.doubleTap());
-      await until(() => h.order.contains('ecg:start'));
-      final second = await h.controller.handle(h.doubleTap());
-      expect(second, isEmpty);
-      expect(h.controller.ecgTapActive, isTrue);
-      // A steady stream with the finger on the sensor.
-      await feedEcgOpening(h.controller.onEcgFrame);
-      final out = await first.timeout(const Duration(seconds: 15));
-      expect(out.single.taps, 3);
-      expect(h.acted, ['workout']);
-      await until(() => !h.controller.ecgTapActive);
-      await settleMs(50);
-    });
-
-    test('a start that throws clears the pending count, so the next tap '
-        'counts again', () async {
-      await newHost(wrist: false);
-      await h.settings.setActionsForTaps(2, {DeviceAction.markMoment});
-      await h.settings.setActionsForTaps(3, {DeviceAction.workoutToggle});
-      await h.controller.handle(h.doubleTap());
-      await until(() => !h.controller.ecgTapActive);
-      await settleMs(50);
-      final again = await h.controller.handle(h.doubleTap());
-      expect(again.single.action, DeviceAction.markMoment);
-      expect(h.acted, ['mark', 'mark']);
-    });
-  });
-
-  group('the session starts refuse after dispose', () {
-    test('the dispatcher\'s ECG start callback begins no gesture', () async {
-      await newHost();
-      h.controller.dispose();
-      await h.controller.dispatcher.onEcgTap!(h.doubleTap());
-      expect(h.controller.ecgTapActive, isFalse);
-      expect(h.ecg.begins, isEmpty);
-      expect(h.order, isEmpty, reason: 'no cue and no ECG write');
-    });
-
-    test('the dispatcher\'s touch-counting callback counts nothing', () async {
-      await newHost();
-      h.controller.dispose();
-      expect(await h.controller.dispatcher.onCountTaps!(h.doubleTap()), isNull);
-      expect(h.controller.ecgTapActive, isFalse);
-      expect(h.ecg.begins, isEmpty);
-      expect(h.order, isEmpty);
-    });
-  });
 }

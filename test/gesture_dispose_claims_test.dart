@@ -67,12 +67,7 @@ class _Rig {
         started.add('native:$id');
         return true;
       },
-      ecgSupported: () => mg,
-      onEcgTap: (e) async => started.add('ecg session'),
-      onCountTaps: (e) async {
-        started.add('counting session');
-        return 2;
-      },
+
       repeatSession: repeat,
       onMarkMoment: (e) async => started.add('moment'),
       onWorkoutToggle: (e) async => started.add('workout'),
@@ -135,29 +130,6 @@ void main() {
     expect(outcomes, isEmpty);
     expect(r.started, isEmpty);
     expect(r.claimed, hasLength(1), reason: 'the second action never asked');
-  });
-
-  test('the ECG lab tap starts no session after dispose', () async {
-    final s = await _settings();
-    await s.setEcgOnDoubleTap(true);
-    final r = _Rig(s, mg: true);
-    await r.tapDisposedDuringClaim();
-    await r.settle();
-    expect(r.started, isEmpty);
-    expect(r.released, r.claimed);
-  });
-
-  test('the touch counter starts no session after dispose, and its actions '
-      'do not run', () async {
-    final s = await _settings();
-    await s.setDoubleTapActions({DeviceAction.workoutToggle});
-    await s.setActionsForTaps(3, {DeviceAction.markMoment});
-    final r = _Rig(s, mg: true);
-    final outcomes = await r.tapDisposedDuringClaim();
-    await r.settle();
-    expect(outcomes, isEmpty);
-    expect(r.started, isEmpty);
-    expect(r.released, r.claimed);
   });
 
   test('the repeated-double-tap window never opens after dispose', () async {

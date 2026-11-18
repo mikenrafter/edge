@@ -53,7 +53,7 @@ import 'support/dart_source_lexical.dart';
 final DateTime _t0 = DateTime.utc(2026, 10, 4, 12, 7, 31);
 
 GestureFailure _f(String id,
-        {GestureFailureKind kind = GestureFailureKind.ecg,
+        {GestureFailureKind kind = GestureFailureKind.doubleTap,
         String reason = 'start_failed',
         int minute = 0,
         bool dismissed = false}) =>
@@ -225,7 +225,7 @@ void main() {
       ])));
       await g123Settle(t);
       final ecg = find.byKey(const ValueKey('gesture-failure-row:a'));
-      expect(find.descendant(of: ecg, matching: find.textContaining('ECG')),
+      expect(find.descendant(of: ecg, matching: find.textContaining('Double tap')),
           findsWidgets);
       expect(find.descendant(of: ecg, matching: find.textContaining('start_failed')),
           findsWidgets);

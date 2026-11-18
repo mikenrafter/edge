@@ -215,7 +215,7 @@ void main() {
           theme: buildTheme(Brightness.light),
           home: DeviceLabView(
             initialTab: LabTab.logs,
-            ecgSupported: true,
+
             packets: lab.packets,
             saveLog: (name, text) async {
               saved.add(text);

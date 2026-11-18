@@ -1,4 +1,4 @@
-// beginEcgForTap (review finding G): starting the ECG stream for a tap gesture
+// beginEcgProbeStream (review finding G): starting the ECG stream for a tap gesture
 // must not outlive the gesture, and must never stop an ECG the gesture did not
 // start.
 //
@@ -14,7 +14,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ecg/ecg_models.dart';
-import 'package:openstrap_edge/gestures/ecg_tap_begin.dart';
+import 'package:openstrap_edge/gestures/ecg_probe_begin.dart';
 
 class _Ecg {
   bool capturing = false;
@@ -27,7 +27,7 @@ class _Ecg {
   bool beginFails = false;
   final notes = <String>[];
 
-  Future<bool> run() => beginEcgForTap(
+  Future<bool> run() => beginEcgProbeStream(
         isCurrent: () => alive,
         isCapturing: () => capturing,
         lookupWrist: () async {
@@ -147,7 +147,7 @@ void main() {
   test('a throwing begin() reaches the caller (the session fails the start)',
       () async {
     await expectLater(
-      beginEcgForTap(
+      beginEcgProbeStream(
         isCurrent: () => true,
         isCapturing: () => false,
         lookupWrist: () async => EcgWrist.left,

@@ -229,69 +229,6 @@ Future<List<Map<String, Object?>>> _ldbWakeTraceRows(int wakeEpochSec, {required
     return newest.reversed.toList();
   }
 
-Future<List<(int, int)>> _ldbPrivGestureBands(DatabaseExecutor db, String deviceId) async {
-    final rows = await db.rawQuery(
-      'SELECT strap_start, strap_end FROM ecg_gesture_session '
-      'WHERE device_id = ? AND strap_start IS NOT NULL '
-      'AND strap_end IS NOT NULL',
-      [deviceId],
-    );
-    return [
-      for (final r in rows)
-        (
-          (r['strap_start'] as num).toInt() - LocalDb.gestureTagToleranceSec,
-          (r['strap_end'] as num).toInt() + LocalDb.gestureTagToleranceSec,
-        ),
-    ];
-  }
-
-Future<int> _ldbRecordEcgGestureSession({required String deviceId, required int? strapStart, required int? strapEnd, required int? finalCount, required String? reason, required int createdAtMs}) async {
-    final db = await LocalDb.instance;
-    return db.transaction((txn) async {
-      await txn.insert('ecg_gesture_session', {
-        'device_id': deviceId,
-        'created_at': createdAtMs,
-        'strap_start': strapStart,
-        'strap_end': strapEnd,
-        'final_count': finalCount,
-        'outcome': finalCount == null ? 'abandoned' : 'counted',
-        'reason': reason,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-      if (strapStart == null || strapEnd == null) return 0;
-      return txn.rawUpdate(
-        'UPDATE ecg_raw_packet SET origin = ? '
-        'WHERE device_id = ? AND reading_id IS NULL '
-        'AND strap_seconds BETWEEN ? AND ? '
-        "AND COALESCE(origin, '') != 'gesture'",
-        [
-          'gesture',
-          deviceId,
-          strapStart - LocalDb.gestureTagToleranceSec,
-          strapEnd + LocalDb.gestureTagToleranceSec,
-        ],
-      );
-    });
-  }
-
-Future<void> _ldbPrivRetagAllGesturePackets(Database db) async {
-    final rows = await db.rawQuery(
-      'SELECT DISTINCT device_id FROM ecg_gesture_session '
-      'WHERE strap_start IS NOT NULL AND strap_end IS NOT NULL',
-    );
-    for (final r in rows) {
-      final dev = r['device_id'] as String;
-      for (final (lo, hi) in await LocalDb._gestureBands(db, dev)) {
-        await db.rawUpdate(
-          'UPDATE ecg_raw_packet SET origin = ? '
-          'WHERE device_id = ? AND reading_id IS NULL '
-          'AND strap_seconds BETWEEN ? AND ? '
-          "AND COALESCE(origin, '') != 'gesture'",
-          ['gesture', dev, lo, hi],
-        );
-      }
-    }
-  }
-
 Future<void> _ldbPutStepCalibrationDay({required String day, required String deviceFamily, required int wearing, required int? referenceSteps, required int? counterTicks}) async {
     final db = await LocalDb.instance;
     await db.insert(

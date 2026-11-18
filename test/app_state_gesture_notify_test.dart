@@ -9,7 +9,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/gesture_settings.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
-import 'package:openstrap_edge/ecg/ecg_models.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
 
 import 'support/app_state_gesture_harness.dart';
@@ -106,39 +105,12 @@ void main() {
     t.stop();
   });
 
-  test('an ECG gesture that counted 3: AppState 0, failures 0', () async {
-    final rig = await newRig(mg: true);
-    await rig.app.ecg.guard.setWrist(kSerial, EcgWrist.left);
-    await mapActions(rig.app, [2, 3]);
-    final t = _Ticks(rig);
-    rig.doubleTap();
-    await until(() => order.contains('band:generation'));
-    await playEcgCount(rig, 3);
-    await until(() => channel.performed.isNotEmpty,
-        within: const Duration(seconds: 8));
-    await settleMs(400);
-    expect((t.app.ticks, t.settings, t.failures), (0, 0, 0));
-    t.stop();
-  });
-
-  test('an ECG gesture that could not start (fallback): AppState 0, '
-      'failures 1', () async {
-    final rig = await newRig(mg: true);
-    await mapActions(rig.app, [2, 3]);
-    final t = _Ticks(rig);
-    rig.doubleTap();
-    await until(() => channel.performed.isNotEmpty);
-    await settleMs(400);
-    expect((t.app.ticks, t.settings, t.failures), (0, 0, 1));
-    t.stop();
-  });
-
   test('a gesture setting changed: the settings object ticks, AppState does '
       'not', () async {
     final rig = await newRig();
     final t = _Ticks(rig);
     await rig.app.gestureSettings.setDoubleTapActions({DeviceAction.torch});
-    await rig.app.gestureSettings.setTapMethod(TapCountMethod.repeat);
+
     await rig.app.gestureSettings.setRepeatTapWindowMs(1500);
     await settleMs(100);
     expect((t.app.ticks, t.settings, t.failures), (0, 3, 0));

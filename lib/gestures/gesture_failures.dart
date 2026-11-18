@@ -1,6 +1,5 @@
 // gesture_failures.dart — the persisted record of gestures that failed to
-// activate. One entry per failed gesture (an ECG count that could not
-// start or lost the stream, or a double-tap action that failed), newest first,
+// activate. One entry per failed double-tap action, newest first,
 // bounded. Home shows the newest undismissed one as a card; Settings lists them
 // all. The record carries the Device lab's log as it was at the time, so a
 // report can be sent after the lab has moved on.
@@ -16,7 +15,7 @@ import 'package:flutter/foundation.dart';
 
 import 'strap_event.dart';
 
-enum GestureFailureKind { ecg, doubleTap }
+enum GestureFailureKind { doubleTap }
 
 /// The failure id of a tap: its identity, and for a tap with no usable strap
 /// clock (every such tap shares one identity) its receipt time too, so two
@@ -43,8 +42,7 @@ class GestureFailure {
   final DateTime at;
   final GestureFailureKind kind;
 
-  /// 'start_failed', 'link_lost', ... for an ECG gesture; for a double tap the
-  /// action that failed.
+  /// The action that failed.
   final String reason;
 
   /// The relevant session log, plain text.

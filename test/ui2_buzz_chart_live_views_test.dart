@@ -15,7 +15,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
-import 'package:openstrap_edge/gestures/gesture_settings.dart' show TapCountMethod;
 import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/state/live_stream_buffer.dart';
 import 'package:openstrap_edge/ui2/profile/buzz_pattern.dart';
@@ -121,9 +120,7 @@ void main() {
     'device_lab_mg': (
       2000,
       DeviceLabView(
-        ecgSupported: true,
-        ecgOnDoubleTap: true,
-        onEcgOnDoubleTap: (_) {},
+
         repeatWindowMs: 2500,
         onRepeatWindowMs: (_) {},
         sessions: const [
@@ -150,7 +147,7 @@ void main() {
     ),
     'device_lab_no_ecg': (
       2000,
-      const DeviceLabView(ecgSupported: false),
+      const DeviceLabView(),
       null,
     ),
     'buzz_pattern': (
@@ -166,7 +163,7 @@ void main() {
       const BandGesturesView(
         chosen: {DeviceAction.markMoment},
         supported: {DeviceAction.none, DeviceAction.markMoment, DeviceAction.torch},
-        ecgSupported: false,
+
         devMode: true,
       ),
       null,
@@ -180,12 +177,12 @@ void main() {
           DeviceAction.markMoment,
           DeviceAction.torch,
         },
-        ecgSupported: true,
+
         devMode: true,
-        tapMethod: TapCountMethod.repeat,
+
         repeatWindowMs: 2500,
         onRepeatWindowMs: (_) {},
-        onTapMethod: (_) {},
+
       ),
       null,
     ),

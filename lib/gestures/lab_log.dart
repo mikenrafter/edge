@@ -1,6 +1,5 @@
 // lab_log.dart — what the Device lab remembers: band events with both clocks,
-// and the step-by-step trace of a multi-tap session (ECG touches or repeated
-// double taps). RAM only, bounded, never persisted (nothing here is a
+// and the step-by-step trace of a repeated-double-tap session. RAM only, bounded, never persisted (nothing here is a
 // measurement).
 //
 // Every trace line carries its wall time to the millisecond, the time since the
@@ -9,7 +8,7 @@
 // result, total time). [labLogText] turns the whole lab into plain text for the
 // "Save lab log file" button.
 //
-// ECG packets. Every live R17 packet a gesture or a hardware probe sees
+// ECG packets. Every live R17 packet a hardware probe sees
 // is kept here too, raw samples and the band's status bytes, so a session can
 // be replayed off the band (test/support/ecg_trace.dart) and the sensor's
 // timing studied. They are live high-rate data: RAM only, bounded, gone on
@@ -25,7 +24,6 @@ import 'package:openstrap_protocol/openstrap_protocol.dart' show LabradorR17;
 import 'device_action.dart';
 import 'gesture_dispatcher.dart';
 import 'strap_event.dart';
-import 'tap_names.dart';
 
 /// One band event as the lab shows it: when it happened (the band's clock when
 /// believable), when the phone got it, and which actions ran.
@@ -238,7 +236,7 @@ class DeviceLabLog extends ChangeNotifier {
   /// The tag for packets of the current (or last) session.
   String get sessionTag {
     final tap = _tapAt;
-    return tap == null ? 'none' : '${_method == 'ECG sensor touches' ? 'tap' : _method} ${labClock(tap)}';
+    return tap == null ? 'none' : '${_method} ${labClock(tap)}';
   }
 
   /// Keep one ECG packet. [tag] defaults to the current session's.
@@ -278,8 +276,7 @@ class DeviceLabLog extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Close the session with its result: [count] taps (an ECG session names it,
-  /// "Double tap + 2 ECG taps"), or [reason] when it was
+  /// Close the session with its result: [count] taps, or [reason] when it was
   /// abandoned, or [result] verbatim (a hardware probe). Adds the summary and a
   /// final line. A second call, or one with no session, does nothing.
   void endSession({int? count, String? reason, String? result, DateTime? at}) {
@@ -288,13 +285,9 @@ class DeviceLabLog extends ChangeNotifier {
     final tap = _tapAt ?? end;
     final seconds =
         (end.difference(tap).inMilliseconds / 1000).toStringAsFixed(1);
-    // An ECG session's count is named; for repeated double taps it is
-    // the number of double taps in a row, still "N taps".
     final outcome = result ??
         (count != null
-            ? (_method == 'ECG sensor touches'
-                ? ecgTapCountName(count)
-                : '$count taps')
+            ? '$count taps'
             : 'abandoned (${reason ?? 'unknown'})');
     final summary = '$_method | $_settings | $outcome | $seconds s in total';
     _sessions.insert(0, summary);

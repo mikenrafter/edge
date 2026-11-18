@@ -16,26 +16,6 @@ final _forbidden =
     RegExp(r'one tap|single tap|\b1 tap', caseSensitive: false);
 
 void main() {
-  testWidgets('Gestures says what ECG and extended taps need', (t) async {
-    await pumpTall(
-        t,
-        const BandGesturesView(
-          chosen: {},
-          supported: {DeviceAction.none, DeviceAction.markMoment},
-          devMode: true,
-        ));
-    expect(find.textContaining('WHOOP MG'), findsWidgets);
-    expect(find.textContaining('WHOOP 4.0 has no ECG sensor'), findsWidgets);
-    expect(find.textContaining(RegExp('draft', caseSensitive: false)),
-        findsNothing);
-    expect(find.textContaining('not available until'), findsNothing);
-    final texts = t
-        .widgetList<Text>(find.byType(Text))
-        .map((w) => w.data ?? w.textSpan?.toPlainText() ?? '');
-    for (final s in texts) {
-      expect(_forbidden.hasMatch(s), isFalse, reason: 'text: "$s"');
-    }
-  });
 
   testWidgets('without developer mode the ECG note and options are absent',
       (t) async {
@@ -44,7 +24,7 @@ void main() {
         const BandGesturesView(
           chosen: {},
           supported: {DeviceAction.none, DeviceAction.markMoment},
-          ecgSupported: true,
+
         ));
     expect(find.textContaining('WHOOP MG'), findsNothing);
     expect(find.textContaining('ECG'), findsNothing);

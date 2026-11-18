@@ -103,7 +103,7 @@ class _GestureFailuresViewState extends State<GestureFailuresView> {
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(
             child: Text(
-              f.kind == GestureFailureKind.ecg ? 'ECG gesture' : 'Double tap',
+              'Double tap',
               style:
                   F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600),
             ),

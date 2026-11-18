@@ -15,8 +15,6 @@ const _newCode = [
   'lib/notify/buzz_sequence.dart',
   'lib/notify/notification_relay.dart',
   'lib/gestures/tap_ack.dart',
-  'lib/gestures/ecg_tap_counter.dart',
-  'lib/gestures/ecg_tap_session.dart',
   'lib/gestures/ecg_stream_readiness.dart',
   'lib/gestures/double_tap_repeat.dart',
   'lib/gestures/gesture_dispatcher.dart',

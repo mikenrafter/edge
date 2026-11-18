@@ -495,8 +495,6 @@ class LocalDb {
     'ecg_reading',
     'ecg_reading_packet',
     'ecg_raw_packet',
-    // The gesture intervals that label the raw packets above.
-    'ecg_gesture_session',
     // Derived once, from raw that no longer exists.
     'day_result',
     'metric_series',
@@ -1507,44 +1505,6 @@ class LocalDb {
   // decoded_onehz/decoded_rr use.
   static Future<void> _createEcgTables(Database db) => _ldbPrivCreateEcgTables(db);
 
-  /// How far either side of a gesture's strap interval a raw packet may sit
-  /// and still be called gesture contact. 2 s: the live R17 stream is 1 s
-  /// packets and the interval is the first packet's start floored / the last
-  /// packet's end ceiled to whole seconds, so the band's raw recorder can have
-  /// saved one packet before the first one we saw and one after the last (the
-  /// stop is sent after the session ends). A packet linked to a real reading
-  /// is never retagged, and a real reading cannot start while a gesture holds
-  /// the stream, so a wider band would only add risk for no gain.
-  static const int gestureTagToleranceSec = 2;
-
-  /// The gesture-session intervals for [deviceId] that know their strap
-  /// bounds, as (start, end) widened by [gestureTagToleranceSec].
-  static Future<List<(int, int)>> _gestureBands(
-    DatabaseExecutor db,
-    String deviceId,
-  ) => _ldbPrivGestureBands(db, deviceId);
-
-  /// Write one finished gesture session and tag any raw packets already stored
-  /// inside its interval (a sync that raced the session end). One transaction.
-  /// Re-writing the same session (same [deviceId] + [createdAtMs]) replaces
-  /// the row and tags nothing new. Returns how many packets were newly tagged.
-  ///
-  /// Only packets with no `reading_id` are tagged: a packet linked to a reading
-  /// is that reading's evidence, never gesture contact.
-  static Future<int> recordEcgGestureSession({
-    required String deviceId,
-    required int? strapStart,
-    required int? strapEnd,
-    required int? finalCount,
-    String? reason,
-    required int createdAtMs,
-  }) => _ldbRecordEcgGestureSession(deviceId: deviceId, strapStart: strapStart, strapEnd: strapEnd, finalCount: finalCount, reason: reason, createdAtMs: createdAtMs);
-
-  /// Re-run the tagging for every stored session. Used after a restore, whose
-  /// INSERT OR REPLACE of an older export's packets (no `origin` column)
-  /// would otherwise turn tagged rows back into untagged copies.
-  static Future<void> _retagAllGesturePackets(Database db) => _ldbPrivRetagAllGesturePackets(db);
-
   /// Design 04 phase 1 (schema 70): the attempt-group and provenance columns of
   /// `ecg_reading`, all nullable (NULL = "not recorded", a legacy row is a group
   /// of one) and by ALTER so a table made by an older build gains them. One
@@ -1553,12 +1513,6 @@ class LocalDb {
   /// watchdog (invariant 11). It must run before `_ensureCoachViews`, which
   /// reads `superseded_by`.
   static Future<void> _ensureEcgPhase1Columns(Database db) => _ldbPrivEnsureEcgPhase1Columns(db);
-
-  /// Gesture sessions, newest first (diagnostics and tests).
-  static Future<List<Map<String, Object?>>> ecgGestureSessions() async {
-    final db = await instance;
-    return db.query('ecg_gesture_session', orderBy: 'created_at DESC');
-  }
 
   /// Step calibration: one profile per (device_family, wearing), and the
   /// per-day observations it is fitted from.
@@ -1760,13 +1714,11 @@ class LocalDb {
     );
   }
 
-  /// How many raw R16 records history has recovered (diagnostics). Gesture
-  /// contact is not ECG data and is not counted.
+  /// How many raw R16 records history has recovered (diagnostics).
   static Future<int> ecgRawPacketCount() async {
     final db = await instance;
     final r = await db.rawQuery(
-      'SELECT COUNT(*) AS n FROM ecg_raw_packet '
-      "WHERE COALESCE(origin, '') != 'gesture'",
+      'SELECT COUNT(*) AS n FROM ecg_raw_packet',
     );
     return (r.first['n'] as num?)?.toInt() ?? 0;
   }
@@ -6112,9 +6064,6 @@ class LocalDb {
       'ecg_reading',
       'ecg_reading_packet',
       'ecg_raw_packet',
-      // Gesture intervals (no samples). The retag pass after the merge
-      // re-applies them to the restored packets.
-      'ecg_gesture_session',
       'sync_cursor',
       // The compressed copy of pruned decoded substrate. Merged, not
       // replaced: see [SubstrateArchive.restoreRows] — local wins, a restore

@@ -17,11 +17,8 @@ import 'activity/share.dart' show shareOrigin;
 import 'profile/profile.dart' show SetRow;
 import 'ui2.dart';
 
-/// "An ECG gesture failed to activate" / "A gesture failed to activate".
-String gestureFailureTitle(GestureFailureKind kind) =>
-    kind == GestureFailureKind.ecg
-        ? 'An ECG gesture failed to activate'
-        : 'A gesture failed to activate';
+/// The failed gesture's title.
+String gestureFailureTitle(GestureFailureKind kind) => 'A gesture failed to activate';
 
 /// Save [f]'s log through [saver], or the share sheet anchored at [context]
 /// (read before the first await, for the iPad popover). False when it failed.

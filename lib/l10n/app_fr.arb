@@ -14502,7 +14502,6 @@
   "@settingsHealthExceptionsRowSub": {
     "description": "Notification row subtitle for the health-exception alert toggle"
   },
-  "gestureEcgTapName": "{n, plural, =0{Double tap} one{Double tap + {n} ECG tap} other{Double tap + {n} ECG taps}}",
   "@workoutStartSessionLabel": {
     "description": "Hero start card label on For You tab"
   },
@@ -14577,14 +14576,6 @@
   },
   "@homeNothingTodayTitle": {
     "description": "Title shown when there is history but nothing recorded for today."
-  },
-  "@gestureEcgTapName": {
-    "description": "Name of an ECG tap count on the Gestures screen: the opening double tap plus {n} touches of the ECG sensor (0 is the plain double tap).",
-    "placeholders": {
-      "n": {
-        "type": "int"
-      }
-    }
   },
   "tracksExperimentStop": "Stop experiment",
   "@pairingFindMyBand": {

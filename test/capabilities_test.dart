@@ -148,20 +148,7 @@ void main() {
   });
 
   group('ECG', () {
-    test('ecgTouchTaps: available for a paired MG, else disabled with a reason',
-        () {
-      expect(_caps(ecgPaired: true).of(Feature.ecgTouchTaps),
-          Availability.available);
-      final none = _caps().of(Feature.ecgTouchTaps);
-      expect(none.isDisabled, isTrue, reason: 'dimmed and inert, never hidden');
-      expect(none.reason, 'This band has no ECG sensor');
-    });
-    test('ecgTouchTaps is about the remembered band, not the live link', () {
-      expect(_caps(ecgPaired: true, connected: false).of(Feature.ecgTouchTaps),
-          Availability.available);
-      expect(_caps(ecgLive: true, connected: true).of(Feature.ecgTouchTaps).isDisabled,
-          isTrue);
-    });
+
     test('ecgEntry: shown only for a paired MG, hidden otherwise', () {
       expect(_caps(ecgPaired: true).of(Feature.ecgEntry),
           Availability.available);

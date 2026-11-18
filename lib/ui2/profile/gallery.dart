@@ -996,7 +996,7 @@ Map<String, Widget> extraCases() => {
       'gesture_failure_card': GestureFailureCard(
         store: GestureFailureStore()
           ..record(
-              kind: GestureFailureKind.ecg,
+              kind: GestureFailureKind.doubleTap,
               reason: 'start_failed',
               gestureId: 'gallery'),
       ),

@@ -15,8 +15,6 @@ import 'backup_support.dart';
 /// Real keys: gestures, haptic patterns, notification rules, theme.
 const _settings = <String, Object>{
   'gesture_double_tap_actions': 5,
-  'gesture_tap_method': 'imu',
-  'gesture_ecg_on_double_tap': true,
   'gesture_repeat_window_ms': 3250,
   'haptic_patterns_v1': '[{"id":"u1","name":"Mine","sequence":[1,2,3]}]',
   'notif_alert_rules_v1': '{"rules":[{"kind":"water","on":true}]}',
@@ -71,8 +69,6 @@ void main() {
     }
     expectNoSecretIn(path, _secrets.values);
     expect(got['gesture_double_tap_actions']!.$1, 'int');
-    expect(got['gesture_ecg_on_double_tap']!.$1, 'bool');
-    expect(got['gesture_tap_method']!.$1, 'string');
   });
 
   test('the live database never gains backup_* tables', () async {
@@ -132,7 +128,6 @@ void main() {
     expect(now['notif_battery_pct'], 30, reason: 'device value kept');
     expect(now['haptic_patterns_v1'], _settings['haptic_patterns_v1'],
         reason: 'absent here, so restored');
-    expect(now['gesture_tap_method'], 'imu');
     expect(now['notif_fired:2026-09-21:low_read'], true);
   });
 

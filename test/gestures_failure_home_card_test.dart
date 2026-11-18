@@ -1,7 +1,7 @@
 // The Home card for a failed gesture.
 //
 // USER: "The next time Home is opened, show ONE card styled like the Join
-// Discord card: 'An ECG gesture failed to activate' / 'A gesture failed to
+// Discord card: 'A gesture failed to activate' / 'A gesture failed to
 // activate'; actions: 'Save log file' (a .txt through the platform save/share
 // flow, NOT the clipboard), 'Report' (GitHub issues link + the community
 // links, with one line encouraging a report), 'Dismiss'. The card text says
@@ -26,7 +26,7 @@
 //   * Keys: card `gesture-failure-card`; actions `gesture-failure-save`
 //     ("Save log file"), `gesture-failure-report` ("Report"),
 //     `gesture-failure-dismiss` ("Dismiss").
-//   * Titles: an ECG failure "An ECG gesture failed to activate", a
+//   * Titles: an ECG failure "A gesture failed to activate", a
 //     double-tap one "A gesture failed to activate". The body says dismissed
 //     failures stay viewable in Settings (it names "Settings" and "Gesture
 //     failures").
@@ -65,10 +65,10 @@ class _Backing {
 }
 
 Future<void> _record(GestureFailureStore s, String id,
-        {GestureFailureKind kind = GestureFailureKind.ecg, int minute = 0}) async {
+        {GestureFailureKind kind = GestureFailureKind.doubleTap, int minute = 0}) async {
   await s.record(
     kind: kind,
-    reason: kind == GestureFailureKind.ecg ? 'start_failed' : 'log_water',
+    reason: kind == GestureFailureKind.doubleTap ? 'start_failed' : 'log_water',
     gestureId: id,
     log: 'log of $id',
     at: _t0.add(Duration(minutes: minute)),
@@ -136,14 +136,14 @@ void main() {
       expect(find.textContaining('failed to activate'), findsNothing);
     });
 
-    testWidgets('an ECG failure: "An ECG gesture failed to activate"',
+    testWidgets('an ECG failure: "A gesture failed to activate"',
         (t) async {
       _phone(t);
       final s = _Backing().store();
       await _record(s, 'a');
       await t.pumpWidget(_Rig().card(s));
       expect(find.byKey(_cardKey), findsOneWidget);
-      expect(find.text('An ECG gesture failed to activate'), findsOneWidget);
+      expect(find.text('A gesture failed to activate'), findsOneWidget);
       expect(find.text('A gesture failed to activate'), findsNothing);
     });
 
@@ -154,7 +154,7 @@ void main() {
       await _record(s, 'a', kind: GestureFailureKind.doubleTap);
       await t.pumpWidget(_Rig().card(s));
       expect(find.text('A gesture failed to activate'), findsOneWidget);
-      expect(find.text('An ECG gesture failed to activate'), findsNothing);
+      expect(find.text('A gesture failed to activate'), findsNothing);
     });
 
     testWidgets('three actions, by name: Save log file, Report, Dismiss',
@@ -198,7 +198,7 @@ void main() {
       await _record(s, 'a');
       await t.pumpWidget(_Rig().card(s));
       final card = find.byKey(_cardKey);
-      final title = find.text('An ECG gesture failed to activate');
+      final title = find.text('A gesture failed to activate');
       expect(find.ancestor(of: title, matching: find.byType(Surface)),
           findsWidgets);
       expect(t.widget<Text>(title).style?.fontWeight, FontWeight.w600);
@@ -219,7 +219,7 @@ void main() {
       await _record(s, 'new', minute: 5);
       await t.pumpWidget(_Rig().card(s));
       expect(find.byKey(_cardKey), findsOneWidget);
-      expect(find.text('An ECG gesture failed to activate'), findsOneWidget);
+      expect(find.text('A gesture failed to activate'), findsOneWidget);
       expect(find.text('A gesture failed to activate'), findsNothing);
     });
 
@@ -228,7 +228,7 @@ void main() {
       final s = _Backing().store();
       await _record(s, 'a');
       await s.record(
-          kind: GestureFailureKind.ecg, reason: 'x', gestureId: 'a');
+          kind: GestureFailureKind.doubleTap, reason: 'x', gestureId: 'a');
       await t.pumpWidget(_Rig().card(s));
       expect(find.byKey(_cardKey), findsOneWidget);
     });

@@ -41,7 +41,7 @@ Widget _lab({
   List<String> sessions = const ['ECG sensor touches | 3 taps'],
 }) =>
     DeviceLabView(
-      ecgSupported: true,
+
       tapTools: tapTools,
       probes: probes,
       live: live,
@@ -49,7 +49,7 @@ Widget _lab({
       steps: steps,
       sessions: sessions,
       onRepeatWindowMs: (_) {},
-      onThresholds: (_) {},
+
     );
 
 Future<void> _pump(WidgetTester t, Widget w,
@@ -134,7 +134,7 @@ void main() {
           ['taps', 'probes', 'motion', 'live', 'logs']);
       expect(_tabs(t).items, ['Taps', 'Probes', 'Live', 'Logs']);
       expect(_tabs(t).index, 0);
-      expect(find.text('ECG on double tap'), findsOneWidget);
+      expect(find.text('Repeated double taps'), findsOneWidget);
       expect(find.byKey(_probesMarker), findsNothing);
       expect(find.byKey(_liveMarker), findsNothing);
       expect(find.text('Band events'), findsNothing);
@@ -154,7 +154,7 @@ void main() {
       expect(find.text('Sessions'), findsOneWidget);
       expect(find.byKey(_liveMarker), findsNothing);
       await _select(t, 'taps');
-      expect(find.text('Touch windows'), findsOneWidget);
+      expect(find.text('Touch windows'), findsNothing);
       expect(find.text('Repeated double taps'), findsOneWidget);
       expect(find.text('Band events'), findsNothing);
     });
@@ -241,8 +241,6 @@ void main() {
         (t) async {
       await _pump(t, _lab());
       for (final s in const [
-        'ECG on double tap',
-        'Touch windows',
         'Repeated double taps',
       ]) {
         expect(_isOpen(t, s), isTrue, reason: s);
@@ -259,18 +257,17 @@ void main() {
     testWidgets('folding a section stores it under its own id, and it comes '
         'back folded while the others stay open', (t) async {
       await _pump(t, _lab());
-      await t.tap(_header('Touch windows'));
+      await t.tap(_header('Repeated double taps'));
       await _settle(t);
-      expect(_isOpen(t, 'Touch windows'), isFalse);
-      expect(Prefs.getBool(accordionPrefKey('device_lab_touch_windows'), true),
+      expect(_isOpen(t, 'Repeated double taps'), isFalse);
+      expect(Prefs.getBool(accordionPrefKey('device_lab_repeated_taps'), true),
           isFalse);
       await t.pumpWidget(const SizedBox());
       await _settle(t);
       await _pump(t, _lab());
       await _settle(t);
-      expect(_isOpen(t, 'Touch windows'), isFalse);
-      expect(_isOpen(t, 'ECG on double tap'), isTrue);
-      expect(_isOpen(t, 'Repeated double taps'), isTrue);
+      expect(_isOpen(t, 'Repeated double taps'), isFalse);
+
     });
 
     testWidgets('a section folded on Logs stays folded after a tab change '

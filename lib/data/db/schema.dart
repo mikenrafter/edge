@@ -847,15 +847,6 @@ Future<Database> _ldbPrivOpen() async {
           // this on every open, so a same-version merged build self-heals.
           await LocalDb._ensureWakeSchema(db);
         }
-        if (oldV < 57) {
-          // Gesture ECG is never an ECG reading. One additive column
-          // (ecg_raw_packet.origin, NULL = unknown/normal) and one tiny
-          // interval table, both through _createEcgTables so there is exactly
-          // one definition. No backfill, no rewrite, nothing read: cheap under
-          // iOS's CPU watchdog (invariant 11). No kAlgoVersion bump: nothing
-          // derived moves. _repairOpenSchema re-runs it on every open.
-          await LocalDb._createEcgTables(db);
-        }
         if (oldV < 58) {
           // Input revisions behind the "did this day's inputs
           // change" fingerprint. Last in the ladder on purpose: a rebuilt or
@@ -1558,32 +1549,11 @@ Future<void> _ldbPrivCreateEcgTables(Database db) async {
       'CREATE INDEX IF NOT EXISTS idx_ecg_raw_packet_strap '
       'ON ecg_raw_packet(strap_seconds)',
     );
-    // v57. NULL = unknown/normal, 'gesture' = recorded while a tap
-    // gesture held the ECG stream open. Added by ALTER so a table created by
-    // an older build gains it; the CREATE above deliberately keeps the old
-    // shape so a fresh install and an upgrade run the same code.
-    await LocalDb._addColumnIfMissing(db, 'ecg_raw_packet', 'origin', 'TEXT');
     // v66. Why a partial reading stopped ('paused' | 'timeout' |
     // 'disconnected'); NULL for every other status. By ALTER for the same
-    // reason as `origin`.
+    // reason as the other additive reading columns.
     await LocalDb._addColumnIfMissing(db, 'ecg_reading', 'stop_reason', 'TEXT');
-    // One row per gesture session: the strap-clock interval and the outcome,
-    // NOTHING else (invariant 14: no samples). The key is the natural one so a
-    // restore (INSERT OR REPLACE) can never overwrite a different session.
-    // strap_start/strap_end are NULL when the session never learned the strap
-    // clock; such a row tags nothing.
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS ecg_gesture_session (
-        device_id   TEXT NOT NULL,
-        created_at  INTEGER NOT NULL,
-        strap_start INTEGER,
-        strap_end   INTEGER,
-        final_count INTEGER,
-        outcome     TEXT NOT NULL,
-        reason      TEXT,
-        PRIMARY KEY (device_id, created_at)
-      )
-    ''');
+
   }
 
 Future<void> _ldbPrivEnsureEcgPhase1Columns(Database db) async {

@@ -27,63 +27,6 @@ void main() {
   tearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(_channel, null));
 
-  group('method choice', () {
-    test('default: repeated double taps on every band, an MG included',
-        () async {
-      final s = await _boot({});
-      expect(s.tapMethodChoice, isNull);
-      expect(s.tapMethodFor(ecgSupported: true), TapCountMethod.repeat);
-      expect(s.tapMethodFor(ecgSupported: false), TapCountMethod.repeat);
-    });
-
-    test('a chosen method is kept on an MG, persisted, and restored', () async {
-      final s = await _boot({});
-      var notified = 0;
-      s.addListener(() => notified++);
-      await s.setTapMethod(TapCountMethod.ecg);
-      expect(notified, 1);
-      expect(s.tapMethodFor(ecgSupported: true), TapCountMethod.ecg);
-      final again = GestureSettings();
-      await again.bootstrap();
-      expect(again.tapMethodFor(ecgSupported: true), TapCountMethod.ecg);
-      await s.setTapMethod(TapCountMethod.repeat);
-      expect(s.tapMethodFor(ecgSupported: true), TapCountMethod.repeat);
-    });
-
-    test('a band without ECG always counts double taps, whatever is stored',
-        () async {
-      final s = await _boot({'gesture_tap_method': 'ecg'});
-      expect(s.tapMethodFor(ecgSupported: false), TapCountMethod.repeat);
-      expect(s.tapMethodFor(ecgSupported: true), TapCountMethod.ecg);
-    });
-
-    test('an unknown stored value follows the default', () async {
-      final s = await _boot({'gesture_tap_method': 'telepathy'});
-      expect(s.tapMethodChoice, isNull);
-      expect(s.tapMethodFor(ecgSupported: true), TapCountMethod.repeat);
-    });
-
-    test('both methods share the one mapping store', () async {
-      final s = await _boot({});
-      await s.setActionsForTaps(3, {DeviceAction.logWater});
-      await s.setTapMethod(TapCountMethod.repeat);
-      expect(s.actionsForTaps(3), {DeviceAction.logWater});
-      expect(s.maxMappedTaps, 3);
-    });
-  });
-
-  group('ECG Fast mode is retired', () {
-    test('GestureSettings has no tap-mode setting and ignores a stored one',
-        () async {
-      final s = await _boot({'gesture_ecg_tap_mode': 'fast'});
-      expect(() => (s as dynamic).ecgTapMode, throwsNoSuchMethodError);
-      expect(() => (s as dynamic).setEcgTapMode, throwsNoSuchMethodError);
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getString('gesture_ecg_tap_mode'), 'fast',
-          reason: 'an orphaned value is left alone, not migrated');
-    });
-  });
-
   group('repeat window', () {
     test('defaults to 2500 ms; range 1000..5000 in 250 ms steps', () async {
       final s = await _boot({});
@@ -146,16 +89,5 @@ void main() {
       expect(s.repeatTapMax, 4);
     });
 
-    test('the two lab switches are exclusive: turning one on turns off the '
-        'other', () async {
-      final s = await _boot({});
-      await s.setEcgOnDoubleTap(true);
-      await s.setRepeatTapsLab(true);
-      expect(s.repeatTapsLab, isTrue);
-      expect(s.ecgOnDoubleTap, isFalse);
-      await s.setEcgOnDoubleTap(true);
-      expect(s.ecgOnDoubleTap, isTrue);
-      expect(s.repeatTapsLab, isFalse);
-    });
   });
 }

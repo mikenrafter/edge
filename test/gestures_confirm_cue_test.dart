@@ -196,15 +196,5 @@ void main() {
       expect(body, contains('resolveCuePatterns('));
     });
 
-    test('the confirm cue is loaded before it plays on every path', () {
-      final code = codeOnly(src);
-      // The ack path and the counted path both read the stored cues first.
-      expect(codeOnly(appSrc), contains('await _gestures.loadCues();'));
-      expect(codeOnly(bodyOf(src, 'Future<bool> _gestureCue(')),
-          contains('loadCues();'));
-      final confirmWire = RegExp(r'confirmBuzz:\s*_ecgTapConfirmBuzz');
-      expect(confirmWire.hasMatch(code), isTrue,
-          reason: 'the touch counter\'s final cue is the confirm cue');
-    });
   });
 }

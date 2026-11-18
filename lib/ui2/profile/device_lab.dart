@@ -30,7 +30,6 @@ import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
-import '../../gestures/ecg_tap_counter.dart';
 import '../../gestures/gesture_settings.dart';
 import '../../gestures/gesture_slots.dart';
 import '../../gestures/hardware_probe_runner.dart';
@@ -59,18 +58,6 @@ export '../../gestures/lab_log.dart' show DeviceLabEntry, labClock;
 /// The note said on this screen and on Gestures (developer mode): what
 /// extended gestures need, and where to see every step of them. Never names a
 /// single tap.
-const String kExtendedGesturesNote =
-    'ECG on double tap and counting touches on the ECG sensor need a WHOOP MG. '
-    'WHOOP 4.0 has no ECG sensor, so it counts extra double taps instead. '
-    'The Device lab, in Settings under Developer mode, logs every step with '
-    'its timing.';
-
-/// Where the tab last used is kept (a [LabTab] id), in the app prefs with the
-/// other UI selections.
-const String kDeviceLabTabPref = 'ui.device_lab_tab';
-
-/// The lab's sub-tabs, in order. [id] is what is remembered and what a caller
-/// passes to open one; never the label.
 enum LabTab {
   taps('taps', 'Taps'),
   probes('probes', 'Probes'),
@@ -112,10 +99,6 @@ class DeviceLab extends StatelessWidget {
     return ListenableBuilder(
       listenable: Listenable.merge([g, app.deviceLab]),
       builder: (c, _) => DeviceLabView(
-        ecgSupported: caps.has(Feature.ecgTouchTaps),
-        ecgOnDoubleTap: g.ecgOnDoubleTap,
-        onEcgOnDoubleTap: g.setEcgOnDoubleTap,
-        onTryEcgOnDoubleTap: g.trySetEcgOnDoubleTap,
         repeatLab: g.repeatTapsLab,
         onRepeatLab: g.setRepeatTapsLab,
         repeatWindowMs: g.repeatTapWindowMs,
@@ -124,8 +107,6 @@ class DeviceLab extends StatelessWidget {
         steps: app.deviceLab.steps,
         sessions: app.deviceLab.sessionSummaries,
         packets: app.deviceLab.packets,
-        thresholds: g.ecgTapThresholds,
-        onThresholds: g.setEcgTapThresholds,
         logText: logText,
         // The lab is now reached from Settings > Developer, so the entry no
         // longer carries the flag: the tap tools inside do.
@@ -190,65 +171,9 @@ class _LabSessionState extends State<LabSession> {
   Widget build(BuildContext context) => widget.child;
 }
 
-/// The ECG-on-double-tap switch, with the reason it was refused (if it was)
-/// under it. Refused: the switch is driven by [on], so it stays as it was.
-class _EcgDoubleTapRow extends StatefulWidget {
-  const _EcgDoubleTapRow({
-    required this.on,
-    required this.onChanged,
-    required this.onTry,
-    required this.enabled,
-    required this.sub,
-  });
-
-  final bool on, enabled;
-  final ValueChanged<bool>? onChanged;
-  final Future<ActionToggleResult> Function(bool on)? onTry;
-  final String sub;
-
-  @override
-  State<_EcgDoubleTapRow> createState() => _EcgDoubleTapRowState();
-}
-
-class _EcgDoubleTapRowState extends State<_EcgDoubleTapRow> {
-  String? _refusal;
-
-  Future<void> _change(bool v) async {
-    final r = await widget.onTry!(v);
-    if (!mounted) return; // the lab may have closed while the write ran
-    setState(() => _refusal =
-        r is ActionToggleRefusedExclusive ? r.reason : null);
-  }
-
-  @override
-  Widget build(BuildContext c) {
-    final p = P.of(c);
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SwitchRow(
-        'Toggle ECG recording on double tap',
-        widget.on,
-        widget.onTry != null ? _change : widget.onChanged,
-        enabled: widget.enabled,
-        sub: widget.sub,
-      ),
-      if (_refusal != null)
-        Padding(
-          padding: const EdgeInsets.only(bottom: S.x2),
-          child: Text(_refusal!,
-              key: const ValueKey('device-lab-ecg-refusal'),
-              style: F.over.copyWith(color: p.ink2)),
-        ),
-    ]);
-  }
-}
-
 class DeviceLabView extends StatelessWidget {
   const DeviceLabView({
     super.key,
-    required this.ecgSupported,
-    this.ecgOnDoubleTap = false,
-    this.onEcgOnDoubleTap,
-    this.onTryEcgOnDoubleTap,
     this.repeatLab = false,
     this.onRepeatLab,
     this.repeatWindowMs,
@@ -256,8 +181,6 @@ class DeviceLabView extends StatelessWidget {
     this.entries = const [],
     this.steps = const [],
     this.sessions = const [],
-    this.thresholds,
-    this.onThresholds,
     this.packets = const [],
     this.probes,
     this.logText,
@@ -268,16 +191,6 @@ class DeviceLabView extends StatelessWidget {
     this.initialTab,
     this.devLog,
   });
-
-  final bool ecgSupported;
-  final bool ecgOnDoubleTap;
-  final ValueChanged<bool>? onEcgOnDoubleTap;
-
-  /// When given, used instead of [onEcgOnDoubleTap]: ECG is an exclusive mode,
-  /// so turning it on can be refused (the double tap has other actions). The
-  /// refusal's reason is shown under the switch (key
-  /// `device-lab-ecg-refusal`) and the switch does not flip.
-  final Future<ActionToggleResult> Function(bool on)? onTryEcgOnDoubleTap;
 
   /// Try the repeated-double-tap method (any band).
   final bool repeatLab;
@@ -298,9 +211,6 @@ class DeviceLabView extends StatelessWidget {
   /// One summary line per finished session, newest first.
   final List<String> sessions;
 
-  final EcgTapThresholds? thresholds;
-  final ValueChanged<EcgTapThresholds>? onThresholds;
-
   /// Kept ECG packets, oldest first; saved with the log.
   final List<LabPacket> packets;
 
@@ -314,7 +224,7 @@ class DeviceLabView extends StatelessWidget {
   /// How the log is saved; null is [saveLogFile] (the platform share sheet).
   final LogFileSaver? saveLog;
 
-  /// FeatureFlag.tapClassifiers. False hides the ECG, touch-window and
+  /// FeatureFlag.tapClassifiers. False hides the
   /// repeated-double-tap tools, which the dispatcher ignores while the flag is
   /// off; the probes and the logs stay.
   final bool tapTools;
@@ -432,38 +342,6 @@ class DeviceLabView extends StatelessWidget {
 
   List<Widget> _rows(BuildContext c, P p, LabTab tab) => switch (tab) {
     LabTab.taps => [
-      Padding(
-        padding: const EdgeInsets.only(top: S.x3),
-        child: Surface(
-          child: Text(kExtendedGesturesNote,
-              style: F.body.copyWith(color: p.ink2, height: 1.4)),
-        ),
-      ),
-      SettingsAccordion('ECG on double tap',
-          id: 'device_lab_ecg_double_tap',
-          children: [
-            _EcgDoubleTapRow(
-              on: ecgOnDoubleTap && ecgSupported,
-              onChanged: onEcgOnDoubleTap,
-              onTry: onTryEcgOnDoubleTap,
-              enabled: ecgSupported,
-              sub: ecgSupported
-                  ? 'A live double tap starts an ECG recording. Once '
-                      'the sensor is ready the band buzzes three times '
-                      'if a finger is on it, or twice to stop at two '
-                      'taps. Normal double-tap actions are paused '
-                      'while this is on.'
-                  : 'This band has no ECG sensor',
-            ),
-          ]),
-      SettingsAccordion('Touch windows',
-          id: 'device_lab_touch_windows',
-          children: [
-            EcgThresholdAdjusters(
-              thresholds: thresholds ?? EcgTapThresholds(),
-              onChanged: ecgSupported ? onThresholds : null,
-            ),
-          ]),
       SettingsAccordion('Repeated double taps',
           id: 'device_lab_repeated_taps',
           children: [
@@ -471,7 +349,7 @@ class DeviceLabView extends StatelessWidget {
               'Try repeated double taps',
               repeatLab,
               onRepeatLab,
-              sub: 'Works on every band, no ECG needed. Double tap '
+              sub: 'Works on every band. Double tap '
                   'again before the pause ends; each one buzzes '
                   'once. Up to 5 are counted and no action runs '
                   'while this is on.',
@@ -665,109 +543,6 @@ class RepeatWindowAdjuster extends StatelessWidget {
         step: GestureSettings.repeatWindowStepMs,
         onSet: onChanged,
       );
-}
-
-/// The three touch windows, 50 ms steps within their ranges. Shared by the
-/// Device lab and the Gestures screen. With [onChanged] null every button is
-/// inert (no ECG sensor). [timingsOnly] leaves out the three switches under
-/// the windows (the Gestures screen draws only the timings).
-class EcgThresholdAdjusters extends StatelessWidget {
-  const EcgThresholdAdjusters(
-      {super.key,
-      required this.thresholds,
-      this.onChanged,
-      this.timingsOnly = false});
-
-  final EcgTapThresholds thresholds;
-  final ValueChanged<EcgTapThresholds>? onChanged;
-  final bool timingsOnly;
-
-  @override
-  Widget build(BuildContext c) {
-    return Column(children: [
-      _Adjuster(
-        keyBase: 'ecg-threshold:start',
-        label: 'Start threshold',
-        caption: 'How long the first touch can take to begin once the sensor '
-            'is ready. A finger already on the sensor counts.',
-        value: thresholds.startMs,
-        range: EcgTapThresholds.startRange,
-        step: EcgTapThresholds.stepMs,
-        onSet: onChanged == null
-            ? null
-            : (v) => onChanged!(thresholds.copyWith(startMs: v)),
-      ),
-      _Adjuster(
-        keyBase: 'ecg-threshold:gap',
-        label: 'Gap threshold',
-        caption: 'Sets both how long a touch must hold to count and how long '
-            'you must let go to end it.',
-        value: thresholds.gapMs,
-        range: EcgTapThresholds.gapRange,
-        step: EcgTapThresholds.stepMs,
-        onSet: onChanged == null
-            ? null
-            : (v) => onChanged!(thresholds.copyWith(gapMs: v)),
-      ),
-      _Adjuster(
-        keyBase: 'ecg-threshold:confirm',
-        label: 'Confirmation threshold',
-        caption: 'Extra time after you let go for the next touch to begin '
-            'before the count is final.',
-        value: thresholds.confirmMs,
-        range: EcgTapThresholds.confirmRange,
-        step: EcgTapThresholds.stepMs,
-        onSet: onChanged == null
-            ? null
-            : (v) => onChanged!(thresholds.copyWith(confirmMs: v)),
-      ),
-      if (!timingsOnly) ...[
-        SwitchRow(
-          key: const ValueKey('ecg-threshold:extra-sensitive'),
-          'Extra sensitive subsequent tap detection',
-          thresholds.extraSensitive,
-          onChanged == null
-              ? null
-              : (v) => onChanged!(thresholds.copyWith(extraSensitive: v)),
-          enabled: onChanged != null,
-          sub: 'Off: the band sends its sensor readings about once a second, '
-              'and within each batch everything from the first to the last '
-              'reading with contact counts as one touch. A lift and re-touch '
-              'inside the same second counts as one tap. '
-              'On: every reading counts on its own, so quicker taps can be '
-              'told apart. But the heart signal crosses zero now and then, and '
-              'a single zero reading while a touch is starting restarts its '
-              'hold time, so taps can be missed, counted late, or split in two.',
-        ),
-        SwitchRow(
-          key: const ValueKey('ecg-threshold:tolerant-startup'),
-          'Tolerant startup',
-          thresholds.tolerantStartup,
-          onChanged == null
-              ? null
-              : (v) => onChanged!(thresholds.copyWith(tolerantStartup: v)),
-          enabled: onChanged != null,
-          sub: 'On: waits for the sensor to settle (about 2.5 s), so a finger '
-              'placed during startup still counts. Off: decides a plain double '
-              'tap from the first ECG packet, about 2 s sooner, but a finger '
-              'placed after that packet is missed.',
-        ),
-        SwitchRow(
-          key: const ValueKey('ecg-threshold:fallback'),
-          'Fall back to the double-tap action',
-          thresholds.fallbackToDoubleTap,
-          onChanged == null
-              ? null
-              : (v) => onChanged!(thresholds.copyWith(fallbackToDoubleTap: v)),
-          enabled: onChanged != null,
-          sub: 'On: if the ECG cannot start or stops before any touch is '
-              'counted, the double-tap action runs. Off: the ECG is tried once '
-              'more instead. Either way the band gives one long buzz when the '
-              'ECG fails.',
-        ),
-      ],
-    ]);
-  }
 }
 
 class _Adjuster extends StatelessWidget {

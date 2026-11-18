@@ -7,7 +7,6 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
-import 'package:openstrap_edge/ecg/ecg_models.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/gestures/gesture_failures.dart';
 import 'package:openstrap_edge/state/app_state.dart';
@@ -97,37 +96,6 @@ void main() {
       expect(_stored(), hasLength(1));
     });
 
-    test('an ECG route that could not start is recorded as an ECG failure '
-        '(start_failed); the fallback action failing too adds no second record '
-        'for the same gesture', () async {
-      final rig = await newRig(mg: true);
-      await mapActions(rig.app, [2, 3]);
-      rig.doubleTap();
-      await until(() => channel.performed.isNotEmpty);
-      await until(() => rig.cues.contains('failed'));
-      await settleMs(300);
-      expect(channel.performed, ['media_play_pause']);
-      final f = rig.app.gestureFailures.all.single;
-      expect(f.kind, GestureFailureKind.ecg);
-      expect(f.reason, 'start_failed');
-    });
-
-    test('a counted ECG gesture whose mapped action fails is an ECG failure '
-        'naming the action', () async {
-      final rig = await newRig(mg: true);
-      await rig.app.ecg.guard.setWrist(kSerial, EcgWrist.left);
-      await mapActions(rig.app, [2, 3]);
-      rig.doubleTap();
-      await until(() => order.contains('band:generation'));
-      await playEcgCount(rig, 3);
-      await until(() => rig.app.gestureFailures.all.isNotEmpty,
-          within: const Duration(seconds: 8));
-      await settleMs(300);
-      expect(channel.performed, ['media_next']);
-      final f = rig.app.gestureFailures.all.single;
-      expect(f.kind, GestureFailureKind.ecg);
-      expect(f.reason, startsWith('media_next:'));
-    });
   });
 
   group('exposure and dismiss', () {

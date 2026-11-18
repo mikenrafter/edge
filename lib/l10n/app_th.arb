@@ -19577,7 +19577,6 @@
   "@bandStatusFirmwareLockedTitle": {
     "description": "BandStatus card title: band firmware 50.43 withholds all data until a WHOOP membership token is on it"
   },
-  "gestureEcgTapName": "{n, plural, =0{Double tap} one{Double tap + {n} ECG tap} other{Double tap + {n} ECG taps}}",
   "tracksHrv": "Heart rate variability",
   "@guideAlarmMissingBody": {
     "description": "Footer card body: why the Wake time row can be missing (the day is off, or a section is folded). {wake} is the row, {more} the Sleep tab section that holds the Alarm row.",
@@ -19597,14 +19596,6 @@
   },
   "olderVersionReasonAge": "This metric needs your age, which is not on file.",
   "tracksAddRange": "Add date range",
-  "@gestureEcgTapName": {
-    "description": "Name of an ECG tap count on the Gestures screen: the opening double tap plus {n} touches of the ECG sensor (0 is the plain double tap).",
-    "placeholders": {
-      "n": {
-        "type": "int"
-      }
-    }
-  },
   "syncNoteAlreadyConnected": "Already connected",
   "tracksExperimentPending": "The effect, with its uncertainty, is reported when the experiment ends.",
   "tracksExperimentStop": "Stop experiment",

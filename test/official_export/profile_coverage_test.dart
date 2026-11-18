@@ -44,7 +44,6 @@ const _spec = <String, String>{
   'derived_day': 'R',
   'device': 'M',
   'device_coverage': 'K',
-  'ecg_gesture_session': 'D',
   'ecg_raw_packet': 'M',
   'ecg_reading': 'M',
   'ecg_reading_packet': 'K',
@@ -228,7 +227,7 @@ void main() {
 
     test('the frozen capture of that schema is covered', () {
       final catalog = loadCapture('fork_schema_92.json');
-      expect(catalog.tables, hasLength(109));
+      expect(catalog.tables, hasLength(108));
       expect(officialProfile.coverage(catalog), isEmpty);
     });
 

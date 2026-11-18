@@ -1,42 +1,10 @@
-// What a double-tap on the band does.
-//
-// The engine for this shipped a long time ago — the event decode, the recency
-// and debounce guards, the persisted mapping, the native channel — and then the
-// screen that sets it died with the old `lib/ui` tree. So the mapping sat on its
-// `none` default with nothing able to change it: a feature that ran on every
-// live event and could never do anything. This is the missing half.
-//
-// The list is not a fixed menu. It is whatever THIS phone said it can actually
-// do — `GestureSettings.supported`, seeded from `DeviceActions.capabilities()`.
-// An action drawn here and then silently doing nothing is worse than one that
-// was never offered: iOS cannot touch system volume or a third-party player, and
-// only Android has the Tasker broadcast, so on an iPhone those are simply not in
-// the list. When native answers with nothing at all, the phone actions are
-// absent AND SAY SO, rather than leaving a gap to guess at.
-//
-// Several actions can be on at once. There is no "do nothing" row: every action
-// off IS the off state, and the copy says so.
-//
-// Laid out as sub-tabs (Oct 4): what applies to every gesture (the intro, how
-// extra taps are counted, and the timing of the counting method in force) is
-// above the tab row; each gesture is a tab, and every tab has the same shape:
-// its name and how to do it, the actions as switches, then the links (Haptics,
-// and the Device lab in developer mode).
-//
-// ECG touches are a developer-mode option: the method choice, the ECG tab
-// names and the ECG timings are drawn only with developer mode on. Without it
-// a stored ECG choice reads as the double-tap chain here, which is also what
-// the dispatcher does with it (AppState's ecgSupported callback).
-
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../gestures/device_action.dart';
-import '../../gestures/ecg_tap_counter.dart';
 import '../../gestures/gesture_settings.dart';
 import '../../gestures/gesture_slots.dart';
-import '../../gestures/tap_names.dart';
 import '../../gestures/time_buzz.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
@@ -74,16 +42,8 @@ class BandGestures extends StatelessWidget {
         followUp: g.followUpMoments,
         onFollowUp: g.setFollowUpMoments,
         taskerOn: Prefs.taskerConnectionOn,
-        // The row for 2 taps is the switches above; 3–5 are the extra-tap
-        // counts. More double taps by default on any band; ECG touches are an
-        // opt-in on a WHOOP MG, in developer mode.
-        ecgSupported: caps.has(Feature.ecgTouchTaps),
-        tapMethod: g.tapMethodFor(ecgSupported: caps.has(Feature.ecgTouchTaps)),
-        onTapMethod: g.setTapMethod,
         repeatWindowMs: g.repeatTapWindowMs,
         onRepeatWindowMs: g.setRepeatTapWindowMs,
-        thresholds: g.ecgTapThresholds,
-        onThresholds: g.setEcgTapThresholds,
         tapActions: {for (var n = 3; n <= 5; n++) n: g.actionsForTaps(n)},
         onTapToggle: (n, a, on) {
           final cur = g.actionsForTaps(n);
@@ -96,7 +56,6 @@ class BandGestures extends StatelessWidget {
         // picker has each slot's own mode, and overlaps are warned about.
         overlaps: g.overlaps(),
         onSlotToggle: g.trySetAction,
-        ecgOnDoubleTap: g.ecgActive,
         slotTimeBuzzModes: {
           for (final slot in GestureSlots.all) slot: g.timeBuzzModeFor(slot),
         },
@@ -143,19 +102,6 @@ class BandGesturesView extends StatelessWidget {
   /// "Turn on Tasker first".
   final bool taskerOn;
 
-  /// A WHOOP MG: the only band whose ECG sensor can be touched to count taps.
-  /// The ECG options are drawn only when [devMode] is on as well.
-  final bool ecgSupported;
-
-  /// How extra taps are counted for this band. Null follows the default
-  /// (repeated double taps); a band without ECG always counts double taps.
-  final TapCountMethod? tapMethod;
-  final ValueChanged<TapCountMethod>? onTapMethod;
-
-  /// The timing of the method in force, the same adjusters (and the same
-  /// stored values) as the Device lab: the pause between double taps for
-  /// repeated double taps, start / gap / confirm for ECG touches. The pause is
-  /// drawn only when [onRepeatWindowMs] is given.
   final int? repeatWindowMs;
   final ValueChanged<int>? onRepeatWindowMs;
 
@@ -164,9 +110,6 @@ class BandGesturesView extends StatelessWidget {
 
   /// Flip one action for an n-tap count. Null leaves the rows read-only.
   final Future<void> Function(int taps, DeviceAction, bool)? onTapToggle;
-
-  final EcgTapThresholds? thresholds;
-  final ValueChanged<EcgTapThresholds>? onThresholds;
 
   /// FeatureFlag.tapClassifiers. False hides every extra-tap control (method,
   /// timing, tap counts and the MG note): the screen is then the
@@ -200,12 +143,7 @@ class BandGesturesView extends StatelessWidget {
   /// picker shows its OWN slot's mode (falling back to [timeBuzzMode]) and a
   /// tap on a row reports the slot (falling back to [onTimeBuzzMode]).
   ///
-  /// [ecgOnDoubleTap]: ECG owns the double tap (stored switch on and in
-  /// force). The double tap's tab then says only ECG runs when it also has
-  /// actions mapped (an older config, left as it was), key
-  /// `gesture-ecg-only-note`.
   final Map<DeviceAction, Set<String>> overlaps;
-  final bool ecgOnDoubleTap;
   final Future<ActionToggleResult> Function(
       String slot, DeviceAction action, bool on)? onSlotToggle;
   final Map<String, TimeBuzzMode> slotTimeBuzzModes;
@@ -229,7 +167,7 @@ class BandGesturesView extends StatelessWidget {
   final VoidCallback? onHaptics;
 
   /// Developer mode: a Device lab link under the Haptics one in every tab, and
-  /// the ECG touch options.
+  /// the developer tools.
   final bool devMode;
   final VoidCallback? onDeviceLab;
 
@@ -243,21 +181,15 @@ class BandGesturesView extends StatelessWidget {
     this.followUp = false,
     this.onFollowUp,
     this.taskerOn = true,
-    this.ecgSupported = false,
-    this.tapMethod,
-    this.onTapMethod,
     this.repeatWindowMs,
     this.onRepeatWindowMs,
     this.tapActions = const {},
     this.onTapToggle,
-    this.thresholds,
-    this.onThresholds,
     this.extraTaps = true,
     this.timeBuzzMode = TimeBuzzMode.count,
     this.onTimeBuzzMode,
     this.timeBuzzNow,
     this.overlaps = const {},
-    this.ecgOnDoubleTap = false,
     this.onSlotToggle,
     this.slotTimeBuzzModes = const {},
     this.onSlotTimeBuzzMode,
@@ -282,13 +214,6 @@ class BandGesturesView extends StatelessWidget {
       ...DeviceAction.values.where((a) => a.isNative && supported.contains(a)),
     ];
     final noPhoneActions = !offered.any((a) => a.isNative);
-    // ECG touches count only in developer mode on a band with the sensor;
-    // anything else is the double-tap chain.
-    final method = ecgSupported && devMode
-        ? (tapMethod ?? TapCountMethod.repeat)
-        : TapCountMethod.repeat;
-    final ecg = method == TapCountMethod.ecg;
-
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
@@ -312,75 +237,27 @@ class BandGesturesView extends StatelessWidget {
                     ),
                   ),
                 ),
-                // How taps beyond the double tap are counted. Only developer
-                // mode has a choice (ECG touches); ECG is dimmed and inert
-                // (never hidden) there on a band without the sensor.
-                if (extraTaps && devMode) ...[
-                  SettingsAccordion('Count extra taps with',
-                      id: 'gestures_extra_taps',
-                      children: [
-                    _MethodRow(
-                      id: 'ecg',
-                      title: 'ECG sensor touches',
-                      sub: 'Touch the ECG sensor on the band after the double '
-                          'tap. WHOOP MG only.',
-                      selected: ecg,
-                      enabled: ecgSupported,
-                      onTap: () => onTapMethod?.call(TapCountMethod.ecg),
-                    ),
-                    _MethodRow(
-                      id: 'repeat',
-                      title: 'More double taps',
-                      sub: 'Double tap again before the pause ends. Works on '
-                          'every band.',
-                      selected: !ecg,
-                      enabled: true,
-                      onTap: () => onTapMethod?.call(TapCountMethod.repeat),
-                    ),
-                  ]),
-                  Section(
-                    'What needs a WHOOP MG',
-                    Surface(
-                      child: Text(kExtendedGesturesNote,
-                          style: F.body.copyWith(color: p.ink2, height: 1.4)),
-                    ),
-                  ),
-                ],
-                // The timing of the method in force, and only that one.
-                if (extraTaps && (ecg || onRepeatWindowMs != null))
+                if (extraTaps && onRepeatWindowMs != null)
                   SettingsAccordion('Timing', id: 'gestures_timing', children: [
-                    if (ecg)
-                      EcgThresholdAdjusters(
-                        thresholds: thresholds ?? EcgTapThresholds(),
-                        onChanged: onThresholds,
-                        timingsOnly: true,
-                      )
-                    else
-                      RepeatWindowAdjuster(
-                        windowMs: repeatWindowMs ??
-                            GestureSettings.defaultRepeatWindowMs,
-                        onChanged: onRepeatWindowMs,
-                      ),
+                    RepeatWindowAdjuster(
+                      windowMs: repeatWindowMs ?? GestureSettings.defaultRepeatWindowMs,
+                      onChanged: onRepeatWindowMs,
+                    ),
                   ]),
-                // 2 taps is the plain double tap; there is no 1-tap tab. The
-                // rest are touches of the ECG sensor after the double tap, or
-                // more double taps in a row. One mapping serves both: the slot
-                // for 3 taps is the slot for 2 double taps. Without extra taps
-                // there is one gesture, so no tab row.
                 if (extraTaps)
                   _GestureTabs(
                     items: [
-                      for (var n = 2; n <= 5; n++) _tabLabel(n, ecg),
+                      for (var n = 2; n <= 5; n++) _tabLabel(n),
                     ],
                     semanticLabels: [
                       for (var n = 2; n <= 5; n++)
-                        '${_name(l, n, ecg)}, gesture',
+                        '${_name(n)}, gesture',
                     ],
                     body: (c, n) =>
-                        _tabBody(c, n, ecg, offered, noPhoneActions, S.x5),
+                        _tabBody(c, n, offered, noPhoneActions, S.x5),
                   )
                 else
-                  _tabBody(c, 2, ecg, offered, noPhoneActions, S.x3),
+                  _tabBody(c, 2, offered, noPhoneActions, S.x3),
               ],
             ),
           ),
@@ -393,7 +270,7 @@ class BandGesturesView extends StatelessWidget {
   /// the actions as switches, then the links at the bottom. [top] is the gap
   /// above the first card: under a tab row it is S.x5, what Health and Workout
   /// leave under theirs.
-  Widget _tabBody(BuildContext c, int taps, bool ecg, List<DeviceAction> offered,
+  Widget _tabBody(BuildContext c, int taps, List<DeviceAction> offered,
       bool noPhoneActions, double top) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
@@ -419,13 +296,13 @@ class BandGesturesView extends StatelessWidget {
                       children: [
                         Row(children: [
                           Flexible(
-                            child: Text(_name(l, taps, ecg),
+                            child: Text(_name(taps),
                                 key: const ValueKey('gestures-tab-name'),
                                 style: F.body.copyWith(
                                     color: p.ink, fontWeight: FontWeight.w600)),
                           ),
                         ]),
-                        Text(_how(taps, ecg),
+                        Text(_how(taps),
                             key: const ValueKey('gestures-tab-how'),
                             style: F.over.copyWith(color: p.ink3)),
                       ]),
@@ -501,23 +378,13 @@ class BandGesturesView extends StatelessWidget {
               ]),
             ),
           ),
-          // Why the last switch was refused (an active mode, ECG, is exclusive).
+          // Why the last switch was refused (an active mode is exclusive).
           if (refusal != null)
             Padding(
               padding: const EdgeInsets.only(top: S.x3),
               child: Surface(
                 child: Text(refusal,
                     key: const ValueKey('gesture-refusal'),
-                    style: F.body.copyWith(color: p.ink2, height: 1.4)),
-              ),
-            ),
-          // An older config: ECG is on and so are actions. Only ECG runs.
-          if (ecgOnDoubleTap && slot == GestureSlots.ecgSlot && on.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: S.x3),
-              child: Surface(
-                child: Text(kEcgOnlyRunsNote,
-                    key: const ValueKey('gesture-ecg-only-note'),
                     style: F.body.copyWith(color: p.ink2, height: 1.4)),
               ),
             ),
@@ -603,31 +470,13 @@ class BandGesturesView extends StatelessWidget {
           if (s != slot && (overlaps[a]?.contains(s) ?? false)) s,
       ];
 
-  // The gesture's name: the plain double tap, then the count's own name. The
-  // ECG count's name is the plural message, or the same English from
-  // the plain helper where no localizations are in the tree.
-  static String _name(AppLocalizations? l, int n, bool ecg) => n == 2
-      ? 'Double tap'
-      : ecg
-          ? (l?.gestureEcgTapName(n - 2) ?? ecgTapCountName(n))
-          : '${n - 1} double taps';
+  static String _name(int n) => n == 2 ? 'Double tap' : '${n - 1} double taps';
 
-  // What fits a 360 pt tab; the full name is the screen reader's label.
-  static String _tabLabel(int n, bool ecg) => n == 2
-      ? 'Double tap'
-      : ecg
-          ? '+${n - 2} ECG'
-          : '×${n - 1}';
+  static String _tabLabel(int n) => n == 2 ? 'Double tap' : '×${n - 1}';
 
-  static String _how(int n, bool ecg) {
-    if (n == 2) return 'Tap the band twice.';
-    if (ecg) {
-      final k = n - 2;
-      return 'Double tap, then touch the ECG sensor '
-          '${k == 1 ? 'once' : '$k times'}.';
-    }
-    return 'Double tap ${n - 1} times in a row before the pause ends.';
-  }
+  static String _how(int n) => n == 2
+      ? 'Tap the band twice.'
+      : 'Double tap ${n - 1} times in a row before the pause ends.';
 }
 
 /// Runs a slot's switch through [onSlotToggle] and keeps the answer: a refusal
@@ -913,52 +762,4 @@ class _GestureTabsState extends State<_GestureTabs> {
           widget.body(c, _n),
         ],
       );
-}
-
-/// One choice in "Count extra taps with". Deliberately not a [SwitchRow]: it is
-/// one of two, and a disabled choice stays visible and dimmed with its reason.
-class _MethodRow extends StatelessWidget {
-  const _MethodRow({
-    required this.id,
-    required this.title,
-    required this.sub,
-    required this.selected,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  final String id, title, sub;
-  final bool selected, enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext c) {
-    final p = P.of(c);
-    final row = Pressable(
-      key: ValueKey('tap-method:$id'),
-      onTap: enabled ? onTap : null,
-      semanticLabel: '$title. $sub',
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: S.x3),
-        child: Row(children: [
-          Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: F.body.copyWith(color: p.ink)),
-              Text(sub, style: F.over.copyWith(color: p.ink3)),
-              if (!enabled)
-                Text('This band has no ECG sensor',
-                    style: F.over.copyWith(color: p.ink3)),
-            ]),
-          ),
-          const SizedBox(width: S.x2),
-          if (selected)
-            Icon(LucideIcons.check, size: 18, color: p.on(C.blue))
-          else
-            const SizedBox(width: 18),
-        ]),
-      ),
-    );
-    return enabled ? row : Opacity(opacity: kDisabledOpacity, child: row);
-  }
 }

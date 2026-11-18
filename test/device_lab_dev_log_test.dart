@@ -33,7 +33,7 @@ void main() {
 
   testWidgets('no buttons when the screen has no dev log to act on',
       (t) async {
-    await _pump(t, const DeviceLabView(initialTab: LabTab.logs, ecgSupported: false));
+    await _pump(t, const DeviceLabView(initialTab: LabTab.logs, ));
     expect(_export, findsNothing);
     expect(_clear, findsNothing);
   });
@@ -43,7 +43,7 @@ void main() {
         t,
         DeviceLabView(
           initialTab: LabTab.logs,
-          ecgSupported: false,
+
           tapTools: true,
           devLog: _Fake(),
         ));
@@ -62,7 +62,7 @@ void main() {
         t,
         DeviceLabView(
           initialTab: LabTab.logs,
-          ecgSupported: false,
+
           devLog: _Fake(exportAs: (o) async {
             origins.add(o);
             return ok;
@@ -85,7 +85,7 @@ void main() {
         t,
         DeviceLabView(
           initialTab: LabTab.logs,
-          ecgSupported: false,
+
           devLog: _Fake(exportAs: (_) async => throw StateError('boom')),
         ));
     await t.tap(_export);
@@ -99,7 +99,7 @@ void main() {
         t,
         DeviceLabView(
           initialTab: LabTab.logs,
-          ecgSupported: false,
+
           devLog: _Fake(clearAs: () async => cleared++),
         ));
     await t.tap(_clear);
@@ -118,7 +118,7 @@ void main() {
         t,
         DeviceLabView(
           initialTab: LabTab.logs,
-          ecgSupported: false,
+
           devLog: _Fake(clearAs: () async => cleared++),
         ));
     await t.tap(_clear);
@@ -134,7 +134,7 @@ void main() {
         t,
         DeviceLabView(
           initialTab: LabTab.logs,
-          ecgSupported: false,
+
           devLog: _Fake(clearAs: () async => throw StateError('locked')),
         ));
     await t.tap(_clear);

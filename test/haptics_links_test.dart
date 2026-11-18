@@ -42,7 +42,6 @@ Widget _gestures({VoidCallback? onHaptics}) {
     return Function.apply(BandGesturesView.new, const [], {
       #chosen: <DeviceAction>{},
       #supported: _supported,
-      #ecgSupported: true,
       #onHaptics: onHaptics,
     }) as Widget;
   } on NoSuchMethodError {

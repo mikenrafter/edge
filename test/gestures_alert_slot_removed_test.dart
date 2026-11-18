@@ -16,7 +16,6 @@ import 'dart:io';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/gestures/ecg_tap_session.dart';
 import 'package:openstrap_edge/gestures/tap_ack.dart';
 import 'package:openstrap_edge/haptics/builtin_patterns.dart';
 import 'package:openstrap_edge/haptics/haptic_slots.dart';
@@ -124,26 +123,6 @@ void main() {
   });
 
   group('the rule\'s enabled flag gated nothing: delivery is unchanged', () {
-    test('a gesture count cue is delivered with the stored rule switched off',
-        () {
-      fakeAsync((async) {
-        // The stored rule is never an input of the dispatch: the constant is.
-        final prefs = _gestureRuleOff();
-        expect(prefs.alertRule('gesture').enabled, isFalse);
-        AlertDeliveryOutcome? out;
-        _dispatcher()
-            .dispatch(
-              kEcgTapRule,
-              eventId: 'g8:ecg:1',
-              sourceTime: DateTime.now(),
-              historical: false,
-              bandDelivery: () async => BuzzDelivery.complete,
-            )
-            .then((o) => out = o);
-        async.elapse(const Duration(seconds: 10));
-        expect(out?.targets, ['band']);
-      });
-    });
 
     test('the confirm ack is delivered with the stored rule switched off', () {
       fakeAsync((async) {

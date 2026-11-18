@@ -229,19 +229,12 @@ const officialProfile = OfficialProfile(
       keep: ['device_id', 'signal', 'start_ts', 'end_ts'],
       merge: MergeKey(['device_id', 'signal', 'start_ts'], MergeRule.plainReplace),
     ),
-    'ecg_gesture_session': TableProfile(
-      policy: TablePolicy.dropped,
-      meaning: r'''Fork gesture provenance unsupported by importer.''',
-      evidence: r'''`schema.dart:1576`''',
-      dropped: ['device_id', 'created_at', 'strap_start', 'strap_end', 'final_count', 'outcome', 'reason'],
-    ),
     'ecg_raw_packet': TableProfile(
       policy: TablePolicy.mapped,
       dest: 'ecg_raw_packet',
-      meaning: r'''Same table; exact bytes. Unsupported `origin`/provenance listed.''',
+      meaning: r'''Same table; exact bytes.''',
       evidence: r'''`schema.dart:1547`''',
       keep: ['hex', 'device_id', 'sequence', 'strap_seconds', 'strap_subsec', 'captured_at', 'reading_id'],
-      omit: ['origin'],
       merge: MergeKey(['hex'], MergeRule.plainReplace, r'''same frame identity'''),
     ),
     'ecg_reading': TableProfile(

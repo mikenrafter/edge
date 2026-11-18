@@ -1201,7 +1201,6 @@ findingsLogDerivedNote
 findingsLogEmptyBody
 findingsLogEmptyTitle
 findingsLogTitle
-gestureEcgTapName
 gesturesBreatheLengthTitle
 gesturesBreathePatternTitle
 gesturesBreatheTitle

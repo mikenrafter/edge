@@ -151,20 +151,6 @@ void main() {
     expect(probes.running, isNull);
   });
 
-  test('the ECG onFrame fan-out feeds the tap session', () async {
-    final rig = await newRig();
-    await rig.app.ecg.guard.setWrist(kSerial, EcgWrist.left);
-    await mapActions(rig.app, [3]);
-    rig.doubleTap();
-    await until(() => rig.app.ecg.isCapturing);
-    await feedEcgOpening(rig.feedEcg);
-    await until(() => channel.performed.isNotEmpty,
-        within: const Duration(seconds: 8));
-    expect(channel.performed, ['media_next'],
-        reason: 'the packets reached the session, which counted 3');
-    await until(() => labCount(rig, 'Final count') > 0);
-  });
-
   // The ECG failure buzz is the "Gesture failed" cue (default:
   // one long command looped twice), played through the same dispatcher
   // delivery as every other gesture cue.

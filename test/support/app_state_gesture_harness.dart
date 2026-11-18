@@ -30,7 +30,6 @@ import 'package:openstrap_edge/ecg/ecg_guard_store.dart';
 import 'package:openstrap_edge/ecg/ecg_models.dart';
 import 'package:openstrap_edge/ecg/ecg_transport.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
-import 'package:openstrap_edge/gestures/gesture_settings.dart' show TapCountMethod;
 import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/prefs.dart';
@@ -340,9 +339,7 @@ class GestureRig {
   /// is repeated double taps), so its gestures take the ECG route; a test that
   /// wants double taps on it sets [TapCountMethod.repeat] afterwards.
   Future<void> measureCues() async {
-    if (mg) {
-      await app.gestureSettings.setTapMethod(TapCountMethod.ecg);
-    }
+
     // The hello answer starts a device-row write (insert, then the update
     // that sets the band's family); wait for it to land before a test can
     // finish and close the database. A rig with no hello writes nothing, so

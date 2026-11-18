@@ -223,16 +223,4 @@ void main() {
     });
   });
 
-  group('the wiring', () {
-    test('the gesture controller plays the failure through cues.failed, not a '
-        'fixed engine buzz', () {
-      final src = File('lib/state/gesture_controller.dart').readAsStringSync();
-      final fn = codeOnly(bodyOf(src, 'Future<bool> _ecgTapFailBuzz'));
-      expect(fn, contains('cues.failed'));
-      expect(fn, isNot(contains('buzzBand')));
-      expect(fn, contains('_gestureCue'),
-          reason: 'one path for every gesture cue: the dispatcher claim, the '
-              'wearer\'s assignment read, the lab work wrapper');
-    });
-  });
 }

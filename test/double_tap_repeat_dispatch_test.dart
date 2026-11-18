@@ -78,12 +78,7 @@ class _Rig {
       performNative: (_) async => true,
       claim: (k) async => claims.add(k),
       release: (k) async => claims.remove(k),
-      ecgSupported: () => mg,
-      onEcgTap: (e) async => labStarts.add(e),
-      onCountTaps: (e) async {
-        ecgCounted.add(e);
-        return 2;
-      },
+
       repeatSession: repeat,
       onTellTime: (e, _) async => ran.add('tell'),
       onMarkMoment: (e) async => ran.add('moment'),
@@ -114,25 +109,6 @@ void main() {
       .setMockMethodCallHandler(_channel, null));
 
   group('no ECG on the band: repeated double taps', () {
-    test('with a 3-5 slot mapped, a single double tap waits out the window',
-        () async {
-      final s = await _mapped();
-      fakeAsync((async) {
-        final r = _Rig(s)..tap(_tap());
-        async.elapse(const Duration(milliseconds: 2499));
-        expect(r.ran, isEmpty);
-        expect(r.first, isNull);
-        async.elapse(const Duration(milliseconds: 1));
-        async.flushMicrotasks();
-        expect(r.ran, ['tell']);
-        expect(r.first!.single.status, GestureStatus.ran);
-        expect(r.first!.single.taps, 2,
-            reason: 'the session confirms a count of 2 itself, so the '
-                'tap ack stays out');
-        expect(r.ecgCounted, isEmpty);
-        expect(r.buzzes, isEmpty);
-      });
-    });
 
     test('with NO 3-5 slot mapped the single double tap runs at once',
         () async {
@@ -242,55 +218,6 @@ void main() {
       });
     });
 
-    test('the stored choice of ECG does not apply to a band without ECG',
-        () async {
-      final s = await _mapped(prefs: {'gesture_tap_method': 'ecg'});
-      fakeAsync((async) {
-        final r = _Rig(s)..tap(_tap());
-        async.elapse(const Duration(milliseconds: 2500));
-        async.flushMicrotasks();
-        expect(r.ecgCounted, isEmpty);
-        expect(r.ran, ['tell']);
-      });
-    });
-  });
-
-  group('WHOOP MG: the user can choose', () {
-    test('default is double taps: the window is used, not the ECG counter',
-        () async {
-      final s = await _mapped();
-      fakeAsync((async) {
-        final r = _Rig(s, mg: true)..tap(_tap());
-        async.elapse(const Duration(milliseconds: 2500));
-        async.flushMicrotasks();
-        expect(r.ecgCounted, isEmpty);
-        expect(r.ran, ['tell']);
-      });
-    });
-
-    test('a stored choice of ECG is kept: the touch counter is used, not '
-        'repeated taps', () async {
-      final s = await _mapped(prefs: {'gesture_tap_method': 'ecg'});
-      fakeAsync((async) {
-        final r = _Rig(s, mg: true)..tap(_tap());
-        async.flushMicrotasks();
-        expect(r.ecgCounted, hasLength(1));
-        expect(r.repeat.open, isFalse);
-      });
-    });
-
-    test('choosing double taps uses the window and never the ECG counter',
-        () async {
-      final s = await _mapped();
-      await s.setTapMethod(TapCountMethod.repeat);
-      fakeAsync((async) {
-        final r = _Rig(s, mg: true)..tap(_tap());
-        async.elapse(const Duration(milliseconds: 2500));
-        async.flushMicrotasks();
-        expect(r.ecgCounted, isEmpty);
-        expect(r.ran, ['tell']);
-      });
-    });
   });
 
   group('the Device lab can try the double-tap method', () {
