@@ -1,6 +1,7 @@
 // WHY: nap edits must never invalidate an in-flight night or release its pin.
 // CLAIM(sleep-block-one-queue); catches routing naps through the night counter.
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -8,6 +9,8 @@ import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/sleep_block_store.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/profile.dart';
+import 'package:openstrap_edge/compute/derive_prepare.dart';
+import 'package:openstrap_edge/compute/substrate.dart';
 import 'package:openstrap_edge/data/activity_store.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,6 +20,23 @@ import '../support/test_callable.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/sleep_edit_store.dart';
 import 'package:openstrap_edge/data/sleep_editor.dart';
+
+// Same independent moving/still fixture as nap_attribution_test: a ramp
+// survives the detector's rolling median; the still block has a real HR dip.
+Substrate napDay(int napStart) {
+  const length=6*3600;
+  final hr=<int>[],ax=<double>[],ay=<double>[],az=<double>[];
+  for(var i=0;i<length;i++) {
+    final nap=i>=7200 && i<9600;
+    hr.add(nap?56:78);
+    final angle=(i%9)*10*math.pi/180;
+    ax.add(nap?0:math.cos(angle));ay.add(0);az.add(nap?1:math.sin(angle));
+  }
+  return Substrate(tsSec:[for(var i=0;i<length;i++) napStart-7200+i],hr:hr,
+    rrTsMs:const [],rrMs:const [],ax:ax,ay:ay,az:az,
+    spo2Red:List.filled(length,0),spo2Ir:List.filled(length,0),
+    skinTemp:List.filled(length,0),skinContact:List.filled(length,0),deviceFamily:'gen4');
+}
 
 void main() {
   late Database db;
@@ -164,10 +184,16 @@ void main() {
     await db.update('activity_review_meta',{'activated_at':start-1});
     SharedPreferences.setMockInitialValues({Prefs.napAutoLogSinceSec:start-1});
     await db.execute('CREATE TABLE sleep_write_spy(kind TEXT, blocks INTEGER, naps INTEGER)');
-    await db.execute("CREATE TRIGGER sleep_write_spy_ai AFTER INSERT ON sleep_nap BEGIN INSERT INTO sleep_write_spy VALUES('nap',(SELECT COUNT(*) FROM sleep_block),(SELECT COUNT(*) FROM sleep_nap)); END");
-    await DerivationEngine(log:(_){}).debugPublishSleepReview(day,[{'start':start,'end':start+2400,'duration_min':35,'confidence':0.9}],start+3600);
+    await db.execute("CREATE TRIGGER sleep_write_spy_ai AFTER INSERT ON sleep_nap BEGIN INSERT INTO sleep_write_spy VALUES('nap',(SELECT COUNT(*) FROM sleep_block),(SELECT COUNT(*) FROM sleep_nap)); SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM day_result) THEN RAISE(ABORT,'auto-log preceded the day commit') END; END");
+    final sub=napDay(start);
+    final prepared=PreparedDerivationDay(date:day,endSec:sub.tsSec.last+1,confidence:0.9,flags:const [],
+      sleepJson:const {},hypnoStages:const [],sleepOnsetSec:0,sleepOffsetSec:0,
+      daySub:sub,sleepSub:Substrate.empty);
+    final logs=<String>[];
+    await DerivationEngine(log:logs.add).debugDerivePreparedDay(prepared,const Profile(),sub.tsSec.last+1);
+    expect(await db.query('day_result'),hasLength(1),reason:logs.join('\n'));
     final writes=await db.query('sleep_write_spy');
-    expect(writes,hasLength(1));expect([writes.single['blocks'],writes.single['naps']],[1,1]);
+    expect(writes,hasLength(1),reason:logs.join('\n')); expect([writes.single['blocks'],writes.single['naps']],[1,1]);
     final job=(await db.query('sleep_edit_job')).single;
     expect([job['revision'],job['nap_revision'],job['nap_applied_revision']],[0,1,0],reason:'headless post-day step leaves nap work queued for foreground');
     expect(await db.query('activity_review_days'),isEmpty);
