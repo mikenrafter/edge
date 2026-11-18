@@ -19,8 +19,24 @@ void main() {
     try {
       final copy = p.join(root.path,'proof.db');
       await File(source!).copy(copy);
+      final beforeDb = await databaseFactory.openDatabase(copy);
+      final oldMains = [for (final r in await beforeDb.query('sleep_override')) {...r,'payload_json':null}];
+      final oldNaps = await beforeDb.query('sleep_nap');
+      final windows = await LocalDb.servedMainWindows(beforeDb,'0001-01-01','9999-12-31');
+      await beforeDb.close();
       await LocalDb.close(); LocalDb.dbName=copy;
       final db = await LocalDb.instance;
+      expect(await db.query('sleep_override'),oldMains);
+      for (final nap in oldNaps) {
+        expect((await db.query('sleep_nap',where:'day_id = ? AND start_ts = ?',
+          whereArgs:[nap['day_id'],nap['start_ts']])).single,nap);
+      }
+      expect(await LocalDb.servedMainWindows(db,'0001-01-01','9999-12-31'),windows);
+      final projectedNaps = await db.query('sleep_nap');
+      expect((await db.query('sleep_block')).length,oldMains.length+projectedNaps.length);
+      // Counts are proof evidence only; the source file is never overwritten.
+      // ignore: avoid_print
+      print('sleep proof mains=${oldMains.length}, naps=${oldNaps.length}, legacy captured=${projectedNaps.length-oldNaps.length}');
       final days = (await db.query('sleep_block',columns:['owner_day'],distinct:true)).map((r)=>r['owner_day'] as String);
       for (final day in days) { await projectionMatches(db,day); }
       final before = await snapshot(db);
