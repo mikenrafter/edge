@@ -526,6 +526,10 @@ abstract final class SleepBlockStore {
           continue;
         }
         final start = a.toInt(), end = b.toInt();
+        final nextStart=served['next_start'], nextEnd=served['next_end'];
+        // Do not turn a pre-v106 next-night phantom into a durable assertion
+        // before the raw-free cleanup runs [B4; legacy phantom upgrade test].
+        if(nextStart is int && nextEnd is int && start<nextEnd && end>nextStart) continue;
         if ((await tx.query('sleep_block', columns: ['id'],
             where: "(kind = 'nap' OR state <> 'live') AND start_ts < ? AND end_ts > ?", whereArgs: [end, start])).isNotEmpty) {
           continue;
@@ -545,13 +549,32 @@ abstract final class SleepBlockStore {
     return report;
   }
 
+  /// Read the narrow legacy input from either the local or import connection.
+  /// Next-night bounds travel with the input so import never reads its source
+  /// inside the main transaction [B4; spec §2.2 step 3 / RULES B.8].
+  static Future<List<Map<String,Object?>>> legacyNapInputs(DatabaseExecutor db) async {
+    final rows=await db.rawQuery("SELECT r.day_id, CASE WHEN json_valid(r.payload_json) "
+      "THEN json_extract(r.payload_json, '\$.naps.value') END AS naps_json, "
+      "CASE WHEN json_valid(r.window_json) THEN COALESCE(json_extract(r.window_json, '\$.value.onset_ms'), "
+      "json_extract(r.window_json, '\$.onset_ms')) END AS on_ms, "
+      "CASE WHEN json_valid(r.window_json) THEN COALESCE(json_extract(r.window_json, '\$.value.offset_ms'), "
+      "json_extract(r.window_json, '\$.offset_ms')) END AS off_ms "
+      "FROM day_result r ${LocalDb.servedDayJoinSql} WHERE r.skipped = 0");
+    final byDay={for(final r in rows) r['day_id']:r};
+    return [for(final r in rows) {
+      ...r,
+      'next_start':(byDay[dayLabelBefore(r['day_id'] as String,-1)]?['on_ms'] as num?)?.toInt() == null
+          ? null : (byDay[dayLabelBefore(r['day_id'] as String,-1)]!['on_ms'] as num) ~/ 1000,
+      'next_end':(byDay[dayLabelBefore(r['day_id'] as String,-1)]?['off_ms'] as num?)?.toInt() == null
+          ? null : (byDay[dayLabelBefore(r['day_id'] as String,-1)]!['off_ms'] as num) ~/ 1000,
+    }];
+  }
+
   /// The SQL projection reads only naps.value, never the whole day bundle.
   static Future<void> backfill(DatabaseExecutor tx) async {
     await absorb(tx, overrides: await tx.query('sleep_override'),
       naps: await tx.query('sleep_nap'), mode: AbsorbMode.backfill,
-      servedDayResults: await tx.rawQuery('''SELECT r.day_id,
-        CASE WHEN json_valid(r.payload_json) THEN json_extract(r.payload_json, '\$.naps.value') END AS naps_json
-        FROM day_result r ${LocalDb.servedDayJoinSql} WHERE r.skipped = 0'''));
+      servedDayResults: await legacyNapInputs(tx));
   }
 
   /// Both stored window shapes, through the screens' served-version rule.
