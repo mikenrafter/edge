@@ -39,7 +39,9 @@ void main() {
   });
 
   // WHY / CLAIM(alert-release): one category list covers every producer.
-  test('every non-wake producer holds or skips under the same gate', () {
+  // Owner 2026-11-18: cues inside a session the user started (breathing,
+  // gesture acks) are not alerts, so they pass with wake and medication.
+  test('every other producer holds or skips under the same gate', () {
     final at = DateTime(2026, 11, 17, 23);
     const policy = AlertPolicy(NotificationPrefs(), ReminderSleepGate());
     for (final kind in {...AlertCapabilityRegistry.scheduledKinds,
@@ -47,8 +49,8 @@ void main() {
         'nativeAlarm'}) {
       final rule = NotificationPrefs.legacyRule(kind, true, 3);
       final decision = policy.decide(rule, at);
-      final wake = {'meds', 'wake', 'alarm', 'alarmLatchFailed', 'nativeAlarm'}
-          .contains(kind);
+      final wake = {'meds', 'wake', 'alarm', 'alarmLatchFailed', 'nativeAlarm',
+          'breath', 'gesture', 'ecg', 'buzzPreview', 'hardwareProbe'}.contains(kind);
       expect(decision.allowed, wake, reason: kind);
       if (!wake) expect(decision.reason, ReminderSuppression.quietHours);
     }
