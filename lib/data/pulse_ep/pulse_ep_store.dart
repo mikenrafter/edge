@@ -212,20 +212,21 @@ class PulseEpisodeStore {
         if (r.rr.isNotEmpty) r,
     ]..sort((a, b) => a.tsMs.compareTo(b.tsMs));
     if (bearing.isEmpty) return const PulseAdmission(records: 0, novel: 0);
-    final known = <int>{};
     final ts = [for (final r in bearing) r.tsMs];
+    // How many of these records this phone already knows by identity: stored
+    // decoded, or present at the upgrade. One scalar per chunk, no row walk.
+    var known = 0;
     for (var i = 0; i < ts.length; i += 400) {
       final part = ts.sublist(i, i + 400 < ts.length ? i + 400 : ts.length);
       final marks = List.filled(part.length, '?').join(',');
-      for (final row in await txn.rawQuery(
-        'SELECT ts_ms FROM decoded_rr WHERE device_id = ? AND ts_ms IN ($marks) '
-        'UNION SELECT ts_ms FROM pulse_ep_upgrade_record WHERE source = ? AND ts_ms IN ($marks)',
-        [source, ...part, source, ...part],
-      )) {
-        known.add((row['ts_ms'] as num).toInt());
-      }
+      known += Sqflite.firstIntValue(await txn.rawQuery(
+            'SELECT COUNT(*) FROM (SELECT ts_ms FROM decoded_rr WHERE device_id = ? AND ts_ms IN ($marks) '
+            'UNION SELECT ts_ms FROM pulse_ep_upgrade_record WHERE source = ? AND ts_ms IN ($marks))',
+            [source, ...part, source, ...part],
+          )) ??
+          0;
     }
-    final novel = bearing.where((r) => !known.contains(r.tsMs)).length;
+    final novel = bearing.length - known;
     final canonical = StringBuffer();
     for (final r in bearing) {
       canonical
@@ -273,10 +274,13 @@ class PulseEpisodeStore {
             ? prior.first['through_ms'] as int
             : throughMs;
     await txn.rawInsert(
-      'INSERT INTO pulse_ep_checkpoint(source, through_ms, detector, stamp, refused_json, updated_ms) '
-      "VALUES (?,?,?,?,'[]',?) ON CONFLICT(source) DO UPDATE SET through_ms = ?, "
-      'detector = ?, stamp = ?, updated_ms = ?',
-      [source, through, detector, stamp.encoded, nowMs, through, detector, stamp.encoded, nowMs],
+      'INSERT OR IGNORE INTO pulse_ep_checkpoint(source, through_ms, detector, stamp, refused_json, updated_ms) '
+      "VALUES (?,?,?,?,'[]',?)",
+      [source, through, detector, stamp.encoded, nowMs],
+    );
+    await txn.rawUpdate(
+      'UPDATE pulse_ep_checkpoint SET through_ms = ?, detector = ?, stamp = ?, updated_ms = ? WHERE source = ?',
+      [through, detector, stamp.encoded, nowMs, source],
     );
     return Sqflite.firstIntValue(await txn.rawQuery(
           'SELECT COUNT(*) FROM pulse_ep_admission WHERE source = ? AND end_ms <= ? AND admitted_ms <= ?',
@@ -326,10 +330,15 @@ class PulseEpisodeStore {
       }
       // The refusal is durable BEFORE any batch disappears; a failed write
       // throws and rolls the whole prune back.
+      final refusedJson = jsonEncode(refused);
       await txn.rawInsert(
-        'INSERT INTO pulse_ep_checkpoint(source, through_ms, detector, stamp, refused_json, updated_ms) '
-        "VALUES (?, 0, 0, '', ?, 0) ON CONFLICT(source) DO UPDATE SET refused_json = ?",
-        [e.key, jsonEncode(refused), jsonEncode(refused)],
+        'INSERT OR IGNORE INTO pulse_ep_checkpoint(source, through_ms, detector, stamp, refused_json, updated_ms) '
+        "VALUES (?, 0, 0, '', ?, 0)",
+        [e.key, refusedJson],
+      );
+      await txn.rawUpdate(
+        'UPDATE pulse_ep_checkpoint SET refused_json = ? WHERE source = ?',
+        [refusedJson, e.key],
       );
       for (final r in e.value) {
         deleted += await txn.rawDelete(
@@ -484,10 +493,8 @@ class PulseEpisodeStore {
             'encoded_bytes': enc.encodedBytes,
             'expanded_bytes': enc.expandedBytes,
             'checksum': enc.checksum,
-            'retained_json': jsonEncode([[p.startMs, p.endMs]]),
-            'omitted_json': jsonEncode([
-              for (final r in enc.evidence.omitted) [r.startMs, r.endMs, r.reason],
-            ]),
+            'retained_json': enc.retainedJson,
+            'omitted_json': enc.omittedJson,
             'created_ms': p.nowMs,
           });
         }
@@ -745,9 +752,9 @@ class PulseEpisodeStore {
 
   // ---- transport ----------------------------------------------------------------------
   /// Reads one evidence blob in `substr` chunks (an Android cursor window is
-  /// about 2 MB; RULES B.8). [query] is any read of the database holding it.
+  /// about 2 MB; RULES B.8). [source] is any database holding the blob.
   static Future<Uint8List> readPayload(
-    Future<List<Map<String, Object?>>> Function(String sql, List<Object?> args) query,
+    DatabaseExecutor source,
     String episodeId,
     int revision,
     int size,
@@ -755,7 +762,7 @@ class PulseEpisodeStore {
     const chunk = 256 * 1024;
     final out = BytesBuilder(copy: false);
     for (var at = 1; at <= size; at += chunk) {
-      final rows = await query(
+      final rows = await source.rawQuery(
         'SELECT substr(payload, ?, ?) AS c FROM pulse_ep_evidence WHERE episode_id = ? AND revision = ?',
         [at, chunk, episodeId, revision],
       );

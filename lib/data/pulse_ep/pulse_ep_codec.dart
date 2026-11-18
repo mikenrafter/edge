@@ -104,7 +104,13 @@ final class PulseEncoded extends PulseEncodeResult {
     required this.checksum,
     required this.expandedBytes,
     required this.evidence,
+    required this.retainedJson,
+    required this.omittedJson,
   });
+  /// `[[start, end]]` of what the recording covers, and `[[start, end, reason]]`
+  /// of what it declares missing, as stored beside the blob. Built here, in the
+  /// worker, so the store never encodes JSON on the UI isolate.
+  final String retainedJson, omittedJson;
   final Uint8List bytes;
   final String checksum;
   final int expandedBytes;
@@ -307,6 +313,8 @@ PulseEncodeResult encodePulseEvidence(PulseEvidence evidence) {
       checksum: sha256.convert(expanded).toString(),
       expandedBytes: expanded.length,
       evidence: retained,
+      retainedJson: jsonEncode([[retained.startMs, retained.endMs]]),
+      omittedJson: jsonEncode([for (final r in omitted) [r.startMs, r.endMs, r.reason]]),
     );
   }
   return const PulseEncodeRefused('evidence does not fit the 1 MiB envelope');

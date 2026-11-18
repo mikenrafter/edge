@@ -472,7 +472,7 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
             'WHERE episode_id IN (SELECT id FROM pulse_ep_episode WHERE $pulseDay)',
             [dayId, dayId]);
         for (final e in evidence) {
-          final payload = await PulseEpisodeStore.readPayload(src.rawQuery,
+          final payload = await PulseEpisodeStore.readPayload(src,
               e['episode_id'] as String, (e['revision'] as num).toInt(),
               (e['encoded_bytes'] as num).toInt());
           await out.insert('pulse_ep_evidence', {...e, 'payload': payload},
@@ -2030,7 +2030,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                   ...r,
                   'payload': size <= 0 || size > kPulseEvidenceMaxBytes
                       ? null
-                      : await PulseEpisodeStore.readPayload(src.rawQuery,
+                      : await PulseEpisodeStore.readPayload(src,
                           r['episode_id'] as String, (r['revision'] as num).toInt(), size),
                 });
               }

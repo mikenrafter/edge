@@ -1,4 +1,8 @@
 import '../../support/incremental_day_fixture.dart';
+import '../../pulse_ep_fixture.dart';
+import 'package:openstrap_edge/compute/pulse_ep_worker.dart';
+import 'package:openstrap_edge/data/pulse_ep/pulse_ep_codec.dart';
+import 'package:openstrap_analytics/onehz.dart' as pulse_ana;
 import 'package:openstrap_edge/compute/night_day_worker.dart';
 import 'package:openstrap_edge/compute/night_checkpoint.dart';
 import 'package:openstrap_edge/compute/night_rr_state.dart';
@@ -78,6 +82,51 @@ Future<void> _sameInWorker<T>(
 }
 
 final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
+  'detectPulseEpisodesHeavy': (
+    roundTrip: () async {
+      const t0 = 1794268800000;
+      final input = PulseDetectInput(
+        source: 's',
+        rows: rowMaps(irregularRows(t0, 25)),
+        completeThroughMs: t0 + 35 * 60000,
+        sourceStartMs: t0 - 3600000,
+      );
+      await expectIsolateRoundTrip<PulseDetectInput>(input,
+          project: (i) => [i.rows.length, i.source, i.completeThroughMs, i.sourceStartMs]);
+      final result = await Isolate.run(() => detectPulseEpisodesHeavy(input));
+      expect(result.detection.episodes, isNotEmpty);
+      await _sameInWorker(() => detectPulseEpisodesHeavy(input), json: (d) => d.detection.toJson());
+    },
+  ),
+  'preparePulseEvidenceHeavy': (
+    roundTrip: () async {
+      const t0 = 1794268800000;
+      final detection = pulse_ana.detectPulseEpisodes(
+          beatInputs('s', irregularRows(t0, 25)),
+          completeThroughMs: t0 + 35 * 60000, sourceStartMs: t0 - 3600000);
+      final input = PulsePrepareInput(detection);
+      await expectIsolateRoundTrip<PulsePrepareInput>(input,
+          project: (i) => [i.detection.episodes.length, i.hr.length]);
+      final result = await Isolate.run(() => preparePulseEvidenceHeavy(input));
+      expect(result.episodes.values.first, isA<PulseEncoded>());
+      await _sameInWorker(() => preparePulseEvidenceHeavy(input),
+          json: (p) => [for (final e in p.episodes.entries) [e.key, (e.value as PulseEncoded).checksum]]);
+    },
+  ),
+  'decodePulseEvidenceHeavy': (
+    roundTrip: () async {
+      final enc = encodePulseEvidence(const PulseEvidence(
+        episodeId: 's:0', source: 's', startMs: 0, endMs: 1000, ongoing: false,
+        beats: [PulseBeat(recordTsMs: 0, beatIndex: 0, ordinal: 0, timeMs: 0, originalTimeMs: 0, rawMs: 800)],
+      )) as PulseEncoded;
+      final input = PulseDecodeInput(enc.bytes, enc.checksum);
+      await expectIsolateRoundTrip<PulseDecodeInput>(input, project: (i) => [i.bytes.length, i.checksum]);
+      final result = await Isolate.run(() => decodePulseEvidenceHeavy(input));
+      expect(result.read, isA<PulseEvidenceAvailable>());
+      await _sameInWorker(() => decodePulseEvidenceHeavy(input),
+          json: (r) => r.read is PulseEvidenceAvailable ? (r.read as PulseEvidenceAvailable).evidence.beats.length : -1);
+    },
+  ),
   'typicalCaffeineHeavy': (
     roundTrip: () async {
       int ts(int day, int hour) =>

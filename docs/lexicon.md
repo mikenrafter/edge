@@ -176,6 +176,36 @@ in the same change that introduces it (AGENTS.md §6).
   Schema 87 also carries legacy medical claims for already flagged pulse days
   into their dedicated daily delivery keys.
 
+## Pulse episodes (`pulse_ep_*`)
+
+- **Pulse episode**: a reviewable stretch of unusual beat timing from one source,
+  made of two or more consecutive closed, qualifying five-minute windows. Its id
+  comes from the source and its seed window, never from the detector version, so
+  an extension keeps it.
+- **Qualifying window**: a closed UTC five-minute window whose recording support is
+  complete and whose beats pass the fixed floors (SD1/SD2 and pNN70 over enough
+  adjacent pairs, coverage, gap and cleaning limits). A pending or refused window
+  never votes.
+- **Evidence revision**: one stored version of an episode's recording (the
+  compressed, checksummed beat evidence plus its header). Only the current and
+  the actually delivered revisions keep their blob.
+- **Delivery root**: the one `pulse_ep_outbox` row per episode that owns its alert
+  debt and outcome. A consumed state (sent, in a summary, unknown, before this
+  version, deleted) is never replayed.
+- **Retained range**: the part of an episode's recording that the evidence blob
+  really holds; what it does not hold is declared as omitted ranges.
+- **Upgrade record membership**: the exact `(source, record second)` keys present
+  when the Pulse tables were created, in `pulse_ep_upgrade_record`. It classifies
+  an episode as "before this version"; it is identity, not a time cutoff, so an
+  older record that arrives later is still new.
+- **Admission batch**: the bounded provenance of ONE committed source range
+  (`pulse_ep_admission`): how many pulse-bearing records it held, how many were
+  new by `(device, record)` identity, and its origin. It is consumed by
+  evaluation and pruned with decoded retention; it is not a per-record ledger.
+- **Consumed tombstone**: what is left of an episode after its recording is
+  deleted: its id, status `deleted` and a consumed delivery state, with no RR or
+  heart-rate value, so a re-imported recording cannot alert again.
+
 ## Guides
 - **Accordion hop**: a user tap that expands the outermost closed section containing the pending guide target. Nested closed sections each add one hop.
 

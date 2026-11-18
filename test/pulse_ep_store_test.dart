@@ -23,6 +23,8 @@ const _day = '2026-11-10';
 PulseEncoded _enc({String sum = 'sum-a', int bytes = 3, String episode = 's:0'}) => PulseEncoded(
   bytes: Uint8List.fromList(List.filled(bytes, 7)),
   checksum: sum,
+  retainedJson: '[[$_t0,${_t0 + 10 * _min}]]',
+  omittedJson: '[]',
   expandedBytes: bytes,
   evidence: PulseEvidence(
     episodeId: episode, source: 's', startMs: _t0, endMs: _t0 + 10 * _min,
