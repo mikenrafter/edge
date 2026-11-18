@@ -223,5 +223,12 @@ void main() {
     expect(await save([ConfirmMain(day,a+120,a+3660)]),isA<SleepSaved>());
     final r=(await rows()).single;
     expect([r['id'],r['source'],r['history'],r['detected_start']],['m','confirmed','known',a]); await parity();
+    await db.delete('sleep_block');await db.delete('sleep_override');await db.delete('sleep_edit_job');
+    await detection();final before=await snapshot();
+    final stale=await save([ConfirmMain(day,a+30,a+3630)]);
+    expect(stale,isA<SleepRefused>());
+    expect((stale as SleepRefused).reason,SleepRefusalReason.staleEntry);
+    expect(await snapshot(),before);
+
   });
 }
