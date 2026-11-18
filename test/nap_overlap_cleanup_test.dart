@@ -12,7 +12,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart' show kAlgoVersion;
 import 'package:openstrap_edge/compute/nap_overlap_cleanup.dart';
 import 'package:openstrap_edge/data/db.dart';
-import 'support/sleep_writes.dart';
+import 'package:openstrap_edge/data/sleep_block_store.dart';
 
 void main() {
   setUpAll(() async {
@@ -169,7 +169,7 @@ void main() {
     }
 
     // The real ladder absorbs these release rows before the one-shot cleanup.
-    await TestSleepWrites.absorbFixtures(db);
+    await SleepBlockStore.backfill(db);
     expect(await cleanNextNightNapsOnce(), 1);
     final out = jsonDecode(
         (await LocalDb.dayResult('2026-09-02'))!['payload_json'] as String) as Map;
@@ -192,7 +192,7 @@ void main() {
       'created_at': 0,
       'payload_json': jsonEncode({'duration_min': 40, 'source': 'legacy'}),
     });
-    await TestSleepWrites.absorbFixtures(db);
+    await SleepBlockStore.backfill(db);
     final dir = Directory.systemTemp.createTempSync('nap-cleanup-import-');
     addTearDown(() => dir.deleteSync(recursive: true));
     final path = p.join(dir.path, 'backup.db');
