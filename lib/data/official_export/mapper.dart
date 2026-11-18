@@ -201,6 +201,22 @@ class _Mapper {
     return null;
   }
 
+  // Preferences are read from the immutable snapshot, never this install.
+  // Unreadable or mistyped flags cannot authorize an earlier receiver alarm.
+  // CLAIM(official-export-active-smart-wake) [alarm_mapping_test; review N1].
+  Future<bool> legacySmartWakeActive() async {
+    if (!(source.tables['backup_prefs']?.columnNames.containsAll(['key','type','value']) ?? false)) { return false; }
+    try {
+      final flags = await src.query('backup_prefs', columns: ['type','value'], where: "key='ff.natural_wake'");
+      if (flags.length > 1 || (flags.isNotEmpty &&
+          (flags.single['type'] != 'bool' || !{'true','false'}.contains(flags.single['value'])))) { return false; }
+      if (flags.isNotEmpty && flags.single['value'] == 'false') { return true; }
+      if (!(source.tables['wake_meta']?.columnNames.containsAll(['key','value']) ?? false)) { return false; }
+      final upgrade = await src.query('wake_meta', columns: ['value'], where: "key='upgrade_explanation'");
+      return upgrade.length == 1 && upgrade.single['value'] == 'pending';
+    } catch (_) { return false; }
+  }
+
   Future<void> prepareLiveOwnership() async {
     await file.applySql('CREATE TEMP TABLE live_parent(device_id TEXT NOT NULL,ts_ms INTEGER NOT NULL,PRIMARY KEY(device_id,ts_ms))');
     final shape=source.tables['decoded_onehz'];
@@ -258,6 +274,7 @@ class _Mapper {
         'columns': shape.columnNames.toList()};
       return;
     }
+    final legacyWake = name == 'alarm_schedule' && await legacySmartWakeActive();
     final collidingDefinitions = <String>{};
     if (name == 'journal_field_def' || name == 'lab_marker_def') {
       final seenKeys = <String>{};
@@ -265,7 +282,7 @@ class _Mapper {
       while (true) {
         final page = await src.rawQuery('SELECT rowid AS __export_rowid,* FROM ${_q(name)} ${last == null ? '' : 'WHERE rowid > ?'} ORDER BY rowid LIMIT 256', [?last]);
         if (page.isEmpty) { break; }
-        final keys = await runMappingWorker(MappingInput('page', name, page));
+        final keys = await runMappingWorker(MappingInput('page', name, page, legacySmartWakeActive: legacyWake));
         for (final row in keys.rows) {
           if (!seenKeys.add(row['key'] as String)) { collidingDefinitions.add(row['key'] as String); }
         }
@@ -294,7 +311,7 @@ class _Mapper {
         final metadata=await runMappingWorker(MappingInput('keys','',const [],batch:matches));
         liveBeatParents={for(final row in metadata.rows) (row['device_id'],row['ts_ms'])};
       }
-      final projected = await runMappingWorker(MappingInput('page', name, page));
+      final projected = await runMappingWorker(MappingInput('page', name, page, legacySmartWakeActive: legacyWake));
       final originals = {for (final row in page) row['__export_rowid']: row};
       final notes = {for (final n in projected.notes) n['rowid'] as int: n};
       final batch = file.beginBatch();

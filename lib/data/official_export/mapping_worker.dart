@@ -30,11 +30,12 @@ String qualifiedCustomKey(String key, String unit) {
 
 @SendableShape('SQLite row maps, exact archive bytes and manifest JSON')
 class MappingInput {
-  const MappingInput(this.operation, this.table, this.rows, {this.blob, this.codec = 1, this.fingerprint, this.json, this.batch});
+  const MappingInput(this.operation, this.table, this.rows, {this.blob, this.codec = 1, this.fingerprint, this.json, this.batch, this.legacySmartWakeActive = false});
   final String operation, table;
   final List<Map<String, Object?>> rows;
   final Uint8List? blob;
   final int codec;
+  final bool legacySmartWakeActive;
   final int? fingerprint;
   final Object? json;
   final RowBatch<Map<String,Object?>>? batch;
@@ -243,12 +244,11 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
           reason: source['reason'] as String));
       out['__export_rowid'] = rowid;
     }
-    // A fork Natural/Gradual window is a wake METHOD the tagged target lacks.
-    // Never approximate it as Smart Wake: the alarm exports as a plain alarm at
-    // its set time (smart_window_minutes 0, which the target rings exactly),
-    // and the dropped method columns are named in the ledger. [P2 review F9]
+    // Only a running legacy window may become Smart Wake in the receiver.
+    // The stored value survives acknowledgement and later Natural edits.
+    // Missing snapshot evidence exports an alarm at T. [N1; alarm_mapping_test]
     var droppedSmartWindow = false;
-    if (input.table == 'alarm_schedule' && (_positive(source['natural_window_minutes']) || _positive(source['gradual_window_minutes']))) {
+    if (input.table == 'alarm_schedule' && !input.legacySmartWakeActive) {
       droppedSmartWindow = _positive(source['smart_window_minutes']);
       out['smart_window_minutes'] = 0;
     }
