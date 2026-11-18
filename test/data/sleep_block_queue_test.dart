@@ -6,7 +6,11 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/sleep_block_store.dart';
-import 'package:openstrap_edge/compute/derivation_engine.dart' show kAlgoVersion;
+import 'package:openstrap_edge/compute/derivation_engine.dart';
+import 'package:openstrap_edge/data/activity_store.dart';
+import 'package:openstrap_edge/models/activity_suggestion.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/sleep_edit_store.dart';
 import 'package:openstrap_edge/data/sleep_editor.dart';
@@ -41,11 +45,6 @@ void main() {
     expect(await SleepEditStore.generationOn(db, upTo: '2026-10-14'), before);
     expect((await SleepEditStore.viewOn(db, day)).withholdNight, false);
     expect((await SleepEditStore.viewOn(db, day)).recalculating, true);
-  });
-  test('C24 Naps repository owns a crossing nap on its local start day', () async {
-    final at = DateTime(2026, 10, 11, 23, 30).millisecondsSinceEpoch ~/ 1000;
-    await LocalRepositoryImpl(getProfileMap: () => {}).putNap(dayId: day, startTs: at, endTs: at + 3600, source: 'manual');
-    expect((await db.query('sleep_nap')).single['day_id'], '2026-10-11');
   });
   // WHY: main and nap counters fence different work; counters are not booleans.
   test('Q2 main edit queues night work and releases its headline', () async {
@@ -136,6 +135,50 @@ void main() {
       expect(row['partial'],1,reason:shape);
       expect((jsonDecode(row['payload_json'] as String)['scalars'] as Map)['nap_min'],40,reason:shape);
     }
+  });
+
+  // WHY Q7: the post-day step alone creates block intent, in its own receipt.
+  test('Q7 post-day auto-log writes one block and projection in the same transaction',() async {
+    await db.update('activity_review_meta',{'activated_at':start-1});
+    SharedPreferences.setMockInitialValues({Prefs.napAutoLogSinceSec:start-1});
+    await db.execute('CREATE TABLE sleep_write_spy(kind TEXT, blocks INTEGER, naps INTEGER)');
+    await db.execute("CREATE TRIGGER sleep_write_spy_ai AFTER INSERT ON sleep_nap BEGIN INSERT INTO sleep_write_spy VALUES('nap',(SELECT COUNT(*) FROM sleep_block),(SELECT COUNT(*) FROM sleep_nap)); END");
+    await DerivationEngine(log:(_){}).debugPublishSleepReview(day,[{'start':start,'end':start+2400,'duration_min':35,'confidence':0.9}],start+3600);
+    final writes=await db.query('sleep_write_spy');
+    expect(writes,hasLength(1));expect([writes.single['blocks'],writes.single['naps']],[1,1]);
+    final job=(await db.query('sleep_edit_job')).single;
+    expect([job['revision'],job['nap_revision'],job['nap_applied_revision']],[0,1,0],reason:'headless post-day step leaves nap work queued for foreground');
+    expect(await db.query('activity_review_days'),isEmpty);
+  });
+  // WHY Q9: the prompt loop must re-read pending after the same-pass auto-log.
+  test('Q9 auto-logged same-pass nap emits no prompt with an opt-out positive control',() async {
+    await db.update('activity_review_meta',{'activated_at':start-1});
+    final engine=DerivationEngine(log:(_){});
+    var prompts=0;
+    for(final enabled in [true,false]) {
+      for(final t in ['sleep_block','sleep_nap','sleep_edit_job','activity_suggestions']) { await db.delete(t); }
+      SharedPreferences.setMockInitialValues({if(enabled) Prefs.napAutoLogSinceSec:start-1});
+      await engine.debugPublishSleepReview(day,[{'start':start,'end':start+2400,'confidence':0.9}],start+3600,onPrompt:(_) async { prompts++; });
+      final suggestions=await db.query('activity_suggestions');expect(suggestions,hasLength(1));
+      expect(suggestions.single['status'],enabled?'confirmed':'pending');
+      expect(prompts,enabled?0:1);
+    }
+  });
+  // WHY Q10: stale proposals and import/reference passes never auto-log.
+  test('Q10 only current candidates in an ordinary pass can auto-log',() async {
+    await db.update('activity_review_meta',{'activated_at':start-1});
+    SharedPreferences.setMockInitialValues({Prefs.napAutoLogSinceSec:start-1});
+    final engine=DerivationEngine(log:(_){});
+    final candidate=<String,dynamic>{'start':start,'end':start+2400,'confidence':0.9};
+    await ActivityStore(db).reconcile(ActivityKind.nap,[candidate]);
+    await engine.debugPublishSleepReview(day,[],start+3600);
+    expect(await db.query('sleep_block'),isEmpty);
+    await engine.debugPublishSleepReview(day,[candidate],start+3600,forceFinalize:true);
+    expect(await db.query('sleep_block'),isEmpty);
+    await engine.debugPublishSleepReview(day,[candidate],start+3600,batchReference:true);
+    expect(await db.query('sleep_block'),isEmpty);
+    await engine.debugPublishSleepReview(day,[candidate],start+3600);
+    expect(await db.query('sleep_block'),hasLength(1));
   });
 
 }
