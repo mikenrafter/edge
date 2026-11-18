@@ -145,7 +145,7 @@ void main() {
     await seed('n',a,a+2400); final before=await snapshot();
     expect((await save([SetIntervals(const StoredBlockRef('n',7),a,a+2500)]) as SleepRefused).reason,SleepRefusalReason.staleEntry);
     expect((await db.transaction((tx)=>SleepBlockStore.apply(plan([AddNap(a+7200,a+9600)],revisions:{day:9}),tx:tx)) as SleepRefused).reason,SleepRefusalReason.staleEntry);
-    final stale=plan([AddNap(a+7200,a+9600)]); SleepDraftFence.shared.invalidateDays({day});
+    final stale=plan([AddNap(a+7200,a+9600)]); SleepDraftFence.shared.advanceDays({day});
     expect((await db.transaction((tx)=>SleepBlockStore.apply(stale,tx:tx)) as SleepRefused).reason,SleepRefusalReason.staleDraft);
     expect(await snapshot(),before);
   });
