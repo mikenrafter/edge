@@ -45,7 +45,10 @@ Future<OfficialMapReport> mapOfficialSnapshot({
   DatabaseFactory? factory,
   LocalCalendar calendar = const DayLabelCalendar(),
   ExportSpaceBudget? space,
+  void Function(String phase, int milliseconds)? onPhase,
 }) async {
+  final timer = Stopwatch()..start();
+  void lap(String phase) { onPhase?.call(phase, timer.elapsedMilliseconds); timer.reset(); }
   final dbFactory = factory ?? databaseFactory;
   if (File(outputPath).existsSync() || snapshotPath == outputPath) {
     throw ArgumentError('output must be a new private path');
@@ -62,6 +65,7 @@ Future<OfficialMapReport> mapOfficialSnapshot({
     final archiveBytes = catalog.tables.containsKey('substrate_archive')
         ? Sqflite.firstIntValue(await src.rawQuery('SELECT SUM(raw_bytes) FROM substrate_archive')) ?? 0 : 0;
     await space?.requireAvailable(ExportSpaceBudget.mappedPeakBytes(File(snapshotPath).lengthSync(), archiveBytes));
+    lap('source_inventory_hash');
     targetFile = await PrivateExportFile.create(outputPath,factory:dbFactory);
     dst = targetFile.read;
     for (final o in officialTargetObjects.where((o) => o.type == 'table')) {
@@ -73,6 +77,7 @@ Future<OfficialMapReport> mapOfficialSnapshot({
     final builder = _Mapper(src, targetFile, catalog, target, space, calendar);
     await builder.readExclusions();
     await builder.prepareLiveOwnership();
+    lap('layout_and_live_ownership');
     // Parents precede dependent rows. No source ID allocation or generic remap.
     final names = catalog.tables.keys.toList()..sort();
     for (final name in const ['device', 'journal_field_def', 'lab_marker_def', 'sessions',
@@ -84,7 +89,9 @@ Future<OfficialMapReport> mapOfficialSnapshot({
     }
     if (catalog.tables.containsKey('decoded_rr')) { await builder.copyTable('decoded_rr'); }
     await builder.captureLiveDays();
+    lap('live_tables');
     if (catalog.tables.containsKey('substrate_archive')) { await builder.expandArchives(); }
+    lap('archive_expansion');
     await targetFile.applySql('DROP TABLE live_parent');
     final forkRow = catalog.tables.containsKey('sync_cursor')
         ? await src.query('sync_cursor', where: "name='decoded_pruned_before'") : <Map<String, Object?>>[];
@@ -117,6 +124,7 @@ Future<OfficialMapReport> mapOfficialSnapshot({
         throw StateError('target count ${e.key}: ${inventory.rowCounts[e.key]} != ${e.value}');
       }
     }
+    lap('target_objects_verification');
     final days = await builder.dayInventory();
     final manifest = await runMappingWorker(MappingInput('json', '', const [], json: {
       'format': 1, 'snapshot_sha256': sourceHash, 'profile_sha256': profileHash, 'target_tag': officialTargetTag, 'target_sha': officialTargetSha,
@@ -140,6 +148,7 @@ Future<OfficialMapReport> mapOfficialSnapshot({
         ]), expectedPrunedBefore: choice.sec).isNotEmpty) { throw StateError('final payload failed'); }
     final afterHash = (await runMappingWorker(MappingInput('fileHash','',const [],json:snapshotPath))).text;
     if (afterHash != sourceHash) { throw StateError('snapshot changed during mapping'); }
+    lap('manifest_and_final_verification');
     verified = true;
     return OfficialMapReport(outputPath, choice, builder.reports, inventory.rowCounts, days);
   } finally {
@@ -515,14 +524,15 @@ class _Mapper {
         group.start(device);
       }
       group.add(id, meta, lo, hi);
-      for (var offset = 0; offset < usable.length; offset += 256) {
-        final batch = file.beginBatch();
-        for (final c in usable.skip(offset).take(256)) {
-          batch.writeRow('archive_claims', {...c, 'bucket_id': id});
-        }
-        await space?.requireAvailable(256 * 512 + 65536);
-        await batch.flush();
+      // One durable commit per decoded bucket avoids hundreds of fsyncs on
+      // scratch claims. Failure discards the entire unpublished file; all
+      // counts and integrity checks still run before publishing. [P3 brief]
+      final batch = file.beginBatch();
+      for (final c in usable) {
+        batch.writeRow('archive_claims', {...c, 'bucket_id': id});
       }
+      await space?.requireAvailable(usable.length * 512 + 65536);
+      await batch.flush();
     }
     await _settleGroup(group, flushed, outcomes);
     for (final id in outcomes.keys.toList()..sort()) { ledger.add(id, outcomes[id]!); }

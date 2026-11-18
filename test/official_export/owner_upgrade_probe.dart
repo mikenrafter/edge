@@ -122,7 +122,9 @@ void main() {
     await LocalDb.close();
     lap('close');
 
+    final mapperPhases = <String, int>{};
     final mappedReport = await mapOfficialSnapshot(snapshotPath: copy,
+        onPhase: (phase, ms) { mapperPhases[phase] = ms; print('Owner mapper $phase: $ms ms'); },
         outputPath: '${work.path}/policy.db', factory: databaseFactoryFfi);
     final mapped = await databaseFactoryFfi.openDatabase(mappedReport.path,
         options: OpenDatabaseOptions(readOnly: true));
@@ -141,6 +143,7 @@ void main() {
       expect(inventory.rowCounts['day_checkpoint'], 0);
     } finally { await mapped.close(); }
     lap('production_mapper');
+    report['mapper_phase_ms'] = mapperPhases;
     await verifyConservation(copy,mappedReport);
     report['source_value_conservation']='passed';
     lap('conservation_oracle');
