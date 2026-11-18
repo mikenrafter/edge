@@ -368,6 +368,17 @@ class ActivityStore {
           final blocks=await tx.query('sleep_block',where:'id = ?',whereArgs:[row['linked_id']]);
           if(blocks.isEmpty) throw const ActivityReviewException('This saved nap is no longer available.');
           final block=blocks.single;
+          final participants=await tx.query('sleep_block',columns:['id'],
+            where:'merged_into = ?',whereArgs:[block['id']],limit:1);
+          // A Keep can link to an older survivor. Incoming proposals need not
+          // have a stored participant row, so also prove this is this nap's
+          // original detection, not a union snapshot [B1; callers test].
+          if(block['kind']!='nap' || block['state']=='merged' || participants.isNotEmpty ||
+              block['detected_start']!=row['detection_start'] ||
+              block['detected_end']!=row['detection_end']) {
+            throw const ActivityReviewException(
+              'This nap is now part of another sleep; edit it there.');
+          }
           final plan=await SleepBlockStore.plan(tx,block['owner_day'] as String,
             [RemoveBlock(StoredBlockRef(block['id'] as String,block['revision'] as int))]);
           requireSleepSaved(await SleepBlockStore.apply(plan,tx:tx));
