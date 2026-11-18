@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:openstrap_edge/alarm/snooze/snooze_controller.dart';
 import 'package:openstrap_edge/models/metric.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/locale_controller.dart';
@@ -136,6 +137,41 @@ void main() {
     expect(t.getRect(_review).top, idleReviewTop);
     expect(t.takeException(), isNull);
   });
+
+  // why: the main-alarm snooze regressed above the rings while Natural Wake
+  // stayed below. Both wake states must keep the header and rings in place.
+  // catches: inserting snoozeCardFor before the day switcher.
+  for (final phase in [SnoozePhase.snoozed, SnoozePhase.reAlarming]) {
+    testWidgets('Home $phase wake card is between rings and activity review',
+        (t) async {
+      final app = await _home(t, buzzing: false);
+      final header = find.byKey(const ValueKey('card:header'));
+      final daynav = find.byKey(const ValueKey('card:daynav'));
+      final headerRect = t.getRect(header);
+      final dayRect = t.getRect(daynav);
+      final ringRect = t.getRect(_rings);
+      final reviewTop = t.getRect(_review).top;
+      final status = app.snooze.status as ValueNotifier<SnoozeStatus>;
+      status.value = SnoozeStatus(phase,
+          until: DateTime(2026, 10, 25, 9, 5), snoozeCount: 1);
+      await t.pump();
+      final wake = t.getRect(find.byKey(const ValueKey('snooze-headline')));
+      expect(ringRect.bottom, lessThan(wake.top));
+      expect(wake.bottom, lessThan(t.getRect(_review).top));
+      expect(t.getRect(header), headerRect);
+      expect(t.getRect(daynav), dayRect);
+      expect(t.getRect(_rings), ringRect);
+      expect(find.byKey(const ValueKey('snooze-im-up')), findsOneWidget);
+      status.value = SnoozeStatus.idle;
+      await t.pump();
+      expect(find.byKey(const ValueKey('snooze-headline')), findsNothing);
+      expect(t.getRect(header), headerRect);
+      expect(t.getRect(daynav), dayRect);
+      expect(t.getRect(_rings), ringRect);
+      expect(t.getRect(_review).top, reviewTop);
+      expect(t.takeException(), isNull);
+    });
+  }
 
   testWidgets('Home Natural Wake buzzing golden', (t) async {
     await _home(t, buzzing: true);
