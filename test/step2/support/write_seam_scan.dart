@@ -174,17 +174,18 @@ String _verbOf(String word) {
   return 'delete';
 }
 
-// Const top-level catalogs are data. Their initialization cannot execute SQL.
-// Passing any catalog value to execute/rawUpdate is a nonliteral invocation,
-// which scanDynamicWriters must still detect. [p21_write_seam_guard_test]
-class _ConstCatalogRanges extends RecursiveAstVisitor<void> {
-  final ranges=<(int,int)>[];
+// Name const catalog initializers so callers can allow-list an exact file and
+// member. This class only attributes hits; const SQL remains visible to scans.
+class _ConstCatalogMembers extends RecursiveAstVisitor<void> {
+  final ranges = <(int, int, String)>[];
   @override
   void visitTopLevelVariableDeclaration(TopLevelVariableDeclaration node) {
     if (node.variables.isConst) {
       for (final variable in node.variables.variables) {
-        final value=variable.initializer;
-        if (value!=null) {ranges.add((value.offset,value.end));}
+        final value = variable.initializer;
+        if (value != null) {
+          ranges.add((value.offset, value.end, variable.name.lexeme));
+        }
       }
     }
     super.visitTopLevelVariableDeclaration(node);
@@ -201,12 +202,11 @@ List<WriteSite> scanWriters(String src) {
   }
   final code = codeOnly(src);
   final unit = parseString(content: src, throwIfDiagnostics: false).unit;
-  final catalogs=_ConstCatalogRanges();
+  final catalogs = _ConstCatalogMembers();
   unit.accept(catalogs);
   final hits = <({int at, String verb, String table, String text})>[];
   final literalEnds = _literalEnds(text);
   for (final m in _sqlWrite.allMatches(text)) {
-    if (catalogs.ranges.any((r)=>m.start>=r.$1 && m.start<r.$2)) {continue;}
     // To the end of the Dart string literal the SQL sits in, so a raw UPDATE
     // carries its SET list whatever quotes the identifiers use.
     final end = literalEnds.firstWhere((e) => e > m.end, orElse: () => m.end);
@@ -239,7 +239,12 @@ List<WriteSite> scanWriters(String src) {
   return [
     for (final h in hits)
       WriteSite(
-        member: apiMembers[h.at] ?? _memberAt(code, h.at),
+        member: apiMembers[h.at] ??
+            catalogs.ranges
+                .where((r) => h.at >= r.$1 && h.at < r.$2)
+                .map((r) => r.$3)
+                .firstOrNull ??
+            _memberAt(code, h.at),
         table: h.table,
         verb: h.verb,
         line: lineOf(code, h.at),
