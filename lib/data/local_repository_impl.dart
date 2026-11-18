@@ -2156,8 +2156,9 @@ class LocalRepositoryImpl extends LocalRepository {
     SleepMergeAuthorization? merge,
   }) async {
     _focusCheck('putNap');
+    try {
     final db=await LocalDb.instance;
-    return db.transaction((tx) async {
+    return await db.transaction((tx) async {
       final read=await SleepBlockStore.read(tx,dayId);
       final existing=read.entries.where((e)=>e.kind==SleepBlockKind.nap && e.startTs==startTs && !e.removed).firstOrNull;
       final SleepEditorCommand command;
@@ -2171,14 +2172,18 @@ class LocalRepositoryImpl extends LocalRepository {
       return SleepBlockStore.apply(SleepEditorPlan(dayId:dayId,commands:[command],
         expectedRevisions:{dayId:read.revision},draftGeneration:read.draftGeneration),tx:tx,merge:merge);
     });
+    } catch (e) {
+      return SleepFailed(e);
+    }
   }
 
   @override
   Future<SleepEditorOutcome> deleteNap(String dayId, int startTs,
       {SleepMergeAuthorization? merge}) async {
     _focusCheck('deleteNap');
+    try {
     final db=await LocalDb.instance;
-    return db.transaction((tx) async {
+    return await db.transaction((tx) async {
       final read=await SleepBlockStore.read(tx,dayId);
       final e=read.entries.where((e)=>e.kind==SleepBlockKind.nap && e.startTs==startTs).firstOrNull;
       if(e==null) return const SleepNoChange();
@@ -2186,6 +2191,9 @@ class LocalRepositoryImpl extends LocalRepository {
         commands:[e.removed?RestoreRemoved(e.ref):RemoveBlock(e.ref)],
         expectedRevisions:{dayId:read.revision},draftGeneration:read.draftGeneration),tx:tx,merge:merge);
     });
+    } catch (e) {
+      return SleepFailed(e);
+    }
   }
 
   @override
