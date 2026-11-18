@@ -6,10 +6,12 @@ import 'package:openstrap_edge/ui2/day_timeline/timeline_chart.dart';
 // a line through the time the band spent on the charger.
 
 import 'package:flutter/material.dart';
+import 'dart:ui' as ui;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/data/nutrition_store.dart';
+import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
@@ -409,6 +411,45 @@ void _graphTests() {
       expect(find.text('Not recorded'), findsOneWidget);
     });
 
+    // WHY: endpoint-only full days give no interior time reference (review S1).
+    // CLAIM(timeline-clock-labels): full days show five or three clock labels;
+    // a thirty-minute window keeps two, with endpoints inside the plot.
+    testWidgets('clock labels adapt to width, text scale and a short window',
+        (t) async {
+      ClockFormatController.seed(ClockFormat.h24);
+      addTearDown(ClockFormatController.debugReset);
+      await t.pumpWidget(frame(full()));
+      final source = t.widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((w) => w.painter).whereType<TimelinePainter>().single;
+      for (final scenario in [
+        (width: 412.0, scale: 1.0, span: 86400.0, count: 5),
+        (width: 412.0, scale: 2.0, span: 86400.0, count: 3),
+        (width: 320.0, scale: 1.0, span: 86400.0, count: 3),
+        (width: 320.0, scale: 2.0, span: 86400.0, count: 3),
+        (width: 412.0, scale: 1.0, span: 1800.0, count: 2),
+      ]) {
+        final painter = TimelinePainter(
+          p: source.p,
+          view: TimelineView(_gStart.toDouble(), _gStart + scenario.span),
+          graph: source.graph,
+          header: source.header,
+          height: source.height,
+          scaler: TextScaler.linear(scenario.scale),
+        );
+        final canvas = _AxisLabelCanvas(painter.header + painter.height + 3);
+        painter.paint(canvas, Size(scenario.width, 400));
+        final labels = canvas.labels;
+        expect(labels, hasLength(scenario.count), reason: '$scenario');
+        expect(labels.first.left, 44);
+        expect(labels.last.right, closeTo(scenario.width - 8, 0.001));
+        for (var i = 1; i < labels.length - 1; i++) {
+          expect(labels[i].center.dx,
+              closeTo(44 + (scenario.width - 52) * i / (labels.length - 1),
+                  0.001));
+        }
+      }
+    });
+
     // The three keys the heart-rate chart is read by: the movement stat (with
     // what it is measured in), the heart rate, and the gap — and the gap only
     // when the day has one.
@@ -536,4 +577,37 @@ void _graphTests() {
       expect(errors, isEmpty);
     });
   });
+}
+
+// Records painted paragraphs at the time axis, including their canvas scale.
+// Other drawing commands are irrelevant to the label count and alignment.
+class _AxisLabelCanvas extends Fake implements Canvas {
+  _AxisLabelCanvas(this.top);
+  final double top;
+  final labels = <Rect>[];
+  Offset _offset = Offset.zero;
+  double _scale = 1;
+  final _saved = <(Offset, double)>[];
+
+  @override
+  void save() => _saved.add((_offset, _scale));
+  @override
+  void restore() {
+    final state = _saved.removeLast();
+    _offset = state.$1;
+    _scale = state.$2;
+  }
+  @override
+  void translate(double dx, double dy) => _offset += Offset(dx, dy);
+  @override
+  void scale(double sx, [double? sy]) => _scale *= sx;
+  @override
+  void drawParagraph(ui.Paragraph paragraph, Offset offset) {
+    if (_offset.dy == top) {
+      labels.add(Rect.fromLTWH(_offset.dx, top,
+          paragraph.longestLine * _scale, paragraph.height * _scale));
+    }
+  }
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

@@ -495,14 +495,34 @@ class TimelinePainter extends CustomPainter implements GuidePlot {
     double y(double value) =>
         header + 6 + (1 - (value - lo) / (hi - lo)) * (hrHeight - 12);
     text('bpm', 0, math.max(0, header - 20), maxWidth: 40);
-    text(_clock(view.start), 44, header + height + 3, maxWidth: width / 2 - 8);
-    text(
-      _clock(view.end),
-      size.width - 8,
-      header + height + 3,
-      align: TextAlign.right,
-      maxWidth: width / 2 - 8,
-    );
+    // CLAIM(timeline-clock-labels): keep interior time references on full days
+    // at the current text scale [pilot time axis; day_timeline_test; review S1].
+    double widthOf(String label) {
+      final painter = TextPainter(
+        text: TextSpan(text: label, style: F.over.copyWith(color: p.ink3)),
+        textDirection: TextDirection.ltr,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      final measured = painter.width;
+      painter.dispose();
+      return measured;
+    }
+    final widest = [
+      for (var i = 0; i <= 4; i++) widthOf(_clock(view.at(i / 4))),
+    ].reduce(math.max);
+    final steps = view.span <= 1800 ? 1 : widest * 4 + 40 <= width ? 4 : 2;
+    for (var i = 0; i <= steps; i++) {
+      final time = view.at(i / steps);
+      text(
+        _clock(time),
+        x(time),
+        header + height + 3,
+        align: i == 0 ? TextAlign.left
+            : i == steps ? TextAlign.right : TextAlign.center,
+        maxWidth: width / 2 - 8,
+      );
+    }
     if (axis != null) {
       for (final tick in axis.tickValues) {
         text(
