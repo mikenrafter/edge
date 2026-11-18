@@ -217,9 +217,9 @@ Map<String, Object?> _document(PulseEvidence e, List<PulseBeat> beats) {
       'l': l,
     },
     _labelSets: [for (final s in sets) jsonDecode(s)],
-    'windows': e.windows.take(kPulseMaxWindowRows).toList(),
+    'windows': e.windows,
     'overview': [
-      for (final o in e.overview.take(kPulseMaxOverviewBins))
+      for (final o in e.overview)
         [o.startMs, o.n, o.p10, o.median, o.p90],
     ],
     'hr': [for (final h in e.hr) [h.startMs, h.bpm]],
@@ -282,6 +282,14 @@ List<PulseRange> _omissions(PulseEvidence e, List<int> kept) {
 }
 
 PulseEncodeResult encodePulseEvidence(PulseEvidence evidence) {
+  // Required aggregate coverage cannot be shortened without a different
+  // representation. Refuse before encoding rather than hide the tail [R8].
+  if (evidence.overview.length > kPulseMaxOverviewBins) {
+    return const PulseEncodeRefused('overview coverage exceeds 4096 rows');
+  }
+  if (evidence.windows.length > kPulseMaxWindowRows) {
+    return const PulseEncodeRefused('windows coverage exceeds 4096 rows');
+  }
   var limit = kPulseMaxBeats;
   for (var attempt = 0; attempt < 24; attempt++) {
     final kept = _select(evidence, limit);
@@ -297,8 +305,8 @@ PulseEncodeResult encodePulseEvidence(PulseEvidence evidence) {
       endMs: evidence.endMs,
       ongoing: evidence.ongoing,
       beats: beats,
-      windows: evidence.windows.take(kPulseMaxWindowRows).toList(),
-      overview: evidence.overview.take(kPulseMaxOverviewBins).toList(),
+      windows: evidence.windows,
+      overview: evidence.overview,
       hr: evidence.hr,
       comparisonRrMs: evidence.comparisonRrMs,
       jumps: evidence.jumps,
