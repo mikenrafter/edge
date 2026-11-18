@@ -547,7 +547,7 @@ class PulseEpisodeStore {
           'end_day': p.endDay,
           'revision': revision,
           'status': 'active',
-          'refusal': null,
+          'refusal': enc == null ? (p.refusal ?? 'evidence unavailable') : p.refusal,
         };
         if (existing == null) {
           await txn.insert('pulse_ep_episode', {
@@ -579,17 +579,20 @@ class PulseEpisodeStore {
   ) async {
     final rows = await txn.query('pulse_ep_outbox',
         where: 'episode_id = ?', whereArgs: [id], limit: 1);
-    final eligibleState = p.alertEligible ? PulseDelivery.owed : PulseDelivery.notSent;
-    final eligibleReason = p.alertEligible ? null : (p.refusal ?? 'recording quality');
+    final eligible = p.alertEligible && p.evidence != null;
+    final eligibleState = eligible ? PulseDelivery.owed : PulseDelivery.notSent;
+    final eligibleReason = eligible ? null :
+        (p.refusal ?? (p.evidence == null ? 'evidence unavailable' : 'recording quality'));
     if (rows.isNotEmpty) {
       final cur = rows.first;
       final state = PulseDelivery.parse(cur['state']);
       if (state.consumed) return; // an outcome is never reset or re-versioned
       final reason = cur['reason'];
       final reopen = state == PulseDelivery.notSent &&
-          (reason == 'retracted' || reason == 'recording quality');
+          (reason == 'retracted' || reason == 'recording quality' ||
+              (reason is String && reason.startsWith('evidence unavailable')));
       final next = state == PulseDelivery.held
-          ? (p.alertEligible ? PulseDelivery.held : PulseDelivery.notSent)
+          ? (eligible ? PulseDelivery.held : PulseDelivery.notSent)
           : (state == PulseDelivery.owed || reopen)
               ? eligibleState
               : state;

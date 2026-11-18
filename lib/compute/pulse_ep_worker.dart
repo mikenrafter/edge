@@ -305,7 +305,8 @@ class PulseEpisodeWorker {
           detector: ana.pulseDetectorVersion,
           algo: kAlgoVersion,
           alertEligible: e.alertEligible,
-          refusal: e.alertEligible ? null : 'recording quality',
+          refusal: enc is PulseEncodeRefused ? 'evidence unavailable: ${enc.reason}' :
+              e.alertEligible ? null : 'recording quality',
           origin: origin,
           summaryJson: '{"windows":${e.windows.length}}',
           evidence: enc is PulseEncoded ? enc : null,
