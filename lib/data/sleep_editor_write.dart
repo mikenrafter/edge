@@ -275,6 +275,8 @@ class SleepEditorWrite {
           stageDays.add(target.day);
         case MergeBlocks(:final proposal):
           approved = proposal;
+        case AddMain() || AddNap() || ConfirmMain() || ClearMain():
+          return const SleepRefused(SleepRefusalReason.unsupportedSource);
       }
     }
 
