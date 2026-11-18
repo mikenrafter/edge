@@ -176,7 +176,10 @@ class _Pick {
 /// It is not a Health tab (it is not ready for everyone); the only way in is
 /// the Developer group in Settings.
 class ExplorerScreen extends StatelessWidget {
-  const ExplorerScreen({super.key});
+  const ExplorerScreen({super.key, this.annotationLoader});
+
+  /// Injectable for tests, as on [ExplorerView].
+  final AnnotationLoader? annotationLoader;
 
   @override
   Widget build(BuildContext c) => Scaffold(
@@ -187,7 +190,7 @@ class ExplorerScreen extends StatelessWidget {
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x4),
-                children: const [ExplorerView()],
+                children: [ExplorerView(annotationLoader: annotationLoader)],
               ),
             ),
           ]),
