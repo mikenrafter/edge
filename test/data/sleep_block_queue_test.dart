@@ -7,6 +7,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/sleep_block_store.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
+import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/data/activity_store.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -67,12 +68,20 @@ void main() {
   test('Q3 recompose applies nap intent advances rollup revision and leaves baselines intact', () async {
     await block(); await db.transaction((tx)=>SleepEditStore.enqueue(tx,day,main:false));
     final meta=(await db.query('activity_review_meta')).single['revision'] as int;
+    await LocalDb.putBaseline('crossday_input',jsonEncode({'algo_version':kAlgoVersion,
+      'built_for_day':LocalDb.localDayLabelNow(),'review_revision':meta,
+      'zone':DerivationEngine.crossDayZoneStamp(),'days':[{'date':day,'nap_min':999}]}));
     final baselines=await db.query('baselines');
     await LocalDb.recomposeNaps(day,1);
     expect((await db.query('sleep_edit_job')).single['nap_applied_revision'],1);
     expect((await db.query('metric_series',where:"key = 'nap_min'")).single['value'],40);
     expect((await db.query('activity_review_meta')).single['revision'],meta+1);
     expect(await db.query('baselines'),baselines);
+    await DerivationEngine(log:(_){}).runCrossDayForTest(const Profile());
+    final input=jsonDecode((await LocalDb.baseline('crossday_input'))!['payload_json'] as String) as Map;
+    expect(input['review_revision'],meta+1,reason:'cached rollup input must be rebuilt after recompose');
+    expect((input['days'] as List).whereType<Map>().any((d)=>d['nap_min']==999),false);
+
     expect(await db.query('activity_review_days'),isEmpty);
   });
   test('Q5 only an earlier main edit changes the later-night fence', () async {
