@@ -2129,6 +2129,14 @@ Future<int> _ldbPruneDecodedBeforeRecTs(int cutoffSec, {required String? cursorN
           kTriathlonClockDriftSec,
         ],
       );
+      // Pulse admission batches go with decoded retention (a consumed batch at the
+      // cutoff; an unconsumed one held to the 14-day floor only while scheduling
+      // is on, with a durable refusal first), and recordings past their 365 days
+      // or the 128 MiB budget expire in the same transaction.
+      await PulseEpisodeStore.pruneAdmissions(txn,
+          cutoffMs: cutoffSec * 1000,
+          hardFloorMs: (hardFloorSec ?? cutoffSec) * 1000);
+      await PulseEpisodeStore.retainIn(txn, nowMs: DateTime.now().millisecondsSinceEpoch);
       // THE UNDECODABLE ARCHIVE IS THINNED, NOT KEPT WHOLE. See
       // [thinRawArchiveBefore] — this is the only caller, so the archive is
       // capped by the same retention pass that caps the substrate.

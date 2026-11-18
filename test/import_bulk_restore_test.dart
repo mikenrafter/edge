@@ -54,6 +54,8 @@ const _t0 = 1790000000; // 2026-09-21, an arbitrary fixed second
 const _wallClockColumns = {
   // A file-local random cache identity is intentionally regenerated on restore.
   'store_identity': {'id'},
+  // The Pulse upgrade marker's wall-clock instant: this install's own, never imported.
+  'pulse_ep_upgrade': {'recorded_ms'},
   'compute_freshness': {'updated_at'},
   'activity_review_meta': {'activated_at', 'alert_after_ts'},
   // The run's own bookkeeping (D38): when it started, its saved copy's mtime,

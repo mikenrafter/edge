@@ -435,4 +435,31 @@ void main() {
     });
     expect((await pulseRows(db, 'pulse_ep_admission')).single['novel'], 1);
   });
+
+  // ---- completeness ---------------------------------------------------------
+  // WHY: a certificate names its range and its holes; it must not pledge more.
+  test('a certificate stores range, holes and generation; a hole outside it is refused', () async {
+    expect(await PulseEpisodeStore.certifyComplete(db,
+        source: 's', startMs: 1000, endMs: 9000,
+        holes: const [PulseRange(2000, 3000)], nowMs: 5), isA<PulseApplied>());
+    final row = (await pulseRows(db, 'pulse_ep_complete')).single;
+    expect((row['start_ms'], row['end_ms'], row['holes_json']), (1000, 9000, '[[2000,3000]]'));
+    expect(await PulseEpisodeStore.certifyComplete(db,
+        source: 's', startMs: 1000, endMs: 9000,
+        holes: const [PulseRange(8000, 9500)], nowMs: 6), isA<PulseRefused>());
+    expect(await PulseEpisodeStore.certifyComplete(db,
+        source: 's', startMs: 5000, endMs: 5000, holes: const [], nowMs: 6), isA<PulseRefused>());
+    expect(await pulseRows(db, 'pulse_ep_complete'), hasLength(1));
+  });
+
+  // WHY: a new certificate changes the stamp, so a decision prepared against the
+  // old coverage cannot publish.
+  test('certifying completeness invalidates a prepared decision', () async {
+    final p = _pub();
+    final stamp = await PulseEpisodeStore.readStamp(db,
+        source: 's', fromMs: p.startMs, toMs: p.endMs);
+    await PulseEpisodeStore.certifyComplete(db,
+        source: 's', startMs: p.startMs, endMs: p.endMs, holes: const [], nowMs: 7);
+    expect(await PulseEpisodeStore.publish(db, p, expected: stamp), isA<PulseRefused>());
+  });
 }

@@ -691,7 +691,15 @@ class PulseEpisodeStore {
     Database db, {
     required int nowMs,
     int budgetBytes = kPulseEvidenceBudgetBytes,
-  }) => db.transaction((txn) async {
+  }) => db.transaction((txn) => retainIn(txn, nowMs: nowMs, budgetBytes: budgetBytes));
+
+  /// [enforceRetention] inside a transaction the caller already holds (the
+  /// decoded-retention prune runs it in its own).
+  static Future<int> retainIn(
+    DatabaseExecutor txn, {
+    required int nowMs,
+    int budgetBytes = kPulseEvidenceBudgetBytes,
+  }) async {
     var n = await _expire(
       txn,
       "created_ms < ?",
@@ -699,7 +707,52 @@ class PulseEpisodeStore {
     );
     n += await _evictToBudget(txn, budgetBytes);
     return n;
-  });
+  }
+
+  // ---- completeness -------------------------------------------------------------------
+  /// Certifies that [source]'s recording is complete over `[startMs, endMs)`
+  /// except the declared [holes], at the committed tail the caller measured
+  /// AFTER the history commit (HISTORY_COMPLETE with a durable tail). A bare
+  /// maximum timestamp never pledges coverage. A certificate is local authority:
+  /// it is not exported and an imported one is never trusted. Overlapping
+  /// certificates for the source are replaced by this one.
+  static Future<PulseApply> certifyComplete(
+    Database db, {
+    required String source,
+    required int startMs,
+    required int endMs,
+    required List<PulseRange> holes,
+    required int nowMs,
+  }) async {
+    if (endMs <= startMs) return const PulseRefused('empty range');
+    for (final h in holes) {
+      if (h.startMs < startMs || h.endMs > endMs) {
+        return const PulseRefused('a hole lies outside the certified range');
+      }
+    }
+    try {
+      await db.transaction((txn) async {
+        await txn.rawDelete(
+          'DELETE FROM pulse_ep_complete WHERE source = ? AND start_ms < ? AND end_ms > ?',
+          [source, endMs, startMs],
+        );
+        final generation = Sqflite.firstIntValue(await txn
+                .rawQuery('SELECT generation FROM pulse_ep_upgrade WHERE id = 1')) ??
+            0;
+        await txn.insert('pulse_ep_complete', {
+          'source': source,
+          'start_ms': startMs,
+          'end_ms': endMs,
+          'generation': generation,
+          'holes_json': jsonEncode([for (final h in holes) [h.startMs, h.endMs]]),
+          'certified_ms': nowMs,
+        });
+      });
+      return PulseApplied(source, 0, created: true);
+    } catch (e) {
+      return PulseFailed(e);
+    }
+  }
 
   static Future<int> _expire(DatabaseExecutor txn, String where, List<Object?> args) async {
     final victims = await txn.rawQuery(

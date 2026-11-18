@@ -86,6 +86,11 @@ void main() {
         expect(rows, hasLength(1));
         expect(rows.single['singleton'], 1);
         expect(rows.single['id'], matches(RegExp(r'^[0-9a-f]{32}$')));
+      } else if (table == 'pulse_ep_upgrade') {
+        // The empty Pulse boundary is re-created by the wipe: one marker row, no keys.
+        final rows = await db.query(table);
+        expect(rows, hasLength(1));
+        expect(rows.single['generation'], 0);
       } else {
         expect(await db.query(table, limit: 1), isEmpty, reason: table);
       }

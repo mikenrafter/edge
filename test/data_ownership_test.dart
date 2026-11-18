@@ -90,7 +90,10 @@ void main() {
 
       for (final t in tables) {
         final n = _count(await db.rawQuery('SELECT COUNT(*) AS n FROM $t'));
-        expect(n, t == 'store_identity' ? 1 : 0,
+        // store_identity and pulse_ep_upgrade each keep ONE marker row that holds no
+        // user data: the new identity, and the empty Pulse upgrade boundary that
+        // stops later syncs reading as pre-upgrade history.
+        expect(n, (t == 'store_identity' || t == 'pulse_ep_upgrade') ? 1 : 0,
             reason: '$t survived "Delete everything"');
       }
     });

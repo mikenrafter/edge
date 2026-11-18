@@ -166,7 +166,7 @@ void main() {
   });
 
   test('rung 61 input revisions remain present with rung 62 checkpoints', () async {
-    expect(LocalDb.schemaVersion, 92, reason: 'main revisions/checkpoints follow preserved fork migrations in89–92');
+    expect(LocalDb.schemaVersion, 95, reason: 'main revisions/checkpoints follow preserved fork migrations in89–92; 93–94 are Sleep, 95 is Pulse');
     final db = await open();
     expect(await db.getVersion(), LocalDb.schemaVersion);
     expect(await _hasRevisions(db), isTrue);
@@ -224,6 +224,13 @@ void main() {
       // Main probes whether legacy decoded input exists before metadata repair.
       // This bounded probe is unrelated to revision creation or backfill.
       if (s == 'SELECT 1 FROM decoded_onehz LIMIT 1') return false;
+      // The ONE server-side copy the Pulse upgrade rung makes: the exact record keys
+      // present now (spec 4.4). It reads decoded_rr and writes only pulse_ep_*; it
+      // rewrites no raw input.
+      if (s.trim() == 'INSERT OR IGNORE INTO pulse_ep_upgrade_record(source, ts_ms) '
+          'SELECT DISTINCT device_id, ts_ms FROM decoded_rr') {
+        return false;
+      }
       return dataAccess.hasMatch(s);
     }),
         isEmpty, reason: 'opening may inspect schema, never scan/backfill raw rows');

@@ -3,6 +3,8 @@
 // CLAIM(pulse-upgrade-membership) CLAIM(pulse-admission-bound)
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/processing_context.dart';
+import 'package:openstrap_edge/ble/adapters/_registry.dart' show TimeAnchor;
+import 'package:openstrap_edge/ble/adapters/adapter.dart' show NeutralSample;
 import 'package:openstrap_edge/data/db.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
@@ -152,5 +154,33 @@ void main() {
     final db = await LocalDb.instance;
     await commitRecords([pulseRecord(8000, const [])]);
     expect(await pulseRows(db, 'pulse_ep_admission'), isEmpty);
+  });
+
+  // WHY: every commit path, not only the sync drain, carries its provenance in
+  // its own transaction; a path that skipped the hook would admit nothing.
+  test('the live-insert path and a chest-strap commit are admitted too', () async {
+    final db = await LocalDb.instance;
+    final rec = pulseRecord(9000, [800, 810]);
+    await LocalDb.insertRecordsBatch([rec.$1], [rec.$2],
+        processingOrigin: ProcessingOrigin.historical);
+    final strap = NeutralSample(
+        anchor: TimeAnchor.arrival, tsEpoch: 9100, rrMs: const [790, 800, 810]);
+    await LocalDb.commitSyncBatch(const [], const [],
+        neutrals: [strap], deviceFamily: 'hrs', deviceId: 'chest-1');
+    final rows = await pulseRows(db, 'pulse_ep_admission', orderBy: 'source');
+    expect([for (final r in rows) '${r['source']}|${r['start_ms']}|${r['records']}'],
+        ['|9000000|1', 'chest-1|9100000|1']);
+  });
+
+  // WHY/CLAIM(pulse-admission-bound): the batches go with decoded retention,
+  // through the existing prune owner, not a parallel timer.
+  test('the decoded prune removes admission batches older than its cutoff', () async {
+    final db = await LocalDb.instance;
+    await commitRecords([pulseRecord(10000, [800, 810])]);
+    await commitRecords([pulseRecord(900000, [800, 810])]);
+    expect(await pulseRows(db, 'pulse_ep_admission'), hasLength(2));
+    await LocalDb.pruneDecodedBeforeRecTs(500000, hardFloorSec: 400000);
+    final left = await pulseRows(db, 'pulse_ep_admission');
+    expect([for (final r in left) r['start_ms']], [900000000]);
   });
 }
