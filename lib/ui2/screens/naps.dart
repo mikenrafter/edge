@@ -111,6 +111,7 @@ class _NapsScreenState extends State<NapsScreen>
     with PausedReadReload<NapsScreen> {
   NapsData? _d;
   String? _day;
+  List<String> _navDays = const [];
   // A quick second tap on the day stepper starts a second load; the first
   // can finish last and must not paint the old day.
   int _loadToken = 0;
@@ -150,7 +151,7 @@ class _NapsScreenState extends State<NapsScreen>
     try {
       final d = await NapsData.load(repo, want: _day);
       if (mounted && token == _loadToken) {
-        setState(() => (_d = d, _paused = false, _loadFailed = false));
+        setState(() => (_d = d, _navDays = d.days, _paused = false, _loadFailed = false));
         return true;
       }
     } on ReadPaused {
@@ -166,6 +167,7 @@ class _NapsScreenState extends State<NapsScreen>
 
   void _goDay(String day) {
     setState(() {
+      _navDays = _d?.days ?? _navDays;
       _day = day;
       _d = null;
       _loadFailed = false;
@@ -312,10 +314,14 @@ class _NapsScreenState extends State<NapsScreen>
   }
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => DayNavigationFrame(
+      selectedDay: _day ?? _d?.day ?? widget.day ?? todayLabel(),
+      onSelect: _goDay, child: _content(c));
+
+  Widget _content(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    final d = _d ?? NapsData(day: _day ?? todayLabel());
+    final d = _d ?? NapsData(day: _day ?? todayLabel(), days: _navDays);
     if (_loadFailed) {
       return detailScaffold(c, l?.napsTitle ?? 'Naps', [
         ...dayNavRow(_day ?? d.day, d.days, _goDay),
@@ -328,15 +334,16 @@ class _NapsScreenState extends State<NapsScreen>
           icon: LucideIcons.databaseZap,
           onFix: _retry,
         ),
-      ]);
+      ], framed: true);
     }
     if (_paused) {
       return detailScaffold(c, l?.napsTitle ?? 'Naps', [
+        ...dayNavRow(_day ?? d.day, d.days, _goDay),
         const Padding(
           padding: EdgeInsets.only(top: S.x4),
           child: PausedOlderDays(),
         ),
-      ]);
+      ], framed: true);
     }
     final day = d.day;
 
@@ -450,8 +457,8 @@ class _NapsScreenState extends State<NapsScreen>
           itemBuilder: (_, child) => child,
           emptyBuilder: (_) => const SizedBox.shrink()),
 
-      ].map((child) => PendingContent(pending: _d == null,
-        child: child)).toList(),
+      ].map((child) => child is DayNav ? child : PendingContent(pending: _d == null,
+        child: child)).toList(), framed: true,
     );
   }
 

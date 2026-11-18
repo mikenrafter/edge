@@ -663,7 +663,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     // Keep the research warning visible in every state and outside remembered
     // accordions, including the Sleep tab's embedded detail.
     body = [for (final child in body)
-      PendingContent(pending: _loading && _d == null,
+      if (child is DayNav) child else PendingContent(pending: _loading && _d == null,
           memoryKey: child.key == null
               ? null
               : 'sleep:${child.key}:$_memoryKind',
@@ -680,7 +680,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       ),
       ...body,
     ];
-    if (!widget.embedded) return detailScaffold(c, title, body, sub: sub);
+    if (!widget.embedded) return detailScaffold(c, title, body, sub: sub, framed: true);
     final p = P.of(c);
     return RefreshIndicator.noSpinner(
       onRefresh: () => PendingUserAction.run(_load),
@@ -958,7 +958,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   /// it goes with it.
   void _goDay(String day) {
     setState(() {
-      _day = sleepStepperDay(day, (_d ?? _lastGood)?.latestDay);
+      _day = day;
       _failed = false;
       _d = null;
       _scrub = null;
@@ -970,8 +970,13 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   }
 
   @override
-  Widget build(BuildContext c) {
-    final d = _d ?? SleepData(day: _day ?? widget.day ?? todayLabel());
+  Widget build(BuildContext c) => DayNavigationFrame(
+      selectedDay: _day ?? _d?.day ?? widget.day ?? todayLabel(),
+      onSelect: _goDay, child: _content(c));
+
+  Widget _content(BuildContext c) {
+    final d = _d ?? SleepData(day: _day ?? widget.day ?? todayLabel(),
+      days: (_lastGood ?? widget.data)?.days ?? const []);
     final l = AppLocalizations.of(c);
     final recalculating = d.night['recalculating'] == true;
     final title = l?.sleepDetailNavTitle ?? 'Sleep';
@@ -979,6 +984,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     if (_paused) {
       final today = _day == null || _day == todayLabel();
       return _frame(c, title, [
+        ...dayNavRow(d.day, d.days, _goDay),
         const SizedBox(height: S.x4),
         today ? const PausedToday() : const PausedOlderDays(),
       ]);
@@ -987,8 +993,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     if (_failed) {
       // `_d` may still hold the night this screen stepped away from; only its
       // day list is used, so the stepper stays and the day can be walked off.
-      // A step to the latest night stores null in `_day`, so that night is
-      // named from `latestDay`, not from the night stepped away from.
       final nav = _d ?? _lastGood ?? d;
       final shown = _day ?? nav.latestDay ?? nav.day;
       return _frame(c, title, [

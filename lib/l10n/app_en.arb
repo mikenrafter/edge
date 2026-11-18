@@ -21303,5 +21303,53 @@
       }
     }
   },
-  "@olderVersionMonthGridRow": {}
+  "@olderVersionMonthGridRow": {},
+  "dayActivitiesFilter": "Filter",
+  "dayActivitiesShow": "Show activities",
+  "dayActivitiesPending": "Pending",
+  "dayActivitiesSaved": "Saved",
+  "dayActivitiesDiscarded": "Discarded",
+  "dayActivitiesPendingDetail": "Detected, waiting for your review",
+  "dayActivitiesSavedDetail": "Kept as part of your day",
+  "dayActivitiesDiscardedDetail": "Marked as not an activity",
+  "dayActivitiesFilterCount": "Filter, {count, plural, =1{1 kind selected} other{{count} kinds selected}}",
+  "@dayActivitiesFilterCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timelineSemanticsRange": "Timeline from {start} to {end}",
+  "@timelineSemanticsRange": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "timelineSemanticsScrub": "Timeline from {start} to {end}, selected {at}",
+  "@timelineSemanticsScrub": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      },
+      "at": {
+        "type": "String"
+      }
+    }
+  },
+  "timelineZoomIn": "Zoom in",
+  "timelineResetZoom": "Reset zoom",
+  "timelineChooseRange": "Choose range, then activate again",
+  "timelineNoMatches": "No activities match these filters",
+  "timelineMovementShare": "Movement (% of time moving)",
+  "timelineMovementNote": "Movement is the share of each 5 minutes in which your wrist turned more than 5° between readings. It is not steps or effort.",
+  "timelineHere": "Here"
 }

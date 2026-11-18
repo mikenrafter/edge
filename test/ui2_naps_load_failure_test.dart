@@ -3,6 +3,7 @@
 // threw — a busy or locked database is enough — left it on its spinner for
 // good, with no message and no way to retry. It now ends in a retryable card.
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -31,6 +32,14 @@ class _FlakyRepo extends LocalRepository {
     }
     return const {'naps': [], 'nap_min': 0};
   }
+}
+
+class _HeldDatesRepo extends _FlakyRepo {
+  _HeldDatesRepo() : super(0);
+  static const days = ['2026-10-01', '2026-09-30', '2026-09-29'];
+  Completer<List<String>>? held;
+  @override
+  Future<List<String>> availableDays() => held?.future ?? Future.value(days);
 }
 
 /// `_load` reaches sqflite on a real event loop, so real time has to pass
@@ -74,6 +83,32 @@ void main() {
     databaseFactory = databaseFactoryFfi;
   });
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  // WHY: loading and failure must preserve the date list, so another arrow
+  // is immediately usable. CLAIM(day-navigation-immediate).
+  testWidgets('Naps keeps arrows while dates load and after a failed day', (t) async {
+    final repo = _HeldDatesRepo();
+    await _pump(t, repo);
+    expect(await _settle(t), isTrue);
+    repo.held = Completer<List<String>>();
+    await t.tap(find.byKey(const ValueKey('day-nav-previous')));
+    await t.pump();
+    expect(t.widget<DayNav>(find.byType(DayNav)).days, _HeldDatesRepo.days);
+    await t.tap(find.byKey(const ValueKey('day-nav-previous')));
+    await t.pump();
+    expect(t.widget<DayNav>(find.byType(DayNav)).day, '2026-09-29');
+    repo.held!.complete(_HeldDatesRepo.days);
+    expect(await _settle(t), isTrue);
+    repo.held = null;
+    repo.failures = 1;
+    t.widget<DayNav>(find.byType(DayNav)).onDay('2026-09-30');
+    expect(await _settle(t), isTrue);
+    expect(find.text('This could not be read'), findsOneWidget);
+    expect(t.widget<DayNav>(find.byType(DayNav)).days, _HeldDatesRepo.days);
+    expect(t.widget<DayNav>(find.byType(DayNav)).day, '2026-09-30');
+    expect(find.text('Back to today'), findsOneWidget);
+    await t.pumpWidget(const SizedBox());
+  });
 
   testWidgets('a read that throws shows a retryable card, not a spinner',
       (t) async {

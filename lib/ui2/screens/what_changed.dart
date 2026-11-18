@@ -1,3 +1,4 @@
+import '../day_navigation.dart';
 // WHAT CHANGED — the nightly sweep, given a screen.
 //
 // The sweep already existed and already worked: `nightly_sweep.dart` measures
@@ -107,11 +108,13 @@ class WhatChangedScreen extends StatefulWidget {
 class _WhatChangedScreenState extends State<WhatChangedScreen> with PausedReadReload<WhatChangedScreen> {
   WhatChangedData? _d;
   bool _loading = true;
+  bool _readFailed = false;
   bool _paused = false;
   String? _day;
   // A quick second tap on the day stepper starts a second load; the first
   // can finish last and must not paint the old day under the new label.
   int _loadToken = 0;
+  List<String> _navDays = const [];
 
   @override
   void initState() {
@@ -157,39 +160,52 @@ class _WhatChangedScreenState extends State<WhatChangedScreen> with PausedReadRe
     try {
       final d = await WhatChangedData.load(repo, want: _day);
       if (mounted && token == _loadToken) {
-        setState(() => (_d = d, _loading = false, _paused = false));
+        setState(() => (_d = d, _readFailed = false, _loading = false, _paused = false));
       }
     } on ReadPaused {
       if (mounted && token == _loadToken) setState(() { _d = null; _loading = false; _paused = true; });
     } catch (_) {
-      if (mounted && token == _loadToken) setState(() => _loading = false);
+      if (mounted && token == _loadToken) setState(() => (_readFailed = true, _loading = false));
     }
   }
 
   void _goDay(String day) {
     setState(() {
+      _navDays = _d?.days ?? _navDays;
       _day = day;
+      _readFailed = false;
+      _d = null;
       _loading = true;
     });
     _load();
   }
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => DayNavigationFrame(
+      selectedDay: _day ?? _d?.day ?? widget.day ?? todayLabel(),
+      onSelect: _goDay, child: _content(c));
+
+  void _retryRead() {
+    setState(() { _readFailed = false; _loading = true; });
+    _load();
+  }
+
+  Widget _content(BuildContext c) {
     final d = _d ?? const WhatChangedData();
     final l = AppLocalizations.of(c);
     return detailScaffold(
         c, l?.whatChangedTitle ?? 'What changed',
         sub: l?.whatChangedSub ?? 'AGAINST YOUR OWN HISTORY', [
-      ...dayNavRow(_day ?? d.day, d.days, _goDay),
-      if (_paused) ...[
+      ...dayNavRow(_day ?? d.day, (_d?.days ?? _navDays), _goDay),
+      if (_readFailed) dayReadFailure(c, _retryRead)
+      else if (_paused) ...[
         const SizedBox(height: S.x4),
         const PausedOlderDays(),
       ] else
         AsyncListSection<Widget>(memoryKey: 'what-changed:${(_day ?? d.day ?? todayLabel()) == todayLabel() ? 'today' : 'past'}', items: _loading && _d == null ? null : whatChangedBody(c, d),
           visibleRows: 5, rowHeight: 100,
           itemBuilder: (_, child) => child, emptyBuilder: (_) => const SizedBox.shrink()),
-    ]);
+    ], framed: true);
   }
 }
 

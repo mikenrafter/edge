@@ -175,32 +175,42 @@ void main() {
           reason: 'a workout label is just a label here');
     });
 
+    // WHY: backing out must not invalidate insights for an unsaved edit.
+    // catches: bumping insights after every editor pop.
     testWidgets('leaving without saving writes nothing', (t) async {
       final r = await _rig(t);
       await r.mount(t);
       final before = await r.snapshot(t);
+      final revision = r.app.insightsRevision.value;
       await _open(t, _caffeineId);
       await apk2Tap(t, _chip(_caffeine, MomentChoice.alcohol));
       await t.binding.handlePopRoute();
       await settle(t);
       expect(apk2Key('moment-edit-screen'), findsNothing);
       expect(await r.snapshot(t), before);
+      expect(r.app.insightsRevision.value, revision,
+          reason: 'an unsaved edit leaves insights unchanged');
     });
   });
 
   group('saving', () {
+    // WHY: the saved flag must cross loader and go<bool> to refresh insights.
+    // catches: either route layer dropping true, or duplicate invalidation.
     testWidgets('a new amount replaces the old one and the row stays the same '
         'height with its Edit still there', (t) async {
       final r = await _rig(t);
       await r.mount(t);
       await apk2Show(t, _caffeineId);
       final height = t.getSize(apk2Row(_caffeineId)).height;
+      final revision = r.app.insightsRevision.value;
 
       await _open(t, _caffeineId);
       await t.enterText(_field('moment-value:${_caffeine.key}'), '120');
       await apk2Tap(t, apk2Key('moment-edit-save'));
 
       expect(apk2Key('moment-edit-screen'), findsNothing);
+      expect(r.app.insightsRevision.value, revision + 1,
+          reason: 'a saved change invalidates insights exactly once');
       final labels = await _rows(t, 'moment_label');
       expect(labels.where((l) => l['hhmm'] == '11:30'), hasLength(1));
       expect(labels.firstWhere((l) => l['hhmm'] == '11:30')['caffeine_mg'], 120);

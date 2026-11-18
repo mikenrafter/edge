@@ -78,18 +78,20 @@ Future<_Repo> _open(WidgetTester t, {String? day}) async {
 }
 
 void main() {
-  testWidgets('a step that cannot be read stays on the day on screen',
+  testWidgets('a failed step keeps the selected day and offers retry',
       (t) async {
     final repo = await _open(t, day: '2026-11-13');
     repo.failFor = '2026-11-12';
+    // WHY: a read failure keeps the requested date, with no old-day scalar.
     await t.tap(find.bySemanticsLabel('Previous day'));
     await _settle(t);
-    expect(find.text(dayNavLabel('2026-11-13')), findsOneWidget);
-    expect(find.text('6.5'), findsWidgets);
+    expect(find.text(dayNavLabel('2026-11-12')), findsOneWidget);
+    expect(find.text('6.5'), findsNothing);
+    expect(find.text('Try again'), findsOneWidget);
   });
 
   testWidgets(
-      'a failed step taken while another loads returns to the day on screen',
+      'a failed final step rejects the prior late read',
       (t) async {
     final repo = await _open(t, day: '2026-11-14');
     repo.hold['2026-11-13'] = Completer<void>();
@@ -98,14 +100,16 @@ void main() {
     await t.pump();
     await t.tap(find.bySemanticsLabel('Previous day'));
     await _settle(t);
-    // The 14th's curve is still on screen, so the stepper must name the 14th,
-    // not the 13th whose load was overtaken.
-    expect(find.text(dayNavLabel('2026-11-14')), findsOneWidget);
-    expect(find.text('7.0'), findsWidgets);
+    // WHY: the failed final date owns the screen. Neither the former curve
+    // nor the overtaken read may replace it. CLAIM(day-navigation-immediate).
+    expect(find.text(dayNavLabel('2026-11-12')), findsOneWidget);
+    expect(find.text('7.0'), findsNothing);
+    expect(find.text('Try again'), findsOneWidget);
     repo.hold['2026-11-13']!.complete();
     await _settle(t);
-    expect(find.text(dayNavLabel('2026-11-14')), findsOneWidget);
-    expect(find.text('7.0'), findsWidgets);
+    expect(find.text(dayNavLabel('2026-11-12')), findsOneWidget);
+    expect(find.text('7.0'), findsNothing);
+    expect(find.text('Try again'), findsOneWidget);
   });
 
   testWidgets('a past day steps back to the day before', (t) async {

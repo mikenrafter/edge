@@ -21244,5 +21244,53 @@
   "@coachApiFormatHelp": {
     "description": "Coach AI settings: helper text under the provider API format dropdown (Responses / Chat Completions are API names, keep untranslated)"
   },
-  "@olderVersionMonthGridRow": {}
+  "@olderVersionMonthGridRow": {},
+  "dayActivitiesFilter": "筛选",
+  "dayActivitiesShow": "显示活动",
+  "dayActivitiesPending": "待确认",
+  "dayActivitiesSaved": "已保存",
+  "dayActivitiesDiscarded": "已忽略",
+  "dayActivitiesPendingDetail": "已检测到，等待你确认",
+  "dayActivitiesSavedDetail": "已保留为当天的活动",
+  "dayActivitiesDiscardedDetail": "已标记为非活动",
+  "dayActivitiesFilterCount": "筛选，已选择 {count} 类",
+  "@dayActivitiesFilterCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timelineSemanticsRange": "从 {start} 到 {end} 的时间线",
+  "@timelineSemanticsRange": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "timelineSemanticsScrub": "从 {start} 到 {end} 的时间线，已选择 {at}",
+  "@timelineSemanticsScrub": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      },
+      "at": {
+        "type": "String"
+      }
+    }
+  },
+  "timelineZoomIn": "放大",
+  "timelineResetZoom": "重置缩放",
+  "timelineChooseRange": "选择时间范围，然后再次点击",
+  "timelineNoMatches": "没有符合这些筛选条件的活动",
+  "timelineMovementShare": "活动（活动时间百分比）",
+  "timelineMovementNote": "活动表示每5分钟内手腕在两次读数之间转动超过5°的时间比例。它不代表步数或运动强度。",
+  "timelineHere": "此处"
 }

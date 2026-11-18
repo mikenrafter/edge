@@ -20682,5 +20682,53 @@
   },
   "@homeIllnessBodyBelow": {
     "description": "Illness watch body text when the flagged night's heart rate sat below baseline, with the deviation amount."
-  }
+  },
+  "dayActivitiesFilter": "Фильтр",
+  "dayActivitiesShow": "Показать активности",
+  "dayActivitiesPending": "Ожидают",
+  "dayActivitiesSaved": "Сохранены",
+  "dayActivitiesDiscarded": "Отклонены",
+  "dayActivitiesPendingDetail": "Обнаружены, ожидают вашей проверки",
+  "dayActivitiesSavedDetail": "Сохранены как часть вашего дня",
+  "dayActivitiesDiscardedDetail": "Помечены как не являющиеся активностью",
+  "dayActivitiesFilterCount": "Фильтр, выбрано типов: {count}",
+  "@dayActivitiesFilterCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timelineSemanticsRange": "Шкала времени от {start} до {end}",
+  "@timelineSemanticsRange": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "timelineSemanticsScrub": "Шкала времени от {start} до {end}, выбрано {at}",
+  "@timelineSemanticsScrub": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      },
+      "at": {
+        "type": "String"
+      }
+    }
+  },
+  "timelineZoomIn": "Приблизить",
+  "timelineResetZoom": "Сбросить масштаб",
+  "timelineChooseRange": "Выберите интервал и нажмите ещё раз",
+  "timelineNoMatches": "Нет занятий с такими фильтрами",
+  "timelineMovementShare": "Движение (% времени в движении)",
+  "timelineMovementNote": "Движение — доля каждых 5 минут, когда запястье поворачивалось более чем на 5° между измерениями. Это не шаги и не нагрузка.",
+  "timelineHere": "Здесь"
 }

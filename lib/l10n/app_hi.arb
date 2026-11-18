@@ -21244,5 +21244,53 @@
   "@coachApiFormatHelp": {
     "description": "Coach AI settings: helper text under the provider API format dropdown (Responses / Chat Completions are API names, keep untranslated)"
   },
-  "@olderVersionMonthGridRow": {}
+  "@olderVersionMonthGridRow": {},
+  "dayActivitiesFilter": "फ़िल्टर",
+  "dayActivitiesShow": "गतिविधियाँ दिखाएँ",
+  "dayActivitiesPending": "लंबित",
+  "dayActivitiesSaved": "सेव की गई",
+  "dayActivitiesDiscarded": "खारिज",
+  "dayActivitiesPendingDetail": "पहचानी गई, आपकी समीक्षा की प्रतीक्षा में",
+  "dayActivitiesSavedDetail": "आपके दिन के हिस्से के रूप में रखी गई",
+  "dayActivitiesDiscardedDetail": "गतिविधि नहीं के रूप में चिह्नित",
+  "dayActivitiesFilterCount": "फ़िल्टर, {count, plural, =1{1 प्रकार चुना गया} other{{count} प्रकार चुने गए}}",
+  "@dayActivitiesFilterCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timelineSemanticsRange": "{start} से {end} तक की समयरेखा",
+  "@timelineSemanticsRange": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "timelineSemanticsScrub": "{start} से {end} तक की समयरेखा, चयनित समय {at}",
+  "@timelineSemanticsScrub": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      },
+      "at": {
+        "type": "String"
+      }
+    }
+  },
+  "timelineZoomIn": "ज़ूम इन करें",
+  "timelineResetZoom": "ज़ूम रीसेट करें",
+  "timelineChooseRange": "समय चुनें, फिर दोबारा सक्रिय करें",
+  "timelineNoMatches": "इन फ़िल्टर से मेल खाने वाली कोई गतिविधि नहीं है",
+  "timelineMovementShare": "गतिविधि (कलाई हिलने वाले समय का %)",
+  "timelineMovementNote": "गतिविधि हर 5 मिनट का वह हिस्सा है जिसमें दो रीडिंग के बीच आपकी कलाई 5° से ज़्यादा घूमी। यह कदमों या मेहनत का माप नहीं है।",
+  "timelineHere": "यहाँ"
 }

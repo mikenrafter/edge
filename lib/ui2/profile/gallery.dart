@@ -1,3 +1,6 @@
+import '../day_timeline/timeline_chart.dart';
+import '../day_timeline/timeline_filter.dart';
+import '../day_timeline/timeline_filter_button.dart';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:io';
@@ -159,7 +162,9 @@ const _night = <SleepStage>[
 ];
 
 /// Everything, in the order the gallery lists it.
-Map<String, Widget> galleryCases() => {...componentCases(), ...extraCases()};
+Map<String, Widget> galleryCases() => {...componentCases(), ...extraCases(),
+  'shared_timeline': const _TimelineGallery(),
+};
 
 /// The components. Listed separately from [extraCases], the primitives and
 /// painters, so the gallery screen can show them as their own scroll.
@@ -357,6 +362,8 @@ Map<String, Widget> componentCases() => {
       // The newest day: forward is dead, and the label reads Today rather than
       // a date. Both halves of that are the honesty — there is no day after
       // this one, and saying so beats a live arrow that does nothing.
+      'back_to_today': backToTodayControl(
+          selectedDay: _navDays.last, onSelect: (_) {}),
       'day_nav_today': DayNav(
           day: _navDays.first, days: _navDays, onDay: (_) {}),
       'section': const Section('Recovery', StatusCard('Nothing yet today',
@@ -2973,3 +2980,26 @@ class _GalleryNerdStats implements NerdStatsListener {
   void openNerdStats() {}
 }
 
+
+// Owner: this gallery fixture disposes the same controller/filter as a route.
+class _TimelineGallery extends StatefulWidget {
+  const _TimelineGallery();
+  @override
+  State<_TimelineGallery> createState()=>_TimelineGalleryState();
+}
+class _TimelineGalleryState extends State<_TimelineGallery> {
+  final controller=TimelineController(homeStartSec:0,homeEndSec:86400);
+  final filter=TimelineFilter();
+  final graph=DayGraph(dayStart:0,hr:List<double?>.generate(1440,
+    (i)=>i>=540&&i<660?null:60+(i%30).toDouble()));
+  @override
+  void dispose() { controller.dispose(); filter.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context)=>Column(children:[
+    // SharedTimelineChart is exercised through its public factory here.
+    timelineChart(controller:controller,graph:graph,annotations:const [],onAnnotationSelected:(_){}),
+    Wrap(alignment:WrapAlignment.spaceBetween,children:[
+      TimelineZoomControls(controller:controller),TimelineFilterButton(filter:filter),
+    ]),
+  ]);
+}

@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart' as pc;
 import '../profile/profile.dart';
 import '../../l10n/display_text.dart';
 import 'package:flutter/material.dart';
@@ -724,7 +725,16 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
   }
 
   @override
-  Widget build(BuildContext c) {
+  // Always framed, so entering or leaving Vitals never changes the root widget
+  // (that would remount the list and reset its scroll). Only Vitals shows a day.
+  Widget build(BuildContext c) => DayNavigationFrame(
+      selectedDay: _tab == 3
+          ? _vDay ?? _v?.day ?? todayLabel(pc.clock.now())
+          : null,
+      onSelect: _goVitalsDay,
+      child: _content(c));
+
+  Widget _content(BuildContext c) {
     final d = _d ?? const HealthData();
     final l = AppLocalizations.of(c);
     return tabRootList(padding: kTabRootPad, children: [
@@ -733,7 +743,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
       const HeaderRows(),
       SubTabs(_tabsOf(l), _tab, _select, color: C.blue),
       const SizedBox(height: S.x5),
-      if (_loading && _d == null)
+      if (_loading && _d == null && (_tab == 0 || _tab == 2))
         PendingContent(pending: true, child: _tab == 2 ? _trends(c, d) : _overview(c, d))
       else
         switch (_tab) {
@@ -1360,8 +1370,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
       final days = _vDays;
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // Null `_vDay` is today, the newest day in the list.
-        if (days != null && days.isNotEmpty)
-          ...dayNavRow(_vDay ?? days.first, days, _goVitalsDay),
+        ...dayNavRow(_vDay ?? todayLabel(), days ?? const [], _goVitalsDay),
         _vFailed
             ? _readFailed(l?.healthWhatVitals ?? 'vitals', () {
                 setState(() => _vFailed = false);

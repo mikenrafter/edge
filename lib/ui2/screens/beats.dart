@@ -283,6 +283,7 @@ class _BeatsState extends State<Beats>
   bool _loading = true;
   bool _paused = false;
   String? _day;
+  List<String> _navDays = const [];
 
   @override
   void initState() {
@@ -461,24 +462,33 @@ class _BeatsState extends State<Beats>
 
   void _goDay(String day) {
     setState(() {
+      _navDays = _d?.days ?? _navDays;
       _day = day;
+      _d = null;
+      _shell = null;
+      _beats = null;
+      _beatsFailed = false;
+      _cachedAt = null;
       _loading = true;
     });
     _load();
   }
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => DayNavigationFrame(
+      selectedDay: _day ?? _d?.day ?? widget.day ?? todayLabel(),
+      onSelect: _goDay, child: _content(c));
+
+  Widget _content(BuildContext c) {
     final l = AppLocalizations.of(c);
-    final d = _d ?? const BeatsData();
+    final d = _d ?? BeatsData(day: _day, days: _navDays);
     return detailScaffold(
       c,
       l?.beatsTitle ?? 'Beats',
       [
         _asOf(d),
-        PendingContent(pending: _loading || _beatsPending,
-          child: DayNav(day: _day ?? d.day ?? todayLabel(), days: d.days,
-            onDay: _goDay, alwaysShow: true)),
+        DayNav(day: _day ?? d.day ?? todayLabel(), days: d.days,
+          onDay: _goDay, alwaysShow: true),
         const SizedBox(height: S.x3),
         if (_paused)
           const Padding(
@@ -526,7 +536,7 @@ class _BeatsState extends State<Beats>
       sub: d.day == null
           ? '\u00a0'
           : (l?.beatsNightOf(prettyDay(d.day, l)) ??
-              'Night of ${prettyDay(d.day, l)}'),
+              'Night of ${prettyDay(d.day, l)}'), framed: true,
     );
   }
 
