@@ -117,8 +117,14 @@ void main() {
     }
   });
   test('Q13 a user nap receipt leaves an in-flight later-night write admissible', () async {
+    await db.insert('sleep_block',SleepBlockStore.encodeBlock(
+      SleepBlock(id:'m',kind:SleepBlockKind.main,day:day,startTs:start-28800,endTs:start-7200),
+      source:SleepBlockSource.manual,state:SleepBlockState.live,createdAt:1));
+    await SleepBlockStore.projectForTest(db,{day});
+    final stamp=(await db.rawQuery("SELECT rev FROM input_revision WHERE source='sleep_override' AND scope=?",[day])).single['rev'] as int;
     final fence=await SleepEditStore.generationOn(db,upTo:'2026-10-14');
     await LocalRepositoryImpl(getProfileMap:()=>{}).putNap(dayId:day,startTs:start,endTs:start+2400,source:'manual');
+    expect(await LocalDb.putDayResult(dayId:day,algoVersion:kAlgoVersion,payloadJson:'{}',windowJson:'{}',source:'band',finalized:false,sleepEditGeneration:fence,inputStamp:{'sleep_override':{day:stamp}}),true);
     expect(await LocalDb.putDayResult(dayId:'2026-10-14',algoVersion:kAlgoVersion,payloadJson:'{}',windowJson:'{}',source:'band',finalized:false,sleepEditGeneration:fence),true);
   });
   test('Q14 nap recompose handles absent skipped and partial days without a measured-night shortcut', () async {
