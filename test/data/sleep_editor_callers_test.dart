@@ -694,23 +694,6 @@ void main() {
       expect(report.remaining.isEmpty, isTrue);
     });
   });
-}
-
-/// A range writer whose nap write refuses for spacing, as the real one does.
-class _RefusingRangeWriter extends FakeRangeWriter {
-  _RefusingRangeWriter({super.log});
-
-  @override
-  Future<void> logNap(
-      {required String dayId, required int startSec, required int endSec}) {
-    throw SleepMergeRequiredException(SleepMergeProposal(
-      survivor: SleepBlock(
-          kind: SleepBlockKind.nap, day: dayId, startTs: 1, endTs: 2),
-      absorbed: const [],
-      startTs: startSec,
-      endTs: endSec,
-    ));
-  }
   // WHY B1: a stale Discard must never delete the main/older nap survivor.
   test('B1 Discard refuses a kept nap merged into another sleep',() async {
     for(final kind in [SleepBlockKind.main,SleepBlockKind.nap]) {
@@ -735,5 +718,23 @@ class _RefusingRangeWriter extends FakeRangeWriter {
       expect((await db.query('sleep_block',where:'id = ?',whereArgs:['survivor'])).single['state'],'live');
     }
   });
+}
+
+/// A range writer whose nap write refuses for spacing, as the real one does.
+class _RefusingRangeWriter extends FakeRangeWriter {
+  _RefusingRangeWriter({super.log});
+
+  @override
+  Future<void> logNap(
+      {required String dayId, required int startSec, required int endSec}) {
+    throw SleepMergeRequiredException(SleepMergeProposal(
+      survivor: SleepBlock(
+          kind: SleepBlockKind.nap, day: dayId, startTs: 1, endTs: 2),
+      absorbed: const [],
+      startTs: startSec,
+      endTs: endSec,
+    ));
+  }
+
 
 }
