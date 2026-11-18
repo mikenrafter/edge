@@ -16,6 +16,7 @@ import 'package:openstrap_edge/ui2/profile/settings.dart';
 import 'package:openstrap_edge/ui2/screens/track_log.dart';
 import 'package:openstrap_edge/ui2/screens/typical_day.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+import 'support/bundled_fonts.dart';
 
 Future<void> _pump(WidgetTester t, Widget child, {String locale = 'en'}) async {
   t.view.devicePixelRatio = 1;
@@ -41,6 +42,8 @@ Finder _pilotIn(Finder entry, String label) => find.descendant(
   of: entry, matching: find.widgetWithText(Pill, label));
 
 void main() {
+  // Use app glyph widths: Ahem makes the unrelated five-label chart axis overflow.
+  setUpAll(loadFonts);
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await Prefs.ensureLoaded();
