@@ -8,13 +8,7 @@ flutter gen-l10n >/dev/null
 flutter analyze lib/data/official_export lib/data/attach_copy.dart lib/data/db.dart \
   lib/data/db/restore.dart lib/data/raw_archive_row.dart lib/util/raw_readers.dart \
   lib/util/worker_entries.dart test/official_export
-set +e
-python3 -I test/official_export/harness/run_p2_gate.py
-graph=$?
-set -e
-# Fails on any incomplete batch, changed failure signature or unmatched case.
-python3 -I test/official_export/harness/run_p2_baseline.py
-echo "Selected graph exit $graph; exact baseline comparison passed"
+python3 -I test/official_export/harness/run_p2_graph_and_baseline.py
 python3 -I test/official_export/harness/run_p2_mutations.py
 python3 -I test/official_export/harness/run_mutations.py unit
 # Restored passing controls prove that neither mutation loop left source edits.
