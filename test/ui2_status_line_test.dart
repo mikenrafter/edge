@@ -13,6 +13,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/derive_progress.dart';
 import 'package:openstrap_edge/ui2/shared_slot.dart';
 import 'package:openstrap_edge/ui2/status_line.dart';
+import 'package:openstrap_edge/ui2/sync_control.dart' show HomeSyncStatus;
 import 'package:openstrap_edge/ui2/theme.dart';
 
 import 'support/shift_run.dart';
@@ -87,7 +88,24 @@ void main() {
     expect(_text(t), 'Calculating sleep, recovery and strain · day 3 of 12');
   });
 
-  // WHY: a save queued behind the one-time index must say why it waits.
+  // WHY: a save queued behind the one-time index waits silently on its own
+  // screen, so the header must say why the app is busy (owner: work never
+  // runs hidden). This is the production host: HeaderRows uses syncActions.
+  testWidgets('the header shows the index build in place of the sync row', (t) async {
+    final app = _App(_syncing);
+    addTearDown(app.dispose);
+    await t.pumpWidget(_host(app, syncActions: true));
+    expect(find.byType(HomeSyncStatus), findsOneWidget);
+    app.index.value = true;
+    await t.pump();
+    expect(find.text('Updating the database index (one time)'), findsOneWidget);
+    expect(find.byType(HomeSyncStatus), findsNothing);
+    app.index.value = false;
+    await t.pump();
+    expect(find.byType(HomeSyncStatus), findsOneWidget);
+  });
+
+  // WHY: the plain (non-header) line names the same one-time work.
   // CLAIM(index-writer-queue): maintenance replaces sync and clears afterward.
   testWidgets('index build is visible until queued saves can resume', (t) async {
     final app = _App(_syncing);

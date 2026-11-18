@@ -76,6 +76,29 @@ void main() {
     expect(DerivationEngine().running, isFalse, reason: 'released after completion');
   });
 
+  // WHY: every resume calls maintenance. Once the index exists it must not
+  // wait on (or take) the derive latch; a derive refused as busy backs off.
+  test('a built index returns at once while a derive holds the latch', () async {
+    await _fresh('finalized_index_prebuilt.db');
+    await LocalDb.instance;
+    await const FinalizedDayIndexMaintenance().call();
+    final release = Completer<void>();
+    final deriving = DerivationEngine.whileIdle(() => release.future);
+    var done = false;
+    try {
+      final maintenance = const FinalizedDayIndexMaintenance()
+          .call()
+          .whenComplete(() => done = true);
+      await (await LocalDb.instance).rawQuery('SELECT 1');
+      await maintenance.timeout(const Duration(seconds: 5));
+      expect(done, isTrue, reason: 'completed while the derive held the latch');
+      expect(ImportGate.check('prebuilt index'), isA<SyncAllowed>());
+    } finally {
+      release.complete();
+      await deriving;
+    }
+  });
+
   test('index waits for an active derive before claiming maintenance', () async {
     await _fresh('finalized_index_wait_derive.db');
     await LocalDb.instance;

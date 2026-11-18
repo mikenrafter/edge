@@ -9777,7 +9777,12 @@ class LocalDb {
     // Cheap pre-check so a resume on an install that already built the index
     // never takes the derive latch (a derive refused as busy backs off 30 s).
     // The check inside the gates below stays authoritative.
-    if (await _finalizedDayIndexExists()) return;
+    try {
+      if (await _finalizedDayIndexExists()) return;
+    } catch (_) {
+      // Same outcome as a failed gated build: the unindexed read stays correct,
+      // and the gated path below retries under its own error handling.
+    }
     // CLAIM(index-derive-exclusion): wait before claiming ImportGate, so a
     // derive already running can finish without waiting on maintenance
     // [finalized_day_ids_index_test]. The latch stays held through completion.
