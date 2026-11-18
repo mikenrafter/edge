@@ -276,10 +276,14 @@ void main() {
     expect((await pulseRows(db, 'pulse_ep_episode')).single['status'], 'deleted');
   });
 
-  test('evidence that cannot be kept is recorded as omitted, with no evidence row', () async {
+  // WHY/R4: omitted evidence must never back dispatchable alert debt.
+  // catches: forwarding alertEligible despite a null evidence envelope.
+  test('R4 evidence omitted cannot create dispatchable debt', () async {
     await publish(_pub(noEvidence: true));
     expect((await pulseRows(db, 'pulse_ep_revision')).single['evidence_status'], 'omitted');
     expect(await pulseRows(db, 'pulse_ep_evidence'), isEmpty);
+    expect((await outbox('s:0'))['state'], 'not_sent');
+    expect((await outbox('s:0'))['reason'], contains('evidence'));
   });
 
   // ---- admission, checkpoint, prune -------------------------------------

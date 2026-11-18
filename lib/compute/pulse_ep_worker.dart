@@ -270,6 +270,7 @@ class PulseEpisodeWorker {
     required int completeThroughMs,
     required String origin,
     required int nowMs,
+    List<PulseHrBin> hr = const [],
   }) async {
     const pad = 600000;
     final stamp = await PulseEpisodeStore.readStamp(db,
@@ -284,7 +285,7 @@ class PulseEpisodeWorker {
       evaluateToMs: toMs,
     );
     final detection = (await Isolate.run(() => detectPulseEpisodesHeavy(detectInput))).detection;
-    final prepareInput = PulsePrepareInput(detection, fromMs: fromMs, toMs: toMs);
+    final prepareInput = PulsePrepareInput(detection, hr: hr, fromMs: fromMs, toMs: toMs);
     final prepared = await Isolate.run(() => preparePulseEvidenceHeavy(prepareInput));
     final results = <PulseApply>[];
     for (final e in detection.episodes) {

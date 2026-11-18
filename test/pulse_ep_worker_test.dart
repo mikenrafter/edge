@@ -202,4 +202,23 @@ void main() {
     });
   }
 
+  // WHY/R4: exercise the real encoder refusal through the coordinator, rather
+  // than mocking preparation. HR aggregates alone overflow the expanded cap.
+  // catches: discarding PulseEncodeRefused while keeping alertEligible true.
+  test('R4 coordinator preserves encoding refusal without delivery debt', () async {
+    final db = await LocalDb.instance;
+    await insertRows(db, '', rows);
+    await PulseEpisodeWorker.evaluate(db, source: '', fromMs: _t0,
+        toMs: _t0 + 30 * 60000, sourceStartMs: _t0 - 3600000,
+        completeThroughMs: _t0 + 35 * 60000, origin: 'recentSync', nowMs: 10,
+        hr: List.filled(70000, const PulseHrBin(_t0, 70)));
+    final revisions = await pulseRows(db, 'pulse_ep_revision');
+    expect(revisions, hasLength(1));
+    expect(revisions.single['evidence_status'], 'omitted');
+    expect(await pulseRows(db, 'pulse_ep_evidence'), isEmpty);
+    final debt = (await pulseRows(db, 'pulse_ep_outbox')).single;
+    expect(debt['state'], 'not_sent');
+    expect(debt['reason'], contains('1 MiB envelope'));
+  });
+
 }
