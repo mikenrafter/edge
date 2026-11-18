@@ -21,12 +21,16 @@ try:
    members=[root/m.name for m in archive.getmembers() if m.isfile()]
    assert all(p.is_relative_to(root/'lib') for p in members)
    archive.extractall(root,filter='data')
+  # Generated localization Dart files are gitignored. The base ARBs must
+  # generate their own API before compiling base widgets. All lib bytes,
+  # including generated files, are restored below.
+  subprocess.run(['flutter','gen-l10n'],cwd=root,check=True)
   with (out/'baseline.jsonl').open('w') as log:
    subprocess.run(['flutter','test','--no-pub','--concurrency=1','--reporter=json',*files],cwd=root,stdout=log)
 finally:
  for path,data in saved.items():path.write_bytes(data)
- for path in members:
-  if path not in saved:path.unlink(missing_ok=True)
+ for path in (root/'lib').rglob('*'):
+  if path.is_file() and path not in saved:path.unlink()
 
 def signature(errors):
  text='\n'.join(errors)

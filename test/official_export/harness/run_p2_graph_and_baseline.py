@@ -28,12 +28,20 @@ policy='120-second cap (isolated test_api overlay); resumed completed batches st
 identity=dict(policy=policy,stock_root=str(source),overlay=str(overlay),
  stock_invoker_sha256=hashlib.sha256(text.encode()).hexdigest(),
  overlay_invoker_sha256=hashlib.sha256((overlay/relative).read_bytes()).hexdigest())
-(root/'build/official_probe/graph-timeout-policy.json').write_text(json.dumps(identity,indent=2)+'\n')
+skip_graph=os.environ.get('P2_GRAPH_ALREADY_COMPLETE')=='1'
+policy_file='baseline-timeout-policy.json' if skip_graph else 'graph-timeout-policy.json'
+(root/'build/official_probe'/policy_file).write_text(json.dumps(identity,indent=2)+'\n')
 print('GRAPH TIMEOUT POLICY:',policy,flush=True)
 try:
  config_path.write_text(json.dumps(config,indent=2))
  env=dict(os.environ,P2_GRAPH_TIMEOUT_POLICY='120-second cap (isolated test_api overlay)')
- graph=subprocess.call(['python3','-I','test/official_export/harness/run_p2_gate.py'],cwd=root,env=env)
+ if skip_graph:
+  completed=json.loads((root/'build/official_probe/graph-summary.json').read_text())
+  assert not completed['incomplete'],completed['incomplete']
+  graph=int(any(r['exit'] for r in completed['results']))
+  print('Using completed graph evidence; no graph tests rerun',flush=True)
+ else:
+  graph=subprocess.call(['python3','-I','test/official_export/harness/run_p2_gate.py'],cwd=root,env=env)
  baseline=subprocess.call(['python3','-I','test/official_export/harness/run_p2_baseline.py'],cwd=root,env=env)
  print('Selected graph exit',graph,'; baseline exit',baseline,flush=True)
 finally:
