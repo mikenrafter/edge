@@ -262,7 +262,10 @@ abstract final class SleepBlockStore {
             w.row['detected_end']=suggestion['end_ts'];w.row['detected_day']=suggestion['day_id'];
             p.mergedNapDays.add(suggestion['day_id'] as String);
           }
-        case ClearMain(:final day): p.deleted.add(day);
+        case ClearMain(:final day):
+          p.work.removeWhere((_,w)=>w.row['kind']=='main' && w.row['owner_day']==day);
+          if((await tx.query('sleep_block',columns:['id'],
+            where:"kind = 'main' AND owner_day = ?",whereArgs:[day])).isNotEmpty) p.deleted.add(day);
         case MergeBlocks(): break;
         case SetIntervals(:final target,:final startTs,:final endTs):
           final w=await bind(target);if(w==null) break;
