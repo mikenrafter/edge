@@ -10,6 +10,8 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/activity_store.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/sleep_block_store.dart';
+import 'package:openstrap_edge/data/sleep_edit_store.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
@@ -79,7 +81,7 @@ void main() {
           'total_asleep_min': 420,
         },
       }),
-      windowJson: '{}',
+      windowJson: jsonEncode(mainWindow??{}),
       finalized: true,
       source: source,
       rhr: 53,
@@ -156,8 +158,10 @@ void main() {
   );
 
   test('a logged legacy nap wins before its first recompute', () async {
+    await db.update('activity_review_meta',{'activated_at':now});
     await dayResult(version: kAlgoVersion - 1, naps: [nap()], source: null);
     expect(await LocalDb.napEdits(day), isEmpty);
+    await SleepBlockStore.backfill(db);
     expect(
       await store.reconcile(ActivityKind.workout, [
         {'start_ts': start + 300, 'end_ts': start + 1500},
@@ -203,18 +207,19 @@ void main() {
           ],
         }),
       );
+      await TestSleepWrites.absorbFixtures(db);
       await repo.confirmActivity(proposal);
       // Fail the rollup read after the accepted day has been written. The job
       // must survive and the next run must replace, not reuse, the old cache.
       await db.execute('ALTER TABLE baselines RENAME TO unavailable_baselines');
       expect(
-        await DerivationEngine().refreshActivityReviews(const Profile()),
+        await TestSleepWrites.refreshNapReviews(DerivationEngine(),const Profile()),
         isFalse,
       );
-      expect(await db.query('activity_review_days'), isNotEmpty);
+      expect(await SleepEditStore.pending(retryFailed:true),isNotEmpty);
       await db.execute('ALTER TABLE unavailable_baselines RENAME TO baselines');
       expect(
-        await DerivationEngine().refreshActivityReviews(const Profile()),
+        await TestSleepWrites.refreshNapReviews(DerivationEngine(),const Profile()),
         isTrue,
       );
       final input = jsonDecode(
@@ -261,7 +266,7 @@ void main() {
         dayId: dayLabelOf(wake),
         algoVersion: kAlgoVersion,
         source: 'band',
-        windowJson: '{}',
+        windowJson:jsonEncode({'onset_ms':evening.millisecondsSinceEpoch,'offset_ms':wake.millisecondsSinceEpoch}),
         payloadJson: jsonEncode({
           'sleep': {
             'window': {
@@ -292,8 +297,9 @@ void main() {
     'accepted snapshot survives missing day and raw records without invented metrics',
     () async {
       final suggestion = await detectNap();
+      await TestSleepWrites.absorbFixtures(db);
       await repo.confirmActivity(suggestion);
-      await LocalDb.applyPendingActivityReviews();
+      await TestSleepWrites.applyNapWork();
       final row = (await LocalDb.dayResult(day))!;
       final bundle = jsonDecode(row['payload_json'] as String);
       expect(bundle['scalars']['nap_min'], 24);
@@ -317,8 +323,9 @@ void main() {
       );
       expect(bundle['scalars']['nap_min'], 0);
       expect(await LocalDb.napEdits(day), isEmpty);
+      await TestSleepWrites.absorbFixtures(db);
       await repo.confirmActivity(s);
-      await LocalDb.applyPendingActivityReviews();
+      await TestSleepWrites.applyNapWork();
       bundle = jsonDecode(
         (await LocalDb.dayResult(day))!['payload_json'] as String,
       );
@@ -334,6 +341,7 @@ void main() {
     'edit saves a user-reported window without invented confidence',
     () async {
       final s = await detectNap();
+      await TestSleepWrites.absorbFixtures(db);
       await repo.confirmActivity(s, startTs: start + 300, endTs: start + 2700);
       final saved = (await LocalDb.napEdits(day)).single;
       expect(saved['source'], 'manual');
@@ -365,6 +373,7 @@ void main() {
         throwsA(isA<ActivityReviewException>()),
       );
       expect(await LocalDb.napEdits(day), isEmpty);
+      await TestSleepWrites.absorbFixtures(db);
       await repo.confirmActivity(after);
       expect(await store.pending(), isEmpty);
     },
@@ -467,11 +476,13 @@ void main() {
       final s = (await store.reconcile(ActivityKind.workout, [
         {'start_ts': start, 'end_ts': start + 1800},
       ])).single;
+      await TestSleepWrites.absorbFixtures(db);
       await repo.confirmActivity(s);
       final row = (await db.query('sessions')).single;
       expect(row['type'], 'other');
       expect(row['strain'], isNull);
       expect(row['calories'], isNull);
+      await TestSleepWrites.absorbFixtures(db);
       await repo.confirmActivity(s);
       expect(await db.query('sessions'), hasLength(1));
     },
@@ -506,6 +517,7 @@ void main() {
   test('pre-upgrade logged naps survive an algorithm bump', () async {
     await db.update('activity_review_meta', {'activated_at': now});
     await dayResult(version: kAlgoVersion - 1, naps: [nap()], source: null);
+    await SleepBlockStore.backfill(db);
     await dayResult();
     final bundle = jsonDecode(
       (await LocalDb.dayResult(day))!['payload_json'] as String,
@@ -518,6 +530,7 @@ void main() {
   test('a corrected main window excludes a captured legacy nap on every write', () async {
     await db.update('activity_review_meta', {'activated_at': now});
     await dayResult(version: kAlgoVersion - 1, naps: [nap()], source: null);
+    await SleepBlockStore.backfill(db);
     await dayResult(mainWindow: {
       'onset_ms': (start - 6 * 3600) * 1000,
       'offset_ms': (start + 3600) * 1000,
@@ -532,14 +545,15 @@ void main() {
     }
     await check();
     // The durable review path has no raw input and must compose identically.
-    await ActivityStore.markDayChanged(db, day);
-    await LocalDb.applyPendingActivityReviews();
+    await db.transaction((tx)=>SleepEditStore.enqueue(tx,day,main:false));
+    await TestSleepWrites.applyNapWork();
     await check();
   });
 
   test('a partially overlapping captured nap survives persistence and review', () async {
     await db.update('activity_review_meta', {'activated_at': now});
     await dayResult(version: kAlgoVersion - 1, naps: [nap()], source: null);
+    await SleepBlockStore.backfill(db);
     await dayResult(mainWindow: {
       'onset_ms': (start - 6 * 3600) * 1000,
       'offset_ms': (start + 900) * 1000,
@@ -553,34 +567,36 @@ void main() {
       expect((await LocalDb.napEdits(day)).single['source'], 'legacy');
     }
     await check();
-    await ActivityStore.markDayChanged(db, day);
-    await LocalDb.applyPendingActivityReviews();
+    await db.transaction((tx)=>SleepEditStore.enqueue(tx,day,main:false));
+    await TestSleepWrites.applyNapWork();
     await check();
   });
 
   test('putting a legacy nap back records an explicit confirmation', () async {
     await db.update('activity_review_meta', {'activated_at': now});
     await dayResult(version: kAlgoVersion - 1, naps: [nap()], source: null);
+    await SleepBlockStore.backfill(db);
     await dayResult(mainWindow: {
       'onset_ms': (start - 6 * 3600) * 1000,
-      'offset_ms': (start + 3600) * 1000,
+      'offset_ms': (start - 1800) * 1000,
     });
     await TestSleepWrites.putNapEdit(dayId: day, startTs: start, endTs: start + 1800, source: 'rejected');
     await TestSleepWrites.deleteNapEdit(day, start);
-    await LocalDb.applyPendingActivityReviews();
+    await TestSleepWrites.applyNapWork();
     final saved = jsonDecode((await LocalDb.dayResult(day))!['payload_json'] as String);
     expect((await LocalDb.napEdits(day)).single['source'], 'confirmed');
     expect(saved['naps']['value'], hasLength(1));
     expect(saved['scalars']['nap_min'], 24);
   });
 
-  test('older refresh cannot clear a newer durable review job', () async {
-    final s = await detectNap();
-    await store.discard(s);
-    final first = await LocalDb.applyPendingActivityReviews();
-    await ActivityStore.markDayChanged(db, day);
-    await LocalDb.finishActivityReviews(first);
-    expect(await db.query('activity_review_days'), hasLength(1));
+  test('older refresh cannot clear a newer durable nap job', () async {
+    final s=await detectNap();await store.confirm(s,startTs:start,endTs:start+1800);
+    final first=await TestSleepWrites.applyNapWork();
+    await TestSleepWrites.putNapEdit(dayId:day,startTs:start+7200,endTs:start+9000,source:'manual');
+    await TestSleepWrites.finishNapWork(first);
+    final jobs=await SleepEditStore.pending();expect(jobs,hasLength(1));
+    final row=(await db.query('sleep_edit_job')).single;
+    expect([row['nap_revision'],row['nap_applied_revision'],row['phase']],[2,1,'queued']);
   });
 
   test(
@@ -588,6 +604,7 @@ void main() {
     () async {
       await dayResult();
       final accepted = await detectNap();
+      await TestSleepWrites.absorbFixtures(db);
       await repo.confirmActivity(accepted);
       final discarded = (await store.reconcile(ActivityKind.nap, [
         nap(3600),
@@ -619,8 +636,8 @@ void main() {
         (await LocalDb.napEdits(day)).single['payload_json'],
         contains('24'),
       );
-      expect(await db.query('activity_review_days'), isNotEmpty);
-      await LocalDb.applyPendingActivityReviews();
+      expect(await SleepEditStore.pending(retryFailed:true),isNotEmpty);
+      await TestSleepWrites.applyNapWork();
       expect(
         jsonDecode(
           (await LocalDb.dayResult(day))!['payload_json'] as String,
@@ -714,6 +731,7 @@ void main() {
       final proposal = (await store.reconcile(ActivityKind.nap, [
         {'start': st, 'end': en, 'duration_min': 120},
       ])).single;
+      await TestSleepWrites.absorbFixtures(db);
       await repo.confirmActivity(proposal, startTs: st - 3600, endTs: en);
       final label = dayLabelOf(
         DateTime.fromMillisecondsSinceEpoch((st - 3600) * 1000),
@@ -722,7 +740,7 @@ void main() {
       expect((row['end_ts'] as int) - (row['start_ts'] as int), 3 * 3600);
       // both the detected and the edited start's local day get revised; they
       // are two days only where the host zone puts midnight between them
-      final days = (await db.query('activity_review_days'))
+      final days = (await db.query('sleep_edit_job'))
           .map((r) => r['day_id'])
           .toSet();
       expect(days, {
@@ -736,6 +754,7 @@ void main() {
     'raw cleanup never removes pending items, decisions or accepted naps',
     () async {
       final accepted = await detectNap();
+      await TestSleepWrites.absorbFixtures(db);
       await repo.confirmActivity(accepted);
       await store.reconcile(ActivityKind.nap, [nap(3600)]);
       await LocalDb.pruneDecodedBeforeRecTs(now);

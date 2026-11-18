@@ -202,3 +202,5 @@ in the same change that introduces it (AGENTS.md §6).
 - **Projection**: legacy `sleep_nap` and `sleep_override` rows written from sleep blocks for existing readers and exports.
 - **Absorb**: turn legacy sleep rows into blocks while retaining their stored owner days.
 - **Range read**: `SleepBlockStore.live`, the sleep blocks that count as sleep and intersect an interval.
+- **Nap work**: the `nap_revision` / `nap_applied_revision` counter pair on the day's single sleep job. It requests nap recomposition without moving the night revision fence or withholding the night.
+- **Nap recomposition**: `LocalDb.recomposeNaps` applies block assertions to retained day output, preserving measured night values and refreshing nap totals and the cross-day input revision.

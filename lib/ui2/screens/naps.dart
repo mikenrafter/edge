@@ -1,3 +1,4 @@
+import '../../data/sleep_ownership.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -198,7 +199,7 @@ class _NapsScreenState extends State<NapsScreen>
   /// own throw and returns early when another one is already running, so an
   /// edit that changed nothing on disk is indistinguishable from one that
   /// worked unless the screen checks, which is what the comparison below is.
-  Future<void> _edit(Future<void> Function() write) async {
+  Future<void> _edit(Future<void> Function() write,{bool expectVisibleChange=true}) async {
     if (_busy) return;
     // Read BEFORE the first await: the re-derive is the second half of every
     // edit, and reaching back through `context` for it after the write has
@@ -225,7 +226,7 @@ class _NapsScreenState extends State<NapsScreen>
     final after = _d?.naps.map((n) => n['start']).toList();
     // A reload that threw left `_d` as the pre-edit list, so before == after
     // says nothing about the edit; the read-failed card covers that case.
-    if (failed != null || (reloaded && '$before' == '$after')) {
+    if (failed != null || (reloaded && expectVisibleChange && '$before' == '$after')) {
       final l = AppLocalizations.of(context);
       setState(() => _failed = failed ??
           l?.napsNotReanalysed ??
@@ -316,14 +317,15 @@ class _NapsScreenState extends State<NapsScreen>
       return;
     }
     if (!mounted) return;
+    final ownerDay=SleepOwnership.dayOf(SleepBlockKind.nap,s,e);
     await _edit(() async {
       await HealthNapExporter.shared.synchronized(() async {
         _must(await _repo.putNap(
             dayId: day, startTs: s, endTs: e, source: 'manual'));
         await HealthNapExporter.exportConfirmedNap(
-            dayId: day, startTs: s, endTs: e);
+            dayId: ownerDay, startTs: s, endTs: e);
       });
-    });
+    },expectVisibleChange:ownerDay==day);
   }
 
   @override

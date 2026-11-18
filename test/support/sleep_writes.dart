@@ -6,6 +6,9 @@ import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/sleep_block_store.dart';
 import 'package:openstrap_edge/data/sleep_editor.dart';
+import 'package:openstrap_edge/data/sleep_edit_store.dart';
+import 'package:openstrap_edge/compute/derivation_engine.dart';
+import 'package:openstrap_edge/compute/profile.dart';
 
 abstract final class TestSleepWrites {
   static Future<void> absorbFixtures(DatabaseExecutor tx) async {
@@ -26,7 +29,7 @@ abstract final class TestSleepWrites {
         await SleepBlockStore.projectForTest(tx,{dayId}); return null;
       }
       final read=await SleepBlockStore.read(tx,dayId);
-      final existing=read.entries.where((e)=>e.ref.kind==SleepBlockKind.nap && e.startTs==startTs && !e.removed).firstOrNull;
+      final existing=read.entries.where((e)=>e.kind==SleepBlockKind.nap && e.startTs==startTs && !e.removed).firstOrNull;
       final c=source=='rejected'?RemoveBlock(existing?.ref??DetectedNapRef(dayId,startTs,endTs)):
         existing==null?AddNap(startTs,endTs,source:source):SetIntervals(existing.ref,startTs,endTs);
       final plan=await SleepBlockStore.plan(tx,dayId,[c]);
@@ -44,13 +47,41 @@ abstract final class TestSleepWrites {
     await (await LocalDb.instance).transaction((tx) async {
       await absorbFixtures(tx);
       final read=await SleepBlockStore.read(tx,dayId);
-      final existing=read.entries.where((e)=>e.ref.kind==SleepBlockKind.main).firstOrNull;
+      final existing=read.entries.where((e)=>e.kind==SleepBlockKind.main).firstOrNull;
       final c=source=='rejected'?RemoveBlock(existing?.ref??NoDetectionMainRef(dayId)):
         existing==null?AddMain(dayId,onsetTs,offsetTs):SetIntervals(existing.ref,onsetTs,offsetTs);
       requireSleepSaved(await SleepBlockStore.apply(await SleepBlockStore.plan(tx,dayId,[c]),tx:tx,merge:merge));
       if(source=='confirmed') { requireSleepSaved(await SleepBlockStore.apply(
         await SleepBlockStore.plan(tx,dayId,[ConfirmMain(dayId,onsetTs,offsetTs)]),tx:tx)); }
     });
+  }
+  static Future<Map<String,int>> applyNapWork() async {
+    final revisions=<String,int>{};
+    for(final job in await SleepEditStore.pending(retryFailed:true)) {
+      if(job.mainPending) continue;
+      if((await SleepEditStore.status(job.day))!['nap_applied_revision']!=job.napRevision) {
+        await LocalDb.recomposeNaps(job.day,job.napRevision);
+      }
+      revisions[job.day]=job.napRevision;
+    }
+    return revisions;
+  }
+  static Future<void> finishNapWork(Map<String,int> revisions) async {
+    for(final job in await SleepEditStore.pending(retryFailed:true)) {
+      if(revisions[job.day]==job.napRevision && !job.mainPending) {
+        await SleepEditStore.advance(job,SleepEditPhase.done);
+      }
+    }
+  }
+  static Future<bool> refreshNapReviews(DerivationEngine engine,Profile profile) async {
+    final jobs=(await SleepEditStore.pending(retryFailed:true)).where((j)=>!j.mainPending).toList();
+    if(jobs.isEmpty) return true;
+    final revisions=await applyNapWork();
+    try {
+      final last=jobs.last;
+      if(!await engine.refreshNapEdits(profile,last.day,last.napRevision)) return false;
+      await finishNapWork(revisions);return true;
+    } catch (_) { return false; }
   }
   static Future<bool> napOverlapsMainSleep(int start,int end) async {
     await absorbFixtures(await LocalDb.instance);
