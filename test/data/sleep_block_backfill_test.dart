@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/activity_store.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/sleep_block_store.dart';
 import 'package:openstrap_edge/data/sleep_editor.dart';
@@ -41,6 +42,19 @@ void main() {
   setUpAll(() { sqfliteFfiInit(); databaseFactory = databaseFactoryFfi; });
   setUp(() async { await LocalDb.close(); await databaseFactory.deleteDatabase(await dbPath()); });
   tearDown(() async { await LocalDb.close(); await databaseFactory.deleteDatabase(await dbPath()); });
+  // WHY F1: today's capture checks naps only; a partial main overlap still counts.
+  test('F1 step-3 capture preserves a nap partially overlapping a manual main', () async {
+    var db = await reopen();
+    await db.update('activity_review_meta', {'activated_at':20000});
+    await SleepBlockStore.absorb(db,
+      overrides:[mainRow(fixtureDay,'manual',1000,3000)], naps:[],
+      servedDayResults:[{'day_id':fixtureDay,'naps_json':'[{"start":700,"end":1300,"duration_min":10}]'}],
+      mode:AbsorbMode.backfill);
+    expect(await db.query('sleep_block',where:"kind = 'nap'"),hasLength(1));
+    expect((await db.query('sleep_nap')).single['source'],'legacy');
+    final edits=await SleepBlockStore.napEdits(db,fixtureDay);
+    expect(edits.single.snapshot?['duration_min'],10);
+  });
   test('B1 fresh open creates sleep_block and the one-live-main index', () async {
     final db = await reopen();
     await expectBlockTable(db);
