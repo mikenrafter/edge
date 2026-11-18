@@ -34,7 +34,8 @@ class _Reads extends RecursiveAstVisitor<void> {
   @override void visitMethodInvocation(MethodInvocation node) {
     if (node.methodName.name=='query' && node.argumentList.arguments.isNotEmpty) {
       final first = node.argumentList.arguments.first;
-      final literal = first is ParenthesizedExpression ? first.expression : first;
+      var literal = first;
+      while (literal is ParenthesizedExpression) { literal = literal.expression; }
       if (literal is StringLiteral && sleepTables.contains(literal.stringValue)) { add(node,literal.stringValue!); }
     }
     super.visitMethodInvocation(node);

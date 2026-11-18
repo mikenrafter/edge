@@ -22,7 +22,7 @@ const _untilCallersMove = <String,Set<String>>{
   'lib/data/sleep_block_writer.dart': {'SleepBlockWriter.napRow','SleepBlockWriter.mainRow'},
   'lib/data/sleep_import_rules.dart': {'SleepImportRules.freeze'},
   'lib/data/local_repository_impl.dart': {'LocalRepositoryImpl.readSleepEditor'},
-  'lib/health/health_nap_export.dart': {'_defaultNapRow'},
+  'lib/health/health_nap_export.dart': {'HealthNapExporter._defaultNapRow'},
   'lib/data/db.dart': {'LocalDb.deleteNapEdit'},
 };
 bool allowed(String path,SleepReadSite site) =>
