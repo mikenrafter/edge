@@ -742,6 +742,7 @@ const Map<String, String> kPrefTypes = {
   'gesture_follow_up_moments_since_ms': 'int',
   'gesture_repeat_lab': 'bool',
   'gesture_repeat_window_ms': 'int',
+  'tasker_moment_export': 'bool',
   'gesture_time_buzz_mode': 'string',
   'moment_review.queue': 'string',
   'typical_large_meals_v1': 'string',

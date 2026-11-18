@@ -24,7 +24,6 @@ const _dynamicReads = <String, List<String>>{
   'sync_control.dart|accordionPrefKey(_detailsId|bool': ['accordion_sync'],
   "gesture_settings.dart|'\$_kReplayPrefix\${a.id}'|bool": ['gesture_replay_mark_moment'],
   "gesture_settings.dart|'\$_kSlotOptionsPrefix\$slot'|string": ['gesture_slot_options_2'],
-  'gesture_settings.dart|key|int': ['gesture_repeat_window_ms'],
   "gesture_settings.dart|'\$_kTapActionsPrefix\$n'|int": ['gesture_tap_actions_3'],
 
   'briefing.dart|_slotKey(period|string': ['ai.briefing.morning'],
