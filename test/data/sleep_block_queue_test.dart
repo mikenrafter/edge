@@ -260,4 +260,31 @@ void main() {
     expect(await db.query('sleep_block'),hasLength(1));
   });
 
+  // WHY B2: only a write that composed the blocks can acknowledge nap work.
+  test('B2 skip and source-less writes leave nap work for the next pass',() async {
+    for(final skipped in [true,false]) {
+      for(final t in ['day_result','sleep_block','sleep_nap','sleep_edit_job']) { await db.delete(t); }
+      await block(); await db.transaction((tx)=>SleepEditStore.enqueue(tx,day,main:false));
+      await LocalDb.putDayResult(dayId:day,algoVersion:kAlgoVersion,
+        payloadJson:skipped?' {"skipped":true}':'{}',windowJson:'{}',finalized:false,
+        partial:true,skipped:skipped);
+      final before=(await SleepEditStore.status(day))!;
+      expect(before['nap_applied_revision'],lessThan(before['nap_revision'] as int));
+      final app=AppState.forTesting();
+      try { await app.sleepEditRunner.start(); } finally { app.dispose(); }
+      final row=(await LocalDb.dayResult(day))!;
+      expect(row['skipped'],0);
+      expect(jsonDecode(row['payload_json'] as String)['scalars']['nap_min'],40);
+      expect((await SleepEditStore.status(day))!['phase'],'done');
+    }
+  });
+  test('B2 band composition acknowledges the exact nap revision',() async {
+    await block(); await db.transaction((tx)=>SleepEditStore.enqueue(tx,day,main:false));
+    await LocalDb.putDayResult(dayId:day,algoVersion:kAlgoVersion,payloadJson:'{}',
+      windowJson:'{}',finalized:false,source:'band');
+    final status=(await SleepEditStore.status(day))!;
+    expect(status['nap_applied_revision'],status['nap_revision']);
+    expect(jsonDecode((await LocalDb.dayResult(day))!['payload_json'] as String)['scalars']['nap_min'],40);
+  });
+
 }
