@@ -6,10 +6,16 @@ import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/official_export/mapper.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'archive_fixture.dart';
+import 'process_zone.dart';
 import 'support.dart';
 
 void main() {
  TestWidgetsFlutterBinding.ensureInitialized();
+ // WHY: the literals below are UTC epochs. The test must hold on any host zone
+ // (the owner's dev machine is Denver), so it runs in a hostile process zone. [P2 review F3]
+ final originalZone=Platform.environment['TZ'];
+ setUp(() => setProcessZone(denverPosixZone));
+ tearDown(() => setProcessZone(originalZone));
  test('verified expansion, live-empty wins, conflicting claims, deletion and corruption', () async {
   await withFreshForkDb((db,path) async {
    // UTC epoch literals: 2026-10-22 noon, then complete subsequent days.

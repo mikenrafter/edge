@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/official_export/prune_cursor.dart' show LocalCalendar;
 import 'package:openstrap_edge/data/official_export/schema_catalog.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -72,4 +73,13 @@ List<Map<String, Object?>> readCaptureObjects(String name) {
   return ((json['reopened'] as Map)['objects'] as List)
       .map((e) => (e as Map).cast<String, Object?>())
       .toList();
+}
+
+/// A fixed-offset zone for tests: independent of the host process zone.
+/// `FixedOffsetCalendar(0)` is UTC.
+class FixedOffsetCalendar implements LocalCalendar {
+  const FixedOffsetCalendar(this.offsetSec);
+  final int offsetSec;
+  @override
+  int midnightAtOrAfter(int sec) => ((sec + offsetSec + 86399) ~/ 86400) * 86400 - offsetSec;
 }
