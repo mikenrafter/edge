@@ -249,10 +249,16 @@ abstract final class SleepBlockStore {
         case AddNap():
           if(!{'manual','confirmed'}.contains(c.source)) { refuse(SleepRefusalReason.unsupportedSource);break; }
           if(!manualNapWindowIsValid(c.startTs,c.endTs)) { refuse(SleepRefusalReason.invalidInterval);break; }
-          if(c.suggestionId!=null && (await tx.query('activity_suggestions',columns:['id'],where:"id = ? AND status = 'pending'",whereArgs:[c.suggestionId])).isEmpty) {
-            refuse(SleepRefusalReason.staleEntry);break;
+          final suggestion=c.suggestionId==null?null:(await tx.query('activity_suggestions',
+            where:"id = ? AND kind = 'nap' AND status = 'pending'",whereArgs:[c.suggestionId])).firstOrNull;
+          if(c.suggestionId!=null && suggestion==null) { refuse(SleepRefusalReason.staleEntry);break; }
+          final w=await add(SleepBlockKind.nap,SleepOwnership.dayOf(SleepBlockKind.nap,c.startTs,c.endTs),c.startTs,c.endTs,c.source,payload:c.payload);
+          // An edited Keep still owns the original detected interval's suppression.
+          if(suggestion!=null) {
+            w.row['history']='known';w.row['detected_start']=suggestion['start_ts'];
+            w.row['detected_end']=suggestion['end_ts'];w.row['detected_day']=suggestion['day_id'];
+            p.mergedNapDays.add(suggestion['day_id'] as String);
           }
-          await add(SleepBlockKind.nap,SleepOwnership.dayOf(SleepBlockKind.nap,c.startTs,c.endTs),c.startTs,c.endTs,c.source,payload:c.payload);
         case ClearMain(:final day): p.deleted.add(day);
         case MergeBlocks(): break;
         case SetIntervals(:final target,:final startTs,:final endTs):
