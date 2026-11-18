@@ -194,6 +194,8 @@ class PulseEpisodeStore {
     try {
       await createTables(db);
       await captureUpgrade(db, nowMs: nowMs);
+    } on PulseUpgradeCaptureFailed {
+      rethrow;
     } catch (error, stack) {
       Error.throwWithStackTrace(PulseUpgradeCaptureFailed(error), stack);
     }
@@ -207,7 +209,21 @@ class PulseEpisodeStore {
   /// CLAIM(pulse-upgrade-membership): the keys are identities, not a time
   /// cutoff, so an older record that arrives after the upgrade is still new
   /// [pulse_ep_migration_test].
+  ///
+  /// Every failure leaves as [PulseUpgradeCaptureFailed], on every path (rung,
+  /// create, same-version open repair): the opener must expose it and never
+  /// quarantine and rebuild around the input being captured (spec 4.4).
   static Future<void> captureUpgrade(DatabaseExecutor db, {required int nowMs}) async {
+    try {
+      await _captureUpgrade(db, nowMs: nowMs);
+    } on PulseUpgradeCaptureFailed {
+      rethrow;
+    } catch (error, stack) {
+      Error.throwWithStackTrace(PulseUpgradeCaptureFailed(error), stack);
+    }
+  }
+
+  static Future<void> _captureUpgrade(DatabaseExecutor db, {required int nowMs}) async {
     if ((await db.rawQuery('SELECT 1 FROM pulse_ep_upgrade LIMIT 1')).isNotEmpty) return;
     // A sparse legacy database can predate decoded storage; the open repair
     // creates it afterwards. Absent means no keys, never "malformed".
@@ -915,6 +931,34 @@ class PulseEpisodeStore {
     return _expireRows(txn, take);
   }
 
+  /// Expires unpinned evidence created strictly before [createdMs], oldest
+  /// first, only if that leaves room for [incomingBytes] within [budgetBytes].
+  /// Returns whether it fits; when it does not, nothing is touched.
+  static Future<bool> _evictOlderToFit(
+      DatabaseExecutor txn, int budgetBytes, int incomingBytes, int createdMs) async {
+    final used = Sqflite.firstIntValue(
+            await txn.rawQuery('SELECT COALESCE(SUM(encoded_bytes), 0) FROM pulse_ep_evidence')) ??
+        0;
+    var excess = used + incomingBytes - budgetBytes;
+    if (excess <= 0) return true;
+    final candidates = await txn.rawQuery(
+      'SELECT v.episode_id, v.revision, v.encoded_bytes FROM pulse_ep_evidence v '
+      'LEFT JOIN pulse_ep_outbox o ON o.episode_id = v.episode_id '
+      "WHERE COALESCE(o.state, '') <> 'pending' AND v.created_ms < ? "
+      'ORDER BY v.created_ms, v.episode_id',
+      [createdMs],
+    );
+    final take = <Map<String, Object?>>[];
+    for (final v in candidates) {
+      if (excess <= 0) break;
+      take.add(v);
+      excess -= (v['encoded_bytes'] as num).toInt();
+    }
+    if (excess > 0) return false;
+    await _expireRows(txn, take);
+    return true;
+  }
+
   // ---- transport ----------------------------------------------------------------------
   /// Reads one evidence blob in `substr` chunks (an Android cursor window is
   /// about 2 MB; RULES B.8). [source] is any database holding the blob.
@@ -1005,10 +1049,11 @@ class PulseEpisodeStore {
         }
         final budget = importBudgetBytesForTest ?? kPulseEvidenceBudgetBytes;
         final bytes = recording.row['encoded_bytes'] as int;
-        await _evictToBudget(txn, budget - bytes);
-        final used = Sqflite.firstIntValue(await txn.rawQuery(
-            'SELECT COALESCE(SUM(encoded_bytes), 0) FROM pulse_ep_evidence')) ?? 0;
-        if (used + bytes > budget) {
+        // Plan before evicting: only recordings OLDER than this one may make
+        // room (retention keeps the newest), and nothing is deleted unless that
+        // is enough. Otherwise an old backup would cancel newer evidence and its
+        // owed alert, or evict for nothing.
+        if (!await _evictOlderToFit(txn, budget, bytes, created)) {
           await txn.update('pulse_ep_revision', {'evidence_status': 'omitted'},
               where: 'episode_id = ? AND revision = ?', whereArgs: [id, rev]);
           return const PulseRefused('evidence budget full');

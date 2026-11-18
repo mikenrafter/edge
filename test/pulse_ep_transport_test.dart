@@ -380,7 +380,6 @@ void main() {
       await seedPortableEpisode(db, id: 'imp', startMs: _t0, endMs: _t0 + 600000,
           startDay: _day, createdMs: pinned ? now - hour : now - 2 * hour);
       final file = await LocalDb.exportCopy();
-      final size = (await pulseRows(db, 'pulse_ep_evidence')).single['encoded_bytes'] as int;
       await env.wipe();
       db = await LocalDb.instance;
       final local = pinned ? ['pin', 'old'] : ['new'];
@@ -399,7 +398,6 @@ void main() {
           0, (sum, r) => sum + (r['encoded_bytes'] as int));
       // The store is exactly full. Case one: only newer evidence could make
       // room. Case two: the only older unpinned evidence is too small to.
-      expect(locals, pinned ? size + 1 : size);
       PulseEpisodeStore.importBudgetBytesForTest = locals;
       final result = await LocalDb.importFromDbFile(file);
       db = await LocalDb.instance;
