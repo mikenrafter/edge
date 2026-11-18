@@ -148,8 +148,8 @@ void main() {
     await LocalDb.setFrozenHeadline('2026-09-30', 45);
     await TestSleepWrites.putSleepOverride(
       dayId: '2026-09-29',
-      onsetTs: 1000,
-      offsetTs: 2000,
+      onsetTs: DateTime(2026,9,29,1).millisecondsSinceEpoch~/1000,
+      offsetTs: DateTime(2026,9,29,2).millisecondsSinceEpoch~/1000,
       source: 'manual',
     );
     expect((await LocalDb.frozenHeadline())?.value, 45,
@@ -157,8 +157,8 @@ void main() {
 
     await TestSleepWrites.putSleepOverride(
       dayId: '2026-09-30',
-      onsetTs: 1000,
-      offsetTs: 2000,
+      onsetTs: DateTime(2026,9,30,1).millisecondsSinceEpoch~/1000,
+      offsetTs: DateTime(2026,9,30,2).millisecondsSinceEpoch~/1000,
       source: 'manual',
     );
     expect(await LocalDb.frozenHeadline(), isNull);

@@ -7,6 +7,7 @@ import 'support/sleep_edit_effects.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/sleep_edit_store.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/sleep_edit_runner.dart';
@@ -14,7 +15,7 @@ import 'backup/backup_support.dart';
 
 const day = '2026-11-13';
 Future<void> edit(String d, [int start = 1000]) => TestSleepWrites.putSleepOverride(
-    dayId: d, onsetTs: start, offsetTs: start + 3600, source: 'manual');
+    dayId: d, onsetTs: localDayStartSec(d)!+start, offsetTs: localDayStartSec(d)!+start+3600, source: 'manual');
 Future<void> finish(SleepEditJob job) async {
   await (await LocalDb.instance).rawUpdate(
       'UPDATE sleep_edit_job SET applied_revision = revision WHERE day_id = ?', [job.day]);

@@ -323,7 +323,7 @@ void main() {
         ['{"value":{"onset_ms":$start,"offset_ms":$end}}', a],
       );
       final staleFence = await SleepEditStore.generation(upTo: a);
-      await edit(a, source: 'confirmed');
+      await SleepEditStore.recalculate(a); // same bounds, genuinely new work
       expect(
         await SleepEditStore.reuseMeasuredNightIfCurrent(
           a,

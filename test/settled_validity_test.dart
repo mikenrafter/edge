@@ -68,7 +68,7 @@ Future<void> _oldRow(String day) => LocalDb.putDayResult(
       payloadJson: jsonEncode({
         'scalars': {'rhr': 52.0, 'rmssd': 61.0, 'readiness': 74.0},
       }),
-      windowJson: '{"onset_ms": 1, "offset_ms": 2}',
+      windowJson: jsonEncode({'onset_ms':_localSec(day,1)*1000,'offset_ms':_localSec(day,7)*1000}),
       finalized: true,
       rhr: 52,
       rmssd: 61,
@@ -86,6 +86,8 @@ Future<void> _clear() async {
     'metric_series_version',
     'compute_freshness',
     'sleep_override',
+    'sleep_block',
+    'sleep_edit_job',
   ]) {
     await db.delete(t);
   }
