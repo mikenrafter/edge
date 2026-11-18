@@ -104,7 +104,7 @@ class _TypicalDayScreenState extends State<TypicalDayScreen> {
         TextButton(onPressed: () => go(context, const TracksScreen()),
           style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text(l?.tracksTitle ?? 'Tracks'),
+            Flexible(child: Text(l?.tracksTitle ?? 'Tracks')),
             const SizedBox(width: S.x2),
             Pill(l?.pilotLabel ?? 'Pilot', C.blue),
           ])),

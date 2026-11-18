@@ -234,7 +234,7 @@ class TrackQuickLog extends StatelessWidget {
     icon: const Icon(Icons.add_circle_outline),
     style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
     label: Row(mainAxisSize: MainAxisSize.min, children: [
-      Text(tracksText(context, 'QuickLog')),
+      Flexible(child: Text(tracksText(context, 'QuickLog'))),
       const SizedBox(width: S.x2),
       Pill(AppLocalizations.of(context)?.pilotLabel ?? 'Pilot', C.blue),
     ]),
