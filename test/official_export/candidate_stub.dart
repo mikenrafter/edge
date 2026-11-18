@@ -8,7 +8,6 @@
 // profile's table policies and the carried-cursor rule, nothing more.
 import 'dart:io';
 
-import 'package:openstrap_edge/data/official_export/profile.dart';
 import 'package:openstrap_edge/data/official_export/profile_target.dart';
 import 'package:openstrap_edge/data/official_export/profile_tables.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -46,11 +45,14 @@ Future<List<String>> _commonColumns(Database db, String table) async {
   return [for (final c in target) if (source.contains(c)) c];
 }
 
-Future<String> naiveCopyCandidate(RichFixture fx, {String name = 'naive.db'}) async {
-  final out = '${File(fx.forkPath).parent.path}/$name';
+Future<String> naiveCopyCandidate(RichFixture fx, {String name = 'naive.db'}) =>
+    naiveCopyFrom(fx.forkPath, '${File(fx.forkPath).parent.path}/$name');
+
+/// The naive baseline from any fork database file into [out].
+Future<String> naiveCopyFrom(String forkPath, String out) async {
   final db = await _createTargetShaped(out);
   try {
-    await db.execute('ATTACH DATABASE ? AS src', [fx.forkPath]);
+    await db.execute('ATTACH DATABASE ? AS src', [forkPath]);
     final fork = {
       for (final r in await db.rawQuery("SELECT name FROM src.sqlite_master WHERE type='table'"))
         r['name'] as String,
@@ -79,11 +81,32 @@ Future<String> policyCandidate(
   bool dropImported = false,
   bool withCursor = true,
   bool unitKeyControl = false,
+}) => policyFrom(
+  fx.forkPath,
+  '${File(fx.forkPath).parent.path}/$name',
+  expectedPrunedBefore: fx.expectedPrunedBefore,
+  userVersion: userVersion,
+  extraTable: extraTable,
+  dropImported: dropImported,
+  withCursor: withCursor,
+  unitKeyControl: unitKeyControl,
+);
+
+/// The positive control from any fork database file into [out]. The carried
+/// cursor is [expectedPrunedBefore] (null: no row).
+Future<String> policyFrom(
+  String forkPath,
+  String out, {
+  required int? expectedPrunedBefore,
+  int userVersion = 62,
+  bool extraTable = false,
+  bool dropImported = false,
+  bool withCursor = true,
+  bool unitKeyControl = false,
 }) async {
-  final out = '${File(fx.forkPath).parent.path}/$name';
   final db = await _createTargetShaped(out, userVersion: userVersion);
   try {
-    await db.execute('ATTACH DATABASE ? AS src', [fx.forkPath]);
+    await db.execute('ATTACH DATABASE ? AS src', [forkPath]);
     final fork = {
       for (final r in await db.rawQuery("SELECT name FROM src.sqlite_master WHERE type='table'"))
         r['name'] as String,
@@ -102,9 +125,9 @@ Future<String> policyCandidate(
       final values = [...cols.map((c) => '"$c"'), ...t.emptyConstants.values].join(',');
       await db.execute('INSERT OR REPLACE INTO main."${t.dest}"($list) SELECT $values FROM src."${e.key}"');
     }
-    if (withCursor) {
+    if (withCursor && expectedPrunedBefore != null) {
       await db.execute(
-        "INSERT INTO main.sync_cursor(name,value,updated_at) VALUES('decoded_pruned_before','${fx.expectedPrunedBefore}',1)",
+        "INSERT INTO main.sync_cursor(name,value,updated_at) VALUES('decoded_pruned_before','$expectedPrunedBefore',1)",
       );
     }
     await db.execute(

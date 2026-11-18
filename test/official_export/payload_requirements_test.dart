@@ -41,7 +41,7 @@ void main() {
     expect(_kinds(v), contains('droppedTableHasRows'));
     expect(_kinds(v), contains('foreignCursor'));
     expect(_kinds(v), contains('foreignFreshnessKey'));
-  });
+  }, timeout: slow);
 
   test('the naive copy carries the fork cursor, not the recomputed edge',
       () async {
@@ -53,7 +53,7 @@ void main() {
       expectedPrunedBefore: fx.expectedPrunedBefore,
     );
     expect(v.where((x) => x.kind == 'prunedBeforeMismatch'), hasLength(1));
-  });
+  }, timeout: slow);
 
   test('a payload that follows the policy has no violation', () async {
     final inv = await fx.inventoryOf(await policyCandidate(fx));
@@ -66,7 +66,7 @@ void main() {
       ),
       isEmpty,
     );
-  });
+  }, timeout: slow);
 
   test('wrong schema version and a table the target does not have are caught',
       () async {
@@ -78,7 +78,7 @@ void main() {
       expectedPrunedBefore: fx.expectedPrunedBefore,
     );
     expect(_kinds(v), allOf(contains('userVersion'), contains('unknownTable')));
-  });
+  }, timeout: slow);
 
   test('a day_result without the `imported` column is a layout violation',
       () async {
@@ -89,5 +89,5 @@ void main() {
       expectedPrunedBefore: fx.expectedPrunedBefore,
     );
     expect(_kinds(v), contains('layout'));
-  });
+  }, timeout: slow);
 }

@@ -17,7 +17,6 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/official_export/payload_requirements.dart';
-import 'package:openstrap_edge/data/official_export/profile_tables.dart';
 import 'package:openstrap_edge/data/official_export/schema_catalog.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
