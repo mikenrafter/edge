@@ -3,6 +3,10 @@ part of '../db.dart';
 Future<Database> _ldbPrivOpenOrRebuild() async {
     try {
       return await LocalDb._open();
+    } on PulseUpgradeCaptureFailed {
+      // CLAIM(pulse-upgrade-membership): capture failures are not recoverable
+      // by replacing the store [spec 4.4; R2 opener regression test].
+      rethrow;
     } catch (e) {
       final dir = await getDatabasesPath();
       final path = p.join(dir, LocalDb.dbName);

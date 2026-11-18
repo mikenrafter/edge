@@ -100,6 +100,15 @@ class PulsePublication {
   final List<int> supportKeysMs;
 }
 
+/// A rollout boundary could not be captured. Opening must expose this failure:
+/// rebuilding would replace the input whose membership we have to preserve.
+class PulseUpgradeCaptureFailed implements Exception {
+  const PulseUpgradeCaptureFailed(this.cause);
+  final Object cause;
+  @override
+  String toString() => 'Pulse upgrade capture failed: $cause';
+}
+
 class PulseEpisodeStore {
   PulseEpisodeStore._();
 
@@ -164,8 +173,12 @@ class PulseEpisodeStore {
   /// Tables, then the boundary if the marker is missing. The one entry point
   /// for fresh create, the upgrade rung and open repair.
   static Future<void> initialize(DatabaseExecutor db, {required int nowMs}) async {
-    await createTables(db);
-    await captureUpgrade(db, nowMs: nowMs);
+    try {
+      await createTables(db);
+      await captureUpgrade(db, nowMs: nowMs);
+    } catch (error, stack) {
+      Error.throwWithStackTrace(PulseUpgradeCaptureFailed(error), stack);
+    }
   }
 
   /// The upgrade boundary: the exact `(source, record second)` keys present

@@ -192,6 +192,9 @@ void main() {
     final db = await LocalDb.instance;
     final path = db.path;
     final beforeRebuild = LocalDb.lastRebuild;
+    final quarantines = Directory(env.dbDir).listSync()
+        .where((f) => f.path.contains('${LocalDb.dbName}.unopenable-'))
+        .map((f) => f.path).toSet();
     for (final t in kPulseEpTables.reversed) {
       await db.execute('DROP TABLE IF EXISTS $t');
     }
@@ -210,7 +213,8 @@ void main() {
       ]);
       expect(await pulseEpTablesPresent(raw), isEmpty);
       expect(Directory(env.dbDir).listSync().where((f) =>
-          f.path.contains('${LocalDb.dbName}.unopenable-')), isEmpty);
+          f.path.contains('${LocalDb.dbName}.unopenable-'))
+          .map((f) => f.path).toSet(), quarantines);
     } finally {
       await raw.close();
     }
