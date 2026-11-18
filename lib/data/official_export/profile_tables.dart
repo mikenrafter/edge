@@ -37,11 +37,11 @@ const officialProfile = OfficialProfile(
     'alarm_schedule': TableProfile(
       policy: TablePolicy.mapped,
       dest: 'alarm_schedule',
-      meaning: r'''Same table; copy weekday/hour/minute/enabled and actual supported smart-window choice. Fork Natural/Gradual settings are omissions, never translated into a different wake method. Hardware arm/confirm state is excluded separately.''',
+      meaning: r'''Same table; copy weekday/hour/minute/enabled and actual supported smart-window choice. Fork Natural/Gradual settings are omissions, never translated into a different wake method: such a row exports as a plain alarm (smart window 0) at its set time. Hardware arm/confirm state is excluded separately.''',
       evidence: r'''`data/db.dart:1353`''',
       keep: ['weekday', 'hour', 'minute', 'enabled', 'smart_window_minutes'],
       omit: ['natural_window_minutes', 'gradual_window_minutes', 'gradual_pattern', 'gradual_cadence_sec'],
-      rowRule: r'''weekday/hour/minute/enabled/smart window; rows choosing Natural or Gradual stay recovery-only, never translated into another wake method''',
+      rowRule: r'''weekday/hour/minute/enabled/smart window; a row choosing Natural or Gradual exports as a plain alarm (smart window 0); its window, pattern and cadence stay recovery-only, never translated into another wake method''',
       merge: MergeKey(['weekday'], MergeRule.fillMissing, r'''existing target slot wins'''),
     ),
     'android_metadata': TableProfile(

@@ -150,9 +150,6 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
       if (v != null && !rule.targetValues.contains(v)) { refusal = 'unsupported ${rule.column}: $v'; }
     }
     switch (input.table) {
-      case 'alarm_schedule':
-        if ((source['natural_window_minutes'] is num && (source['natural_window_minutes'] as num)>0) ||
-            (source['gradual_window_minutes'] is num && (source['gradual_window_minutes'] as num)>0)) {refusal='Natural or Gradual wake choice unsupported';}
       case 'observation':
         if (!{'vendor','entered','imported'}.contains(source['source_kind']) ||
             (source['key'] == null && source['vendor_key'] == null)) { refusal = 'unsupported observation provenance or identity'; }
@@ -230,9 +227,19 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
           reason: source['reason'] as String));
       out['__export_rowid'] = rowid;
     }
+    // A fork Natural/Gradual window is a wake METHOD the tagged target lacks.
+    // Never approximate it as Smart Wake: the alarm exports as a plain alarm at
+    // its set time (smart_window_minutes 0, which the target rings exactly),
+    // and the dropped method columns are named in the ledger. [P2 review F9]
+    var droppedSmartWindow = false;
+    if (input.table == 'alarm_schedule' && (_positive(source['natural_window_minutes']) || _positive(source['gradual_window_minutes']))) {
+      droppedSmartWindow = _positive(source['smart_window_minutes']);
+      out['smart_window_minutes'] = 0;
+    }
     final changed = [
       for (final c in [...policy.clear, ...policy.omit, ...policy.provenance])
         if (source[c] != null && (policy.omit.contains(c) || out[c] != source[c])) c,
+      if (droppedSmartWindow) 'smart_window_minutes',
     ];
     notes.add({'rowid': rowid, 'reason': 'mapped', 'columns': changed,
       if (input.table == 'journal_field_def' || input.table == 'lab_marker_def')
@@ -244,6 +251,8 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
   }
   return MappingOutput(rows, notes);
 }
+
+bool _positive(Object? v) => v is num && v > 0;
 
 // Closed audited subset. The official fallback accepts arbitrary types/keys;
 // accepting that fallback would turn fork settings into implicit permissions.
