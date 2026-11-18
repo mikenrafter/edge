@@ -230,4 +230,17 @@ void main() {
     await db.delete('sleep_block'); db = await reopen();
     expect(await db.query('sleep_block'),isEmpty);
   });
+  // WHY: ownership-rule changes must remain visible without relabeling history.
+  // catches: absorbed rows inherit the current rule or rule metadata is absent.
+  test('B17 stored ownership distinguishes legacy and current rules', () async {
+    var db = await reopen(); await seedLegacy(db); await rewind(93); db = await reopen();
+    expect((await db.rawQuery('PRAGMA table_info(sleep_block)')).map((r)=>r['name']),
+      contains('owner_rule'));
+    expect((await db.query('sleep_block')).map((r)=>r['owner_rule']).toSet(),{0});
+    await db.insert('sleep_block',{...blockRow('new-rule',start:8000,end:8600),'owner_rule':1});
+    db = await reopen();
+    expect((await db.query('sleep_block',where:'id = ?',whereArgs:['new-rule'])).single['owner_rule'],1);
+    expect((await db.query('sleep_block',where:'id = ?',whereArgs:['legacy:nap:$fixtureDay:1100'])).single['owner_rule'],0);
+  });
+
 }
