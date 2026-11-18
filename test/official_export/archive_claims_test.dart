@@ -154,4 +154,21 @@ void main() {
   });
  });
 
+ // WHY: CLAIM(official-export-withheld-bucket-label) [P2 review N4]. The
+ // bucket summary must agree with its entirely withheld per-claim ledger.
+ test('a fully withheld out-of-order bucket is named as withheld',() async {
+  await withFreshForkDb((db,path) async {
+   const a=1792670400;
+   await bucket(db,10,[parent(a,70)],const []);
+   await bucket(db,11,[parent(a+86400,71)],const []);
+   await bucket(db,12,[parent(a,99)],const []);
+   await db.update('substrate_archive',{'from_ts':a+2*86400,'to_ts':a+2*86400},where:'utc_day=12');
+   await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');await LocalDb.close();
+   final report=await mapOfficialSnapshot(snapshotPath:path,outputPath:'${File(path).parent.path}/mapped.db',factory:databaseFactoryFfi,
+     calendar:const FixedOffsetCalendar(0));
+   final groups=(report.tables['substrate_archive'] as Map)['rowid_ranges'] as Map;
+   expect(groups.keys,contains(startsWith('bucket content overlaps a settled group; fully withheld')));
+  });
+ });
+
 }
