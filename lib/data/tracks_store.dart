@@ -333,7 +333,7 @@ class TracksStore {
     if (event.unit == null) {
       event = TrackEvent.fromJson({...event.toJson(), 'unit': definition.unit});
     }
-    if (event.atMs != null &&
+    if (event.trackId != 'naps' && event.atMs != null &&
         dayLabelOf(DateTime.fromMillisecondsSinceEpoch(event.atMs!)) !=
             event.date) {
       throw ArgumentError('event_date');

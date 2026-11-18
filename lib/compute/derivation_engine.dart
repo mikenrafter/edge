@@ -2649,7 +2649,7 @@ class DerivationEngine {
   @visibleForTesting
   Future<void> debugPublishSleepReview(String day,List<Map<String,dynamic>> naps,int dataNowSec,{
     bool forceFinalize=false,bool batchReference=false,Future<void> Function(ActivitySuggestion)? onPrompt,
-  }) async {}
+  }) => _publishDayReview(_DayReviewWork(day,naps,const [],const [],dataNowSec,forceFinalize,batchReference),onPrompt:onPrompt,nowTs:dataNowSec);
 
   @visibleForTesting
   Future<void> debugDerivePreparedDay(PreparedDerivationDay day, Profile profile,

@@ -193,8 +193,8 @@ abstract final class SleepBlockStore {
       final int start,end;
       final SleepBlockKind kind;
       switch(ref) {
-        case DetectedMainRef(): day=ref.day;start=ref.expectedStartTs;end=ref.expectedEndTs!;kind=SleepBlockKind.main;
-        case DetectedNapRef(): day=ref.day;start=ref.expectedStartTs;end=ref.expectedEndTs!;kind=SleepBlockKind.nap;
+        case DetectedMainRef(): day=ref.day;start=ref.expectedStartTs;end=ref.expectedEndTs;kind=SleepBlockKind.main;
+        case DetectedNapRef(): day=ref.day;start=ref.expectedStartTs;end=ref.expectedEndTs;kind=SleepBlockKind.nap;
         case NoDetectionMainRef():
           day=ref.day;start=localDayStartSec(day)!;end=start+1;kind=SleepBlockKind.main;
         default: refuse(SleepRefusalReason.staleEntry,ref);return null;
@@ -635,7 +635,8 @@ abstract final class SleepBlockStore {
         return updated != 0 ? updated : (a['id'] as String).compareTo(b['id'] as String);
       });
       await tx.delete('sleep_nap',where:'day_id = ?',whereArgs:[day]);
-      await tx.delete('sleep_override',where:'day_id = ?',whereArgs:[day]);
+      final previousMain=await tx.query('sleep_override',where:'day_id = ?',whereArgs:[day]);
+      Map<String,Object?>? nextMain;
       final naps = <int>{};
       var main = false;
       for (final row in rows) {
@@ -647,9 +648,15 @@ abstract final class SleepBlockStore {
             'source':source,'created_at':row['created_at'],'payload_json':row['payload_json']});
         } else if (b.kind == SleepBlockKind.main && !main) {
           main = true;
-          await tx.insert('sleep_override',{'day_id':day,'onset_ts':b.startTs,'offset_ts':b.endTs,
-            'source':source,'created_at':row['created_at'],'payload_json':null});
+          nextMain={'day_id':day,'onset_ts':b.startTs,'offset_ts':b.endTs,
+            'source':source,'created_at':row['created_at'],'payload_json':null};
         }
+      }
+      // Nap work must not move the prepared main's input stamp. Rewriting an
+      // identical main projection would fire sleep_override's night trigger.
+      if(!mapEquals(previousMain.firstOrNull,nextMain)) {
+        await tx.delete('sleep_override',where:'day_id = ?',whereArgs:[day]);
+        if(nextMain!=null) await tx.insert('sleep_override',nextMain);
       }
     }
   }
