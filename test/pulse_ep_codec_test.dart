@@ -184,4 +184,39 @@ void main() {
     expect(pulseQuantile([1, 2, 3, 4, 5], 0.9), 4);
     expect(pulseQuantile(const [], 0.5), isNull);
   });
+  // WHY/R8: aggregate caps must not silently discard the recording's tail.
+  // With no beat clipping, 4096 rows fit; 4097 must refuse the whole envelope.
+  // catches: take(4096) silently returning Available with shortened coverage.
+  for (final kind in ['overview', 'windows']) {
+    for (final count in [4096, 4097]) {
+      test('R8 $kind $count rows preserve coverage or explicitly refuse', () {
+        final evidence = PulseEvidence(episodeId: 's:1000000', source: 's',
+            startMs: 1000000, endMs: 1000000 + count * 300000,
+            ongoing: false, beats: _beats(1),
+            overview: kind == 'overview' ? [
+              for (var i = 0; i < count; i++) PulseOverviewBin(1000000 + i * 300000, 1, 800, 800, 800),
+            ] : const [],
+            windows: kind == 'windows' ? [
+              for (var i = 0; i < count; i++) {'start': 1000000 + i * 300000, 'end': 1000000 + (i + 1) * 300000},
+            ] : const []);
+        final result = encodePulseEvidence(evidence);
+        if (count == 4097) {
+          expect(result, isA<PulseEncodeRefused>());
+          expect((result as PulseEncodeRefused).reason, contains('$kind coverage'));
+        } else {
+          expect(result, isA<PulseEncoded>());
+          final encoded = result as PulseEncoded;
+          final read = decodePulseEvidence(encoded.bytes, checksum: encoded.checksum);
+          expect(read, isA<PulseEvidenceAvailable>());
+          final retained = (read as PulseEvidenceAvailable).evidence;
+          expect(retained.omitted, isEmpty);
+          expect(retained.beats, hasLength(1));
+          expect(retained.endMs, 1000000 + 4096 * 300000);
+          expect(kind == 'overview' ? retained.overview.length : retained.windows.length, 4096);
+          expect(kind == 'overview' ? retained.overview.last.startMs : retained.windows.last['start'], 1000000 + 4095 * 300000);
+        }
+      });
+    }
+  }
+
 }
