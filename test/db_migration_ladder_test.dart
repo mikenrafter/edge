@@ -535,10 +535,13 @@ void main() {
         pattern: 'resonance',
         seconds: 120,
       );
+      // Nap ownership follows its local start, so exercise this day's table
+      // with bounds on that day instead of an unrelated instant in 1970.
+      final napStart = DateTime(2026, 6, 1, 13).millisecondsSinceEpoch ~/ 1000;
       await TestSleepWrites.putNapEdit(
         dayId: '2026-06-01',
-        startTs: 1000,
-        endTs: 4600,
+        startTs: napStart,
+        endTs: napStart + 3600,
         source: 'manual',
       );
 
