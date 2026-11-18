@@ -10,4 +10,5 @@ flutter test --concurrency=1 -r failures-only \
   test/official_export/target_layout_test.dart \
   test/official_export/payload_requirements_test.dart \
   test/official_export/prune_cursor_test.dart \
+  test/official_export/prune_cursor_process_zone_test.dart \
   test/guards

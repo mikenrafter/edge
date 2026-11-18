@@ -28,6 +28,8 @@ UNIT = {
     "return PrunedBeforeChoice(edge, PrunedBeforeReason.oldestExactMidnight);", [T+'prune_cursor_test.dart']),
  'cursor: exact midnight rounds up a day': (T+'prune_cursor_test.dart',
     "start.millisecondsSinceEpoch >= sec * 1000", "start.millisecondsSinceEpoch > sec * 1000", [T+'prune_cursor_test.dart']),
+ 'calendar: DST day treated as 24 h (flat +86400)': (L+'prune_cursor.dart',
+    "return start >= sec ? start : localDayEndSec(label)!;", "return start >= sec ? start : start + 86400;", [T+'prune_cursor_process_zone_test.dart']),
  'payload: dropped-table rows not checked': (L+'payload_requirements.dart',
     "if (!carrying.contains(e.key) && !carrierNames.contains(e.key)) {", "if (false) {", [T+'payload_requirements_test.dart']),
  'payload: foreign cursor accepted': (L+'payload_requirements.dart',

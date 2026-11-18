@@ -4,8 +4,10 @@
 // WHY: prune_cursor_test.dart proves the rule with a zone-database calendar; the
 // exporter will run with the device's process zone, so the real wrapper must agree
 // with the same independent literals when the process zone is moved. The host
-// cannot move its zone on Boat (day_window_dst_test has the same limit): run this
-// file on the shared host (edge-test) or CI. CLAIM(official-export-prune-edge).
+// may lack tzdata (Boat's did not apply `TZ=America/Denver`), so the zones are
+// POSIX rule strings, which need no database: Denver is `MST7MDT,M3.2.0,M11.1.0`
+// (DST from the second Sunday of March to the first Sunday of November, the same
+// rule as the independent literals below for 2026). CLAIM(official-export-prune-edge).
 import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
@@ -38,6 +40,12 @@ void _setProcessZone(String? zone) {
 
 // zone -> (input instant, next local midnight at or after it), literals from an
 // independent zone database.
+const _posix = {
+  'UTC': 'UTC0',
+  'America/Denver': 'MST7MDT,M3.2.0,M11.1.0',
+  'Asia/Kolkata': 'IST-5:30',
+};
+
 const _cases = <String, List<(int, int)>>{
   'UTC': [(1792454400, 1792454400), (1792454401, 1792540800), (1792497600, 1792540800)],
   'America/Denver': [
@@ -54,7 +62,7 @@ void main() {
   tearDown(() => _setProcessZone('UTC'));
   for (final e in _cases.entries) {
     test('${e.key}: DayLabelCalendar matches the independent literals', () {
-      _setProcessZone(e.key);
+      _setProcessZone(_posix[e.key]);
       // Fails loudly on a host that cannot move its zone, rather than skipping.
       expect(
         DateTime.fromMillisecondsSinceEpoch(1792497600 * 1000).timeZoneName,
