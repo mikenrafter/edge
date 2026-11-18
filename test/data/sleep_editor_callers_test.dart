@@ -1,3 +1,4 @@
+import '../support/sleep_writes.dart';
 // Sleep structural phase 2: the defined refusal of EVERY caller of the two
 // table writers, the explicit Merge command, the typed editor commands and the
 // draft invalidation fence.
@@ -15,7 +16,8 @@ import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/sleep_draft_fence.dart';
 import 'package:openstrap_edge/data/sleep_editor.dart';
-import 'package:openstrap_edge/data/sleep_editor_write.dart';
+import 'package:openstrap_edge/data/sleep_block_store.dart';
+import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/data/track_model.dart';
 import 'package:openstrap_edge/data/tracks_store.dart';
 import 'package:openstrap_edge/gestures/moment_follow_ups.dart';
@@ -37,6 +39,7 @@ const _min = 60;
 Future<String> _everything(Database db) async {
   final out = <String, Object?>{};
   for (final t in [
+    'sleep_block',
     'sleep_nap',
     'sleep_override',
     'sleep_edit_job',
@@ -77,17 +80,11 @@ void main() {
     await LocalDb.close();
   });
 
-  Future<void> rawNap(int s, int e,
-          {String source = 'manual', String? payload, String day = _day}) =>
-      db.insert('sleep_nap', {
-        'day_id': day,
-        'start_ts': s,
-        'end_ts': e,
-        'source': source,
-        'created_at': _a0,
-        'payload_json': payload,
-      });
-
+  Future<void> rawNap(int start,int end,{String source='manual',String? payload,String day=_day}) async {
+    await db.insert('sleep_nap',{'day_id':day,'start_ts':start,'end_ts':end,'source':source,
+      'created_at':_a0,'payload_json':payload});
+    await TestSleepWrites.absorbFixtures(db);
+  }
   group('CLAIM(sleep-block-separation) every caller has a defined refusal',
       () {
     // WHY: an opt-in auto-log must never extend or insert a window behind the
@@ -209,7 +206,7 @@ void main() {
       await rawNap(_a0, _a0 + 40 * _min);
       final before = await _everything(db);
       final c = SleepCoordinator(
-        persist: (day, s, e) => LocalDb.putSleepOverride(
+        persist: (day, s, e) => TestSleepWrites.putSleepOverride(
             dayId: day, onsetTs: s, offsetTs: e, source: 'manual'),
         derive: (day) async => {'recalculating': true},
         saveSchedule: (_) async {},
@@ -232,7 +229,7 @@ void main() {
       await rawNap(_a0, _a0 + 40 * _min);
       final before = await _everything(db);
       await expectLater(
-        LocalDb.putSleepOverride(
+        TestSleepWrites.putSleepOverride(
             dayId: _day,
             onsetTs: _a0 - 9 * 3600,
             offsetTs: _a0 - 20 * _min,
@@ -240,7 +237,7 @@ void main() {
         throwsA(isA<SleepMergeRequiredException>()),
       );
       expect(await _everything(db), before);
-      await LocalDb.putSleepOverride(
+      await TestSleepWrites.putSleepOverride(
           dayId: _day,
           onsetTs: _a0 - 9 * 3600,
           offsetTs: _a0 - 20 * _min,
@@ -258,7 +255,7 @@ void main() {
       await rawNap(_a0, _a0 + 40 * _min);
       SleepMergeProposal? proposal;
       try {
-        await LocalDb.putNapEdit(
+        await TestSleepWrites.putNapEdit(
             dayId: _day,
             startTs: _a0 + 60 * _min,
             endTs: _a0 + 100 * _min,
@@ -269,7 +266,7 @@ void main() {
       expect(proposal, isNotNull, reason: 'the writer must ask first');
       expect(proposal!.startTs, _a0);
       expect(proposal.endTs, _a0 + 100 * _min);
-      await LocalDb.putNapEdit(
+      await TestSleepWrites.putNapEdit(
           dayId: _day,
           startTs: _a0 + 60 * _min,
           endTs: _a0 + 100 * _min,
@@ -292,7 +289,7 @@ void main() {
       await rawNap(_a0 + 100 * _min, _a0 + 130 * _min);
       SleepMergeProposal? proposal;
       try {
-        await LocalDb.putNapEdit(
+        await TestSleepWrites.putNapEdit(
             dayId: _day,
             startTs: _a0 + 55 * _min,
             endTs: _a0 + 75 * _min,
@@ -304,7 +301,7 @@ void main() {
       expect(proposal!.participants, hasLength(2));
       expect(proposal.survivor.startTs, _a0);
       expect(proposal.endTs, _a0 + 130 * _min);
-      await LocalDb.putNapEdit(
+      await TestSleepWrites.putNapEdit(
           dayId: _day,
           startTs: _a0 + 55 * _min,
           endTs: _a0 + 75 * _min,
@@ -316,8 +313,9 @@ void main() {
           (_a0, _a0 + 130 * _min));
       final gone = (await db.query('sleep_nap', where: "source = 'rejected'")).single;
       expect(gone['start_ts'], _a0 + 100 * _min);
-      final env = await SleepEditCodec.read(gone['payload_json'] as String?);
-      expect((env as EnvelopeOk).envelope.origin.mergedInto, 'nap:$_day:$_a0');
+      final block=(await db.query('sleep_block',where:"state = 'merged'")).single;
+      final survivor=(await db.query('sleep_block',where:"state = 'live'")).single;
+      expect(block['merged_into'],survivor['id']);
       expect(await db.query('sleep_edit_job'), isNotEmpty);
     });
 
@@ -327,7 +325,7 @@ void main() {
       await rawNap(_a0, _a0 + 40 * _min);
       SleepMergeProposal? first;
       try {
-        await LocalDb.putNapEdit(
+        await TestSleepWrites.putNapEdit(
             dayId: _day,
             startTs: _a0 + 60 * _min,
             endTs: _a0 + 100 * _min,
@@ -338,7 +336,7 @@ void main() {
       await rawNap(_a0 - 60 * _min, _a0 - 20 * _min); // arrived meanwhile
       final before = await _everything(db);
       await expectLater(
-        LocalDb.putNapEdit(
+        TestSleepWrites.putNapEdit(
             dayId: _day,
             startTs: _a0 + 60 * _min,
             endTs: _a0 + 100 * _min,
@@ -347,57 +345,6 @@ void main() {
         throwsA(isA<SleepMergeRequiredException>()),
       );
       expect(await _everything(db), before);
-    });
-  });
-
-  group('envelope codec', () {
-    // WHY: blank, wrong-typed and unknown-version payloads degrade to
-    // "history unavailable" while the retained measurement keys are served.
-    // Catches a codec that throws, or that serializes {} after a failure.
-    for (final bad in <String?>[
-      null,
-      '',
-      '   ',
-      '[1,2]',
-      '{"duration_min": 20, "sleep_edit": "x"}',
-      '{"duration_min": 20, "sleep_edit": {"v": 99}}',
-    ]) {
-      test('payload ${jsonEncode(bad)} is unavailable, not a guess', () async {
-        final r = await SleepEditCodec.read(bad);
-        expect(r, isA<EnvelopeUnavailable>());
-        if (bad != null && bad.contains('duration_min')) {
-          expect(r.retained['duration_min'], 20);
-        }
-      });
-    }
-
-    // WHY: a written envelope reads back with the SAME meaning: bounds in
-    // epoch seconds, detected snapshot, origin suppression, retained keys
-    // untouched. Literal values, not a helper's own output.
-    test('a valid envelope round-trips beside retained measurements', () async {
-      final env = SleepEditEnvelope(
-        origin: OriginRef(
-            suppressed: [SuppressedInterval(_day, _a0, _a0 + 3600)],
-            mergedInto: 'nap:$_day:${_a0 + 7200}'),
-        detected: DetectedKnown(
-            startTs: _a0, endTs: _a0 + 3600, sourceDay: _day,
-            measures: const {'duration_min': 47}),
-        stages: StageResult(
-            startTs: _a0, endTs: _a0 + 3600, payload: const {'rem_min': 9}),
-      );
-      final text = await SleepEditCodec.write(
-          {'duration_min': 47, 'confidence': 0.6}, env);
-      final json = jsonDecode(text) as Map;
-      expect(json['duration_min'], 47);
-      expect(json['confidence'], 0.6);
-      final back = await SleepEditCodec.read(text);
-      expect(back, isA<EnvelopeOk>());
-      final e = (back as EnvelopeOk).envelope;
-      expect((e.detected as DetectedKnown).endTs, _a0 + 3600);
-      expect(e.origin.suppressed.single.startTs, _a0);
-      expect(e.origin.mergedInto, 'nap:$_day:${_a0 + 7200}');
-      expect(e.stages!.endTs, _a0 + 3600);
-      expect(back.retained['duration_min'], 47);
     });
   });
 
@@ -429,11 +376,7 @@ void main() {
       final before = await _everything(db);
       final out = await repo.saveSleepEditor(plan([
         SetIntervals(
-            SleepEntryRef(
-                kind: SleepBlockKind.nap,
-                day: _day,
-                startTs: _a0,
-                expectedEndTs: _a0 + 60 * _min),
+            StoredBlockRef('legacy:nap:$_day:${_a0}',0),
             _a0,
             _a0 + 60 * _min),
       ]));
@@ -445,11 +388,7 @@ void main() {
     // first edit through a second edit, and queues the day, in one transaction.
     test('two edits keep the first detected snapshot', () async {
       await confirmedNap(_a0, _a0 + 60 * _min);
-      SleepEntryRef ref(int s, int e) => SleepEntryRef(
-          kind: SleepBlockKind.nap,
-          day: _day,
-          startTs: s,
-          expectedEndTs: e);
+      StoredBlockRef ref(int s,int e) => StoredBlockRef('legacy:nap:$_day:$_a0',e==_a0+60*_min?0:1);
       var out = await repo.saveSleepEditor(plan([
         SetIntervals(ref(_a0, _a0 + 60 * _min), _a0, _a0 + 50 * _min),
       ]));
@@ -460,12 +399,9 @@ void main() {
       expect(out, isA<SleepSaved>());
       final row = (await db.query('sleep_nap',
           where: 'start_ts = ?', whereArgs: [_a0 + 5 * _min])).single;
-      final read = await SleepEditCodec.read(row['payload_json'] as String?);
-      final env = (read as EnvelopeOk).envelope;
-      final det = env.detected as DetectedKnown;
-      expect((det.startTs, det.endTs), (_a0, _a0 + 60 * _min));
-      expect(env.origin.suppressed.any((s) => s.startTs == _a0), isTrue,
-          reason: 'the old key stays suppressed against re-detection');
+      final block=(await db.query('sleep_block')).single;
+      expect((block['detected_start'],block['detected_end']),(_a0,_a0+60*_min));
+      expect(block['id'],'legacy:nap:$_day:$_a0');
       expect(await db.query('sleep_edit_job'), isNotEmpty);
     });
 
@@ -474,11 +410,7 @@ void main() {
     test('reset to detected needs history', () async {
       await rawNap(_a0, _a0 + 60 * _min); // manual: no history
       final out = await repo.saveSleepEditor(plan([
-        ResetToDetected(SleepEntryRef(
-            kind: SleepBlockKind.nap,
-            day: _day,
-            startTs: _a0,
-            expectedEndTs: _a0 + 60 * _min)),
+        ResetToDetected(StoredBlockRef('legacy:nap:$_day:${_a0}',0)),
       ]));
       expect(out, isA<SleepRefused>());
       expect((out as SleepRefused).reason, SleepRefusalReason.missingHistory);
@@ -490,11 +422,7 @@ void main() {
       await confirmedNap(_a0, _a0 + 60 * _min);
       final out = await repo.saveSleepEditor(plan([
         SetIntervals(
-            SleepEntryRef(
-                kind: SleepBlockKind.nap,
-                day: _day,
-                startTs: _a0,
-                expectedEndTs: _a0 + 45 * _min), // the row ends at +60
+            StoredBlockRef('legacy:nap:$_day:${_a0}',7), // the row ends at +60
             _a0,
             _a0 + 30 * _min),
       ]));
@@ -505,14 +433,9 @@ void main() {
     // WHY: Add then Remove in ONE plan creates no tombstone and no job.
     test('add-then-remove in one plan writes nothing', () async {
       final before = await _everything(db);
-      final add = SleepEntryRef(kind: SleepBlockKind.nap, day: _day);
       final out = await repo.saveSleepEditor(plan([
-        SetIntervals(add, _a0, _a0 + 40 * _min),
-        RemoveBlock(SleepEntryRef(
-            kind: SleepBlockKind.nap,
-            day: _day,
-            startTs: _a0,
-            expectedEndTs: _a0 + 40 * _min)),
+        AddNap(_a0,_a0+40*_min),
+        RemoveBlock(DetectedNapRef(_day,_a0,_a0+40*_min)),
       ]));
       expect(out, isA<SleepNoChange>());
       expect(await _everything(db), before);
@@ -522,16 +445,12 @@ void main() {
     // back with its retained measurement, through the same writer.
     test('remove then restore returns the original block', () async {
       await confirmedNap(_a0, _a0 + 60 * _min);
-      final ref = SleepEntryRef(
-          kind: SleepBlockKind.nap,
-          day: _day,
-          startTs: _a0,
-          expectedEndTs: _a0 + 60 * _min);
+      final ref = StoredBlockRef('legacy:nap:$_day:${_a0}',0);
       expect(await repo.saveSleepEditor(plan([RemoveBlock(ref)])),
           isA<SleepSaved>());
       var read = await repo.readSleepEditor(_day);
       expect(read.entries.single.removed, isTrue);
-      expect(await repo.saveSleepEditor(plan([RestoreRemoved(ref)])),
+      expect(await repo.saveSleepEditor(plan([RestoreRemoved(StoredBlockRef('legacy:nap:$_day:$_a0',1))])),
           isA<SleepSaved>());
       read = await repo.readSleepEditor(_day);
       expect(read.entries.single.removed, isFalse);
@@ -543,10 +462,9 @@ void main() {
     // proposal and writes nothing; the SAME plan with a Merge command commits.
     test('a too-close Set refuses; an approved Merge commits', () async {
       await rawNap(_a0, _a0 + 40 * _min);
-      final add = SleepEntryRef(kind: SleepBlockKind.nap, day: _day);
       final before = await _everything(db);
       final out = await repo.saveSleepEditor(plan([
-        SetIntervals(add, _a0 + 60 * _min, _a0 + 100 * _min),
+        AddNap(_a0+60*_min,_a0+100*_min),
       ]));
       expect(out, isA<SleepRefused>());
       final refused = out as SleepRefused;
@@ -554,7 +472,7 @@ void main() {
       expect(refused.proposal, isNotNull);
       expect(await _everything(db), before);
       final merged = await repo.saveSleepEditor(plan([
-        SetIntervals(add, _a0 + 60 * _min, _a0 + 100 * _min),
+        AddNap(_a0+60*_min,_a0+100*_min),
         MergeBlocks(refused.proposal!),
       ]));
       expect(merged, isA<SleepSaved>());
@@ -568,17 +486,70 @@ void main() {
       await rawNap(late, late + 30 * _min);
       final out = await repo.saveSleepEditor(plan([
         SetIntervals(
-            SleepEntryRef(
-                kind: SleepBlockKind.nap,
-                day: _day,
-                startTs: late,
-                expectedEndTs: late + 30 * _min),
+            StoredBlockRef('legacy:nap:$_day:${late}',0),
             late + 60 * _min,
             late + 90 * _min),
       ]));
       expect(out, isA<SleepSaved>());
       expect((out as SleepSaved).days, {_day, '2026-10-13'});
     });
+  });
+
+  // WHY C24/C25: one local start-day rule applies to screen and track callers.
+  test('C24 Naps screen repository files a crossing nap under its start day',() async {
+    final at=DateTime(2026,10,11,23,30).millisecondsSinceEpoch~/1000;
+    expect(await repo.putNap(dayId:_day,startTs:at,endTs:at+3600,source:'manual'),isA<SleepSaved>());
+    final r=(await db.query('sleep_block')).single;
+    expect([r['owner_day'],r['owner_rule']],['2026-10-11',1]);
+    expect(await db.query('sleep_nap',where:'day_id = ?',whereArgs:[_day]),isEmpty);
+  });
+  test('C25 track nap ignores event.date when the start belongs to yesterday',() async {
+    final at=DateTime(2026,10,11,23,30).millisecondsSinceEpoch;
+    await TracksStore(db).log(TrackEvent(id:'crossing',trackId:'naps',date:_day,atMs:at,amount:60,unit:'minutes'));
+    expect((await db.query('sleep_block')).single['owner_day'],'2026-10-11');
+  });
+  // WHY C26: block + suggestion are one receipt, including a failed update.
+  test('C26 Keep and auto-log link block ids atomically and supersede leaves them confirmed',() async {
+    for(final auto in [false,true]) {
+      for(final t in ['sleep_block','sleep_nap','sleep_edit_job','activity_suggestions']) { await db.delete(t); }
+      final store=ActivityStore(db);
+      final s=(await store.reconcile(ActivityKind.nap,[{'start':_a0,'end':_a0+2400,'confidence':0.9,'duration_min':32}])).single;
+      if(auto) {
+        expect(await store.autoLogNaps(sinceSec:_a0-1,dataEdgeSec:_a0+7200,settleSec:0,current:[{'start':_a0,'end':_a0+2400}]),1);
+      } else { await store.confirm(s,startTs:_a0,endTs:_a0+2400); }
+      final block=(await db.query('sleep_block')).single;
+      final suggestion=(await db.query('activity_suggestions')).single;
+      expect([suggestion['status'],suggestion['linked_id']],['confirmed',block['id']]);
+      await ActivityStore.supersede(db,ActivityKind.nap,_a0,_a0+2400);
+      expect((await db.query('activity_suggestions')).single['status'],'confirmed');
+      final next=(await store.reconcile(ActivityKind.nap,[{'id':'crash','start':_a0+14400,'end':_a0+16800,'confidence':0.9}])).single;
+      await db.execute("CREATE TRIGGER crash_suggestion BEFORE UPDATE ON activity_suggestions WHEN NEW.id='crash' AND NEW.status='confirmed' BEGIN SELECT RAISE(ABORT,'injected crash'); END");
+      final before=await _everything(db);
+      await expectLater(store.confirm(next,startTs:next.startTs,endTs:next.endTs,auto:auto),throwsA(isA<DatabaseException>()));
+      expect(await _everything(db),before);
+      await db.execute('DROP TRIGGER crash_suggestion');
+    }
+  });
+  // WHY: repository read/save must expose typed references, not natural keys.
+  test('C22 editor repository reads stable ids after a boundary edit',() async {
+    await rawNap(_a0,_a0+2400);
+    final read=await repo.readSleepEditor(_day);
+    expect(read.entries.single.ref,isA<StoredBlockRef>());
+    final ref=read.entries.single.ref as StoredBlockRef;
+    expect(await repo.saveSleepEditor(SleepEditorPlan(dayId:_day,
+      commands:[SetIntervals(ref,_a0+60,_a0+2400)],expectedRevisions:{_day:read.revision},draftGeneration:read.draftGeneration)),isA<SleepSaved>());
+    final after=await repo.readSleepEditor(_day);
+    expect(after.entries.single.id,ref.id);expect(after.entries.single.revision,ref.expectedRevision+1);
+  });
+  test('C23 editor preflight and Save carry the same merge authorization',() async {
+    await rawNap(_a0,_a0+2400);
+    final read=await repo.readSleepEditor(_day);
+    final plan=SleepEditorPlan(dayId:_day,commands:[AddNap(_a0+3000,_a0+5400)],
+      expectedRevisions:{_day:read.revision},draftGeneration:read.draftGeneration);
+    final proposal=await SleepBlockStore.preflight(db,plan);
+    final refused=await repo.saveSleepEditor(plan);
+    expect(proposal,isA<SleepProposalMergeRequired>());expect(refused,isA<SleepRefused>());
+    expect((refused as SleepRefused).proposal!.authorization,(proposal as SleepProposalMergeRequired).proposal.authorization);
   });
 
   group('CLAIM(sleep-editor-draft-generation) invalidation', () {
@@ -591,8 +562,7 @@ void main() {
       final plan = SleepEditorPlan(
         dayId: _day,
         commands: [
-          SetIntervals(SleepEntryRef(kind: SleepBlockKind.nap, day: _day),
-              _a0, _a0 + 40 * _min)
+          AddNap(_a0,_a0+40*_min)
         ],
         expectedRevisions: const {_day: null},
         draftGeneration: gen,

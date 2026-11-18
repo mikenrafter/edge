@@ -1,10 +1,10 @@
+import 'dart:convert';
 // WHY: rung 94 must preserve sleep assertions on every supported open path.
 // CLAIM(sleep-block-backfill). catches: creator or upgrade hook omitted.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
-import 'package:openstrap_edge/data/activity_store.dart';
 import 'package:openstrap_edge/compute/nap_edits.dart';
 import 'package:openstrap_edge/compute/accepted_naps.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
@@ -39,6 +39,18 @@ Future<void> rewind(int version) async {
 Future<void> expectBlockTable(Database db) async {
   expect(await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='sleep_block'"),
       [{'name': 'sleep_block'}]);
+}
+// Frozen release reader, independent of the new ActivityStore adapter.
+Future<List<NapEdit>> releaseNapEdits(DatabaseExecutor db,String day) async => [
+  for(final row in await db.query('sleep_nap',where:'day_id = ?',whereArgs:[day]))
+    NapEdit(kind:row['source']=='rejected'?NapEditKind.rejected:NapEditKind.added,
+      startSec:row['start_ts'] as int,endSec:row['end_ts'] as int,
+      snapshot:await releaseSnapshot(row['payload_json'])),
+];
+Future<Map<String,dynamic>?> releaseSnapshot(Object? raw) async {
+  if(raw is! String) return null;
+  final map=Map<String,dynamic>.from(jsonDecode(raw) as Map)..remove('sleep_edit');
+  return map.isEmpty?null:map;
 }
 void main() {
   setUpAll(() { sqfliteFfiInit(); databaseFactory = databaseFactoryFfi; });
@@ -85,7 +97,7 @@ void main() {
       [e.kind.name,e.startSec,e.endSec,e.snapshot]];
     for(final d in ['2026-10-30','2026-10-31',fixtureDay]) {
       expect(tuples(await SleepBlockStore.napEdits(db,d)),
-        tuples(await ActivityStore.napEdits(db,d)),reason:d);
+        tuples(await releaseNapEdits(db,d)),reason:d);
     }
     expect((await SleepBlockStore.napEdits(db,fixtureDay)).singleWhere((e)=>e.startSec==12000).snapshot,isNull);
   });
