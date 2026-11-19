@@ -23,6 +23,7 @@ const _settings = <String, Object>{
   'theme_choice': 'dark',
   'pilot.day_timeline.sleep': true,
   'pilot.observations': true,
+  'pilot.sync_strip': true,
   'ui.personal_day_mode': 'wakeToWake',
   'ui.personal_day_totals': 'first',
   'ui.personal_day_learned_totals': 'last',

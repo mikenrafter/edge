@@ -1,3 +1,4 @@
+import 'sync_strip_overlay.dart';
 import 'pilot_theme.dart';
 // Owner: the day screen supplies review state; this layout owns pin presentation.
 import 'package:flutter/material.dart';
@@ -33,17 +34,18 @@ class PilotDayLayout extends StatelessWidget {
   final ValueChanged<double>? onScrub,onPan;final ValueChanged<String>? onAnnotation;
   final Widget? backToOpened;
   @override Widget build(BuildContext context){
+    final visibleGraph=syncStripVisibleGraph(context,graph,enabled:true);
     final p=P.of(context),l=AppLocalizations.of(context)??lookupAppLocalizations(const Locale('en'));
     // Zoom and pin live inside the readout card (mock-up v16 .ro .ctl), so a
     // manual pin carries them into the pinned area with it.
-    final readout=PilotReadout(controller:controller,graph:graph,compact:true,controls:PilotZoomControls(controller:controller,onZoom:(){interaction.zoom();controller.clearScrub();},trailing:TextButton.icon(
+    final readout=PilotReadout(controller:controller,graph:visibleGraph,compact:true,controls:PilotZoomControls(controller:controller,onZoom:(){interaction.zoom();controller.clearScrub();},trailing:TextButton.icon(
           key:const ValueKey('pilot-pin'),onPressed:interaction.togglePin,icon:Icon(interaction.userPinned?LucideIcons.pinOff:LucideIcons.pin,size:16),label:Text(interaction.userPinned?l.pilotUnpin:l.pilotPinShort,maxLines:1))));
     return PilotTheme(child:ListenableBuilder(listenable:interaction,builder:(context,_)=>Scaffold(backgroundColor:p.bg,body:SafeArea(child:Column(children:[
       // The app's standard header (m261): the same NavBar on every pilot screen.
       NavBar(title),
       Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:Column(children:[
         dayRow,
-        PilotTimelineChart(controller:controller,graph:graph,interaction:interaction,annotations:annotations,stages:stages,onScrub:onScrub,onPan:onPan,onSelect:onAnnotation,backdrop:backdrop,focusId:focusId),
+        PilotTimelineChart(controller:controller,graph:visibleGraph,syncStrip:true,interaction:interaction,annotations:annotations,stages:stages,onScrub:onScrub,onPan:onPan,onSelect:onAnnotation,backdrop:backdrop,focusId:focusId),
         const SizedBox(height:6),
         // Mock-up v16 .etabs, with each tab's count as its badge (.cnt).
         SubTabs([for(final value in PilotTimelineTab.values)switch(value){PilotTimelineTab.pending=>l.dayActivitiesPending,PilotTimelineTab.saved=>l.dayActivitiesSaved,PilotTimelineTab.discarded=>l.dayActivitiesDiscarded}],

@@ -2199,7 +2199,7 @@ class _ZoomState extends State<_DayGraphZoom> {
     final l=AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));
     return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       Surface(child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-        PendingContent(pending:widget.pending,child:SharedTimelineChart(controller:_controller,graph:widget.graph,
+        PendingContent(pending:widget.pending,child:SharedTimelineChart(controller:_controller,graph:widget.graph,syncStrip:true,
           fine:_fine??widget.fineCurve,fineStartSec:_fineStart??widget.graph.dayStart,nerdStats:widget.nerdStats,emphasis:widget.emphasis,
           annotations:widget.annotations.where((a)=>a.kind!=AnnotationKind.rhrShift).toList(),
           onAnnotationSelected:(id)=>widget.listener?.annotationTapped(id),onScrub:widget.onScrub)),

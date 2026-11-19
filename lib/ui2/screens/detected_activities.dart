@@ -1,3 +1,5 @@
+import '../../pilot/pilot_flags.dart';
+import '../../pilot/sync_strip.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -265,9 +267,15 @@ class _DetectedActivitiesCardState extends State<DetectedActivitiesCard>
   }
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => ValueListenableBuilder<int>(
+    valueListenable: PilotFlags.revision, builder: (c, _, child) => _buildCard(c));
+
+  Widget _buildCard(BuildContext c) {
     final l = AppLocalizations.of(c);
     final n = (_count ?? 0) + _moments;
+    if (PilotFlag.syncStrip.enabled) return PendingContent(pending:_count==null&&!_failed,
+      child:SyncStripHome(count:n,failed:_failed,
+        onOpen:(review)=>go(c,review?const DayReviewEntry():DayTimelineScreen(day:widget.day))));
     if (!_failed && n <= 0) {
       return Padding(
         padding: const EdgeInsets.only(bottom: S.x3),

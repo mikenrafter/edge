@@ -101,6 +101,7 @@ void main() {
       'notif_alert_rules_v1',
       'notif_fallback_destination',
       'theme_choice',
+      'pilot.sync_strip',
     ]) {
       expect(prefsKeyBackedUp(k), isTrue, reason: k);
     }

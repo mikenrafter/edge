@@ -1,3 +1,4 @@
+import 'sync_strip_overlay.dart';
 // Owner: each PilotTimelineChart State owns pointer timers; its controller owns time.
 import 'dart:async';
 import 'dart:math' as math;
@@ -46,13 +47,14 @@ class PilotTimelineChart extends StatefulWidget {
   const PilotTimelineChart({super.key,required this.controller,required this.graph,
     required this.interaction,this.annotations=const [],this.stages=const [],
     this.handles=const [],this.onHandle,this.onSelect,this.onScrub,this.onPan,
-    this.onTapTime,this.height=112,this.dimHrInsideSleep=true,this.overview=false,this.cut,this.selectedAnnotationId,this.showHeartRate=true,this.showHeader=true,this.backdrop=const [],this.focusId});
+    this.onTapTime,this.height=112,this.dimHrInsideSleep=true,this.overview=false,this.cut,this.selectedAnnotationId,this.showHeartRate=true,this.showHeader=true,this.syncStrip=false,this.backdrop=const [],this.focusId});
   final TimelineController controller;
   /// Ranged events drawn as shading and edges only, without icons: the day
   /// timeline's other tabs (v16 draws every event's range).
   final List<ChartAnnotation> backdrop;
   /// The focused event (v16: its range at .26 and edges at full strength).
   final String? focusId;
+  final bool syncStrip;
   final DayGraph graph;
   final TimelineInteraction interaction;
   final List<ChartAnnotation> annotations;
@@ -170,6 +172,7 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
     if(mounted)setState((){});
   }
   @override Widget build(BuildContext context){
+    final visibleGraph=syncStripVisibleGraph(context,widget.graph,enabled:widget.syncStrip);
     final p=P.of(context),l=AppLocalizations.of(context)??lookupAppLocalizations(const Locale('en'));
     return RepaintBoundary(child:ListenableBuilder(
       listenable:Listenable.merge([c.range,c.scrubChanges,c.zoomChanges,interaction]),
@@ -230,7 +233,7 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
             child:GestureDetector(onPanUpdate:(_){},behavior:HitTestBehavior.opaque,
               child:SizedBox(key:const ValueKey('pilot-timeline-plot'),height:plotHeight+24,
                 child:ClipRect(child:Stack(children:[
-                  Positioned.fill(child:CustomPaint(painter:_PilotPainter(p:p,view:c.view,graph:widget.graph,stages:widget.stages,
+                  Positioned.fill(child:CustomPaint(painter:_PilotPainter(p:p,view:c.view,graph:visibleGraph,stages:widget.stages,
                     annotations:visible,scrub:c.scrub,selection:c.selection,height:plotHeight,dimHrInsideSleep:widget.dimHrInsideSleep,cut:widget.cut,showHeartRate:widget.showHeartRate,bpmInPlot:!widget.showHeader,backdrop:widget.backdrop,focusId:widget.focusId))),
                   if(c.selection==null)for(final h in widget.handles)if(h.at>=c.view.start&&h.at<=c.view.end)
                     Positioned(left:c.view.fraction(h.at)*_width-24,top:22,width:48,height:math.max(48,widget.height-24),
@@ -257,6 +260,7 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
                     var lane=c.scrub==null?selectedLane:0,left=x+14>_width-52?x-58:x+14;
                     if(!clear(left,lane)){final other=left==x+14?x-58:x+14;if(other>=0&&other<=_width-52&&clear(other,lane)){left=other;}else{while(!clear(left,lane)&&lane<8){lane++;}}}
                     return Positioned(left:left.clamp(0.0,math.max(0.0,_width-52)),top:6+lane*22.0,child:DecoratedBox(decoration:BoxDecoration(color:p.card2,borderRadius:BorderRadius.circular(6)),child:Padding(padding:const EdgeInsets.symmetric(horizontal:6,vertical:1),child:Text(pilotClock(at),style:F.cap.copyWith(color:p.ink,fontSize:11,fontWeight:FontWeight.w600)))));}),
+                  if(widget.syncStrip)Positioned.fill(child:SyncStripOverlay(view:c.view,bottom:24)),
                   if(widget.cut!=null)Positioned(left:widget.cut!.leftWidth(_width)-3,top:plotHeight/2-10,width:34,child:Text('…',key:const ValueKey('pilot-overview-cut'),textAlign:TextAlign.center,style:F.head.copyWith(color:p.ink3))),
                   // Mock-up .hint: drawn last, above the hypnogram and marks,
                   // bottom-left, #232c3d99 backing with #e8ecf3cc text (m254: never

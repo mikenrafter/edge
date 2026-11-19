@@ -1,3 +1,4 @@
+import '../../pilot/sync_strip_overlay.dart';
 // Shared chart presentation; TimelineController owns all mutable time state.
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -48,7 +49,9 @@ class SharedTimelineChart extends StatefulWidget {
     this.fineStartSec,
     this.emphasis,
     this.nerdStats,
+    this.syncStrip = false,
   });
+  final bool syncStrip;
   final TimelineController controller;
   final DayGraph graph;
   final List<ChartAnnotation> annotations;
@@ -133,6 +136,8 @@ class _ChartState extends State<SharedTimelineChart>
 
   @override
   Widget build(BuildContext context) {
+    final visibleGraph=syncStripVisibleGraph(context,widget.graph,enabled:widget.syncStrip);
+    final visibleFine=syncStripVisibleCurve(context,widget.fine,widget.fineStartSec??widget.graph.dayStart,enabled:widget.syncStrip);
     final l =
         (AppLocalizations.of(context) ??
         lookupAppLocalizations(const Locale('en')));
@@ -202,11 +207,11 @@ class _ChartState extends State<SharedTimelineChart>
                               painter: TimelinePainter(
                                 p: p,
                                 view: view,
-                                graph: widget.graph,
+                                graph: visibleGraph,
                                 stages: widget.stages,
                                 header: header,
                                 height: height,
-                                fine: widget.fine,
+                                fine: visibleFine,
                                 fineStartSec: widget.fineStartSec,
                                 scaler: MediaQuery.textScalerOf(context),
                               ),
@@ -226,7 +231,7 @@ class _ChartState extends State<SharedTimelineChart>
                               ),
                             ),
                           ),
-                          if (widget.graph.dayStart != null &&
+                          if (visibleGraph.dayStart != null &&
                               widget.annotations.isNotEmpty)
                             Positioned(
                               left: 44,
@@ -248,6 +253,7 @@ class _ChartState extends State<SharedTimelineChart>
                                     : view.fraction(c.scrub!),
                               ),
                             ),
+                          if (widget.syncStrip) Positioned.fill(child: SyncStripOverlay(view:view,left:44,right:8,top:header,bottom:24)),
                           if (c.selection case final s?) ...[
                             for (final first in [true, false])
                               Positioned(
@@ -303,29 +309,29 @@ class _ChartState extends State<SharedTimelineChart>
           listenable: c.scrubChanges,
           builder: (context, _) {
             var latest = 0;
-            for (var i = 0; i < widget.graph.slots; i++) {
-              if ((i < widget.graph.hr.length && widget.graph.hr[i] != null) ||
-                  (i < widget.graph.movement.length &&
-                      widget.graph.movement[i] != null)) {
+            for (var i = 0; i < visibleGraph.slots; i++) {
+              if ((i < visibleGraph.hr.length && visibleGraph.hr[i] != null) ||
+                  (i < visibleGraph.movement.length &&
+                      visibleGraph.movement[i] != null)) {
                 latest = i;
               }
             }
             final time =
                 c.scrub ??
-                ((widget.graph.dayStart ?? c.home.start) + latest * 60);
+                ((visibleGraph.dayStart ?? c.home.start) + latest * 60);
             final minute =
-                ((time - (widget.graph.dayStart ?? c.home.start)) / 60).floor();
-            final fine = widget.fine;
+                ((time - (visibleGraph.dayStart ?? c.home.start)) / 60).floor();
+            final fine = visibleFine;
             final second = (time - (widget.fineStartSec ?? 0)).floor();
             final hr = fine != null && second >= 0 && second < fine.length
                 ? fine[second]
-                : minute >= 0 && minute < widget.graph.hr.length
-                ? widget.graph.hr[minute]
+                : minute >= 0 && minute < visibleGraph.hr.length
+                ? visibleGraph.hr[minute]
                 : null;
-            final move = minute >= 0 && minute < widget.graph.movement.length
-                ? widget.graph.movement[minute]
+            final move = minute >= 0 && minute < visibleGraph.movement.length
+                ? visibleGraph.movement[minute]
                 : null;
-            final unrecorded = widget.graph.unmeasured.any(
+            final unrecorded = visibleGraph.unmeasured.any(
               (gap) => minute >= gap.$1 && minute < gap.$2,
             );
             return Semantics(
@@ -356,18 +362,18 @@ class _ChartState extends State<SharedTimelineChart>
                             l.localeName,
                           ).format(move),
                   ),
-                  if (widget.graph.work.isNotEmpty)
+                  if (visibleGraph.work.isNotEmpty)
                     ChartCell(
                       l.dayTimelineWorkout,
                       p.on(C.orange),
                       value:
-                          widget.graph.work.any(
+                          visibleGraph.work.any(
                             (span) => minute >= span.$1 && minute < span.$2,
                           )
                           ? l.activityTrackYes
                           : l.activityTrackNo,
                     ),
-                  if (widget.graph.unmeasured.isNotEmpty)
+                  if (visibleGraph.unmeasured.isNotEmpty)
                     ChartCell(
                       l.dayTimelineNotRecorded,
                       null,
@@ -381,7 +387,7 @@ class _ChartState extends State<SharedTimelineChart>
             );
           },
         ),
-        if (widget.graph.movement.any((v) => v != null))
+        if (visibleGraph.movement.any((v) => v != null))
           Text(l.timelineMovementNote, style: F.cap.copyWith(color: p.ink3)),
       ],
     );
