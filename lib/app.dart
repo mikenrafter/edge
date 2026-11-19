@@ -1,3 +1,4 @@
+import 'pilot/sunrise_overlay.dart';
 import 'util/callable.dart';
 import 'package:flutter/foundation.dart' show debugPrintSynchronously;
 import 'dart:async';
@@ -244,7 +245,7 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
           behavior: HitTestBehavior.translucent,
           onPointerDown: (_) =>
               context.read<AppState>().noteForegroundActivity(),
-          child: SleepOperationErrors(child: ThemeSwitchOverlay(key: themeSwitchKey, child: child!)),
+          child: PilotSunriseOverlay(child:SleepOperationErrors(child: ThemeSwitchOverlay(key: themeSwitchKey, child: child!))),
         ),
       ),
       navigatorObservers: [TelemetryNavigatorObserver(), _guideRunner.routes,

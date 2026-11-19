@@ -188,7 +188,7 @@ class LocalRepositoryImpl extends LocalRepository {
     final sessions = <String, Map<String, dynamic>>{};
     for (final d in activities) {
       final s = d.suggestion;
-      if (d.keep && s.kind == ActivityKind.workout) {
+      if (d.keep && !d.restore && s.kind == ActivityKind.workout) {
         sessions[s.id] = await _writeManualSession(
           startTs: d.startTs ?? s.startTs, endTs: d.endTs ?? s.endTs,
           type: d.workoutType ?? s.sport ?? 'other',
@@ -263,7 +263,9 @@ class LocalRepositoryImpl extends LocalRepository {
       }
       for (final d in activities) {
         final s = d.suggestion;
-        if (!d.keep) {
+        if(d.restore){
+          await ActivityStore.restorePilot(tx,s);
+        }else if (!d.keep) {
           await store.discard(s, transaction: tx);
         } else {
           final res = await store.confirm(s, startTs: d.startTs ?? s.startTs,

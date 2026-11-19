@@ -310,6 +310,9 @@ enum ActionBridge {
       switch call.method {
       case "capabilities":
         result(["ring_phone", "torch"])
+      case "setTorch":
+        let args = call.arguments as? [String: Any] ?? [:]
+        result(setTorch(args["enabled"] as? Bool ?? false))
       case "perform":
         let args = call.arguments as? [String: Any] ?? [:]
         result(perform(args["action"] as? String ?? ""))
@@ -319,6 +322,16 @@ enum ActionBridge {
     }
   }
 
+  private static func setTorch(_ enabled: Bool) -> Bool {
+    guard let device = AVCaptureDevice.default(for: .video), device.hasTorch else { return false }
+    do {
+      try device.lockForConfiguration()
+      defer { device.unlockForConfiguration() }
+      device.torchMode = enabled ? .on : .off
+      return true
+    } catch { return false }
+  }
+
   private static func perform(_ action: String) -> Bool {
     switch action {
     case "ring_phone":
@@ -326,19 +339,8 @@ enum ActionBridge {
       AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
       return true
     case "torch":
-      // Torch via AVCaptureDevice — toggling it does NOT start a capture session, so
-      // it needs no camera authorization / NSCameraUsageDescription. (Verifeid on device.)
-      guard let device = AVCaptureDevice.default(for: .video), device.hasTorch else {
-        return false
-      }
-      do {
-        try device.lockForConfiguration()
-        device.torchMode = device.isTorchActive ? .off : .on
-        device.unlockForConfiguration()
-        return true
-      } catch {
-        return false
-      }
+      guard let device = AVCaptureDevice.default(for: .video) else { return false }
+      return setTorch(!device.isTorchActive)
     default:
       return false
     }

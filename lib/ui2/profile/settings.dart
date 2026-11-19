@@ -1,3 +1,4 @@
+import '../../pilot/labs_section.dart';
 import 'step_calibration.dart' show StepCalibrationScreen;
 import '../../compute/profile.dart' show plausibleAgeYears, plausibleHeightCm, plausibleWeightKg;
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
@@ -995,6 +996,11 @@ class MoreSettingsView extends StatelessWidget {
                                 'the app can keep syncing overnight',
                         onTap: onOpenOemAutostart),
                 ]),
+                LabsSection(hmm:experimentalSleepHmm,onHmm:onToggleExperimentalSleepHmm,
+                  onAlarmSourceChanged:() async {
+                    final app=c.read<AppState>();
+                    await app.refreshPilotAlarms(sourceChanged:true);
+                  }),
                 SettingsAccordion('Data & privacy',
                     id: 'settings_data_privacy',
                     children: [
@@ -1014,14 +1020,6 @@ class MoreSettingsView extends StatelessWidget {
                       key: const ValueKey('calc-power-row'),
                       value: calcPowerLabels[calcPowerMode]!,
                       onTap: onPickCalcPowerMode),
-                  SetRow(LucideIcons.flaskConical, C.indigo,
-                      l?.experimentalSleepHmm ?? 'Experimental sleep staging (HMM)',
-                      key: const ValueKey('experimental-sleep-hmm'),
-                      sub: l?.experimentalSleepHmmDescription ??
-                          'Research method for future calculations. Not medical advice. '
-                          'Saved finalized nights stay unchanged; reanalyse a night to apply it.',
-                      value: experimentalSleepHmm ? on : off,
-                      onTap: onToggleExperimentalSleepHmm),
                   // The row P1 was missing. Everything behind it — the
                   // permission request, the retry/backoff, the four gates —
                   // was already written and simply had no way to be switched

@@ -1,3 +1,5 @@
+import '../../pilot/pilot_flags.dart';
+import '../../pilot/sleep_editor.dart';
 import '../../wake/wake_timeline.dart';
 import '../../l10n/display_text.dart';
 import 'rhr_annotations.dart';
@@ -1779,6 +1781,11 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   /// Two pickers, seeded from the window we already have — the user is
   /// correcting times, not entering a date. See [correctedSleepWindow].
   Future<void> _editWindow(String day, int t0, int t1) async {
+    if(PilotFlag.timelines.enabled){
+      await Navigator.of(context).push(MaterialPageRoute(builder:(_)=>PilotSleepEditor(day:day,initialTime:t0)));
+      if(mounted)await _load();
+      return;
+    }
     final onset = DateTime.fromMillisecondsSinceEpoch(t0 * 1000);
     final wake = DateTime.fromMillisecondsSinceEpoch(t1 * 1000);
     final l = AppLocalizations.of(context);
@@ -2255,6 +2262,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           Map<String, dynamic> n, double height) =>
       Scrubber(
         value: _scrubFraction(n),
+        hold:PilotFlag.timelines.enabled,
+        onEnd:PilotFlag.timelines.enabled?()=>_selectScrub(null,n):null,
         onChanged: (v) => _selectScrub(v, n),
         label: AppLocalizations.of(c)?.sleepDetailHypnogramLabel ?? 'Hypnogram',
         describe: (v) {

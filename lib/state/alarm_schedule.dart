@@ -21,6 +21,11 @@ class AlarmScheduleEntry {
   final int minute;
   final bool enabled;
 
+  /// An explicit one-shot occurrence. Pilot records keep this outside the weekly table.
+  final DateTime? oneShotAt;
+  final DateTime? skippedAt;
+  final int nativeOffsetMinutes;
+
   /// Smart Wake Window, minutes. 0 = off (the default — plain fixed-time
   /// alarm, unchanged behaviour). When > 0, `hour`:`minute` stays exactly what
   /// it always was — the band's own armed SET_ALARM, the hard fallback — and
@@ -49,6 +54,9 @@ class AlarmScheduleEntry {
     required this.hour,
     required this.minute,
     this.enabled = true,
+    this.oneShotAt,
+    this.skippedAt,
+    this.nativeOffsetMinutes=0,
     this.smartWindowMinutes = 0,
     this.naturalWindowMinutes = 0,
     this.gradualWindowMinutes = 0,
@@ -71,6 +79,8 @@ class AlarmScheduleEntry {
         hour: hour ?? this.hour,
         minute: minute ?? this.minute,
         enabled: enabled ?? this.enabled,
+        oneShotAt: oneShotAt,
+        skippedAt:skippedAt,nativeOffsetMinutes:nativeOffsetMinutes,
         smartWindowMinutes: smartWindowMinutes ?? this.smartWindowMinutes,
         naturalWindowMinutes: naturalWindowMinutes ?? this.naturalWindowMinutes,
         gradualWindowMinutes: gradualWindowMinutes ?? this.gradualWindowMinutes,
@@ -112,6 +122,7 @@ class AlarmScheduleEntry {
       other.hour == hour &&
       other.minute == minute &&
       other.enabled == enabled &&
+      other.oneShotAt==oneShotAt && other.skippedAt==skippedAt && other.nativeOffsetMinutes==nativeOffsetMinutes &&
       other.smartWindowMinutes == smartWindowMinutes &&
       other.naturalWindowMinutes == naturalWindowMinutes &&
       other.gradualWindowMinutes == gradualWindowMinutes &&
@@ -119,7 +130,7 @@ class AlarmScheduleEntry {
       other.gradualCadenceSec == gradualCadenceSec;
 
   @override
-  int get hashCode => Object.hash(weekday, hour, minute, enabled,
+  int get hashCode => Object.hash(weekday, hour, minute, enabled,oneShotAt,skippedAt,nativeOffsetMinutes,
       smartWindowMinutes, naturalWindowMinutes, gradualWindowMinutes,
       gradualPattern, gradualCadenceSec);
 
@@ -273,6 +284,11 @@ DateTime? nextAlarmOccurrence(List<AlarmScheduleEntry> schedule, DateTime now) {
   DateTime? best;
   for (final e in schedule) {
     if (!e.enabled) continue;
+    final once=e.oneShotAt;
+    if(once!=null){
+      if(once!=e.skippedAt&&once.isAfter(now)&&(best==null||once.isBefore(best)))best=once;
+      continue;
+    }
     final entryDow = e.weekday + 1; // DateTime.monday(1)..sunday(7)
     var daysAhead = (entryDow - now.weekday) % 7;
     if (daysAhead < 0) daysAhead += 7; // Dart's % can return negative
@@ -284,6 +300,7 @@ DateTime? nextAlarmOccurrence(List<AlarmScheduleEntry> schedule, DateTime now) {
       candidate =
           DateTime(now.year, now.month, now.day + daysAhead + 7, e.hour, e.minute);
     }
+    if(candidate==e.skippedAt)candidate=DateTime(candidate.year,candidate.month,candidate.day+7,e.hour,e.minute);
     if (best == null || candidate.isBefore(best)) best = candidate;
   }
   return best;

@@ -1,3 +1,6 @@
+import '../../data/activity_store.dart';
+import '../../pilot/pilot_flags.dart';
+import '../../pilot/sleep_editor.dart';
 import 'review_read_label.dart';
 // The open breakdown owns staged decisions. Durable writes go
 // through the repository batch, serialized with the existing moment service.
@@ -184,14 +187,24 @@ class DayReviewController extends ChangeNotifier {
     return null;
   }
   int savedRevision = 0;
+  final Map<String,ActivitySuggestion> _pilotRestores={};
+  bool pilotRestoreStaged(String id)=>_pilotRestores.containsKey(id);
+  Future<void> togglePilotRestore(String id)async{
+    if(!PilotFlag.timelines.enabled||!canEdit||!id.startsWith('activity:'))return;
+    if(_pilotRestores.remove(id)!=null){_changed();return;}
+    final item=await LocalDb.readerRun((db)=>ActivityStore(db).get(id.substring(9)));
+    if(_disposed)return;
+    if(item!=null&&item.status==ActivityReviewStatus.discarded)_pilotRestores[id]=item;
+    _changed();
+  }
   final Map<String, ReviewDecision> _drafts = {};
   bool loading = true, loadFailed = false, saveFailed = false;
   bool followUpFailed = false, busy = false, _disposed = false;
   ManualWindowError? saveRefusal;
   int _generation = 0;
-  bool get hasChanges => _choices.isNotEmpty;
+  bool get hasChanges => _choices.isNotEmpty||_pilotRestores.isNotEmpty;
   /// Items with a staged answer (a pair's two moments count once).
-  int get stagedCount => ids.where(_choices.containsKey).length;
+  int get stagedCount => ids.where(_choices.containsKey).length+_pilotRestores.length;
   bool get canEdit => !loading && !loadFailed && !busy;
   /// Review mode: something waits for an answer (staged or not).
   bool get reviewing => ids.isNotEmpty;
@@ -393,6 +406,7 @@ class DayReviewController extends ChangeNotifier {
       return q;
     });
     _choices.clear();
+    _pilotRestores.clear();
   }
   Future<void> editActivity(BuildContext c, String id) async {
     if (!canEdit) return;
@@ -414,6 +428,7 @@ class DayReviewController extends ChangeNotifier {
             endTs: start + s.endTs - s.startTs);
       }
     } else if (s.kind == ActivityKind.nap) {
+      if(PilotFlag.timelines.enabled){await Navigator.of(c).push(MaterialPageRoute(builder:(_)=>PilotSleepEditor(day:day,initialTime:s.startTs,proposal:s)));if(!_disposed)await load();return;}
       final window = await Navigator.of(c).push<(int, int)>(MaterialPageRoute(
           builder: (_) => NapProposalEditor(suggestion: s, stageOnly: true)));
       if (window != null) {
@@ -517,7 +532,7 @@ class DayReviewController extends ChangeNotifier {
     }
     try {
       final receipt = await service.commitDay(_SaveDay(repo,
-        activities: [for (final s in _activities)
+        activities: [for(final item in _pilotRestores.values)ActivityDecision(item,keep:true,restore:true),for (final s in _activities)
           if (staged['activity:${s.id}'] case final keep?)
             keep ? (_activityEdits['activity:${s.id}'] ?? ActivityDecision(s,
                 keep: true, workoutType: activityByName(s.sport)?.typeKey ?? 'other'))
@@ -561,6 +576,7 @@ class DayReviewController extends ChangeNotifier {
       _ranges.removeWhere(selectedRanges.contains);
       _drafts.removeWhere((key, _) => staged.containsKey(key));
       _choices.clear();
+      _pilotRestores.clear();
       savedRevision++;
       if (c.mounted) bumpInsights(c);
     } catch (error) {
@@ -615,7 +631,10 @@ Widget reviewButton(BuildContext c, String key, String label, VoidCallback? tap,
     Color color = C.blue, bool primary = false}) => Semantics(
   key: ValueKey(key), button: true, enabled: tap != null, selected: selected,
   label: label, onTap: tap, excludeSemantics: true,
-  child: Opacity(opacity: tap == null ? .4 : 1, child: BigButton(label,
+  child: PilotFlag.timelines.enabled ? Opacity(opacity:tap == null ? .4 : 1,child:TextButton(
+    style:TextButton.styleFrom(minimumSize:const Size(48,48),padding:const EdgeInsets.symmetric(horizontal:4),backgroundColor:selected?P.of(c).wash(color):null),
+    onPressed:tap,child:FittedBox(fit:BoxFit.scaleDown,child:Row(mainAxisSize:MainAxisSize.min,children:[if(glyph!=null)...[Icon(glyph,size:14),const SizedBox(width:3)],Text(label,maxLines:1,softWrap:false)]))))
+    : Opacity(opacity: tap == null ? .4 : 1, child: BigButton(label,
       dense: true, icon: glyph, color: color,
       soft: !primary && !selected, onTap: tap)),
 );
@@ -688,7 +707,7 @@ class DayReviewActions extends StatelessWidget {
                 : null;
     // Three across need a word's width each; at large text a word like
     // "Discard" no longer fits a third of the row, so the buttons stack.
-    final stacked = MediaQuery.textScalerOf(c).scale(1) > 1.25;
+    final stacked = !PilotFlag.timelines.enabled && MediaQuery.textScalerOf(c).scale(1) > 1.25;
     return Padding(padding: const EdgeInsets.only(bottom: S.x2),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (stacked) ...[

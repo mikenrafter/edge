@@ -32,6 +32,16 @@ class DeviceActions {
     }
   }
 
+  /// Explicit state avoids leaving the torch on after a failed flash pulse.
+  /// Missing hardware, permission, or a busy camera returns false.
+  static Future<bool> setTorch(bool enabled) async {
+    try {
+      return await _ch.invokeMethod<bool>('setTorch', {'enabled': enabled}) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Execute one action by its wire id. Returns true on success. Never throws —
   /// a gesture failing is never worth crashing a background isolate over.
   ///

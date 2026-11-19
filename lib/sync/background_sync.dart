@@ -1,3 +1,4 @@
+import '../pilot/alarm_pilot.dart';
 import '../compute/processing_context.dart';
 import 'dart:convert';
 import 'package:flutter/widgets.dart';
@@ -423,10 +424,9 @@ Future<bool> headlessDeriveConfirmedWakeDay(int moment) async {
 /// re-arm block re-reads the schedule fresh on its own (see PR #403).
 @visibleForTesting
 Future<HighFreqWakePlan> headlessWakeWindowPlan({DateTime? now}) async {
-  final schedule = fillDefaultAlarmSchedule([
-    for (final r in await LocalDb.alarmScheduleRows())
-      AlarmScheduleEntry.fromRow(r),
-  ]);
+  final schedule = await selectedAlarmSchedule(() async => fillDefaultAlarmSchedule([
+    for (final r in await LocalDb.alarmScheduleRows()) AlarmScheduleEntry.fromRow(r),
+  ]));
   final prefs = await SharedPreferences.getInstance();
   await FeatureFlags.ensureLoaded(); // a headless run has no launch hook
   final paired = await PairedDevice.load();
@@ -792,10 +792,9 @@ Future<void> rearmHeadlessAlarm(BleEngine engine, PairedDevice paired, {String p
   // here (not [prepareHeadlessLink]'s copies) in case the user changed the
   // schedule while `runSync()` was draining.
   try {
-    final schedule = fillDefaultAlarmSchedule([
-      for (final r in await LocalDb.alarmScheduleRows())
-        AlarmScheduleEntry.fromRow(r),
-    ]);
+    final schedule = await selectedAlarmSchedule(() async => fillDefaultAlarmSchedule([
+      for (final r in await LocalDb.alarmScheduleRows()) AlarmScheduleEntry.fromRow(r),
+    ]));
     final prefs = await SharedPreferences.getInstance();
     final remoteId = paired.remoteId;
     final out = await headlessArmAndConfirm(

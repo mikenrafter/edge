@@ -9,11 +9,12 @@ export 'timeline_model.dart';
 // [sleep-structural spec §4.3; sleep_shared_timeline_test]. Separate channels
 // keep pure zoom frames from rebuilding readout Text or the activity list.
 class TimelineController extends ChangeNotifier {
-  TimelineController({required int homeStartSec, required int homeEndSec})
+  TimelineController({required int homeStartSec, required int homeEndSec,this.glideDuration})
     : assert(homeEndSec > homeStartSec),
       home = TimelineView(homeStartSec.toDouble(), homeEndSec.toDouble()),
       _view = TimelineView(homeStartSec.toDouble(), homeEndSec.toDouble());
   final TimelineView home;
+  final Duration? glideDuration;
   TimelineView _view;
   TimelineView get view => _view;
   final range = ChangeNotifier(),
@@ -85,7 +86,7 @@ class TimelineController extends ChangeNotifier {
     _ticker?.stop();
     // Retarget from pixels currently shown, never the abandoned destination.
     _from = _view;
-    _duration = Motion.timelineGlideTime(zoomGlideMilliseconds(_view, to));
+    _duration = glideDuration??Motion.timelineGlideTime(zoomGlideMilliseconds(_view, to));
     _to = to;
     if (_ticker == null || _reducedMotion || _view == to) {
       _view = to;
@@ -146,6 +147,32 @@ class TimelineController extends ChangeNotifier {
         ? TimelineView(t.clamp(home.start, s.end - floor), s.end)
         : TimelineView(s.start, t.clamp(s.start + floor, home.end));
     zoomChanges.notifyListeners();
+  }
+
+  void clearScrub() {
+    _scrubTicker?.stop(); _scrubTo=null; _scrub=null; scrubChanges.notifyListeners();
+  }
+
+  void panBy(double seconds) => panTo(_view.start+seconds);
+  void panTo(double start) {
+    _ticker?.stop(); _to=null;
+    _view=TimelineView(start,start+_view.span).clampTo(home.start,home.end);
+    range.notifyListeners(); zoomChanges.notifyListeners();
+  }
+  void beginPilotSelection() {
+    clearScrub();
+    _selection=_selection==null?TimelineView(_view.start,_view.end):null;
+    zoomChanges.notifyListeners();
+  }
+  void updatePilotSelection(double first,double second) {
+    _selection=TimelineView(first<second?first:second,first<second?second:first);
+    zoomChanges.notifyListeners();
+  }
+  void finishPilotSelection() {
+    final selected=_selection; _selection=null;
+    clearScrub();
+    if(selected!=null&&selected.span>=1200)_glide(selected);
+    else zoomChanges.notifyListeners();
   }
 
   void setScrub(double t) {

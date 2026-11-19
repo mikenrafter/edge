@@ -1,0 +1,25 @@
+// Owner: PilotFlags owns the three independent Labs opt-ins.
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../state/prefs.dart';
+
+enum PilotFlag {
+  alarmScreen('pilot.alarm_screen'),
+  wakeMethods('pilot.wake_methods'),
+  timelines('pilot.timelines');
+  const PilotFlag(this.key);
+  final String key;
+  bool get enabled => Prefs.getBool(key, false);
+}
+
+class PilotFlags {
+  static final revision = ValueNotifier(0);
+  static Future<void> set(PilotFlag flag, bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!await prefs.setBool(flag.key, enabled)) {
+      throw StateError('Pilot preference was not saved');
+    }
+    await Prefs.reload();
+    revision.value++;
+  }
+}

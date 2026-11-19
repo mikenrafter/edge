@@ -1,3 +1,5 @@
+import '../../pilot/alarm_screen.dart';
+import '../../pilot/pilot_flags.dart';
 // The band alarm.
 //
 // This screen exists because the alarm is the one thing in the app that keeps
@@ -249,6 +251,7 @@ class _AlarmScreenState extends State<AlarmScreen> {
 
   @override
   Widget build(BuildContext c) {
+    if(PilotFlag.alarmScreen.enabled)return const PilotAlarmScreen();
     final app = c.watch<AppState>();
     final caps = c.caps;
     final epoch = app.alarmEpoch;
