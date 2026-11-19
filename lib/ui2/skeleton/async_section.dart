@@ -221,11 +221,12 @@ class _PendingPaint extends SingleChildRenderObjectWidget {
   @override
   RenderObject createRenderObject(BuildContext context) =>
       _RenderPending(context as Element, pending, visible, fade, child,
-        MediaQuery.disableAnimationsOf(context));
+        MediaQuery.disableAnimationsOf(context), TickerMode.of(context));
   @override
   void updateRenderObject(BuildContext context, _RenderPending renderObject) {
     renderObject..pending = pending..visible = visible..fade = fade
-      ..reducedMotion = MediaQuery.disableAnimationsOf(context);
+      ..reducedMotion = MediaQuery.disableAnimationsOf(context)
+      ..tickerEnabled = TickerMode.of(context);
     renderObject.updateChildIdentity(child);
   }
 }
@@ -238,11 +239,12 @@ class _RenderPending extends RenderProxyBox {
     this._fade,
     this._widgetChild,
     this._reducedMotion,
+    this._tickerEnabled,
   );
   final Element element;
   bool _pending, _visible, _listening = false;
   double _fade;
-  bool _reducedMotion;
+  bool _reducedMotion, _tickerEnabled;
   GuidePlaceholderPaint? _plan;
   Widget? _widgetChild;
   void updateChildIdentity(Widget? child) {
@@ -263,8 +265,13 @@ class _RenderPending extends RenderProxyBox {
     _listen();
     markNeedsPaint();
   }
+  set tickerEnabled(bool value) {
+    if (_tickerEnabled == value) return;
+    _tickerEnabled = value;
+    _listen();
+  }
   void _listen() {
-    final wanted = attached && _pending && _visible && !_reducedMotion;
+    final wanted = attached && _pending && _visible && !_reducedMotion && _tickerEnabled;
     if (wanted == _listening) return;
     _listening = wanted;
     if (wanted) { _PendingPulse.shared.join(markNeedsPaint); }

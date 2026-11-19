@@ -17216,8 +17216,8 @@
   "helpLookingForSomething": "กำลังมองหาอะไรอยู่ไหม?",
   "helpAllGuides": "คู่มือทั้งหมด",
   "helpTopicEmpty": "ยังไม่มีคู่มือสำหรับแท็บนี้",
-  "pendingSectionContent": "content",
-  "pendingSectionLoaded": "Loaded, {name}",
+  "pendingSectionContent": "เนื้อหา",
+  "pendingSectionLoaded": "โหลดแล้ว, {name}",
   "@pendingSectionLoaded": {
     "placeholders": {
       "name": {
@@ -17225,7 +17225,7 @@
       }
     }
   },
-  "pendingSectionLoading": "Loading, {name}",
+  "pendingSectionLoading": "กำลังโหลด, {name}",
   "@pendingSectionLoading": {
     "placeholders": {
       "name": {
