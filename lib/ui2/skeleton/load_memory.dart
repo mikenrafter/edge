@@ -119,13 +119,13 @@ class LoadMemory {
     // write through the existing settings owner. No write on pulse frames.
     if (_saveScheduled) return;
     _saveScheduled = true;
-    scheduleMicrotask(() {
+    scheduleMicrotask(() async {
       _saveScheduled = false;
       final encoded = jsonEncode({
         for (final e in _entries.entries) e.key: e.value.toJson(),
       });
       try {
-        Prefs.setString(prefKey, encoded);
+        await Prefs.setStringAcked(prefKey, encoded);
       } catch (_) {
         /* Best-effort UI cache; the loaded layout remains usable. */
       }

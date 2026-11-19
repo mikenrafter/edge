@@ -155,7 +155,7 @@ String? _key(String expr, String text) {
 void main() {
   final lib = Directory('lib').listSync(recursive: true).whereType<File>()
       .where((f) => f.path.endsWith('.dart')).toList();
-  final writes = RegExp(r'''\.(setString|setStringList|setBool|setBoolAcked|setInt|setDouble)\(\s*('[^']*'|"[^"]*"|[\w.]+(?:\([^()]*\))?)\s*,''');
+  final writes = RegExp(r'''\.(setString|setStringAcked|setStringList|setBool|setBoolAcked|setInt|setDouble)\(\s*('[^']*'|"[^"]*"|[\w.]+(?:\([^()]*\))?)\s*,''');
   late BackupEnv env;
   setUpAll(() async => env = await BackupEnv.create('bkx_audit_test.db'));
   tearDownAll(() async => env.dispose());

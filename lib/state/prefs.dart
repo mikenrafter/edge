@@ -90,6 +90,18 @@ class Prefs {
     }
   }
 
+  /// setString with the platform's own acknowledgement: false when there is no
+  /// storage or the write was refused or threw (see [setBoolAcked]). The cache
+  /// is updated before the first await, so a read right after sees the value.
+  static Future<bool> setStringAcked(String key, String value) async {
+    try {
+      return await _sp?.setString(key, value) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+
   // ── selection keys (one namespace; keep them disjoint) ──────────────────────
   /// The five-tab bar's index (Home, Health, Nutrition, Workout, Wellness).
   /// Read once to migrate, never written.
