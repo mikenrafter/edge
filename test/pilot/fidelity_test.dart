@@ -11,6 +11,7 @@ import 'package:openstrap_edge/pilot/pilot_readout.dart';
 import 'package:openstrap_edge/pilot/pilot_theme.dart';
 import 'package:openstrap_edge/pilot/sleep_editor.dart';
 import 'package:openstrap_edge/pilot/timeline_chart.dart';
+import 'package:openstrap_edge/ui2/charts.dart' show SleepStage;
 import 'package:openstrap_edge/pilot/timeline_policy.dart';
 import 'package:openstrap_edge/ui2/chart_annotations.dart';
 import 'package:openstrap_edge/state/clock_format.dart';
@@ -126,5 +127,21 @@ void main(){
       await t.tapAt(Offset(r.left+r.width*.25,r.center.dy));await t.pump();
       expect(c.scrub,isNull);
     });
+  });
+
+  // why: signed-off day timeline draws a half-opacity hypnogram inside sleep.
+  // catches: the day chart dropping the recorded stages it was given.
+  testWidgets('a day with a sleep block paints stage segments',(t)async{
+    Future<RenderObject> paint(List<SleepStage?> stages)async{
+      final c=TimelineController(homeStartSec:base,homeEndSec:base+86400);addTearDown(c.dispose);
+      final i=TimelineInteraction();addTearDown(i.dispose);
+      await pump(t,Scaffold(body:PilotTimelineChart(key:UniqueKey(),controller:c,interaction:i,stages:stages,
+        graph:DayGraph(dayStart:base,hr:List.filled(1440,62),movement:List.filled(1440,.1),rest:const [(0,400,Colors.pink)]))));
+      return t.renderObject(find.descendant(of:find.byKey(const ValueKey('pilot-timeline-plot')),matching:find.byType(CustomPaint)).first);
+    }
+    // 00:00-06:40 asleep: light, deep, rem runs in 5-min slots.
+    final night=<SleepStage?>[for(var k=0;k<288;k++)k<80?[SleepStage.light,SleepStage.deep,SleepStage.rem][(k~/10)%3]:null];
+    expect(await paint(night),paints..rrect()..rrect());
+    expect(await paint(const []),isNot(paints..rrect()..rrect()));
   });
 }

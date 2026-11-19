@@ -2,6 +2,8 @@ import '../../pilot/pilot_flags.dart';
 import '../../pilot/day_layout.dart';
 import '../../pilot/timeline_policy.dart';
 import '../../pilot/sleep_editor.dart';
+import '../../pilot/recorded_stages.dart';
+import '../charts.dart' show SleepStage;
 import '../day_timeline/day_graph.dart';
 export '../day_timeline/day_graph.dart' show DayGraph, kDayMinutes;
 import '../day_timeline/timeline_chart.dart';
@@ -1070,6 +1072,23 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     implements EdgeSwipeListener, AnnotationListener, NerdStatsListener,
         DayRowEditListener {
   final _pilotInteraction=TimelineInteraction();
+// Read-only: the recorded night(s) for the visible day, through the same
+// repository read Sleep detail uses (getSleepDetailPrimary). The night ending
+// this morning is stored under this day, the one starting tonight under the next.
+List<SleepStage?> _pilotStages=const [];String? _pilotStagesKey;
+Future<void> _loadPilotStages(String day,DayGraph g)async{
+  final key='$day:${g.dayStart}:${g.slots}';if(_pilotStagesKey==key)return;_pilotStagesKey=key;_pilotStages=const [];
+  final repo=repoOf(context),start=g.dayStart;if(repo==null||start==null)return;
+  try{
+    final d=DateTime.parse(day),out=List<SleepStage?>.filled((g.slots/5).ceil(),null);
+    for(final id in [day,dayLabelOf(DateTime(d.year,d.month,d.day+1))]){
+      final night=(await repo.getSleepDetailPrimary(id))?.bundle.night;if(night==null)continue;
+      final s=recordedStages(night,origin:start,slots:g.slots);
+      for(var i=0;i<out.length&&i<s.length;i++){out[i]??=s[i];}
+    }
+    if(mounted&&_pilotStagesKey==key)setState(()=>_pilotStages=out);
+  }catch(_){/* Stages stay absent; the chart draws none. */}
+}
   PilotTimelineTab? _pilotTab;
   String? _pilotTabDay,_openedDay;
   final _filter = TimelineFilter();
@@ -1694,12 +1713,13 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         : (l?.dayTimelineTitle ?? 'Breakdown of your day');
     if(PilotFlag.timelines.enabled && !_loading){
       final day=_day??d.day??todayLabel(),days=d.days;
+      unawaited(_loadPilotStages(day,d.graph));
       final index=days.indexOf(day);
       return PopScope(canPop:_allowPop||(review?.hasChanges!=true&&review?.busy!=true),onPopInvokedWithResult:(didPop,result){if(!didPop)unawaited(_leave());},child:PilotDayLayout(title:title,dayRow:PilotDayRow(day:prettyDay(day,l),dirty:review?.hasChanges==true,busy:review?.busy==true,
         onPrevious:index>=0&&index+1<days.length?()=>_goDay(days[index+1]):null,
         onNext:index>0?()=>_goDay(days[index-1]):null,
         onCancel:()async{await review?.discardDraft();if(mounted)setState((){});},onSave:()=>review?.save(c)),
-        graph:d.graph,controller:chart,interaction:_pilotInteraction,tab:_pilotTab??PilotTimelineTab.pending,
+        graph:d.graph,stages:_pilotStages,controller:chart,interaction:_pilotInteraction,tab:_pilotTab??PilotTimelineTab.pending,
         onTab:(value)=>setState(()=>_pilotTab=value),listController:_listController,
         annotations:annotations,onAnnotation:annotationTapped,onScrub:_scrubRow,
         onPan:(at){if(!_pilotInteraction.handScrubbing)_scrubRow(at);},
