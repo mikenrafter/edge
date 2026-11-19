@@ -12,6 +12,35 @@ import 'package:openstrap_edge/sync/update_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+class _FailInitializationFactory implements DatabaseFactory {
+  int deletes = 0;
+  int opens = 0;
+  @override
+  Future<Database> openDatabase(String path, {OpenDatabaseOptions? options}) async {
+    final db = await databaseFactoryFfi.openDatabase(path, options: options);
+    return ++opens == 1 ? _FailInitializationDatabase(db) : db;
+  }
+  @override
+  Future<void> deleteDatabase(String path) async {
+    deletes++;
+    await databaseFactoryFfi.deleteDatabase(path);
+  }
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FailInitializationDatabase implements Database {
+  _FailInitializationDatabase(this.db);
+  final Database db;
+  @override
+  Future<List<Map<String, Object?>>> rawQuery(String sql, [List<Object?>? arguments]) =>
+      Future.error(StateError('transient initialization I/O failure'));
+  @override
+  Future<void> close() => db.close();
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
@@ -92,6 +121,31 @@ void main() {
       await store.acknowledgeReset();
       expect((await store.read()).authorizationReset, isFalse);
       expect((await store.read()).enabled, isFalse);
+    });
+
+    // WHY: lock, full-disk and I/O errors must preserve permanent sent claims.
+    // catches: deleting a valid store after any open/initialization exception.
+    test('an operational initialization failure preserves consent and sent claims', () async {
+      await store.setEnabled(true);
+      final ticket = (await store.beginRelease('release:fork:71', t0))!;
+      await store.settleRelease(ticket, ClaimOutcome.sent);
+      await store.db.close();
+      final original = await File(path).readAsBytes();
+      final factory = _FailInitializationFactory();
+      Object? failure;
+      UpdateStore? recovered;
+      try {
+        recovered = await UpdateStore.openFile(path, factory: factory);
+      } catch (error) {
+        failure = error;
+      }
+      await recovered?.db.close();
+      expect(factory.deletes, 0);
+      expect(failure, isA<StateError>());
+      expect(await File(path).readAsBytes(), original);
+      store = await openStore();
+      expect((await store.read()).enabled, isTrue);
+      expect(await store.beginRelease('release:fork:71', t0), isNull);
     });
 
     test('a damaged file is replaced by an off store and reported', () async {

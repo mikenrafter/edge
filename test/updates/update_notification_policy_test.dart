@@ -10,12 +10,15 @@ import 'dart:io';
 
 import 'package:clock/clock.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/notify/alert_dispatcher.dart';
 import 'package:openstrap_edge/notify/alert_policy.dart';
 import 'package:openstrap_edge/notify/alert_rule.dart';
+import 'package:openstrap_edge/haptics/band_queue.dart' show kAlertHandoffKey;
+import 'package:openstrap_edge/notify/reminder_sleep_gate.dart';
 import 'package:openstrap_edge/notify/notification_center.dart';
 import 'package:openstrap_edge/notify/notification_event.dart';
 import 'package:openstrap_edge/notify/notification_prefs.dart';
@@ -29,6 +32,25 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../support/alert_sleep_source.dart';
 import 'update_checker_test.dart' show release;
+
+class _BarrierSleepSource implements AlertSleepSource {
+  _BarrierSleepSource(this.waitHere, {this.asleep = false});
+  final bool Function() waitHere;
+  final bool asleep;
+  final entered = Completer<void>();
+  final resume = Completer<void>();
+
+  @override
+  Future<ReminderSleepGate> load(DateTime now) async {
+    if (waitHere() && !entered.isCompleted) {
+      entered.complete();
+      await resume.future;
+    }
+    return asleep
+        ? ReminderSleepGate(periods: [ReminderSleepPeriod(now)])
+        : const ReminderSleepGate();
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -202,6 +224,45 @@ void main() {
         expect(await center.emit(event()), isTrue);
       });
 
+      for (final reenable in [false, true]) {
+        // WHY: opt-out invalidates an attempt even if consent is restored.
+        // catches: consent read before the final async policy check, or bool-only consent.
+        test('final handoff policy await cannot cross opt-out, reenable=$reenable', () async {
+          var inHandoff = false;
+          final sleep = _BarrierSleepSource(() => inHandoff);
+          AlertPolicy.sleepSource = sleep;
+          center.presentSink = (e, {bool allowPermissionPrompt = true}) async {
+            inHandoff = true;
+            final permit = Zone.current[kAlertHandoffKey] as Future<bool> Function();
+            if (!await permit()) return false;
+            shown.add(e);
+            return true;
+          };
+          final pending = center.emit(event());
+          await sleep.entered.future;
+          await store.setEnabled(false);
+          if (reenable) await store.setEnabled(true);
+          sleep.resume.complete();
+          expect(await pending, isFalse);
+          expect(shown, isEmpty);
+          expect(await store.heldReleases(), isEmpty);
+        });
+      }
+
+      // WHY: a late sleep result cannot resurrect an intent cancelled by opt-out.
+      // catches: settling a generation-invalidated presenting claim as held.
+      test('opt-out during initial sleep await leaves no held intent', () async {
+        final sleep = _BarrierSleepSource(() => true, asleep: true);
+        AlertPolicy.sleepSource = sleep;
+        final pending = center.emit(event());
+        await sleep.entered.future;
+        await store.setEnabled(false);
+        await store.setEnabled(true);
+        sleep.resume.complete();
+        expect(await pending, isFalse);
+        expect(await store.heldReleases(), isEmpty);
+      });
+
       // WHY: at most once beats exactly once (owner 2026-11-17, R12).
       test('an ambiguous hand-off keeps the claim consumed', () async {
         center.presentTimeout = const Duration(milliseconds: 60);
@@ -257,6 +318,45 @@ void main() {
           expect(await store.db.query('update_notifications'), isEmpty);
         });
       }
+    });
+  }
+
+  for (final dispatcherOn in [false, true]) {
+    // WHY: the actual worker keeps the production sleep dependency and must hold
+    // without touching LocalDb, even when quiet hours already forbid delivery.
+    // catches: a worker that reaches StoredAlertSleepSource through notifyRelease.
+    test('worker wiring holds unknown sleep without health DB, dispatcher=$dispatcherOn', () async {
+      FeatureFlags.debugSet(FeatureFlag.alertDispatcher, dispatcherOn);
+      AlertPolicy.sleepSource = const StoredAlertSleepSource();
+      var healthOpens = 0;
+      const sql = MethodChannel('com.tekartik.sqflite');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(sql, (call) async {
+        healthOpens++;
+        throw PlatformException(code: 'health-opener-trapped');
+      });
+      addTearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(sql, null));
+      final before = LocalDb.debugHandleRequests;
+      for (final quiet in [false, true]) {
+        await NotificationPrefs(quietEnabled: quiet, quietStartMin: 0, quietEndMin: 1439).save();
+        await store.setEnabled(true); // end the prior batch's due slot
+        await runBackgroundUpdateCheck(create: () async => UpdateCoordinator(
+          store: store,
+          client: MockClient((r) async => http.Response(jsonEncode(
+            r.url.path.contains('OpenStrap') ? [release('v0.12.3', id: 90 + (quiet ? 1 : 0))] : [],
+          ), 200)),
+          installed: const InstalledRelease(version: '0.12.2-dev', build: 81, fork: true, mode: 'profile'),
+          clock: Clock.fixed(DateTime.utc(2026, 11, 15, 12)),
+          unmetered: () async => true,
+          schedule: (_) async {},
+          onRelease: notifyRelease,
+        ));
+      }
+      expect(LocalDb.debugHandleRequests, before);
+      expect(healthOpens, 0);
+      expect(shown, isEmpty);
+      expect(await store.heldReleases(), ['release:official:90', 'release:official:91']);
     });
   }
 

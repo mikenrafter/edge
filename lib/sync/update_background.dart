@@ -144,18 +144,24 @@ void updateCallbackDispatcher() {
   Workmanager().executeTask((task, input) async {
     WidgetsFlutterBinding.ensureInitialized();
     if (task != updateTaskName) return true;
-    UpdateCoordinator? service;
-    try {
-      service = await createUpdateCoordinator();
-      await service.check();
-      return true;
-    } catch (_) {
-      // The next daily slot or a foreground check can retry. No retry loop.
-      return true;
-    } finally {
-      service?.dispose();
-    }
+    return runBackgroundUpdateCheck();
   });
+}
+
+/// The WorkManager check with injectable platform setup for wiring tests.
+Future<bool> runBackgroundUpdateCheck({
+  Future<UpdateCoordinator> Function() create = createUpdateCoordinator,
+}) async {
+  UpdateCoordinator? service;
+  try {
+    service = await create();
+    await service.check();
+    return true;
+  } catch (_) {
+    return true;
+  } finally {
+    service?.dispose();
+  }
 }
 
 /// The app's handle on the checker: created on first need, never blocks launch,
