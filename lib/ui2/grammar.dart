@@ -6,6 +6,7 @@ import '../models/chart_point.dart' show ChartOlder, OlderAt;
 export '../models/chart_point.dart' show ChartOlder;
 import 'older_version.dart';
 import 'dart:math' as math;
+import '../pilot/pilot_flags.dart' show PilotFlag;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/gestures.dart';
@@ -3604,22 +3605,7 @@ class _SubTabsState extends State<SubTabs> {
     final muted = widget.muted;
     final dense = widget.dense;
     final color = widget.color;
-    return SizedBox(
-      height: MediaQuery.textScalerOf(c).scale(widget.minHeight),
-      // The fifth tab is off the edge on every phone we ship to — at 360 pt
-      // it is entirely off-screen in both tab sets, and above 1.0x text every
-      // set overflows even a 430 pt screen. ScrollHint draws nothing at all
-      // while the row fits, and scales with how much is left to scroll.
-      child: ScrollHint(
-        child: SingleChildScrollView(
-          controller: _scroll,
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.only(right: S.x10),
-          child: Row(
-            children: [
-              for (var i = 0; i < items.length; i++) ...[
-                if (i > 0) SizedBox(width: dense ? 2 : S.x2),
-                Builder(
+    Widget tab(int i) => Builder(
                   builder: (_) {
                     final off = disabled.contains(i);
                     final on = i == index && !off;
@@ -3681,7 +3667,57 @@ class _SubTabsState extends State<SubTabs> {
                       )),
                     );
                   },
-                ),
+                );
+    // Owner m249 (Labs "Full-width tabs", default on): the tabs share the row
+    // equally, as the sleep editor's block tabs do (v11 .tabs: flex 1,
+    // min-width 84 px). If any tab needs more than its share, the scrolling
+    // row below is used unchanged. Off: the scrolling row, as before.
+    if (PilotFlag.fullWidthTabs.enabled) {
+      final scaler = MediaQuery.textScalerOf(c);
+      double need(int i) {
+        final t = TextPainter(
+            text: TextSpan(text: items[i], style: F.cap.copyWith(fontWeight: FontWeight.w600)),
+            textDirection: TextDirection.ltr, textScaler: scaler, maxLines: 1)
+          ..layout();
+        final w = t.width + 2 * (dense ? 6 : S.x4) + (widget.badges.containsKey(i) ? S.x1 + 24 : 0);
+        t.dispose();
+        return math.max(w, dense ? 0 : S.tap);
+      }
+      final gap = dense ? 2.0 : S.x2;
+      final needs = [for (var i = 0; i < items.length; i++) need(i)];
+      return LayoutBuilder(builder: (c, box) {
+        final share = (box.maxWidth - gap * (items.length - 1)) / items.length;
+        if (!box.hasBoundedWidth || items.isEmpty || needs.any((n) => n > share)) return _scrolling(c, tab);
+        return SizedBox(height: scaler.scale(widget.minHeight), child: Row(children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) SizedBox(width: gap),
+            Expanded(child: tab(i)),
+          ],
+        ]));
+      });
+    }
+    return _scrolling(c, tab);
+  }
+
+  Widget _scrolling(BuildContext c, Widget Function(int) tab) {
+    final items = widget.items;
+    final dense = widget.dense;
+    return SizedBox(
+      height: MediaQuery.textScalerOf(c).scale(widget.minHeight),
+      // The fifth tab is off the edge on every phone we ship to — at 360 pt
+      // it is entirely off-screen in both tab sets, and above 1.0x text every
+      // set overflows even a 430 pt screen. ScrollHint draws nothing at all
+      // while the row fits, and scales with how much is left to scroll.
+      child: ScrollHint(
+        child: SingleChildScrollView(
+          controller: _scroll,
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.only(right: S.x10),
+          child: Row(
+            children: [
+              for (var i = 0; i < items.length; i++) ...[
+                if (i > 0) SizedBox(width: dense ? 2 : S.x2),
+                tab(i),
               ],
             ],
           ),

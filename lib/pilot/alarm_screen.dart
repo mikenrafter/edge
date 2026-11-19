@@ -133,7 +133,7 @@ class _AlarmChartState extends State<_AlarmChart>{
     final cut=left!=null&&right!=null&&right>left+1200?PilotTimelineCut(leftEnd:left,rightStart:right):null;
     final p=P.of(context);
     Widget stat(String label,String value)=>Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(label,style:F.cap.copyWith(color:p.ink3)),Text(value,maxLines:1,overflow:TextOverflow.ellipsis,style:F.body.copyWith(color:p.ink,fontWeight:FontWeight.w500))]));
-    return Column(children:[PilotTimelineChart(controller:c,graph:measured??widget.graph,interaction:interaction,stages:a.type==PilotAlarmType.sleep?recorded??widget.stages:const [],height:114,overview:true,cut:cut,annotations:annotations,showHeartRate:false),
+    return Column(children:[PilotTimelineChart(controller:c,graph:measured??widget.graph,interaction:interaction,stages:a.type==PilotAlarmType.sleep?recorded??widget.stages:const [],height:114,overview:true,cut:cut,annotations:annotations,showHeartRate:a.type==PilotAlarmType.workout),
       // Mock-up v22 statsOf(): Wake (a range with early wake), Expected,
       // Usual sleep; workout: Window, Zone, Buzzes at.
       Row(children:a.type==PilotAlarmType.sleep?[
@@ -290,21 +290,10 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
   Widget timeRow(String id,String title,int value,{String? sub,Widget? trailing,Color? timeColor,bool showTime=true})=>GestureDetector(
     key:ValueKey('pilot-time:$id'),dragStartBehavior:DragStartBehavior.down,onHorizontalDragStart:(_){_rowStart=_minuteFor(id);_rowDrag=0;select(id,start+_rowStart*60.0);},
     onHorizontalDragUpdate:(d){_rowDrag+=d.delta.dx;final moved=(_rowDrag/10).round()*5;_handle(id,start+(_rowStart+moved)*60.0);},
-    child:Builder(builder:(context){final p=P.of(context),look=_timing[id]??(LucideIcons.clock,C.blue),selected=focus==id;
+    child:Builder(builder:(context){final p=P.of(context),look=_timing[id]??(LucideIcons.clock,C.blue);
       final glow=_glowingTimings.contains(id)&&_rowGlow.isAnimating?p.on(C.blue).withValues(alpha:.3*math.sin(math.pi*_rowGlow.value)):null;
-      return Container(margin:const EdgeInsets.symmetric(vertical:1),padding:const EdgeInsets.symmetric(horizontal:10),
-        decoration:BoxDecoration(color:glow??(selected?p.card2:null),borderRadius:BorderRadius.circular(12),border:Border.all(color:selected?p.on(C.blue).withValues(alpha:.45):Colors.transparent)),
-        // Mock-up v22 .item: the subtitle sits under the time, right-aligned.
-        // The right column is capped at 45% of the row and both lines are one
-        // line with an ellipsis, so the title keeps its line and the row its height.
-        child:LayoutBuilder(builder:(context,box)=>SetRow(look.$1,look.$2,title,titleMaxLines:1,chevron:false,onTap:()=>select(id,start+value*60.0),
-          // Reset sits left of the right column, which keeps its full 45%.
-          trailing:Row(mainAxisSize:MainAxisSize.min,children:[if(trailing!=null)...[trailing,const SizedBox(width:8)],
-            ConstrainedBox(constraints:BoxConstraints(maxWidth:box.maxWidth*.45),child:Column(crossAxisAlignment:CrossAxisAlignment.end,mainAxisSize:MainAxisSize.min,children:[
-              Text(showTime?formatClock(((value%1440)+1440)%1440~/60,((value%60)+60)%60):'—',maxLines:1,style:F.body.copyWith(color:timeColor??(showTime?p.ink:p.ink3),fontFeatures:const [FontFeature.tabularFigures()])),
-              Text(sub??'',maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.right,style:F.cap.copyWith(color:p.ink3,fontSize:11)),
-            ])),
-          ]))));}));
+      return PilotItemRow(icon:look.$1,color:look.$2,title:title,selected:focus==id,glow:glow,action:trailing,timeColor:timeColor,onTap:()=>select(id,start+value*60.0),
+        time:showTime?formatClock(((value%1440)+1440)%1440~/60,((value%60)+60)%60):'—',timeSub:sub);}));
 
   Widget _resetChip(VoidCallback tap)=>PilotRowChip(l.pilotReset,onTap:tap);
   Widget feelRow({bool chaos=false})=>Row(children:[TextButton.icon(onPressed:playing?null:()=>_feel(chaos:chaos),icon:const Icon(LucideIcons.vibrate,size:16),label:Text(l.pilotFeelIt)),const Spacer(),TextButton(onPressed:()=>Navigator.of(context).push(MaterialPageRoute(builder:(_)=>const HapticsSettings())),child:Text(l.pilotHaptics))]);
@@ -326,7 +315,7 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
         IconButton(tooltip:l.pilotNextNight,onPressed:night<nights.length-1?()=>_pageNight(night+1):null,icon:const Icon(LucideIcons.chevronRight)),
       ])),
       Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:PilotTimelineChart(controller:c,graph:graph,interaction:interaction,stages:stages,handles:handles,selectedAnnotationId:focus,onHandle:_handle,onSelect:(id){if({'bed','wake','early','gradual','sunrise','sound','vibration','flash','window'}.contains(id))select(id,start+_minuteFor(id)*60.0);},
-        showHeartRate:false,showHeader:false,annotations:pilotAlarmAnnotations(a,l,start,bedMinute:previewBed,expectedWake:expectedWake))),
+        showHeartRate:a.type==PilotAlarmType.workout,showHeader:false,annotations:pilotAlarmAnnotations(a,l,start,bedMinute:previewBed,expectedWake:expectedWake))),
       // Mock-up v22 .tabs; a new phone timing flashes the Times tab (m206).
       Padding(padding:const EdgeInsets.fromLTRB(16,6,16,0),child:Stack(children:[
         PilotSegmented(tabs,tab,_openTab,itemKeys:[for(final t in tabs)ValueKey('pilot-alarm-tab:$t')]),

@@ -44,3 +44,33 @@ class PilotSegmented extends StatelessWidget {
             if(badges[i] case final b?)...[const SizedBox(width:6),b],
           ])))))))]));}
 }
+
+/// Mock-ups' timing row (alarms v22 / sleep editor v11 `.item`): a coloured
+/// glyph (no tile), the name, an optional in-row action right after it, and
+/// the time on the right with its subtitle under it (11 px #9aa6b8). Selected:
+/// #232c3d with a 1 px #4a5f92 border, radius 12. Min height 48.
+class PilotItemRow extends StatelessWidget {
+  const PilotItemRow({super.key,required this.icon,required this.color,required this.title,required this.time,
+    this.timeSub,this.titleSub,this.action,this.selected=false,this.glow,this.timeColor,this.onTap});
+  final IconData icon;final Color color;final String title,time;final String? timeSub,titleSub;
+  final Widget? action;final bool selected;final Color? glow,timeColor;final VoidCallback? onTap;
+  @override Widget build(BuildContext context){final p=P.of(context);
+    return LayoutBuilder(builder:(context,box)=>Semantics(button:onTap!=null,selected:selected,child:GestureDetector(behavior:HitTestBehavior.opaque,onTap:onTap,child:Container(
+      constraints:const BoxConstraints(minHeight:48),margin:const EdgeInsets.symmetric(vertical:1),padding:const EdgeInsets.symmetric(horizontal:10,vertical:8),
+      decoration:BoxDecoration(color:glow??(selected?const Color(0xFF232C3D):null),borderRadius:BorderRadius.circular(12),border:Border.all(color:selected?const Color(0xFF4A5F92):Colors.transparent)),
+      child:Row(children:[
+        Icon(icon,size:18,color:p.on(color)),const SizedBox(width:10),
+        Expanded(child:Row(children:[
+          Flexible(child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
+            Text(title,maxLines:1,overflow:TextOverflow.ellipsis,style:F.body.copyWith(color:p.ink)),
+            if(titleSub!=null)Text(titleSub!,maxLines:1,overflow:TextOverflow.ellipsis,style:F.cap.copyWith(color:const Color(0xFF9AA6B8),fontSize:11)),
+          ])),
+          if(action!=null)...[const SizedBox(width:10),action!],
+        ])),
+        const SizedBox(width:10),
+        ConstrainedBox(constraints:BoxConstraints(maxWidth:box.maxWidth*.45),child:Column(crossAxisAlignment:CrossAxisAlignment.end,mainAxisSize:MainAxisSize.min,children:[
+          Text(time,maxLines:1,style:F.body.copyWith(color:timeColor??p.ink,fontFeatures:const [FontFeature.tabularFigures()])),
+          Text(timeSub??'',maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.right,style:F.cap.copyWith(color:const Color(0xFF9AA6B8),fontSize:11)),
+        ])),
+      ])))));}
+}

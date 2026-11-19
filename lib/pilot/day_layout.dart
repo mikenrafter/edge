@@ -33,7 +33,7 @@ class PilotDayLayout extends StatelessWidget {
     // Zoom and pin live inside the readout card (mock-up v16 .ro .ctl), so a
     // manual pin carries them into the pinned area with it.
     final readout=PilotReadout(controller:controller,graph:graph,compact:true,controls:PilotZoomControls(controller:controller,onZoom:(){interaction.zoom();controller.clearScrub();},trailing:TextButton.icon(
-          key:const ValueKey('pilot-pin'),onPressed:interaction.togglePin,icon:Icon(interaction.userPinned?LucideIcons.pinOff:LucideIcons.pin,size:16),label:FittedBox(fit:BoxFit.scaleDown,child:Text(interaction.userPinned?l.pilotUnpin:l.pilotPin,maxLines:1)))));
+          key:const ValueKey('pilot-pin'),onPressed:interaction.togglePin,icon:Icon(interaction.userPinned?LucideIcons.pinOff:LucideIcons.pin,size:16),label:Text(interaction.userPinned?l.pilotUnpin:l.pilotPinShort,maxLines:1))));
     return PilotTheme(child:ListenableBuilder(listenable:interaction,builder:(context,_)=>Scaffold(backgroundColor:p.bg,body:SafeArea(child:Column(children:[
       SizedBox(height:52,child:Row(children:[IconButton(onPressed:()=>Navigator.maybePop(context),icon:const Icon(LucideIcons.chevronLeft)),Expanded(child:Text(title,textAlign:TextAlign.center,maxLines:1,overflow:TextOverflow.ellipsis,style:F.head.copyWith(color:p.ink))),const SizedBox(width:48)])),
       Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:Column(children:[

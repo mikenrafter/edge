@@ -21449,5 +21449,7 @@
   "pilotForecastHoursMinutes": "~{hours} h {minutes} min",
   "@pilotForecastHoursMinutes": {"placeholders": {"hours": {"type": "int"}, "minutes": {"type": "int"}}},
   "pilotWakeShort": "Wake",
-  "pilotExpectedShort": "Expected"
+  "pilotExpectedShort": "Expected",
+  "pilotPinShort": "Pin",
+  "labsFullWidthTabs": "Full-width tabs"
 }

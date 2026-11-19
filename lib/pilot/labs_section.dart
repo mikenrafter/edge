@@ -17,10 +17,10 @@ class _LabsState extends State<LabsSection>{
     return SettingsAccordion(l.pilotLabs,id:'settings_labs',children:[
       for(final flag in PilotFlag.values)SwitchListTile(
         key:ValueKey(flag.key),secondary:const Icon(LucideIcons.flaskConical),
-        title:Text(switch(flag){PilotFlag.alarmScreen=>l.pilotAlarmScreen,PilotFlag.wakeMethods=>l.pilotWakeMethods,PilotFlag.timelines=>l.pilotTimelines}),
+        title:Text(switch(flag){PilotFlag.alarmScreen=>l.pilotAlarmScreen,PilotFlag.wakeMethods=>l.pilotWakeMethods,PilotFlag.timelines=>l.pilotTimelines,PilotFlag.fullWidthTabs=>l.labsFullWidthTabs}),
         value:flag.enabled,onChanged:_saving?null:(v)async{
           setState((){_saving=true;_error=null;});
-          try{await PilotFlags.set(flag,v);if(flag!=PilotFlag.timelines)await widget.onAlarmSourceChanged?.call();}
+          try{await PilotFlags.set(flag,v);if(flag==PilotFlag.alarmScreen||flag==PilotFlag.wakeMethods)await widget.onAlarmSourceChanged?.call();}
           catch(e){if(mounted)setState(()=>_error=e.toString());}
           finally{if(mounted)setState(()=>_saving=false);}
         }),
