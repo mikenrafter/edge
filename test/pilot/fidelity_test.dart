@@ -65,7 +65,7 @@ void main(){
     final handle=t.ensureSemantics();
     await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'A',primary:false),now:day,reference:(_)async=>sample(),onSave:(_)async{}));
     final row=find.byKey(const ValueKey('pilot-primary'));
-    await t.scrollUntilVisible(row,200,scrollable:find.byType(Scrollable).last);
+    await t.ensureVisible(row);await t.pumpAndSettle();
     expect(find.descendant(of:row,matching:find.byType(Switch)),findsNothing);
     expect(find.text('Not the primary alarm'),findsOneWidget);
     expect(t.getSemantics(row).flagsCollection.isToggled,Tristate.isFalse);
