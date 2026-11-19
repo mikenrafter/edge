@@ -5,6 +5,7 @@ Flutter widget tests can put package:flutter_test/... in test.url. The suite
 path owns file attribution. Keep all raw evidence and compare diagnostics too.
 """
 import hashlib,json,pathlib,re,shutil,subprocess,tarfile,time
+from collections import Counter,defaultdict
 root=pathlib.Path.cwd();out=root/'build/p3-gate';extra=out/'attributed';extra.mkdir(exist_ok=True)
 def parse(path):
  tests={};suites={};errors={};prints={};failed=[];done=False;counts=dict(passed=0,failed=0,skipped=0)
@@ -73,10 +74,15 @@ finally:
 base=[row for p in base_logs for row in parse(p)[0]]
 key=lambda r:(r['file'],r['name'])
 h={key(r):r for r in head};b={key(r):r for r in base}
+repeats=Counter(key(r) for r in base);diagnostics=defaultdict(set)
+for row in base:diagnostics[key(row)].add(row['diagnostic'])
 summary={'head_counts':{k:sum(parse(p)[2][k] for p in head_logs) for k in ['passed','failed','skipped']},
  'baseline_counts':{k:sum(parse(p)[2][k] for p in base_logs) for k in ['passed','failed','skipped']},
  'incomplete_logs':[p.name for p in head_logs+base_logs if not parse(p)[1]],
- 'head_failure_count':len(head),'base_failure_count':len(base),'missing_base_files_replayed':missing,
+ 'head_failure_count':len(head),'base_failure_count':len(b),
+ 'baseline_failure_executions':len(base),
+ 'baseline_duplicate_identities':[(k,n) for k,n in sorted(repeats.items()) if n>1],
+ 'baseline_repeat_diagnostic_differences':sorted(k for k,v in diagnostics.items() if len(v)>1),'missing_base_files_replayed':missing,
  'new_failure_identities':sorted(h.keys()-b.keys()),'baseline_only':sorted(b.keys()-h.keys()),
  'matching_diagnostics':sorted(k for k in h.keys()&b.keys() if h[k]['diagnostic']==b[k]['diagnostic']),
  'different_diagnostics':sorted(k for k in h.keys()&b.keys() if h[k]['diagnostic']!=b[k]['diagnostic'])}
