@@ -32,6 +32,19 @@ class IntentDestination extends Destination {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // WHY: unavailable saved files belong beside recordings, not preferences.
+  test('audited extras retain their omission family',()async {
+    final coordinator=OfficialExportCoordinator()..extrasOmissions=[
+      {'family':'saved files','identity':'device_lab/imu/saved.jsonl','reason':'unreadable'},
+      {'family':'settings','identity':'portable preferences','reason':'unavailable'},
+    ];
+    try {
+      expect(await coordinator.omissionSummary(),unorderedEquals([
+        {'family':'recordings','reason':'unsupported','count':1},
+        {'family':'settings','reason':'unsupported','count':1},
+      ]));
+    }finally{coordinator.dispose();}
+  });
   test('literal full peak includes publication overlap and zero verification file',(){
     expect(const ExportEstimate(100,300,20).peakBytes,8391650);
   });
