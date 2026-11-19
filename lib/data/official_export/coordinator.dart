@@ -213,7 +213,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
       if(!canonical.startsWith('${await _session!.resolveSymbolicLinks()}/'))throw StateError('Snapshot is outside its private session');
       _progress(ExportStage.mapping);
       report=await mapOfficialSnapshot(snapshotPath:_snapshot.path,outputPath:'${_session!.path}/official.db',space:space,
-        snapshotReceipt:_snapshot.toJson(),onProgress:(family,done)=>_progress(ExportStage.mapping,family:family,done:done));
+        snapshotReceipt:_snapshot.toJson(),exportId:_id,onProgress:(family,done)=>_progress(ExportStage.mapping,family:family,done:done));
       _hasOmissions=(await omissionSummary()).isNotEmpty;
       _cancellation.check();_passphrase=await prompts.askPassphrase();
       if(_passphrase==null)throw const ExportCancelled();
@@ -242,8 +242,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
       _cancellation.check();await _space.requireAvailable(_estimate.peakBytes);
       if(await File(path).exists())await databaseFactory.deleteDatabase(path);
       final manifest=(await runMappingWorker(MappingInput('json','',const [],json:{
-        'version':1,'snapshot_receipt':_snapshot.toJson(),'official_sha256':official!.plainSha256,
-        'target_tag':'v0.12.2','tables':report!.tables,'days':report!.days,
+        ...report!.manifest,'artifact':'fork_recovery','official_sha256':official!.plainSha256,
       }))).text!;
       await LocalDb.exportCopy(attached:AttachedCopy(_snapshot.path,path,(_,_)async=>'',transitionManifest:manifest),
         beforeCopyWrite:()async {_cancellation.check();await _space.requireAvailable(_estimate.sqlBytes*3+_estimate.extrasBytes);});

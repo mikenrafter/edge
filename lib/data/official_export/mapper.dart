@@ -28,8 +28,9 @@ const pilotPulseOmissions = {
 String _q(String name) => '"${name.replaceAll('"', '""')}"';
 
 class OfficialMapReport {
-  const OfficialMapReport(this.path, this.cursor, this.tables, this.targetCounts, this.days);
+  const OfficialMapReport(this.path, this.cursor, this.tables, this.targetCounts, this.days, {this.manifest=const {}});
   final String path;
+  final Map<String,Object?> manifest;
   final PrunedBeforeChoice cursor;
   final Map<String, Object?> tables;
   final Map<String, int> targetCounts;
@@ -49,6 +50,7 @@ Future<OfficialMapReport> mapOfficialSnapshot({
   void Function(String phase, int milliseconds)? onPhase,
   void Function(String family, int records)? onProgress,
   Map<String,Object?>? snapshotReceipt,
+  String? exportId,
 }) async {
   final timer = Stopwatch()..start();
   void lap(String phase) { onPhase?.call(phase, timer.elapsedMilliseconds); timer.reset(); }
@@ -134,11 +136,11 @@ Future<OfficialMapReport> mapOfficialSnapshot({
     }
     lap('target_objects_verification');
     final days = await builder.dayInventory();
-    final manifest = await runMappingWorker(MappingInput('json', '', const [], json: {
-      'format': 1, 'snapshot_sha256': sourceHash, 'profile_sha256': profileHash, 'target_tag': officialTargetTag, 'target_sha': officialTargetSha,
+    final manifestPayload=<String,Object?>{
+      'format': 1, 'export_id':exportId??sourceHash, 'snapshot_sha256': sourceHash, 'profile_sha256': profileHash, 'target_tag': officialTargetTag, 'target_sha': officialTargetSha,
       'source_schema': await src.getVersion(), 'source_algorithm':kAlgoVersion,
-      'source_sha':const String.fromEnvironment('OPENSTRAP_SOURCE_SHA'),
-      'source_tag':const String.fromEnvironment('OPENSTRAP_SOURCE_TAG'),
+      'source_sha':const String.fromEnvironment('OPENSTRAP_SOURCE_SHA',defaultValue:'unknown'),
+      'source_tag':const String.fromEnvironment('OPENSTRAP_SOURCE_TAG',defaultValue:'unknown'),
       'target_schema': officialTargetSchema, 'target_algorithm':officialTargetAlgorithm,
       'cursor': {'value': choice.sec, 'reason': choice.reason.name},
       'tables': builder.reports, 'target_counts': inventory.rowCounts,
@@ -146,7 +148,8 @@ Future<OfficialMapReport> mapOfficialSnapshot({
         {'type':o.type,'name':o.name,'table':o.table,'reason':'source SQL objects never travel'}],
       'archive_accounting': builder.archiveAccounting, 'days': days,
       'snapshot_receipt': snapshotReceipt ?? {'sha256':sourceHash},
-    }));
+    };
+    final manifest = await runMappingWorker(MappingInput('json', '', const [], json:manifestPayload));
     await space?.requireAvailable((manifest.text!.length * 4) + 65536);
     await targetFile.applySql('CREATE TABLE fork_transition_manifest(version INTEGER NOT NULL,payload_json TEXT NOT NULL)');
     await targetFile.writeRow('fork_transition_manifest', {'version': 1, 'payload_json': manifest.text});
@@ -161,7 +164,7 @@ Future<OfficialMapReport> mapOfficialSnapshot({
     if (afterHash != sourceHash) { throw StateError('snapshot changed during mapping'); }
     lap('manifest_and_final_verification');
     verified = true;
-    return OfficialMapReport(outputPath, choice, builder.reports, inventory.rowCounts, days);
+    return OfficialMapReport(outputPath, choice, builder.reports, inventory.rowCounts, days,manifest:manifestPayload);
   } finally {
     try {
       await targetFile?.close();
