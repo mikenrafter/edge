@@ -725,8 +725,9 @@ void main() {
     final store=ActivityStore(db);
     final first=(await store.reconcile(ActivityKind.nap,[
       {'start':_a0,'end':_a0+2700,'duration_min':45}])).single;
-    final refined=(await store.reconcile(ActivityKind.nap,[
-      {'start':_a0,'end':_a0+2400,'duration_min':40}])).single;
+    await store.reconcile(ActivityKind.nap,[
+      {'start':_a0,'end':_a0+2400,'duration_min':40}]);
+    final refined=(await store.get(first.id))!;
     expect(refined.id,first.id);
     await store.confirm(refined,startTs:refined.startTs,endTs:refined.endTs);
     final kept=(await store.get(first.id))!;

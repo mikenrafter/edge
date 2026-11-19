@@ -454,7 +454,9 @@ void main() {
         'computed_at':1,'finalized':1});
     }
     await src.close();
-    await expectLater(restoreBackup(path),completes,
+    Object? importError;
+    try { await restoreBackup(path); } catch(error) { importError=error; }
+    expect(importError,isNull,
       reason:'missing skipped/window columns are a legacy shape, not a reason to abort all tables');
     expect((await db.query('day_result',where:'day_id = ?',whereArgs:[protectedDay])).single['payload_json'],
       protected['payload_json'],reason:'source compatibility must retain the finalized-row guard');
