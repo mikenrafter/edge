@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../state/prefs.dart';
 
 enum PilotFlag {
-  sleepSummary('pilot.sleep_summary'),
+  sleepSummary('pilot.day_timeline.sleep'),
   observations('pilot.observations'),
   alarmScreen('pilot.alarm_screen'),
   wakeMethods('pilot.wake_methods'),

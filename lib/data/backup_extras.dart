@@ -712,7 +712,7 @@ Future<ImportSummary?> lastImportSummary() async {
 /// backed-up key missing here is written as-is; the guard test keeps this
 /// table complete. Keys in [kPrefsNotBackedUp] need no entry.
 const Map<String, String> kPrefTypes = {
-  'pilot.sleep_summary': 'bool',
+  'pilot.day_timeline.sleep': 'bool',
   'pilot.observations': 'bool',
   'ui.personal_day_mode': 'string',
   'ui.personal_day_totals': 'string',

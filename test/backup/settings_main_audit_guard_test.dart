@@ -44,7 +44,7 @@ const _mustTravel = {
   'ui.device_lab_tab',
   'ui.gestures_tab',
   'ui.haptics_tab',
-  'pilot.sleep_summary', 'pilot.observations', 'pilot.alarm_screen', 'pilot.wake_methods', 'pilot.timelines', 'ui.full_width_tabs',
+  'pilot.day_timeline.sleep', 'pilot.observations', 'pilot.alarm_screen', 'pilot.wake_methods', 'pilot.timelines', 'ui.full_width_tabs',
   'pilot.alarms.v1',
   'workout.stop_pending',
   'ff.alert_dispatcher', 'ff.native_relay', 'ff.source_resolver_ui',
@@ -167,7 +167,7 @@ const _dynamicExamples = {
 // Empty lists are delegating writers, audited at their owning call sites.
 const _indirectKeys = <String, List<String>>{
   'lib/pilot/pilot_flags.dart:flag.key': [
-    'pilot.sleep_summary', 'pilot.observations', 'pilot.alarm_screen', 'pilot.wake_methods', 'pilot.timelines', 'ui.full_width_tabs'],
+    'pilot.day_timeline.sleep', 'pilot.observations', 'pilot.alarm_screen', 'pilot.wake_methods', 'pilot.timelines', 'ui.full_width_tabs'],
   // Generic facades; the concrete writes are scanned at their callers.
   'lib/settings/settings_repository.dart:key': [],
   'lib/settings/settings_repository.dart:e.key': [],
