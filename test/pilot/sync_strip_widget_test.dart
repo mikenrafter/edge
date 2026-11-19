@@ -27,7 +27,7 @@ const _window=SyncStripWindow(now:100000,last:94300,connected:true,reportedNewes
 Future<void> mount(WidgetTester t,Widget child,{double scale=1,double width=390})async{
   t.view.resetPhysicalSize();
   t.view.physicalSize=Size(width,520);t.view.devicePixelRatio=1;
-  await t.pumpWidget(RepaintBoundary(key:_boundary,child:MaterialApp(theme:buildTheme(Brightness.dark),home:MediaQuery(data:MediaQueryData(size:Size(width,520),textScaler:TextScaler.linear(scale)),child:Scaffold(body:Padding(padding:const EdgeInsets.all(16),child:child))))));
+  await t.pumpWidget(RepaintBoundary(key:_boundary,child:MaterialApp(debugShowCheckedModeBanner:false,theme:buildTheme(Brightness.dark),home:MediaQuery(data:MediaQueryData(size:Size(width,520),textScaler:TextScaler.linear(scale)),child:Scaffold(body:Padding(padding:const EdgeInsets.all(16),child:child))))));
   await t.pump();
 }
 Future<void> capture(WidgetTester t,String name)async{
@@ -114,7 +114,7 @@ void main(){
     expect(find.text('Not synced yet'),findsOneWidget);expect(find.text('Waiting for review'),findsOneWidget);
     expect(find.textContaining('still on your band'),findsOneWidget);await capture(t,'bottom-sheet');
     await t.tap(find.text('Got it'));await t.pumpAndSettle();
-    await mount(t,SyncStripRow(window:const SyncStripWindow(now:100000,last:78400),count:0,graphs:[graph],onOpen:(){}));
+    await mount(t,SyncStripRow(window:const SyncStripWindow(now:100000,last:78400),count:0,graphs:[DayGraph(dayStart:35200,hr:List.generate(720,(i)=>65+(i%30).toDouble()),rest:const [(0,300,C.blue)],work:const [(550,590,C.orange)])],onOpen:(){}));
     expect(find.text('View day'),findsOneWidget);await capture(t,'nothing-band-away');
     await t.pumpWidget(const SizedBox());
   });
@@ -145,6 +145,10 @@ void main(){
           :SharedTimelineChart(controller:controller,graph:graph,syncStrip:true,onAnnotationSelected:(_){});
         await mount(t,ChangeNotifierProvider<AppState>.value(value:app,child:chart));
         expect(find.byWidgetPredicate((w)=>w is CustomPaint&&w.painter is SyncStripOverlayPainter),findsOneWidget);
+        if(pilot){
+          final overlay=t.widget<CustomPaint>(find.byWidgetPredicate((w)=>w is CustomPaint&&w.painter is SyncStripOverlayPainter));
+          expect(overlay.foregroundPainter,isA<PilotTimelineAxesPainter>());
+        }
         if(!pilot){
           expect(find.text('90 bpm'),findsOneWidget);
           controller.setScrub(99940);await t.pump();
@@ -198,6 +202,47 @@ void main(){
     int pixel(int x)=>bytes.getUint8((29*240+x)*4+3);
     expect(pixel(50),255);expect(pixel(190),255);expect(pixel(20),0);expect(pixel(220),0);
     image.dispose();picture.dispose();
+  });
+
+  // why: fidelity item 2 must distinguish an empty fixture from connection gating.
+  // catches: hiding phone-held HR when the band disconnects.
+  test('disconnect preserves the real HR pixels before the faded band', ()async{
+    final graph=DayGraph(dayStart:35200,hr:List.generate(720,(i)=>65+(i%30).toDouble()));
+    Future<List<int>> render(bool connected)async{
+      final recorder=ui.PictureRecorder();
+      SyncStripPainter(p:P(true),window:SyncStripWindow(now:100000,last:78400,connected:connected,reportedNewest:99000),graphs:[graph],realWidth:160).paint(Canvas(recorder),const Size(240,44));
+      final picture=recorder.endRecording();
+      final image=await picture.toImage(240,44);
+      final bytes=(await image.toByteData(format:ui.ImageByteFormat.rawRgba))!;
+      final region=<int>[];
+      for(var y=0;y<31;y++){for(var x=0;x<120;x++){for(var channel=0;channel<4;channel++){region.add(bytes.getUint8((y*240+x)*4+channel));}}}
+      image.dispose();picture.dispose();return region;
+    }
+    final connected=await render(true),away=await render(false);
+    expect(away,connected);
+    var red=0;
+    for(var i=0;i<away.length;i+=4){if(away[i]>away[i+1]*1.5&&away[i]>away[i+2]*1.5&&away[i+3]>0)red++;}
+    expect(red,greaterThan(20));
+  });
+
+  // why: fidelity item 1 requires centring inside the band, not a floating label over HR.
+  // catches: left-edge placement, ellipsis, shrinking text, or overlap with the axis/now.
+  test('timeline label uses full short and symbol text while staying centred', (){
+    for(final band in [const Rect.fromLTWH(50,30,300,160),const Rect.fromLTWH(200,30,120,160),const Rect.fromLTWH(290,30,30,160),const Rect.fromLTWH(316,30,4,160)]){
+      final layout=syncBandLabelLayout(window:_window,band:band,plotLeft:0,axisLeft:band.right,style:F.cap,scaler:TextScaler.noScaling);
+      expect(layout.bounds.center,band.center);
+      expect(layout.bounds.left,greaterThanOrEqualTo(band.left));expect(layout.bounds.right,lessThanOrEqualTo(band.right));
+      expect(layout.bounds.overlaps(layout.nowBounds),false);
+      expect(layout.nowBounds.bottom,lessThan(band.top));
+      if(band.width==300){expect(layout.text,'On your band\n1 h 19 m still on your band');}
+      if(band.width==120){expect(layout.text,'On band\n1 h 19 m');}
+      if(band.width==30){expect(layout.text,'?');}
+      if(band.width==4){expect(layout.text,'');}
+    }
+    final axisCase=syncBandLabelLayout(window:_window,band:const Rect.fromLTWH(200,20,120,92),plotLeft:0,axisLeft:296,style:F.cap,scaler:TextScaler.linear(2));
+    expect(axisCase.bounds.right,lessThanOrEqualTo(290));expect(axisCase.nowBounds.right,lessThanOrEqualTo(290));
+    expect(axisCase.bounds.center,const Offset(260,66));
+    expect(axisCase.bounds.overlaps(axisCase.nowBounds),false);
   });
 
 }

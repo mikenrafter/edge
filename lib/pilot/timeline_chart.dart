@@ -260,7 +260,7 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
                     var lane=c.scrub==null?selectedLane:0,left=x+14>_width-52?x-58:x+14;
                     if(!clear(left,lane)){final other=left==x+14?x-58:x+14;if(other>=0&&other<=_width-52&&clear(other,lane)){left=other;}else{while(!clear(left,lane)&&lane<8){lane++;}}}
                     return Positioned(left:left.clamp(0.0,math.max(0.0,_width-52)),top:6+lane*22.0,child:DecoratedBox(decoration:BoxDecoration(color:p.card2,borderRadius:BorderRadius.circular(6)),child:Padding(padding:const EdgeInsets.symmetric(horizontal:6,vertical:1),child:Text(pilotClock(at),style:F.cap.copyWith(color:p.ink,fontSize:11,fontWeight:FontWeight.w600)))));}),
-                  if(widget.syncStrip)Positioned.fill(child:SyncStripOverlay(view:c.view,bottom:24)),
+                  if(widget.syncStrip)Positioned.fill(child:SyncStripOverlay(view:c.view,bottom:24,axisRight:24,axes:PilotTimelineAxesPainter(p:p,view:c.view,graph:visibleGraph,height:plotHeight,showHeartRate:widget.showHeartRate,bpmInPlot:!widget.showHeader,cut:widget.cut))),
                   if(widget.cut!=null)Positioned(left:widget.cut!.leftWidth(_width)-3,top:plotHeight/2-10,width:34,child:Text('…',key:const ValueKey('pilot-overview-cut'),textAlign:TextAlign.center,style:F.head.copyWith(color:p.ink3))),
                   // Mock-up .hint: drawn last, above the hypnogram and marks,
                   // bottom-left, #232c3d99 backing with #e8ecf3cc text (m254: never
@@ -290,10 +290,6 @@ class _PilotPainter extends CustomPainter {
   @override void paint(Canvas canvas,Size size){
     final w=size.width,base=(graph.dayStart??view.start).toDouble();
     double x(double at)=>cut?.x(at,view,w)??view.fraction(at)*w;
-    void text(String s,double dx,double dy,Color color,{bool right=false}){
-      final t=TextPainter(text:TextSpan(text:s,style:F.cap.copyWith(color:color,fontSize:10)),textDirection:TextDirection.ltr,maxLines:1)..layout();
-      t.paint(canvas,Offset(right?dx-t.width:dx,dy));t.dispose();
-    }
     canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(0,0,w,height),const Radius.circular(10)),Paint()..color=p.card);
     for(final gap in graph.unmeasured){
       canvas.drawRect(Rect.fromLTRB(x(base+gap.$1*60),20,x(base+gap.$2*60),height),Paint()..color=p.card2);
@@ -371,6 +367,26 @@ class _PilotPainter extends CustomPainter {
     if(selection!=null)canvas.drawRect(Rect.fromLTRB(x(selection!.start),0,x(selection!.end),height),Paint()..color=p.on(C.blue).withValues(alpha:.2));
     if(scrub!=null)canvas.drawLine(Offset(x(scrub!),0),Offset(x(scrub!),height),Paint()..color=p.ink..strokeWidth=1.4);
     canvas.restore();
+    PilotTimelineAxesPainter(p:p,view:view,graph:graph,height:height,showHeartRate:showHeartRate,bpmInPlot:bpmInPlot,cut:cut).paint(canvas,size);
+  }
+  @override bool shouldRepaint(_PilotPainter old)=>true;
+}
+
+/// The chart and sync overlay share this foreground axis painter.
+class PilotTimelineAxesPainter extends CustomPainter {
+  PilotTimelineAxesPainter({required this.p,required this.view,required this.graph,required this.height,this.showHeartRate=true,this.bpmInPlot=false,this.cut});
+  final P p;final TimelineView view;final DayGraph graph;final double height;
+  final bool showHeartRate,bpmInPlot;final PilotTimelineCut? cut;
+  @override void paint(Canvas canvas,Size size){
+    final w=size.width,base=(graph.dayStart??view.start).toDouble();
+    double x(double at)=>cut?.x(at,view,w)??view.fraction(at)*w;
+    final ticks=!showHeartRate?const <int>[]:visibleHeartRateTicks(graph.hr,start:((view.start-base)/60).floor(),end:((view.end-base)/60).ceil());
+    final low=ticks.isEmpty?0:ticks.first,high=ticks.isEmpty?1:ticks.last;
+    double y(num v)=>25+(1-(v-low)/(high-low))*(height-35);
+    void text(String s,double dx,double dy,Color color,{bool right=false}){
+      final label=TextPainter(text:TextSpan(text:s,style:F.cap.copyWith(color:color,fontSize:10)),textDirection:TextDirection.ltr,maxLines:1)..layout();
+      label.paint(canvas,Offset(right?dx-label.width:dx,dy));label.dispose();
+    }
     for(final t in ticks)text('$t',w-3,y(t)-11,p.on(C.red),right:true);
     if(bpmInPlot&&ticks.isNotEmpty)text('bpm',w-3,2,p.on(C.red),right:true);
     if(cut!=null){
@@ -381,7 +397,7 @@ class _PilotPainter extends CustomPainter {
       }
     }else{for(var i=0;i<=4;i++){text(pilotClock(view.at(i/4)),i==4?w:i*w/4,height+5,p.ink3,right:i==4);}}
   }
-  @override bool shouldRepaint(_PilotPainter old)=>true;
+  @override bool shouldRepaint(PilotTimelineAxesPainter old)=>true;
 }
 
 class PilotZoomControls extends StatelessWidget {
