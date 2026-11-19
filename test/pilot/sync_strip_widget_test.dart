@@ -27,7 +27,7 @@ const _window=SyncStripWindow(now:100000,last:94300,connected:true,reportedNewes
 Future<void> mount(WidgetTester t,Widget child,{double scale=1,double width=390})async{
   t.view.resetPhysicalSize();
   t.view.physicalSize=Size(width,520);t.view.devicePixelRatio=1;
-  await t.pumpWidget(MaterialApp(theme:buildTheme(Brightness.dark),home:MediaQuery(data:MediaQueryData(size:Size(width,520),textScaler:TextScaler.linear(scale)),child:RepaintBoundary(key:_boundary,child:Scaffold(body:Padding(padding:const EdgeInsets.all(16),child:child))))));
+  await t.pumpWidget(RepaintBoundary(key:_boundary,child:MaterialApp(theme:buildTheme(Brightness.dark),home:MediaQuery(data:MediaQueryData(size:Size(width,520),textScaler:TextScaler.linear(scale)),child:Scaffold(body:Padding(padding:const EdgeInsets.all(16),child:child))))));
   await t.pump();
 }
 Future<void> capture(WidgetTester t,String name)async{
