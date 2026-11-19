@@ -85,14 +85,22 @@ class OfficialExportCoordinator extends ChangeNotifier {
     if(record==null)return;
     final file=record['incomplete'];
     final pendingName=record['pending_name'];
-    if(file is Map && file['path'] is String && file['name'] is String) {
+    if(file is Map || pendingName is String) {
       final tree=record['tree'];
-      final storage=tree is String?AndroidCipherBackupStorage(BackupFolder(uri:tree,name:record['folder'] as String))
-        :LocalCipherBackupStorage(File(file['path'] as String).parent);
+      final localRoot=record['local_root'];
+      final path=file is Map?file['path']:null;
+      final CipherBackupStorage storage;
+      if(tree is String) {
+        storage=AndroidCipherBackupStorage(BackupFolder(uri:tree,name:record['folder'] as String));
+      }else if(path is String) {
+        storage=LocalCipherBackupStorage(File(path).parent);
+      }else if(localRoot is String) {
+        storage=LocalCipherBackupStorage(Directory(localRoot));
+      }else {throw const FormatException('Missing export folder receipt');}
       // Listing also makes cleanup idempotent if the prior deletion succeeded
       // before the process died or before its receipt could be replaced.
       for(final candidate in await storage.listCiphertext()) {
-        if((candidate.path==file['path'] || candidate.name==file['name'] || candidate.name==pendingName) &&
+        if((candidate.path==path || (file is Map && candidate.name==file['name']) || candidate.name==pendingName) &&
             candidate.name!=(record['official'] as Map?)?['name']) {
           await storage.deleteCiphertext(candidate);
         }
@@ -127,6 +135,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
     final text=(await runMappingWorker(MappingInput('json','',const [],json:{
       'version':1,'folder':_destination.label,'finished':progress.stage==ExportStage.complete,
       if(_publicationName!=null)'pending_name':_publicationName,
+      if(_destination is LocalCipherBackupStorage)'local_root':(_destination as LocalCipherBackupStorage).directory.path,
       if(_destination is AndroidCipherBackupStorage)'tree':(_destination as AndroidCipherBackupStorage).folder.uri,
       if(official!=null)'official':{'path':official!.file.path,'name':official!.file.name,'sha256':official!.plainSha256,'bytes':official!.bytes},
       if(_incomplete!=null)'incomplete':{'path':_incomplete!.path,'name':_incomplete!.name},
@@ -161,8 +170,15 @@ class OfficialExportCoordinator extends ChangeNotifier {
     await _space.requireAvailable(size*2+8*1024*1024);
     final expected=(await runMappingWorker(MappingInput('fileHash','',const [],json:plain.path))).text!;
     _progress(ExportStage.encrypting,artifact:artifact,total:size);
-    _incomplete=await _destination.createCiphertext('$name.incomplete');
-    await _journal();
+    final incompleteName='$name.incomplete';
+    if((await _destination.listCiphertext()).any((file)=>file.name==incompleteName))throw const FileSystemException('Filename is already in use');
+    _publicationName=incompleteName;await _journal();
+    try {_incomplete=await _destination.createCiphertext(incompleteName);}
+    catch(_) {
+      // A refused create did not return ownership of any existing document.
+      _publicationName=null;await _journal();rethrow;
+    }
+    _publicationName=null;await _journal();
     final encryptedHash=await encryptBackupStream(plain,_passphrase!, (chunk)async {
       _cancellation.check();await _space.requireAvailable(chunk.length+65536);
       await _destination.appendCiphertext(_incomplete!,chunk);
