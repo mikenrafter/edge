@@ -75,7 +75,8 @@ class AppUpdatesRow extends StatelessWidget {
   final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context)!;
+    // Settings is built without localizations in some hosts: English then.
+    final l = AppLocalizations.of(context);
     return ConstrainedBox(
       constraints: BoxConstraints(
         minHeight: 24 + MediaQuery.textScalerOf(context).scale(64),
@@ -83,8 +84,8 @@ class AppUpdatesRow extends StatelessWidget {
       child: SetRow(
         LucideIcons.refreshCw,
         C.blue,
-        l.updatesTitle,
-        sub: updateSummary(l, snapshot),
+        l?.updatesTitle ?? 'App updates',
+        sub: l == null ? 'Not checked' : updateSummary(l, snapshot),
         onTap: onTap,
       ),
     );
