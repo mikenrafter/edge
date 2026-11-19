@@ -7,7 +7,7 @@ path owns file attribution. Keep all raw evidence and compare diagnostics too.
 import hashlib,json,pathlib,re,shutil,subprocess,tarfile,time
 root=pathlib.Path.cwd();out=root/'build/p3-gate';extra=out/'attributed';extra.mkdir(exist_ok=True)
 def parse(path):
- tests={};suites={};errors={};prints={};failed=[];done=False
+ tests={};suites={};errors={};prints={};failed=[];done=False;counts=dict(passed=0,failed=0,skipped=0)
  for line in path.read_text().splitlines():
   try:e=json.loads(line)
   except ValueError:continue
@@ -16,18 +16,25 @@ def parse(path):
   if kind=='testStart':tests[e['test']['id']]=e['test']
   if kind=='error':errors.setdefault(tid,[]).append(e.get('error',''))
   if kind=='print' and any(x in e.get('message','') for x in ['Expected:','EXCEPTION CAUGHT','overflowed']):prints.setdefault(tid,[]).append(e['message'])
-  if kind=='testDone' and e.get('result')!='success' and not e.get('skipped'):failed.append(tid)
+  if kind=='testDone':
+   t=tests.get(tid,{})
+   if not(t.get('name','').startswith('loading ') and e.get('result')=='success'):
+    key='skipped' if e.get('skipped') else 'passed' if e.get('result')=='success' else 'failed';counts[key]+=1
+   if e.get('result')!='success' and not e.get('skipped'):failed.append(tid)
   if kind=='done':done=True
  rows=[]
  for tid in failed:
   t=tests.get(tid,{});file=(suites.get(t.get('suiteID')) or t.get('url') or '').split('/test/',1)[-1]
   diagnostic='\n'.join(errors.get(tid,[])+prints.get(tid,[]))
   diagnostic=re.sub(r'file://'+re.escape(str(root))+'/', '',diagnostic).replace(str(root)+'/','')
+  diagnostic=re.sub(r'(?:file://)?/home/user/runs/[^/]+/', '',diagnostic)
   diagnostic=re.sub(r'/tmp/[^\s/]+', '/tmp/TEMP',diagnostic)
   diagnostic=re.sub(r'\\x1b\[[0-9;]*m','',diagnostic)
   rows.append(dict(file=file,name=t.get('name',''),diagnostic=diagnostic))
- return rows,done
-head=[row for p in sorted(out.glob('head-*.jsonl')) for row in parse(p)[0]]
+ return rows,done,counts
+head_logs=list(sorted(out.glob('head-*.jsonl')))
+assert len(head_logs)==len((root/'build/p3-selection.txt').read_text().splitlines())
+head=[row for p in head_logs for row in parse(p)[0]]
 base_logs=list(sorted(out.glob('base-*.jsonl')))+list(sorted((out/'preloaded').glob('*.jsonl')))
 covered={}
 for p in base_logs:
@@ -52,7 +59,7 @@ try:
   for i in range(0,len(missing),5):
    files=['test/'+f for f in missing[i:i+5]];log=extra/f'base-missing-{i//5:03}.jsonl';start=time.monotonic()
    with log.open('w') as stream:code=subprocess.call(['flutter','test','--no-pub','-j','1','-r','json',*files],stdout=stream,stderr=subprocess.STDOUT)
-   rows,done=parse(log);print(json.dumps(dict(files=files,exit=code,failures=rows,complete=done,seconds=round(time.monotonic()-start,2))),flush=True)
+   rows,done,_=parse(log);print(json.dumps(dict(files=files,exit=code,failures=rows,complete=done,seconds=round(time.monotonic()-start,2))),flush=True)
    assert done,'incomplete baseline replay'
    base_logs.append(log)
 finally:
@@ -65,7 +72,10 @@ finally:
 base=[row for p in base_logs for row in parse(p)[0]]
 key=lambda r:(r['file'],r['name'])
 h={key(r):r for r in head};b={key(r):r for r in base}
-summary={'head_failure_count':len(head),'base_failure_count':len(base),'missing_base_files_replayed':missing,
+summary={'head_counts':{k:sum(parse(p)[2][k] for p in head_logs) for k in ['passed','failed','skipped']},
+ 'baseline_counts':{k:sum(parse(p)[2][k] for p in base_logs) for k in ['passed','failed','skipped']},
+ 'incomplete_logs':[p.name for p in head_logs+base_logs if not parse(p)[1]],
+ 'head_failure_count':len(head),'base_failure_count':len(base),'missing_base_files_replayed':missing,
  'new_failure_identities':sorted(h.keys()-b.keys()),'baseline_only':sorted(b.keys()-h.keys()),
  'matching_diagnostics':sorted(k for k in h.keys()&b.keys() if h[k]['diagnostic']==b[k]['diagnostic']),
  'different_diagnostics':sorted(k for k in h.keys()&b.keys() if h[k]['diagnostic']!=b[k]['diagnostic'])}
