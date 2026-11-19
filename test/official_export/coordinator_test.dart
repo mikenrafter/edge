@@ -86,6 +86,34 @@ void main() {
       } finally {await root.delete(recursive:true);await fx.dispose();}
     },timeout:const Timeout(Duration(minutes:4)));
   }
+  // WHY: stopping only the optional file must keep an actionable saved result
+  // and retry the same capture, without asking for another passphrase.
+  test('cancelled recovery keeps the official receipt and retries the frozen capture',()async {
+    final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('recovery_cancel_');
+    final coordinator=OfficialExportCoordinator();
+    try {
+      final free=Space();final dest=Destination(root,free);final source=Snapshot(fx.forkPath);
+      var stopped=false,passes=0;
+      coordinator.addListener(() {
+        if(!stopped && coordinator.progress.artifact==ExportArtifact.recovery && coordinator.progress.stage==ExportStage.encrypting && coordinator.progress.done>0) {
+          stopped=true;coordinator.cancel();
+        }
+      });
+      final result=await coordinator.export(snapshot:source,privateRoot:Directory('${root.path}/private'),destination:dest,
+        space:ExportSpaceBudget(source:free),prompts:Prompts(()async{passes++;return 'pw';},(_)async=>true));
+      expect(stopped,isTrue);
+      expect(result,isA<OfficialExportSaved>());
+      expect((result as OfficialExportSaved).recoveryStatus,RecoveryStatus.cancelled);
+      expect(File(result.official.file.path).existsSync(),isTrue);
+      expect(root.listSync().whereType<File>().length,1);
+      expect(coordinator.canRetryRecovery,isTrue);
+      final retried=await coordinator.retryRecovery() as OfficialExportSaved;
+      expect(retried.recoveryStatus,RecoveryStatus.saved);
+      expect(retried.official.file.path,result.official.file.path);
+      expect(source.captures,1);expect(passes,1);
+    }finally{await coordinator.finish();coordinator.dispose();await root.delete(recursive:true);await fx.dispose();}
+  });
+
   test('a changed capture receipt is refused before publishing any bytes',()async {
     final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('stale_receipt_');
     try{
