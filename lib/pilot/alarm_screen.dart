@@ -1,4 +1,6 @@
 import 'recorded_stages.dart';
+import 'pilot_readout.dart';
+import 'package:intl/intl.dart';
 import 'pilot_theme.dart';
 // Owner: alarm list State owns its saved snapshot; editor State owns one detached draft.
 import 'dart:async';
@@ -27,7 +29,8 @@ import 'timeline_chart.dart';
 import 'timeline_policy.dart';
 
 class PilotAlarmScreen extends StatefulWidget {
-  const PilotAlarmScreen({super.key,this.alarms,this.onSave,this.now,this.graph=const DayGraph(),this.stages=const []});
+  const PilotAlarmScreen({super.key,this.alarms,this.onSave,this.now,this.graph=const DayGraph(),this.stages=const [],this.reference});
+  final Future<PilotAlarmReference?> Function(DateTime)? reference;
   final List<PilotAlarm>? alarms;final Future<void> Function(List<PilotAlarm>)? onSave;
   final DateTime? now;final DayGraph graph;final List<SleepStage?> stages;
   @override State<PilotAlarmScreen> createState()=>_AlarmListState();
@@ -46,7 +49,7 @@ class _AlarmListState extends State<PilotAlarmScreen>{
     finally{if(mounted)setState(()=>_saving=false);}
   }
   Future<void> _edit(PilotAlarm alarm,{bool adding=false})async{
-    final result=await Navigator.of(context).push<PilotAlarm>(MaterialPageRoute(builder:(_)=>PilotAlarmEditor(alarm:alarm,now:widget.now,graph:widget.graph,stages:widget.stages,
+    final result=await Navigator.of(context).push<PilotAlarm>(MaterialPageRoute(builder:(_)=>PilotAlarmEditor(alarm:alarm,now:widget.now,graph:widget.graph,stages:widget.stages,reference:widget.reference,
       onSave:(draft)async{final updated=[for(final a in _alarms)if(a.id!=draft.id)a.copy(),draft.copy()];await _save(updated);} )));
     if(result!=null&&mounted)setState((){});
   }
@@ -78,9 +81,8 @@ class _AlarmListState extends State<PilotAlarmScreen>{
       body:_loading?const Center(child:CircularProgressIndicator()):ListView(padding:const EdgeInsets.all(16),children:[
         if(app!=null)_activeWake(app),if(_error!=null)Text(_error!),if(_alarms.isEmpty)Text(l.pilotNoAlarms),
         for(final a in sorted)Padding(padding:const EdgeInsets.only(bottom:12),child:Container(key:ValueKey('pilot-alarm:${a.id}'),padding:const EdgeInsets.all(12),decoration:BoxDecoration(color:p.card,border:Border.all(color:a.id==next?p.on(C.blue):p.line),borderRadius:BorderRadius.circular(16)),child:Column(children:[
-          Row(children:[if(a.primary)Icon(LucideIcons.star,color:p.on(C.yellow),size:18),Expanded(child:TextButton(onPressed:()=>_edit(a),child:Align(alignment:Alignment.centerLeft,child:Text(a.label,maxLines:1,overflow:TextOverflow.ellipsis)))),if(a.id==next)Text(l.pilotNext,style:F.cap.copyWith(color:p.on(C.blue))),Switch(value:a.enabled,onChanged:_saving?null:(v){final copies=_alarms.map((x)=>x.copy()).toList();copies.firstWhere((x)=>x.id==a.id).enabled=v;unawaited(_save(copies).catchError((_){ }));})]),
-          Opacity(opacity:a.enabled?1:.35,child:IgnorePointer(child:_AlarmChart(alarm:a,now:now,graph:widget.graph,stages:widget.stages))),
-          Row(children:[Expanded(child:Text(_daysLabel(a,l),maxLines:1,overflow:TextOverflow.ellipsis)),Text(formatClock(a.wakeMinute~/60,a.wakeMinute%60),style:F.head.copyWith(color:p.ink,fontSize:22))]),
+          Row(children:[if(a.primary)Icon(LucideIcons.star,color:p.on(C.yellow),size:18),Expanded(child:TextButton(onPressed:()=>_edit(a),child:Align(alignment:Alignment.centerLeft,child:Text(a.label,maxLines:1,overflow:TextOverflow.ellipsis)))),Expanded(child:Text(_daysLabel(a,l),maxLines:1,overflow:TextOverflow.ellipsis,style:F.cap)),if(a.id==next)Text(l.pilotNext,style:F.cap.copyWith(color:p.on(C.blue))),Switch(value:a.enabled,onChanged:_saving?null:(v){final copies=_alarms.map((x)=>x.copy()).toList();copies.firstWhere((x)=>x.id==a.id).enabled=v;unawaited(_save(copies).catchError((_){ }));})]),
+          Opacity(opacity:a.enabled?1:.35,child:IgnorePointer(child:_AlarmChart(alarm:a,now:now,graph:widget.graph,stages:widget.stages,reference:widget.reference))),
         ]))),
       ]))));
   }
@@ -89,74 +91,159 @@ String _daysLabel(PilotAlarm a,AppLocalizations l)=>a.days.isEmpty?l.pilotOnce:a
 extension on List<int>{String sortedDays(AppLocalizations l){sort();final names=[l.pilotMonday,l.pilotTuesday,l.pilotWednesday,l.pilotThursday,l.pilotFriday,l.pilotSaturday,l.pilotSunday];return map((d)=>names[d-1]).join(', ');}}
 
 class _AlarmChart extends StatefulWidget{
-  const _AlarmChart({required this.alarm,required this.now,required this.graph,required this.stages});
+  const _AlarmChart({required this.alarm,required this.now,required this.graph,required this.stages,this.reference});
+  final Future<PilotAlarmReference?> Function(DateTime)? reference;
   final PilotAlarm alarm;final DateTime now;final DayGraph graph;final List<SleepStage?> stages;
   @override State<_AlarmChart> createState()=>_AlarmChartState();
 }
 class _AlarmChartState extends State<_AlarmChart>{
   late final TimelineController c;final interaction=TimelineInteraction(retention:PilotScrub.temporary);
-  late final DateTime day;
-  @override void initState(){super.initState();day=DateTime(widget.now.year,widget.now.month,widget.now.day);final s=day.millisecondsSinceEpoch~/1000;c=TimelineController(homeStartSec:s,homeEndSec:DateTime(day.year,day.month,day.day+1).millisecondsSinceEpoch~/1000);final at=s+widget.alarm.wakeMinute*60;c.selectRange(at-9000,at+3600);}
+  late final int start;DayGraph? measured;List<SleepStage?>? recorded;int? bed,expected,usualSleepMinutes;
+  @override void initState(){super.initState();final day=DateTime(widget.now.year,widget.now.month,widget.now.day);start=day.millisecondsSinceEpoch~/1000;
+    c=TimelineController(glideDuration:const Duration(milliseconds:450),homeStartSec:DateTime(day.year,day.month,day.day-1,12).millisecondsSinceEpoch~/1000,homeEndSec:DateTime(day.year,day.month,day.day+1,18).millisecondsSinceEpoch~/1000);
+    _range();if(widget.reference!=null||widget.graph.slots==0)WidgetsBinding.instance.addPostFrameCallback((_)=>_load());
+  }
+  void _range(){final a=widget.alarm;if(bed==null){c.selectRange(start+(a.type==PilotAlarmType.sleep?a.wakeMinute-a.earlyMinutes-150:a.workoutStartMinute-90)*60,start+(a.wakeMinute+math.max(60,a.maxSnoozes*a.snoozeMinutes).toInt())*60);}
+    else{final ann=pilotAlarmAnnotations(a,lookupAppLocalizations(const Locale('en')),start,bedMinute:bed,expectedWake:expected).where((v)=>v.id!='bed');
+      c.selectRange(start+(bed!-30)*60,(ann.map((v)=>v.at).reduce(math.max)+15*60).round());}}
+  Future<void> _load()async{
+    try{final day=pilotNextAt(widget.alarm,widget.now)??widget.now;
+      final reading=widget.reference?.call(day)??loadPilotAlarmReference(context,start,day.weekday,sleep:widget.alarm.type==PilotAlarmType.sleep);
+      final sample=await reading;
+      if(mounted&&sample!=null){setState((){measured=sample.graph;recorded=widget.alarm.type==PilotAlarmType.sleep?sample.stages:const [];bed=widget.alarm.type==PilotAlarmType.sleep?sample.bedMinute:null;final wm=sample.wakeMinute;usualSleepMinutes=sample.usualSleepMinutes;expected=wm!=null&&wm>=widget.alarm.wakeMinute-widget.alarm.earlyMinutes&&wm<=widget.alarm.wakeMinute?wm:null;});_range();}
+    }catch(_){/* The overview stays empty when no recorded night is available. */}
+  }
+  @override void didUpdateWidget(_AlarmChart old){super.didUpdateWidget(old);if(old.alarm.wakeMinute!=widget.alarm.wakeMinute||old.alarm.earlyMinutes!=widget.alarm.earlyMinutes)_range();}
   @override void dispose(){c.dispose();interaction.dispose();super.dispose();}
-  @override Widget build(BuildContext context)=>PilotTimelineChart(controller:c,graph:widget.graph,interaction:interaction,stages:widget.stages,height:70,
-    annotations:[ChartAnnotation(id:widget.alarm.id,kind:widget.alarm.type==PilotAlarmType.sleep?AnnotationKind.wake:AnnotationKind.workout,at:day.millisecondsSinceEpoch/1000+widget.alarm.wakeMinute*60,label:widget.alarm.label)]);
+  @override Widget build(BuildContext context){
+    final a=widget.alarm,l=AppLocalizations.of(context)??lookupAppLocalizations(const Locale('en'));
+    final annotations=pilotAlarmAnnotations(a,l,start,bedMinute:bed,expectedWake:expected);
+    final waking=annotations.where((v)=>v.id!='bed').map((v)=>v.at).toList();
+    final left=bed==null?null:start+(bed!+50)*60.0,right=waking.isEmpty?null:waking.reduce(math.min)-600;
+    final cut=left!=null&&right!=null&&right>left+1200?PilotTimelineCut(leftEnd:left,rightStart:right):null;
+    Widget stat(String label,String value)=>Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(label,style:F.cap),Text(value,maxLines:1,overflow:TextOverflow.ellipsis)]));
+    return Column(children:[PilotTimelineChart(controller:c,graph:measured??widget.graph,interaction:interaction,stages:a.type==PilotAlarmType.sleep?recorded??widget.stages:const [],height:114,overview:true,cut:cut,annotations:annotations),
+      Row(children:[stat(a.type==PilotAlarmType.sleep?l.pilotWake:l.pilotWindow,formatClock(a.wakeMinute~/60,a.wakeMinute%60)),
+        if(a.type==PilotAlarmType.sleep)stat(l.pilotExpected,expected==null?'—':formatClock(expected!~/60,expected!%60)),
+        if(a.type==PilotAlarmType.sleep&&bed!=null)stat(l.pilotUsualSleep,usualSleepMinutes==null?'—':l.activityLengthMinutes(usualSleepMinutes!)),
+      ]),
+    ]);
+  }
+}
+
+class PilotAlarmReference {
+  const PilotAlarmReference({required this.graph,this.stages=const [],this.bedMinute,this.wakeMinute,this.usualSleepMinutes});
+  final DayGraph graph;final List<SleepStage?> stages;final int? bedMinute,wakeMinute,usualSleepMinutes;
+}
+Future<PilotAlarmReference?> loadPilotAlarmReference(BuildContext context,int start,int weekday,{bool sleep=true})async{
+  final repo=repoOf(context);if(repo==null)return null;final days=await repo.availableDays();
+  final matching=days.where((d)=>DateTime.parse(d).weekday==weekday).take(4);
+  for(final day in matching){final raw=await repo.getDayTimeline(day);final g=dayGraph(raw);
+    if(!sleep)return PilotAlarmReference(graph:DayGraph(hr:g.hr,movement:g.movement,rest:g.rest,work:g.work,dayStart:start));
+    if(g.rest.isEmpty)continue;
+    final rest=g.rest.first,base=g.dayStart;if(base==null)continue;
+    final wake=DateTime.fromMillisecondsSinceEpoch((base+rest.$2*60)*1000);
+    final wm=wake.hour*60+wake.minute,offset=start+wm*60-(base+rest.$2*60);
+    final detail=await repo.getSleepDetailPrimary(day);
+    return PilotAlarmReference(graph:DayGraph(hr:g.hr,movement:g.movement,rest:g.rest,work:g.work,dayStart:base+offset),
+      stages:recordedStages(detail?.bundle.night??{},origin:base+offset,slots:g.slots,shiftSeconds:offset),
+      bedMinute:((base+rest.$1*60+offset-start)/60).round(),wakeMinute:wm,usualSleepMinutes:(detail?.bundle.night['duration_min'] as num?)?.round());
+  }
+  return null;
+}
+List<ChartAnnotation> pilotAlarmAnnotations(PilotAlarm a,AppLocalizations l,int start,{int? bedMinute,int? expectedWake}){
+  final expected=expectedWake??a.referenceWakeMinute??a.wakeMinute,methods=PilotFlag.wakeMethods.enabled;
+  ChartAnnotation mark(String id,int minute,String label,IconData icon,{int? until,AnnotationKind kind=AnnotationKind.wake})=>ChartAnnotation(id:id,kind:kind,at:start+minute*60.0,until:until==null?null:start+until*60.0,label:label,icon:icon);
+  if(a.type==PilotAlarmType.workout)return [mark('window',a.workoutStartMinute,l.pilotWindow,LucideIcons.dumbbell,until:a.wakeMinute,kind:AnnotationKind.workout),mark('wake',a.wakeMinute,l.pilotWindowEnd,LucideIcons.alarmClock)];
+  return [
+    if(bedMinute!=null)mark('bed',bedMinute,l.pilotFallAsleep,LucideIcons.moon,kind:AnnotationKind.mainSleep),
+    if(a.earlyMinutes>0)mark('early',a.wakeMinute-a.earlyMinutes,l.pilotEarlyWake,LucideIcons.sunrise,until:a.wakeMinute),
+    if(methods&&a.gradual&&a.band)mark('gradual',expected-a.gradualMinutes,l.pilotGradual,LucideIcons.vibrate,until:expected),
+    if(methods&&a.sunrise)mark('sunrise',expected-a.sunriseMinutes,l.pilotSunrise,LucideIcons.sun,until:expected),
+    if(expectedWake!=null&&a.earlyMinutes>0)mark('expected',expected,l.pilotExpected,LucideIcons.alarmClock),
+    mark('wake',a.wakeMinute,l.pilotWake,LucideIcons.alarmClock),
+    mark('backup',a.wakeMinute+(methods&&!a.band?1:0),a.band?l.pilotBandAlarm:l.pilotBandBackup,a.band?LucideIcons.watch:LucideIcons.shieldCheck),
+    if(methods&&a.phoneSound)mark('sound',expected+a.soundDelayMinutes,l.pilotPhoneSound,LucideIcons.volume2),
+    if(methods&&a.phoneVibration)mark('vibration',expected+a.vibrationDelayMinutes,l.pilotPhoneVibration,LucideIcons.smartphone),
+    if(methods&&a.phoneFlash)mark('flash',expected+a.flashDelayMinutes,l.pilotPhoneFlash,LucideIcons.flashlight),
+    if(methods&&a.snooze)for(var n=1;n<=a.maxSnoozes;n++)mark('snooze:$n',expected+n*a.snoozeMinutes,l.pilotSnooze,LucideIcons.alarmClock),
+  ];
 }
 
 class PilotAlarmEditor extends StatefulWidget{
-  const PilotAlarmEditor({super.key,required this.alarm,required this.onSave,this.now,this.graph=const DayGraph(),this.stages=const []});
+  const PilotAlarmEditor({super.key,required this.alarm,required this.onSave,this.now,this.graph=const DayGraph(),this.stages=const [],this.reference});
+  final Future<PilotAlarmReference?> Function(DateTime)? reference;
   final PilotAlarm alarm;final Future<void> Function(PilotAlarm) onSave;final DateTime? now;final DayGraph graph;final List<SleepStage?> stages;
   @override State<PilotAlarmEditor> createState()=>_AlarmEditorState();
 }
 class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderStateMixin {
   late PilotAlarm a;late TimelineController c;late int start;int tab=0;String focus='wake';bool repeat=false,saving=false,playing=false;double progress=0;String? error;
-  DayGraph? measured;List<SleepStage?> stages=[];int? usualBed,expectedWake;
+  DayGraph? measured;List<SleepStage?> stages=[];int? usualBed,previewBed,expectedWake,_runtimeExpectedWake;int night=0,_referenceEpoch=0;
   final interaction=TimelineInteraction(retention:PilotScrub.temporary);
   HapticCancel? _playback;
   late final AnimationController _tabFlash=AnimationController(vsync:this,duration:const Duration(seconds:1))..addListener(_animate);
   late final AnimationController _rowGlow=AnimationController(vsync:this,duration:const Duration(milliseconds:900))..addListener(_animate);
-  String? _freshTiming,_glowingTiming;double _rowDrag=0;int _rowStart=0;
+  final _freshTimings=<String>{},_glowingTimings=<String>{};double _rowDrag=0;int _rowStart=0;
   void _animate(){if(mounted)setState((){});}
-  void _openTab(int value){setState(()=>tab=value);if(value==0&&_freshTiming!=null){_glowingTiming=_freshTiming;_freshTiming=null;_rowGlow.forward(from:0);}}
+  void _openTab(int value){setState(()=>tab=value);if(value==0&&_freshTimings.isNotEmpty){_glowingTimings..clear()..addAll(_freshTimings);_freshTimings.clear();_rowGlow.forward(from:0);}}
   AppLocalizations get l=>AppLocalizations.of(context)??lookupAppLocalizations(const Locale('en'));
   bool get methods=>PilotFlag.wakeMethods.enabled;
   @override void initState(){super.initState();a=widget.alarm.copy();final now=widget.now??DateTime.now();final day=DateTime(now.year,now.month,now.day);start=day.millisecondsSinceEpoch~/1000;
-    c=TimelineController(homeStartSec:DateTime(day.year,day.month,day.day-1,18).millisecondsSinceEpoch~/1000,homeEndSec:DateTime(day.year,day.month,day.day+1,18).millisecondsSinceEpoch~/1000);
-    c.selectRange(start+a.wakeMinute*60-9000,start+a.wakeMinute*60+3600);stages=widget.stages;
-    if(widget.graph.slots==0)WidgetsBinding.instance.addPostFrameCallback((_)=>_loadReference());
+    c=TimelineController(glideDuration:const Duration(milliseconds:450),homeStartSec:DateTime(day.year,day.month,day.day-(a.type==PilotAlarmType.sleep?1:0),a.type==PilotAlarmType.sleep?18:0).millisecondsSinceEpoch~/1000,homeEndSec:DateTime(day.year,day.month,day.day+(a.type==PilotAlarmType.sleep?0:1),a.type==PilotAlarmType.sleep?18:0).millisecondsSinceEpoch~/1000);
+    c.selectRange(start+(a.type==PilotAlarmType.sleep?a.wakeMinute-a.earlyMinutes-20:a.workoutStartMinute-90)*60,start+(a.wakeMinute+(a.type==PilotAlarmType.sleep?20:60))*60);stages=widget.stages;expectedWake=_runtimeExpectedWake=a.referenceWakeMinute;
+    if(widget.reference!=null||widget.graph.slots==0)WidgetsBinding.instance.addPostFrameCallback((_)=>_loadReference());
   }
+  List<DateTime> get nights {
+    final now=widget.now??DateTime.now(),out=<DateTime>[];
+    for(var offset=0;offset<42&&out.length<6;offset++){
+      final day=DateTime(now.year,now.month,now.day+offset);
+      if(a.days.isEmpty?offset==0:a.days.contains(day.weekday))out.add(day);
+    }
+    return out;
+  }
+  String _nightLabel(DateTime day){
+    final now=widget.now??DateTime.now();
+    if(day==DateTime(now.year,now.month,now.day))return l.pilotTonight;
+    if(day==DateTime(now.year,now.month,now.day+1))return l.pilotTomorrowNight;
+    return DateFormat.MMMEd(Localizations.localeOf(context).toString()).format(day);
+  }
+  void _pageNight(int value){
+    setState((){night=value;measured=null;stages=widget.stages;usualBed=previewBed=expectedWake=null;});
+    c.clearScrub();interaction.zoom();unawaited(_loadReference());
+  }
+  void _repeatChanged(){night=0;_pageNight(0);}
   Future<void> _loadReference()async{
+    final epoch=++_referenceEpoch,choices=nights;if(choices.isEmpty)return;
+    final selected=choices[night.clamp(0,choices.length-1)];
     try{
-      final repo=repoOf(context);if(repo==null)return;final days=await repo.availableDays();
-      final matching=days.where((d)=>a.days.contains(DateTime.parse(d).weekday)).take(4);
-      for(final day in matching){final raw=await repo.getDayTimeline(day);final g=dayGraph(raw);if(g.rest.isEmpty)continue;
-        final rest=g.rest.first,base=g.dayStart;if(base==null)continue;
-        final wake=DateTime.fromMillisecondsSinceEpoch((base+rest.$2*60)*1000),bed=DateTime.fromMillisecondsSinceEpoch((base+rest.$1*60)*1000);
-        final wm=wake.hour*60+wake.minute;
-        final offset=start+wm*60-(base+rest.$2*60);
-        final reference=await repo.getSleepDetailPrimary(day);
-        final actualStages=recordedStages(reference?.bundle.night??{},origin:base+offset,slots:g.slots,shiftSeconds:offset);
-        if(mounted)setState((){stages=actualStages;measured=DayGraph(hr:g.hr,movement:g.movement,rest:g.rest,work:g.work,dayStart:base+offset);usualBed=bed.hour*60+bed.minute;expectedWake=wm>=a.wakeMinute-a.earlyMinutes&&wm<=a.wakeMinute?wm:null;});break;
+      PilotAlarmReference? sample;
+      if(widget.reference!=null){sample=await widget.reference!(selected);}else{
+        sample=await loadPilotAlarmReference(context,start,selected.weekday,sleep:a.type==PilotAlarmType.sleep);
       }
+      if(mounted&&epoch==_referenceEpoch)setState((){stages=sample?.stages??widget.stages;measured=sample?.graph;usualBed=previewBed=sample?.bedMinute;
+        final wm=sample?.wakeMinute;expectedWake=wm!=null&&wm>=a.wakeMinute-a.earlyMinutes&&wm<=a.wakeMinute?wm:null;if(night==0)_runtimeExpectedWake=expectedWake;});
     }catch(_){/* Missing reference data stays absent. */}
   }
   @override void dispose(){_tabFlash.dispose();_rowGlow.dispose();_playback?.cancel();interaction.dispose();c.dispose();super.dispose();}
   int minute(double at)=>((at-start)/60).round();
   int get expectedMinute=>expectedWake??a.wakeMinute;
-  int _minuteFor(String id)=>switch(id){'early'=>a.wakeMinute-a.earlyMinutes,'gradual'=>expectedMinute-a.gradualMinutes,'sunrise'=>expectedMinute-a.sunriseMinutes,'sound'=>expectedMinute+a.soundDelayMinutes,'vibration'=>expectedMinute+a.vibrationDelayMinutes,'window'=>a.workoutStartMinute,_=>a.wakeMinute};
+  int _minuteFor(String id)=>switch(id){'early'=>a.wakeMinute-a.earlyMinutes,'gradual'=>expectedMinute-a.gradualMinutes,'sunrise'=>expectedMinute-a.sunriseMinutes,'sound'=>expectedMinute+a.soundDelayMinutes,'vibration'=>expectedMinute+a.vibrationDelayMinutes,'flash'=>expectedMinute+a.flashDelayMinutes,'bed'=>previewBed??a.wakeMinute,'window'=>a.workoutStartMinute,_=>a.wakeMinute};
   void _handle(String id,double at){setState((){tab=0;focus=id;final m=minute(at);
     switch(id){
-      case 'wake':final next=m.clamp(0,1439),delta=next-a.wakeMinute;a.wakeMinute=next;if(expectedWake!=null)expectedWake=(expectedWake!+delta).clamp(0,1439);
+      case 'wake':final next=m.clamp(0,1439),delta=next-a.wakeMinute;a.wakeMinute=next;if(expectedWake!=null)expectedWake=(expectedWake!+delta).clamp(0,1439);if(_runtimeExpectedWake!=null)_runtimeExpectedWake=(_runtimeExpectedWake!+delta).clamp(0,1439);
       case 'early':a.earlyMinutes=(a.wakeMinute-m).clamp(0,720);
       case 'gradual':a.gradualMinutes=(expectedMinute-m).clamp(0,180);
       case 'sunrise':a.sunriseMinutes=(expectedMinute-m).clamp(5,60);
       case 'sound':a.soundDelayMinutes=(m-expectedMinute).clamp(0,30);
       case 'vibration':a.vibrationDelayMinutes=(m-expectedMinute).clamp(0,30);
+      case 'flash':a.flashDelayMinutes=(m-expectedMinute).clamp(0,30);
+      case 'bed':previewBed=m.clamp(-720,a.wakeMinute-a.earlyMinutes-60);
       case 'window':a.workoutStartMinute=m.clamp(0,1439);
     }
   });}
-  void _showNewTiming(String id){_freshTiming=id;_tabFlash.forward(from:0);}
-  void select(String id,double at){setState(()=>focus=id);c.reveal(at);}
-  Future<void> _save()async{a.referenceWakeMinute=expectedWake;setState(()=>saving=true);try{await widget.onSave(a);if(mounted)Navigator.pop(context,a);}catch(e){if(mounted)setState(()=>error=e.toString());}finally{if(mounted)setState(()=>saving=false);}}
+  void _showNewTiming(String id){_freshTimings.add(id);_tabFlash.forward(from:0);}
+  void select(String id,double at){setState(()=>focus=id);c.reveal(at);c.clearScrub();}
+  Future<void> _save()async{a.referenceWakeMinute=_runtimeExpectedWake;setState(()=>saving=true);try{await widget.onSave(a);if(mounted)Navigator.pop(context,a);}catch(e){if(mounted)setState(()=>error=e.toString());}finally{if(mounted)setState(()=>saving=false);}}
   Future<void> _rename()async{final text=TextEditingController(text:a.label);final value=await showDialog<String>(context:context,builder:(c)=>AlertDialog(title:Text(l.pilotAlarmName),content:TextField(controller:text,maxLength:60,autofocus:true),actions:[TextButton(onPressed:()=>Navigator.pop(c),child:Text(l.pilotCancel)),TextButton(onPressed:()=>Navigator.pop(c,text.text.trim()),child:Text(l.pilotSave))]));text.dispose();if(value!=null&&value.isNotEmpty&&mounted)setState(()=>a.label=value);}
   Future<void> _pickPattern()async{
     final patterns=(await HapticPatternStore.load()).list;
@@ -174,85 +261,91 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
     }catch(e){if(mounted)setState(()=>error=e.toString());}finally{ticker?.cancel();if(mounted)setState(()=>playing=false);}
   }
   Widget toggle(String title,bool value,ValueChanged<bool> change,{String? sub})=>SwitchListTile(contentPadding:EdgeInsets.zero,title:Text(title),subtitle:sub==null?null:Text(sub),value:value,onChanged:methods?change:null);
-  Widget timeRow(String id,String title,int value,{String? sub,Widget? trailing})=>GestureDetector(
+  Widget timeRow(String id,String title,int value,{String? sub,Widget? trailing,Color? timeColor,bool showTime=true})=>GestureDetector(
     key:ValueKey('pilot-time:$id'),dragStartBehavior:DragStartBehavior.down,onHorizontalDragStart:(_){_rowStart=_minuteFor(id);_rowDrag=0;select(id,start+_rowStart*60.0);},
     onHorizontalDragUpdate:(d){_rowDrag+=d.delta.dx;final moved=(_rowDrag/10).round()*5;_handle(id,start+(_rowStart+moved)*60.0);},
-    child:ColoredBox(color:_glowingTiming==id&&_rowGlow.isAnimating?P.of(context).on(C.blue).withValues(alpha:.3*math.sin(math.pi*_rowGlow.value)):Colors.transparent,child:ListTile(contentPadding:EdgeInsets.zero,minTileHeight:56,selected:focus==id,title:Text(title),subtitle:sub==null?null:Text(sub),trailing:trailing??Text(formatClock(((value%1440)+1440)%1440~/60,((value%60)+60)%60),style:F.head.copyWith(fontSize:19)),onTap:()=>select(id,start+value*60.0))));
+    child:ColoredBox(color:_glowingTimings.contains(id)&&_rowGlow.isAnimating?P.of(context).on(C.blue).withValues(alpha:.3*math.sin(math.pi*_rowGlow.value)):Colors.transparent,child:ListTile(contentPadding:EdgeInsets.zero,minTileHeight:56,selected:focus==id,title:Text(title,maxLines:1,overflow:TextOverflow.ellipsis),subtitle:sub==null?null:Text(sub,maxLines:1,overflow:TextOverflow.ellipsis),trailing:Row(mainAxisSize:MainAxisSize.min,children:[if(showTime)Text(formatClock(((value%1440)+1440)%1440~/60,((value%60)+60)%60),style:F.head.copyWith(fontSize:19,color:timeColor)),if(trailing!=null)trailing]),onTap:()=>select(id,start+value*60.0))));
 
   Widget feelRow({bool chaos=false})=>Row(children:[TextButton.icon(onPressed:playing?null:()=>_feel(chaos:chaos),icon:const Icon(LucideIcons.vibrate,size:16),label:Text(l.pilotFeelIt)),const Spacer(),TextButton(onPressed:()=>Navigator.of(context).push(MaterialPageRoute(builder:(_)=>const HapticsSettings())),child:Text(l.pilotHaptics))]);
   Widget choices<T>(List<T> values,T selected,ValueChanged<T> change,String Function(T) label)=>Wrap(spacing:6,children:[for(final v in values)ChoiceChip(label:Text(label(v)),selected:v==selected,onSelected:methods?(_)=>setState(()=>change(v)):null,materialTapTargetSize:MaterialTapTargetSize.padded)]);
   @override Widget build(BuildContext context){
-    final p=P.of(context),wake=start+a.wakeMinute*60.0,early=wake-a.earlyMinutes*60,gradual=start+((expectedWake??a.wakeMinute)-a.gradualMinutes)*60.0;
+    final p=P.of(context);
     final graph=measured??widget.graph;
-    final tabs=a.type==PilotAlarmType.sleep?[l.pilotTimes,l.pilotWaking,l.pilotTonight]:[l.pilotWindow,l.pilotHeartRate];
+    final tabs=a.type==PilotAlarmType.sleep?[l.pilotTimes,l.pilotWaking]:[l.pilotWindow,l.pilotHeartRate];
     final handles=[PilotHandle(focus,start+_minuteFor(focus)*60.0,p.on(C.blue))];
     return PilotTheme(child:Builder(builder:(context)=>Scaffold(backgroundColor:p.bg,body:SafeArea(child:Column(children:[
       SizedBox(height:56,child:Row(children:[TextButton(onPressed:saving?null:()=>Navigator.pop(context),child:Text(l.pilotCancel)),Expanded(child:Text(l.pilotEditAlarm(a.label),maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.center,style:F.head.copyWith(color:p.ink))),TextButton(onPressed:saving?null:_save,child:Text(l.pilotSave))])),
-      Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:PilotTimelineChart(controller:c,graph:graph,interaction:interaction,stages:stages,handles:handles,onHandle:_handle,onSelect:(id)=>select(id,start+_minuteFor(id)*60.0),
-        annotations:[ChartAnnotation(id:'wake',kind:AnnotationKind.wake,at:wake,label:a.type==PilotAlarmType.sleep?l.pilotWake:l.pilotWindowEnd),if(a.type==PilotAlarmType.workout)ChartAnnotation(id:'window',kind:AnnotationKind.workout,at:start+a.workoutStartMinute*60.0,until:wake,label:l.pilotWindow),if(a.earlyMinutes>0)ChartAnnotation(id:'early',kind:AnnotationKind.mainSleep,at:early,until:wake,label:l.pilotEarlyWake),if(a.gradual)ChartAnnotation(id:'gradual',kind:AnnotationKind.wake,at:gradual,until:start+(expectedWake??a.wakeMinute)*60.0,label:l.pilotGradual),
-          if(methods&&a.sunrise)ChartAnnotation(id:'sunrise',kind:AnnotationKind.wake,at:start+(expectedMinute-a.sunriseMinutes)*60.0,label:l.pilotSunrise),
-          if(methods&&a.phoneSound)ChartAnnotation(id:'sound',kind:AnnotationKind.wake,at:start+(expectedMinute+a.soundDelayMinutes)*60.0,label:l.pilotPhoneSound),
-          if(methods&&a.phoneVibration)ChartAnnotation(id:'vibration',kind:AnnotationKind.wake,at:start+(expectedMinute+a.vibrationDelayMinutes)*60.0,label:l.pilotPhoneVibration),
-          ChartAnnotation(id:'backup',kind:AnnotationKind.wake,at:wake+(methods&&!a.band?60:0),label:a.band?l.pilotBandAlarm:l.pilotBandBackup)])),
+      if(a.type==PilotAlarmType.sleep)Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:Row(key:const ValueKey('pilot-night-pager'),children:[
+        IconButton(tooltip:l.pilotPreviousNight,onPressed:night>0?()=>_pageNight(night-1):null,icon:const Icon(LucideIcons.chevronLeft)),
+        Expanded(child:Text(nights.isEmpty?l.pilotTonight:_nightLabel(nights[night.clamp(0,nights.length-1)]),textAlign:TextAlign.center,style:F.head.copyWith(color:p.ink))),
+        IconButton(tooltip:l.pilotNextNight,onPressed:night<nights.length-1?()=>_pageNight(night+1):null,icon:const Icon(LucideIcons.chevronRight)),
+      ])),
+      Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:PilotTimelineChart(controller:c,graph:graph,interaction:interaction,stages:stages,handles:handles,selectedAnnotationId:focus,onHandle:_handle,onSelect:(id){if({'bed','wake','early','gradual','sunrise','sound','vibration','flash','window'}.contains(id))select(id,start+_minuteFor(id)*60.0);},
+        annotations:pilotAlarmAnnotations(a,l,start,bedMinute:previewBed,expectedWake:expectedWake))),
       Row(children:[for(var i=0;i<tabs.length;i++)Expanded(child:TextButton(onPressed:()=>_openTab(i),style:TextButton.styleFrom(backgroundColor:i==0&&_tabFlash.isAnimating?p.on(C.blue).withValues(alpha:.6*math.pow(math.sin(2*math.pi*_tabFlash.value),2)):tab==i?p.card2:null,minimumSize:const Size(48,48)),child:Text(tabs[i])))]),
       Expanded(child:ListView(padding:const EdgeInsets.fromLTRB(16,8,16,32),children:[
         if(error!=null)Text(error!,style:TextStyle(color:p.on(C.red))),
         if(tab==0)...[
           SizedBox(height:repeat?200:200,child:Container(padding:const EdgeInsets.all(12),decoration:BoxDecoration(color:p.card,borderRadius:BorderRadius.circular(12)),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-            if(!repeat)Row(children:[Expanded(child:TextButton(onPressed:_rename,child:Align(alignment:Alignment.centerLeft,child:Text(a.label,maxLines:1,overflow:TextOverflow.ellipsis)))),Text(formatClock(a.wakeMinute~/60,a.wakeMinute%60),style:F.head.copyWith(fontSize:24,color:p.ink))]),
+
             if(repeat)...[
               SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[
                 for(var d=1;d<=7;d++)SizedBox(width:48,height:48,child:Semantics(
                   selected:a.days.contains(d),child:TextButton(
                     style:TextButton.styleFrom(padding:EdgeInsets.zero,minimumSize:const Size(48,48),backgroundColor:a.days.contains(d)?p.card2:null),
-                    onPressed:()=>setState((){a.days.contains(d)?a.days.remove(d):a.days.add(d);}),
+                    onPressed:()=>setState((){a.days.contains(d)?a.days.remove(d):a.days.add(d);_repeatChanged();}),
                     child:Text([l.pilotMonday,l.pilotTuesday,l.pilotWednesday,l.pilotThursday,l.pilotFriday,l.pilotSaturday,l.pilotSunday][d-1].substring(0,1)),
                   ),
                 )),
               ])),
-              Row(children:[for(final preset in [({1,2,3,4,5},l.pilotWeekdays),({6,7},l.pilotWeekends),({1,2,3,4,5,6,7},l.pilotEveryDay)])Expanded(child:TextButton(onPressed:()=>setState(()=>a.days={...preset.$1}),child:Text(preset.$2,maxLines:1,overflow:TextOverflow.ellipsis)))]),
-            ]else if(a.type==PilotAlarmType.sleep)Row(children:[Expanded(child:Text('${l.pilotExpected}\n${expectedWake==null?'—':formatClock(expectedWake!~/60,expectedWake!%60)}')),Expanded(child:Text('${l.pilotUsualBedtime}\n${usualBed==null?'—':formatClock(usualBed!~/60,usualBed!%60)}'))])
-            else Row(children:[Expanded(child:Text('${l.pilotWindowStart}\n${formatClock(a.workoutStartMinute~/60,a.workoutStartMinute%60)}')),Expanded(child:Text('${l.pilotWindowEnd}\n${formatClock(a.wakeMinute~/60,a.wakeMinute%60)}'))]),
-            const Spacer(),
+              Row(children:[for(final preset in [({1,2,3,4,5},l.pilotWeekdays),({6,7},l.pilotWeekends),({1,2,3,4,5,6,7},l.pilotEveryDay),(<int>{},l.pilotOnce)])Expanded(child:TextButton(onPressed:()=>setState((){a.days={...preset.$1};_repeatChanged();}),child:Text(preset.$2,maxLines:1,overflow:TextOverflow.ellipsis)))]),
+            ]else Expanded(child:PilotReadout(key:const ValueKey('pilot-alarm-readout'),controller:c,graph:graph,stages:stages,fallbackTime:start+_minuteFor(focus)*60.0,
+              titleWidget:TextButton(onPressed:_rename,style:TextButton.styleFrom(padding:EdgeInsets.zero),child:Align(alignment:Alignment.centerLeft,child:Text(a.label,maxLines:1,overflow:TextOverflow.ellipsis))),
+              fallback:Row(children:[
+                Expanded(child:Text('${l.pilotExpected}\n${expectedWake==null?'—':formatClock(expectedWake!~/60,expectedWake!%60)}',maxLines:2)),
+                Expanded(child:Text('${l.pilotUsualBedtime}\n${usualBed==null?'—':formatClock(((usualBed!%1440)+1440)%1440~/60,((usualBed!%60)+60)%60)}',maxLines:2)),
+              ]))),
+            if(repeat)const Spacer(),
             PilotZoomControls(controller:c,onZoom:interaction.zoom,trailing:TextButton(onPressed:()=>setState(()=>repeat=!repeat),child:Text(repeat?l.pilotDone:_daysLabel(a,l),maxLines:1,overflow:TextOverflow.ellipsis))),
           ]))),
-          timeRow('wake',a.type==PilotAlarmType.sleep?l.pilotWake:l.pilotWindowEnd,a.wakeMinute),
+          if(a.type==PilotAlarmType.sleep&&previewBed!=null)timeRow('bed',l.pilotFallAsleep,previewBed!,sub:previewBed==usualBed?l.pilotYourUsual:l.pilotWhatIf,timeColor:previewBed==usualBed?null:const Color(0xFFF5A36B),trailing:previewBed==usualBed?null:TextButton(onPressed:()=>setState(()=>previewBed=usualBed),child:Text(l.pilotReset))),
           if(a.type==PilotAlarmType.sleep)...[
-            timeRow('early',l.pilotEarlyWake,a.wakeMinute-a.earlyMinutes,sub:a.earlyMinutes==0?null:l.pilotUpToEarlier(a.earlyMinutes),trailing:a.earlyMinutes==0?Text('—',style:F.head):TextButton(onPressed:()=>setState(()=>a.earlyMinutes=0),child:Text(l.pilotReset))),
-            if(methods&&a.gradual)timeRow('gradual',l.pilotGradual,expectedMinute-a.gradualMinutes,sub:l.pilotBeforeFire(a.gradualMinutes)),
+            timeRow('early',l.pilotEarlyWake,a.wakeMinute-a.earlyMinutes,showTime:a.earlyMinutes>0,sub:a.earlyMinutes==0?null:l.pilotUpToEarlier(a.earlyMinutes),trailing:a.earlyMinutes==0?Text('—',style:F.head):TextButton(onPressed:()=>setState(()=>a.earlyMinutes=0),child:Text(l.pilotReset))),
+            if(methods&&a.gradual)Opacity(opacity:a.band?1:.4,child:IgnorePointer(ignoring:!a.band,child:timeRow('gradual',l.pilotGradual,expectedMinute-a.gradualMinutes,sub:l.pilotBeforeFire(a.gradualMinutes)))),
             if(methods&&a.sunrise)timeRow('sunrise',l.pilotSunrise,expectedMinute-a.sunriseMinutes,sub:l.pilotBeforeFire(a.sunriseMinutes)),
+            timeRow('wake',l.pilotWake,a.wakeMinute),
             if(methods&&a.phoneSound)timeRow('sound',l.pilotPhoneSound,expectedMinute+a.soundDelayMinutes,sub:l.pilotAfterFire(a.soundDelayMinutes)),
             if(methods&&a.phoneVibration)timeRow('vibration',l.pilotPhoneVibration,expectedMinute+a.vibrationDelayMinutes,sub:l.pilotAfterFire(a.vibrationDelayMinutes)),
+            if(methods&&a.phoneFlash)timeRow('flash',l.pilotPhoneFlash,expectedMinute+a.flashDelayMinutes,sub:l.pilotAfterFire(a.flashDelayMinutes)),
             ListTile(key:const ValueKey('pilot-band-backup'),contentPadding:EdgeInsets.zero,minTileHeight:56,leading:const Icon(LucideIcons.shieldCheck),title:Text(a.band?l.pilotBandAlarm:l.pilotBandBackup),subtitle:Text(methods&&!a.band?l.pilotBackupAfterLatest:l.pilotBackupAtLatest),trailing:Text(formatClock((a.wakeMinute+(methods&&!a.band?1:0))%1440~/60,(a.wakeMinute+(methods&&!a.band?1:0))%60))),
-            Text(l.pilotTimingPreview,style:F.cap.copyWith(color:p.ink2)),
-          ]else timeRow('window',l.pilotWindowStart,a.workoutStartMinute),
+          ]else...[timeRow('window',l.pilotWindowStart,a.workoutStartMinute),timeRow('wake',l.pilotWindowEnd,a.wakeMinute)],
           SwitchListTile(contentPadding:EdgeInsets.zero,title:Text(l.pilotPrimary),subtitle:Text(a.canBePrimary?l.pilotPrimaryDescription:l.pilotWorkoutNoPrimary),secondary:Icon(LucideIcons.star,color:a.primary?p.on(C.yellow):p.ink3),value:a.primary,onChanged:a.canBePrimary?(v)=>setState(()=>a.primary=v):null),
         ],
         if(tab==1&&a.type==PilotAlarmType.sleep)...[
           if(!methods)Text(l.pilotEnableWakeMethods),
+          Text(l.pilotBeforeAlarm,style:F.cap.copyWith(color:p.ink3)),
+          toggle(l.pilotSunrise,a.sunrise,(v){setState(()=>a.sunrise=v);if(v)_showNewTiming('sunrise');},sub:l.pilotPhoneLimit),
+          toggle(l.pilotGradual,a.gradual,(v)=>setState(()=>a.gradual=v)),
+          if(a.gradual)...[SizedBox(height:56,child:playing?Center(child:LinearProgressIndicator(value:progress)):choices(GradualPattern.values,a.pattern,(v)=>a.pattern=v,(v)=>switch(v){GradualPattern.ramp=>l.pilotRamp,GradualPattern.steady=>l.pilotSteady,GradualPattern.wave=>l.pilotWave})),feelRow()],
+          Text(l.pilotWhenAlarm,style:F.cap.copyWith(color:p.ink3)),
+          toggle(l.pilotBandBuzz,a.band,(v)=>setState(()=>a.band=v),sub:a.band?null:l.pilotBackupLimit),
+          if(a.band)...[choices(['default','custom'],a.customPatternId==null?'default':'custom',(v){if(v=='default'){a.customPatternId=null;}else{_pickPattern();}},(v)=>v=='default'?l.pilotBandDefault:l.pilotMyPattern),Text(l.pilotCustomTradeoff,style:F.cap.copyWith(color:p.ink2)),feelRow()],
+          Text(l.pilotStillAsleep,style:F.cap.copyWith(color:p.ink3)),
+          toggle(l.pilotPhoneVibration,a.phoneVibration,(v){setState(()=>a.phoneVibration=v);if(v)_showNewTiming('vibration');},sub:l.pilotPhoneLimit),
+          toggle(l.pilotPhoneSound,a.phoneSound,(v){setState(()=>a.phoneSound=v);if(v)_showNewTiming('sound');}),
+          toggle(l.pilotPhoneFlash,a.phoneFlash,(v){setState(()=>a.phoneFlash=v);if(v)_showNewTiming('flash');},sub:l.pilotFlashLimit),
+          Text(l.pilotSnooze,style:F.cap.copyWith(color:p.ink3)),
           toggle(l.pilotSnooze,a.snooze,(v)=>setState(()=>a.snooze=v)),
           if(a.snooze)...[
             _IntChoice(label:l.pilotSnoozeLength,value:a.snoozeMinutes,values:const [3,5,9,10,15],onChanged:methods?(v)=>setState(()=>a.snoozeMinutes=v):null),
             _IntChoice(label:l.pilotMaxSnoozes,value:a.maxSnoozes,values:const [0,1,2,3,5,10],onChanged:methods?(v)=>setState(()=>a.maxSnoozes=v):null),
             choices(SnoozeChaos.values,a.chaos,(v)=>a.chaos=v,(v)=>switch(v){SnoozeChaos.steady=>l.pilotSteady,SnoozeChaos.little=>l.pilotLittleChaos,SnoozeChaos.lot=>l.pilotLotChaos,SnoozeChaos.wild=>l.pilotWildChaos}),feelRow(chaos:true),
           ],
-          toggle(l.pilotSunrise,a.sunrise,(v){setState(()=>a.sunrise=v);if(v)_showNewTiming('sunrise');},sub:l.pilotPhoneLimit),
-          toggle(l.pilotGradual,a.gradual,(v)=>setState(()=>a.gradual=v)),
-          if(a.gradual)...[SizedBox(height:56,child:playing?Center(child:LinearProgressIndicator(value:progress)):choices(GradualPattern.values,a.pattern,(v)=>a.pattern=v,(v)=>switch(v){GradualPattern.ramp=>l.pilotRamp,GradualPattern.steady=>l.pilotSteady,GradualPattern.wave=>l.pilotWave})),feelRow()],
-          toggle(l.pilotBandBuzz,a.band,(v)=>setState(()=>a.band=v),sub:a.band?null:l.pilotBackupLimit),
-          if(a.band)...[choices(['default','custom'],a.customPatternId==null?'default':'custom',(v){if(v=='default'){a.customPatternId=null;}else{_pickPattern();}},(v)=>v=='default'?l.pilotBandDefault:l.pilotMyPattern),Text(l.pilotCustomTradeoff,style:F.cap.copyWith(color:p.ink2)),feelRow()],
-          toggle(l.pilotPhoneVibration,a.phoneVibration,(v){setState(()=>a.phoneVibration=v);if(v)_showNewTiming('vibration');},sub:l.pilotPhoneLimit),
-          toggle(l.pilotPhoneSound,a.phoneSound,(v){setState(()=>a.phoneSound=v);if(v)_showNewTiming('sound');}),
           Padding(padding:const EdgeInsets.symmetric(vertical:12),child:Text(l.pilotAwakeExplanation)),
         ],
         if(tab==1&&a.type==PilotAlarmType.workout)...[
           Text(l.pilotWorkoutFailSafe),_IntChoice(label:l.pilotHeartRateZone,value:a.zone,values:const [1,2,3,4,5],onChanged:methods?(v)=>setState(()=>a.zone=v):null),
           _IntChoice(label:l.pilotZoneMinutes,value:a.zoneMinutes,values:const [1,3,5,10,15],onChanged:methods?(v)=>setState(()=>a.zoneMinutes=v):null),
-        ],
-        if(tab==2)...[
-          Text(l.pilotWakeWindowExplanation),const SizedBox(height:16),
-          for(final event in [(usualBed,l.pilotUsualBedtime),(a.gradual?(expectedWake??a.wakeMinute)-a.gradualMinutes:null,l.pilotGradual),(a.earlyMinutes>0?a.wakeMinute-a.earlyMinutes:null,l.pilotEarlyWake),(expectedWake,l.pilotExpected),(a.wakeMinute,l.pilotWake)])
-            if(event.$1!=null)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(LucideIcons.clock,size:18),title:Text(event.$2),trailing:Text(formatClock(((event.$1!%1440)+1440)%1440~/60,((event.$1!%60)+60)%60))),
         ],
       ])),
     ])))));

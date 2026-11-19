@@ -15,7 +15,7 @@ class PilotAlarm {
     this.wakeMinute = 420, this.earlyMinutes = 0, this.gradualMinutes = 15,
     this.gradual = false, this.pattern = GradualPattern.ramp,
     this.band = true, this.customPatternId, this.sunrise = false,
-    this.phoneSound = false, this.phoneVibration = false, this.phoneDelayMinutes = 1,
+    this.phoneSound = false, this.phoneVibration = false, this.phoneFlash = false, this.flashDelayMinutes = 8, this.phoneDelayMinutes = 1,
     this.soundDelayMinutes=1,this.vibrationDelayMinutes=1,this.sunriseMinutes=30,
     this.snooze = true, this.snoozeMinutes = 9, this.maxSnoozes = 3,
     this.chaos = SnoozeChaos.little, this.workoutStartMinute = 1050,
@@ -23,10 +23,10 @@ class PilotAlarm {
   final String id;
   String label;
   PilotAlarmType type;
-  bool enabled, primary, gradual, band, sunrise, phoneSound, phoneVibration, snooze;
+  bool enabled, primary, gradual, band, sunrise, phoneSound, phoneVibration, phoneFlash, snooze;
   Set<int> days;
   int wakeMinute, earlyMinutes, gradualMinutes, phoneDelayMinutes;
-  int soundDelayMinutes,vibrationDelayMinutes,sunriseMinutes;
+  int flashDelayMinutes,soundDelayMinutes,vibrationDelayMinutes,sunriseMinutes;
   int snoozeMinutes, maxSnoozes, workoutStartMinute, zone, zoneMinutes;
   GradualPattern pattern;
   SnoozeChaos chaos;
@@ -40,7 +40,7 @@ class PilotAlarm {
     'days':days.toList(),'wakeMinute':wakeMinute,'earlyMinutes':earlyMinutes,
     'gradualMinutes':gradualMinutes,'gradual':gradual,'pattern':pattern.name,
     'band':band,'customPatternId':customPatternId,'sunrise':sunrise,
-    'phoneSound':phoneSound,'phoneVibration':phoneVibration,'phoneDelayMinutes':phoneDelayMinutes,
+    'phoneFlash':phoneFlash,'flashDelayMinutes':flashDelayMinutes,'phoneSound':phoneSound,'phoneVibration':phoneVibration,'phoneDelayMinutes':phoneDelayMinutes,
     'soundDelayMinutes':soundDelayMinutes,'vibrationDelayMinutes':vibrationDelayMinutes,'sunriseMinutes':sunriseMinutes,
     'snooze':snooze,'snoozeMinutes':snoozeMinutes,'maxSnoozes':maxSnoozes,
     'chaos':chaos.name,'workoutStartMinute':workoutStartMinute,'zone':zone,'zoneMinutes':zoneMinutes,
@@ -53,7 +53,7 @@ class PilotAlarm {
     earlyMinutes:j['earlyMinutes'] as int,gradualMinutes:j['gradualMinutes'] as int,
     gradual:j['gradual'] as bool,pattern:GradualPattern.values.byName(j['pattern'] as String),
     band:j['band'] as bool,customPatternId:j['customPatternId'] as String?,sunrise:j['sunrise'] as bool,
-    phoneSound:j['phoneSound'] as bool,phoneVibration:j['phoneVibration'] as bool,
+    phoneFlash:j['phoneFlash'] as bool? ?? false,flashDelayMinutes:j['flashDelayMinutes'] as int? ?? 8,phoneSound:j['phoneSound'] as bool,phoneVibration:j['phoneVibration'] as bool,
     phoneDelayMinutes:j['phoneDelayMinutes'] as int,soundDelayMinutes:j['soundDelayMinutes'] as int? ?? 1,vibrationDelayMinutes:j['vibrationDelayMinutes'] as int? ?? 1,sunriseMinutes:j['sunriseMinutes'] as int? ?? 30,snooze:j['snooze'] as bool,
     snoozeMinutes:j['snoozeMinutes'] as int,maxSnoozes:j['maxSnoozes'] as int,
     chaos:SnoozeChaos.values.byName(j['chaos'] as String),
@@ -87,7 +87,7 @@ class PilotAlarmStore {
       }
       if(a.wakeMinute<0 || a.wakeMinute>=1440 || a.earlyMinutes<0 || a.earlyMinutes>720 ||
           a.gradualMinutes<0 || a.gradualMinutes>180 || a.snoozeMinutes<1 ||
-          a.maxSnoozes<0 || (a.soundDelayMinutes<0||a.soundDelayMinutes>30||a.vibrationDelayMinutes<0||a.vibrationDelayMinutes>30||a.sunriseMinutes<5||a.sunriseMinutes>60) || a.days.any((d)=>d<1||d>7)) {
+          a.maxSnoozes<0 || (a.flashDelayMinutes<0||a.flashDelayMinutes>30||a.soundDelayMinutes<0||a.soundDelayMinutes>30||a.vibrationDelayMinutes<0||a.vibrationDelayMinutes>30||a.sunriseMinutes<5||a.sunriseMinutes>60) || a.days.any((d)=>d<1||d>7)) {
         throw const FormatException('Invalid alarm settings');
       }
     }

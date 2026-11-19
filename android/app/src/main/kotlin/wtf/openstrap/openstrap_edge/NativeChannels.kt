@@ -215,6 +215,9 @@ object NativeChannels {
                             "broadcast_to_tasker"
                         )
                     )
+                    "setTorch" -> result.success(try {
+                        setTorch(app, call.argument<Boolean>("enabled") == true)
+                    } catch (e: Exception) { false })
                     "perform" -> result.success(
                         perform(
                             app,
@@ -582,15 +585,17 @@ object NativeChannels {
     }
 
     // Torch via CameraManager.setTorchMode — no CAMERA permission required (API 23+).
-    private fun toggleTorch(ctx: Context) {
+    private fun toggleTorch(ctx: Context) { setTorch(ctx, !torchOn) }
+
+    private fun setTorch(ctx: Context, enabled: Boolean): Boolean {
         val cm = ctx.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         val camId = cm.cameraIdList.firstOrNull {
             cm.getCameraCharacteristics(it)
                 .get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
-        } ?: return
-        val desired = !torchOn
-        cm.setTorchMode(camId, desired)
-        torchOn = desired
+        } ?: return false
+        cm.setTorchMode(camId, enabled)
+        torchOn = enabled
+        return true
     }
 
     @Suppress("DEPRECATION")

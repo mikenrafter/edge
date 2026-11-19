@@ -69,10 +69,10 @@ void main(){
   });
   // why: each enabled timing is an independently draggable Times item and graph handle.
   // catches: hiding a timing in a Waking dropdown, coupling all phone delays, or keeping absolute times when Wake moves.
-  for(final step in ['sound','vibration','sunrise'])testWidgets('$step timing drags in list and graph and follows Wake',(t)async{
+  for(final step in ['sound','vibration','sunrise','flash'])testWidgets('$step timing drags in list and graph and follows Wake',(t)async{
     await PilotFlags.set(PilotFlag.wakeMethods,true);
     PilotAlarm? saved;
-    final a=PilotAlarm(id:'a',label:'A',phoneSound:step=='sound',phoneVibration:step=='vibration',sunrise:step=='sunrise');
+    final a=PilotAlarm(id:'a',label:'A',phoneSound:step=='sound',phoneVibration:step=='vibration',sunrise:step=='sunrise',phoneFlash:step=='flash',flashDelayMinutes:1);
     await pump(t,PilotAlarmEditor(alarm:a,now:DateTime(2026,11,23),onSave:(a)async{saved=a.copy();}));
     final row=find.byKey(ValueKey('pilot-time:$step'));expect(row,findsOneWidget);
     await t.ensureVisible(row);await t.pumpAndSettle();await t.drag(row,const Offset(20,0));await t.pumpAndSettle();
@@ -92,7 +92,7 @@ void main(){
     final wakeGesture=await t.startGesture(Offset(rect.left+rect.width/2,rect.center.dy));await wakeGesture.moveBy(Offset(rect.width/6,0));await wakeGesture.up();await t.pumpAndSettle();
     await t.tap(find.text('Save').first);await t.pump();
     expect(saved!.wakeMinute,430);
-    expect(switch(step){'sound'=>saved!.soundDelayMinutes,'vibration'=>saved!.vibrationDelayMinutes,_=>saved!.sunriseMinutes},step=='sunrise'?10:20);
+    expect(switch(step){'sound'=>saved!.soundDelayMinutes,'vibration'=>saved!.vibrationDelayMinutes,'flash'=>saved!.flashDelayMinutes,_=>saved!.sunriseMinutes},step=='sunrise'?10:20);
     expect(t.takeException(),null);
   });
   // why: v16 bounds Sunrise to 5–60 min and phone escalation to 0–30 min.
@@ -113,10 +113,12 @@ void main(){
     Color? tabColor()=>t.widget<TextButton>(find.widgetWithText(TextButton,'Times')).style!.backgroundColor!.resolve({});
     await t.pump(const Duration(milliseconds:250));final first=tabColor();await t.pump(const Duration(milliseconds:250));expect(tabColor(),isNot(first));
     await t.pump(const Duration(milliseconds:250));expect(tabColor(),first);await t.pump(const Duration(milliseconds:250));
+    await t.scrollUntilVisible(find.text('Phone sound'),200,scrollable:find.byType(Scrollable).last);await t.tap(find.text('Phone sound'));await t.pumpAndSettle();
     await t.tap(find.text('Times'));await t.pump();await t.pump(const Duration(milliseconds:450));
     final row=find.byKey(const ValueKey('pilot-time:sunrise'));
     Color rowColor()=>t.widget<ColoredBox>(find.descendant(of:row,matching:find.byType(ColoredBox)).first).color;
-    expect(rowColor().a,greaterThan(0));await t.pumpAndSettle();expect(rowColor(),Colors.transparent);
+    expect(rowColor().a,greaterThan(0));
+    final sound=find.byKey(const ValueKey('pilot-time:sound'));expect(t.widget<ColoredBox>(find.descendant(of:sound,matching:find.byType(ColoredBox)).first).color.a,greaterThan(0));await t.pumpAndSettle();expect(rowColor(),Colors.transparent);
     await t.tap(find.text('Waking'));await t.pumpAndSettle();await t.tap(find.text('Times'));await t.pump(const Duration(milliseconds:450));expect(rowColor(),Colors.transparent);
   });
 }

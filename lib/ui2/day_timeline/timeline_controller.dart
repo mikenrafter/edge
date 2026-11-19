@@ -9,11 +9,12 @@ export 'timeline_model.dart';
 // [sleep-structural spec §4.3; sleep_shared_timeline_test]. Separate channels
 // keep pure zoom frames from rebuilding readout Text or the activity list.
 class TimelineController extends ChangeNotifier {
-  TimelineController({required int homeStartSec, required int homeEndSec})
+  TimelineController({required int homeStartSec, required int homeEndSec,this.glideDuration})
     : assert(homeEndSec > homeStartSec),
       home = TimelineView(homeStartSec.toDouble(), homeEndSec.toDouble()),
       _view = TimelineView(homeStartSec.toDouble(), homeEndSec.toDouble());
   final TimelineView home;
+  final Duration? glideDuration;
   TimelineView _view;
   TimelineView get view => _view;
   final range = ChangeNotifier(),
@@ -85,7 +86,7 @@ class TimelineController extends ChangeNotifier {
     _ticker?.stop();
     // Retarget from pixels currently shown, never the abandoned destination.
     _from = _view;
-    _duration = Motion.timelineGlideTime(zoomGlideMilliseconds(_view, to));
+    _duration = glideDuration??Motion.timelineGlideTime(zoomGlideMilliseconds(_view, to));
     _to = to;
     if (_ticker == null || _reducedMotion || _view == to) {
       _view = to;

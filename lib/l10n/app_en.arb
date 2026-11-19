@@ -21392,5 +21392,17 @@
   "@pilotBeforeFire": {"placeholders": {"minutes": {"type": "int"}}},
   "pilotAfterFire": "{minutes} min after it goes off",
   "@pilotAfterFire": {"placeholders": {"minutes": {"type": "int"}}},
-  "pilotBandAlarm": "Band alarm"
+  "pilotBandAlarm": "Band alarm",
+  "pilotPhoneFlash": "Phone flash",
+  "pilotFlashLimit": "Screen and torch. If the torch is unavailable, only the screen flashes. Keep Edge open for phone alarms.",
+  "pilotBeforeAlarm": "Before it goes off",
+  "pilotWhenAlarm": "When it goes off",
+  "pilotStillAsleep": "If you’re still asleep",
+  "pilotPreviousNight": "Previous night",
+  "pilotNextNight": "Next night",
+  "pilotTomorrowNight": "Tomorrow night",
+  "pilotFallAsleep": "Fall asleep",
+  "pilotYourUsual": "your usual",
+  "pilotWhatIf": "what-if · not saved",
+  "pilotUsualSleep": "Usual sleep"
 }

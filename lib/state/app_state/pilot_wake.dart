@@ -50,6 +50,7 @@ extension _AppPilotWake on AppState {
 
   Future<void> _pilotSnoozeStarted(SnoozeState state)async{
     final alarm=_pilotFiredAlarm??pilotWake.firedAlarm,fire=state.fireAt;
+    pilotWake.suspendFlash();
     if(!_pilotWakeOn||alarm==null||alarm.band||fire==null)return;
     await pilot.PilotSnoozeSlot.save(id:alarm.id,fire:fire,end:state.reAlarmAt);
     final result=await _armNextAlarmOccurrence();

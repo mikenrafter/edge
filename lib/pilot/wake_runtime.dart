@@ -35,6 +35,7 @@ class PilotWakeRuntime {
   final bool Function() isEnabled;
   final WakeLeadUpPolicy leadUps;
   final sunrise=ValueNotifier<double>(0);
+  final flash=ValueNotifier<bool>(false);
   final effects=ValueNotifier<int>(0);
   final Map<String,WorkoutFailSafe> _workout={};
   final Set<String> _played={};
@@ -48,7 +49,7 @@ class PilotWakeRuntime {
     effects.value++;
   }
   void noteSnoozeFire(PilotAlarm alarm,DateTime at)=>noteFire(alarm,at,occurrence:_firedOccurrence);
-  void acknowledge(){acknowledged=true;sunrise.value=0;effects.value++;}
+  void acknowledge(){acknowledged=true;sunrise.value=0;flash.value=false;effects.value++;}
   double lightAt(DateTime now){
     final at=firedAt;
     if(acknowledged)return 0;
@@ -71,7 +72,7 @@ class PilotWakeRuntime {
   }
   Future<void> tick({required DateTime now,required bool connected,required List<PilotAlarm> alarms,bool snoozed=false})async{
     if(_running)return;
-    if(!isEnabled()){sunrise.value=0;return;}
+    if(!isEnabled()){sunrise.value=0;flash.value=false;return;}
     _running=true;
     try{
       for(final alarm in alarms.where((a)=>a.enabled&&a.type==PilotAlarmType.sleep&&!a.band)){
@@ -79,6 +80,7 @@ class PilotWakeRuntime {
         if(at!=null&&now.difference(at)<const Duration(hours:3))await appFire(alarm,now,occurrence:at,connected:connected);
       }
       var brightness=0.0;
+      var flashing=false;
       for(final alarm in alarms.where((a)=>a.enabled)){
         final end=pilotNextAt(alarm,now);
         if(end==null)continue;
@@ -125,6 +127,7 @@ class PilotWakeRuntime {
           if(_played.add(effect))await band(BuzzSequence([0],patternId:alarm.customPatternId),effect);
         }
         if(!snoozed){
+          flashing=alarm.phoneFlash&&elapsed>=Duration(minutes:alarm.flashDelayMinutes);
           final sound=alarm.phoneSound&&elapsed>=Duration(minutes:alarm.soundDelayMinutes);
           final vibration=alarm.phoneVibration&&elapsed>=Duration(minutes:alarm.vibrationDelayMinutes);
           final effect='$key:phone:${elapsed.inSeconds~/30}';
@@ -134,10 +137,11 @@ class PilotWakeRuntime {
           }
         }
       }
-      sunrise.value=brightness;effects.value++;
+      sunrise.value=brightness;flash.value=flashing;effects.value++;
     }finally{_running=false;}
   }
-  void dispose(){sunrise.dispose();effects.dispose();}
+  void suspendFlash(){flash.value=false;}
+  void dispose(){sunrise.dispose();flash.dispose();effects.dispose();}
 }
 class _RuntimeWorkoutPort implements WorkoutAlarmPort {
   _RuntimeWorkoutPort(this.armAction,this.cancelAction);
