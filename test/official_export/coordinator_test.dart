@@ -32,16 +32,23 @@ class IntentDestination extends Destination {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  // WHY: unavailable saved files belong beside recordings, not preferences.
-  test('audited extras retain their omission family',()async {
+  // WHY: review F2. Extras omissions come from the snapshot, so neither saved
+  // file holds them; each reason keeps its own group instead of "unsupported".
+  test('extras omissions keep their true reason and family',()async {
     final coordinator=OfficialExportCoordinator()..extrasOmissions=[
-      {'family':'saved files','identity':'device_lab/imu/saved.jsonl','reason':'unreadable'},
-      {'family':'settings','identity':'portable preferences','reason':'unavailable'},
+      {'family':'saved files','identity':'device_lab/imu/saved.jsonl','reason':'omitted to preserve space for new recordings'},
+      {'family':'saved files','identity':'a.part','reason':'recording is unfinished'},
+      {'family':'saved files','identity':'b.jsonl','reason':'capture failed: FileSystemException'},
+      {'family':'settings','identity':'portable preferences','reason':'preference store unavailable'},
+      {'family':'settings','identity':'some_key','reason':'unsupported preference type'},
     ];
     try {
       expect(await coordinator.omissionSummary(),unorderedEquals([
-        {'family':'recordings','reason':'unsupported','count':1},
-        {'family':'settings','reason':'unsupported','count':1},
+        {'family':'recordings','reason':'space','count':1},
+        {'family':'recordings','reason':'unfinished','count':1},
+        {'family':'recordings','reason':'unreadable','count':1},
+        {'family':'settings','reason':'unreadable','count':1},
+        {'family':'settings','reason':'value','count':1},
       ]));
     }finally{coordinator.dispose();}
   });
