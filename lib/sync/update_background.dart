@@ -16,6 +16,8 @@ import 'package:workmanager/workmanager.dart';
 import '../data/day_label.dart';
 import '../notify/alert_dispatcher.dart' show NotificationCenterDeliveryLedger;
 import '../notify/notification_center.dart';
+import '../notify/alert_policy.dart';
+import '../notify/reminder_sleep_gate.dart';
 import '../notify/notification_event.dart';
 import '../state/locale_controller.dart';
 import 'update_claim_ledger.dart';
@@ -151,7 +153,7 @@ void updateCallbackDispatcher() {
 /// The WorkManager check with injectable platform setup for wiring tests.
 Future<bool> runBackgroundUpdateCheck({
   Future<UpdateCoordinator> Function() create = createUpdateCoordinator,
-}) async {
+}) => AlertPolicy.withSleepSource(const _BackgroundSleepSource(), () async {
   UpdateCoordinator? service;
   try {
     service = await create();
@@ -162,6 +164,13 @@ Future<bool> runBackgroundUpdateCheck({
   } finally {
     service?.dispose();
   }
+});
+
+class _BackgroundSleepSource implements AlertSleepSource {
+  const _BackgroundSleepSource();
+  @override
+  Future<ReminderSleepGate> load(DateTime now) async =>
+      throw StateError('Sleep eligibility requires a foreground recovery pass');
 }
 
 /// The app's handle on the checker: created on first need, never blocks launch,
