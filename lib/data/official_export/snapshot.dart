@@ -23,7 +23,9 @@ class LocalDbExportSnapshot implements OfficialSnapshotSource {
     final pageSize=Sqflite.firstIntValue(await db.rawQuery('PRAGMA page_size'))!;
     final archive=Sqflite.firstIntValue(await db.rawQuery('SELECT sum(raw_bytes) FROM substrate_archive'))??0;
     // Saved-file byte estimate is captured by the extras owner, before any copy.
-    return ExportEstimate(pages*pageSize,archive,await estimateBackupFiles());
+    int extras;
+    try {extras=await estimateBackupFiles();} catch(_) {extras=0;}
+    return ExportEstimate(pages*pageSize,archive,extras);
   }
   @override Future<SnapshotReceipt> capture(Directory session,ExportSpaceBudget space,ExportCancellation cancellation) async {
     final start=DateTime.now().millisecondsSinceEpoch;

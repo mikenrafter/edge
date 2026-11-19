@@ -16,6 +16,7 @@ import '../../util/worker_entries.dart' show Dispatcher;
 import '../raw_archive_row.dart';
 import '../substrate_archive_codec.dart';
 import 'profile_tables.dart';
+import 'profile.dart';
 
 const mappingWorkerInputs = WorkerInputs(nowEpochMs: 0, zoneId: 'explicit-caller-calendar', localeTag: 'en');
 
@@ -63,6 +64,31 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
   WorkerInit.ensure(inputs);
   assertWorker();
   WorkerAudit.entered('officialMappingHeavy');
+  if (input.operation == 'omissionSummary') {
+    final groups=<(String,String),int>{};
+    final tables=(input.json as Map).cast<String,Object?>();
+    for(final entry in tables.entries) {
+      final report=entry.value as Map;
+      String family=const {'decoded_onehz','decoded_rr','substrate_archive','samples','raw_archive_frames','raw_archive','raw_archive_legacy','spectral_archive'}.contains(entry.key)?'recordings'
+        :entry.key.startsWith('backup_')?'settings'
+        :officialProfile.tables[entry.key]?.policy.carriesRows==true?'entries':'other';
+      if(report['omitted_all']==true) {
+        final count=report['source_count'] as int? ?? 0;
+        if(count==0)continue;
+        final reason=officialProfile.tables[entry.key]?.policy==TablePolicy.recomputed?'rebuilt':'unsupported';
+        groups[(family,reason)]=(groups[(family,reason)]??0)+count;
+      } else {
+        for(final entry in (report['rowid_ranges'] as Map? ?? const {}).entries) {
+          final key=entry.key as String;
+          if(key=='mapped; columns=' || key=='kept; columns=')continue;
+          var count=0;
+          for(final range in entry.value as List) {count+=(range[1] as int)-(range[0] as int)+1;}
+          if(count>0)groups[(family,'unsupported')]=(groups[(family,'unsupported')]??0)+count;
+        }
+      }
+    }
+    return MappingOutput([for(final entry in groups.entries) {'family':entry.key.$1,'reason':entry.key.$2,'count':entry.value}],const []);
+  }
   if (input.operation == 'keys') {
     return MappingOutput([for(final row in input.batch!) {
       if(row.containsKey('cursor')) 'cursor':row['cursor'],

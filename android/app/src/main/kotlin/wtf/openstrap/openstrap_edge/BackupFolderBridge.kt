@@ -35,7 +35,7 @@ object BackupFolderBridge {
             .setMethodCallHandler { call, result ->
                 if (call.method == "pick") {
                     pick(result)
-                } else if (call.method in setOf("list", "write", "rename", "delete", "release", "freeSpace", "openCiphertext", "appendCiphertext", "closeCiphertext", "readCiphertext", "closeCiphertextRead")) {
+                } else if (call.method in setOf("list", "write", "rename", "delete", "release", "freeSpace", "openCiphertext", "appendCiphertext", "closeCiphertext", "readCiphertext", "closeCiphertextRead", "shareCiphertext")) {
                     run(result) { dispatch(app, call) }
                 } else {
                     result.notImplemented()
@@ -116,7 +116,7 @@ object BackupFolderBridge {
                 if ((info.flags and DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE) == 0) {
                     throw IOException("This folder does not allow backups to be created. Choose another folder.")
                 }
-                mapOf("uri" to uri.toString(), "name" to info.name)
+                mapOf("uri" to uri.toString(), "name" to info.name, "newGrant" to !alreadyGranted)
             } catch (e: Exception) {
                 if (!alreadyGranted) {
                     try { resolver.releasePersistableUriPermission(uri, flags) } catch (_: Exception) {}
@@ -194,6 +194,16 @@ object BackupFolderBridge {
         }
         val root = root(context, tree)
         return when (call.method) {
+            "shareCiphertext" -> {
+                val info = child(context, root, call.argument<String>("uri") ?: "")
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/octet-stream"
+                    putExtra(Intent.EXTRA_STREAM, info.uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                null
+            }
             "openCiphertext" -> {
                 val name = call.argument<String>("name") ?: throw IllegalArgumentException("Missing filename")
                 requireBackupFileName(name)

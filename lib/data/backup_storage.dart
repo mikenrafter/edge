@@ -7,15 +7,16 @@ import 'package:path_provider/path_provider.dart';
 
 /// A document-tree grant, not a filesystem path. Kept on this device only.
 class BackupFolder {
-  const BackupFolder({required this.uri, required this.name});
+  const BackupFolder({required this.uri, required this.name, this.acquiredForSession=false});
 
   final String uri;
   final String name;
+  final bool acquiredForSession;
 
   Map<String, String> toJson() => {'uri': uri, 'name': name};
 
   factory BackupFolder.fromJson(Map<String, dynamic> json) =>
-      BackupFolder(uri: json['uri'] as String, name: json['name'] as String);
+      BackupFolder(uri: json['uri'] as String, name: json['name'] as String,acquiredForSession:json['newGrant']==true);
 }
 
 class BackupFile {

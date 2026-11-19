@@ -232,7 +232,7 @@ Future<void> writeBackupExtras(
   BackupExtrasAudit? audit,
 }) async {
   if (extras == BackupExtras.none) return;
-  final SharedPreferences sp;
+  SharedPreferences? sp;
   try {
     sp = prefs ?? await SharedPreferences.getInstance();
     if (prefs == null) await sp.reload();
@@ -240,7 +240,7 @@ Future<void> writeBackupExtras(
     audit?.omit('settings','portable preferences','preference store unavailable');
     // No preference store on this platform (a bare test host): nothing to
     // carry, and the export itself is still whole.
-    return;
+    if(audit==null)return;
   }
   final copy = await openDatabase(copyPath, singleInstance: false);
   try {
@@ -249,18 +249,20 @@ Future<void> writeBackupExtras(
     await copy.execute('CREATE TABLE IF NOT EXISTS backup_secrets (key TEXT PRIMARY KEY)');
     await copy.transaction((txn) async {
       await txn.delete('backup_secrets');
+      if(sp==null)return;
+      final capturedPrefs=sp!;
       for (final key in ['coach_api_key', 'coach_chatgpt']) {
-        if (sp.get('${key}_present') == true) {
+        if (capturedPrefs.get('${key}_present') == true) {
           await txn.insert('backup_secrets', {'key': key});
         }
       }
-      final server = sp.get('coach_base_url');
+      final server = capturedPrefs.get('coach_base_url');
       if (server is String && server.isNotEmpty && server != CoachConfig.defaultBaseUrl) {
         await txn.insert('backup_secrets', {'key': 'coach_base_url'});
       }
-      for (final key in sp.getKeys()) {
+      for (final key in capturedPrefs.getKeys()) {
         if (!prefsKeyBackedUp(key) && !kPrefsSignalOnly.contains(key)) continue;
-        final row = _encodePref(sp.get(key));
+        final row = _encodePref(capturedPrefs.get(key));
         if (row == null) {
           audit?.omit('settings',key,'unsupported preference type');continue;
         }

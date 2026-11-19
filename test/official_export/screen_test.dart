@@ -27,6 +27,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(Scrollable),findsWidgets);
       expect(find.byType(CircularProgressIndicator),findsNothing);
+      final l=await AppLocalizations.delegate.load(Locale(settings.$1));
+      await tester.scrollUntilVisible(find.text(l.officialExportChooseFolder),200,scrollable:find.byType(Scrollable).first);
       final buttons=find.byType(OutlinedButton);
       expect(buttons,findsWidgets);
       for(final button in buttons.evaluate()) expect(tester.getSize(find.byWidget(button.widget)).height,greaterThanOrEqualTo(48));

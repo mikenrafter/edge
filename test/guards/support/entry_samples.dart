@@ -79,6 +79,24 @@ Future<void> _sameInWorker<T>(
 }
 
 final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
+  'backupStreamHeavy': (
+    roundTrip: () async {
+      final port=ReceivePort();
+      final request=(const WorkerInputs(nowEpochMs:0,zoneId:'UTC',localeTag:'en'),port.sendPort,null as SendPort?,0,'encrypt','path','pw',1000);
+      try {
+        await expectIsolateRoundTrip<(WorkerInputs,SendPort,SendPort?,int,String,String,String,int)>(request,
+          project:(r)=>[r.$1.nowEpochMs,r.$5,r.$6,r.$7,r.$8]);
+        final dir=await Directory.systemTemp.createTemp('backup_sample_');
+        try {
+          final plain=File('${dir.path}/plain')..writeAsBytesSync([97,98,99]);
+          final bytes=<int>[];
+          final digest=await encryptBackupStream(plain,'pw',(chunk)async{bytes.addAll(chunk);},iterations:1000);
+          expect(digest,'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+          expect(await verifyBackupStream(Stream.value(bytes),'pw'),digest);
+        } finally {await dir.delete(recursive:true);}
+      } finally {port.close();}
+    },
+  ),
   'officialMappingHeavy': (
     roundTrip: () async {
       const input=MappingInput('page','journal_field_def',[

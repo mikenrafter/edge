@@ -11,6 +11,13 @@ import 'package:openstrap_edge/data/official_export/space_budget.dart';
 import 'package:openstrap_edge/data/official_export/mapping_worker.dart';
 import 'rich_fixture.dart';
 
+class Prompts implements ExportPrompts {
+  Prompts(this.pass,this.recovery);
+  final Future<String?> Function() pass;
+  final Future<bool> Function(OfficialExportSaved) recovery;
+  @override Future<String?> askPassphrase()=>pass();
+  @override Future<bool> askRecovery(OfficialExportSaved saved)=>recovery(saved);
+}
 class Space implements ExportFreeSpace {
   int available=1<<40;
   @override Future<int> readAvailableBytes() async=>available;
@@ -64,7 +71,7 @@ void main() {
       final free=Space()..available=64*1024*1024;
       final source=Snapshot(fx.forkPath), dest=Destination(root,free);
       final result=await OfficialExportCoordinator().export(snapshot:source,privateRoot:Directory('${root.path}/private'),destination:dest,
-        space:ExportSpaceBudget(source:free),askPassphrase:()async=>'pw',askRecovery:(_)async=>false);
+        space:ExportSpaceBudget(source:free),prompts:Prompts(()async=>'pw',(_)async=>false));
       expect(result,isA<OfficialExportRefused>()); expect(source.captures,0);expect(dest.creates,0);
       await File('${root.path}/live-wal').writeAsBytes([1,2]);
       expect(File('${root.path}/live-wal').lengthSync(),2);
@@ -79,11 +86,11 @@ void main() {
         final coord=OfficialExportCoordinator();var prompts=0;
         final source=Snapshot(fx.forkPath);
         final result=await coord.export(snapshot:source,privateRoot:Directory('${root.path}/private'),destination:dest,
-          space:ExportSpaceBudget(source:free),askPassphrase:()async {prompts++;return 'pw';},askRecovery:(saved)async {
+          space:ExportSpaceBudget(source:free),prompts:Prompts(()async {prompts++;return 'pw';},(saved)async {
             expect(saved.official.file.name,startsWith('openstrap-official-v0.12.2-'));
             expect(Directory('${root.path}/private').listSync(recursive:true).whereType<File>().where((f)=>f.path.endsWith('official.db')),isEmpty);
             if(mode=='cancel')coord.cancel();return mode=='recoveryFailure';
-          });
+          }));
         expect(prompts,1);expect(source.captures,1);
         if({'corrupt','rename','floor'}.contains(mode)) {
           expect(result,isA<OfficialExportFailed>());expect(result.official,isNull);
