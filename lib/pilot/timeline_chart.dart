@@ -185,8 +185,12 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
           if(lane==lanes.length)lanes.add(x);else lanes[lane]=x;
           marks.add((annotation:a,x:x,lane:lane));
         }
+        // Owner m279: an icon over another item's thumb is drawn at half
+        // opacity and takes no touches, so a press there grabs the thumb.
+        final thumbs=[if(c.selection==null)for(final h in widget.handles)if(h.at>=c.view.start&&h.at<=c.view.end)(id:h.id,x:c.view.fraction(h.at)*_width,half:h.active?3.0:1.0)];
+        bool overThumb(ChartAnnotation a,double x)=>thumbs.any((t)=>t.id!=a.id&&(x-t.x).abs()<11+t.half);
         _annotationTargets.clear();
-        for(final mark in marks){_annotationTargets.add((center:Offset(mark.x,mark.lane*22.0+14),id:mark.annotation.id));}
+        for(final mark in marks){if(!overThumb(mark.annotation,mark.x))_annotationTargets.add((center:Offset(mark.x,mark.lane*22.0+14),id:mark.annotation.id));}
         ChartAnnotation? nearest;
         for(final a in visible){if(nearest==null||(a.at-(c.scrub??c.view.center)).abs()<(nearest.at-(c.scrub??c.view.center)).abs())nearest=a;}
         if(widget.selectedAnnotationId!=null&&c.scrub==null){nearest=widget.annotations.where((a)=>a.id==widget.selectedAnnotationId).firstOrNull??nearest;}
@@ -231,8 +235,10 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
                   if(c.selection==null)for(final h in widget.handles)if(h.at>=c.view.start&&h.at<=c.view.end)
                     Positioned(left:c.view.fraction(h.at)*_width-24,top:22,width:48,height:math.max(48,widget.height-24),
                       child:IgnorePointer(child:Center(child:Container(width:h.active?6:2,height:widget.height-28,decoration:BoxDecoration(color:h.color.withValues(alpha:h.active?1:.35),borderRadius:BorderRadius.circular(3))))),),
-                  if(!widget.overview)for(final mark in marks)Positioned(left:mark.x-11,top:4+mark.lane*22.0,child:Tooltip(message:mark.annotation.label,
-                    child:chip(mark.annotation.icon??annotationIcon(mark.annotation.kind),p.on(_pilotAnnotationColor(mark.annotation)),on:c.scrub==null&&mark.annotation.id==widget.selectedAnnotationId,lane:mark.lane))),
+                  if(!widget.overview)for(final mark in marks)Positioned(left:mark.x-11,top:4+mark.lane*22.0,child:Builder(builder:(context){
+                    final icon=Tooltip(message:mark.annotation.label,
+                      child:chip(mark.annotation.icon??annotationIcon(mark.annotation.kind),p.on(_pilotAnnotationColor(mark.annotation)),on:c.scrub==null&&mark.annotation.id==widget.selectedAnnotationId,lane:mark.lane));
+                    return overThumb(mark.annotation,mark.x)?IgnorePointer(key:ValueKey('pilot-icon-over-thumb:${mark.annotation.id}'),child:Opacity(opacity:.5,child:icon)):icon;})),
                   for(final group in overviewGroups)Positioned(left:group.left,top:group.lane*annotationStep,child:DecoratedBox(decoration:BoxDecoration(color:const Color(0xCC121824),borderRadius:BorderRadius.circular(5)),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
                     Column(children:[for(final a in group.items)Padding(padding:const EdgeInsets.only(bottom:1),child:Tooltip(message:a.label,child:chip(a.icon??annotationIcon(a.kind),p.on(_pilotAnnotationColor(a)),small:true))),
                       // The "…" tile: the icon tile's size and style, no time label.
