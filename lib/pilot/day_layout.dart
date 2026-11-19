@@ -6,8 +6,9 @@ import '../l10n/app_localizations.dart';
 import '../ui2/chart_annotations.dart';
 import '../ui2/day_timeline/day_graph.dart';
 import '../ui2/day_timeline/timeline_controller.dart';
-import '../ui2/grammar.dart' show SubTabs;
 import '../ui2/theme.dart';
+import '../ui2/grammar.dart' show SubTabs;
+import '../ui2/charts.dart' show SleepStage;
 import 'pilot_readout.dart';
 import 'timeline_chart.dart';
 import 'timeline_policy.dart';
@@ -16,7 +17,10 @@ class PilotDayLayout extends StatelessWidget {
   const PilotDayLayout({super.key,required this.title,required this.dayRow,required this.graph,
     required this.controller,required this.interaction,required this.tab,required this.onTab,
     required this.listController,required this.rows,required this.annotations,
-    this.onScrub,this.onPan,this.onAnnotation,this.before=const [],this.after=const [],this.backToOpened,this.counts=const {}});
+    this.onScrub,this.onPan,this.onAnnotation,this.before=const [],this.after=const [],this.backToOpened,this.counts=const {},this.stages=const []});
+  /// Recorded stages for the visible day, one per 5-min slot from the graph's
+  /// start; drawn at half opacity inside sleep (signed-off day timeline).
+  final List<SleepStage?> stages;
   final Map<PilotTimelineTab,int> counts;
   final String title;final Widget dayRow;final DayGraph graph;
   final TimelineController controller;final TimelineInteraction interaction;
@@ -30,15 +34,14 @@ class PilotDayLayout extends StatelessWidget {
     // Zoom and pin live inside the readout card (mock-up v16 .ro .ctl), so a
     // manual pin carries them into the pinned area with it.
     final readout=PilotReadout(controller:controller,graph:graph,compact:true,controls:PilotZoomControls(controller:controller,onZoom:(){interaction.zoom();controller.clearScrub();},trailing:TextButton.icon(
-          key:const ValueKey('pilot-pin'),onPressed:interaction.togglePin,icon:Icon(interaction.userPinned?LucideIcons.pinOff:LucideIcons.pin,size:16),label:Text(interaction.userPinned?l.pilotUnpin:l.pilotPin,maxLines:1))));
+          key:const ValueKey('pilot-pin'),onPressed:interaction.togglePin,icon:Icon(interaction.userPinned?LucideIcons.pinOff:LucideIcons.pin,size:16),label:Text(interaction.userPinned?l.pilotUnpin:l.pilotPinShort,maxLines:1))));
     return PilotTheme(child:ListenableBuilder(listenable:interaction,builder:(context,_)=>Scaffold(backgroundColor:p.bg,body:SafeArea(child:Column(children:[
       SizedBox(height:52,child:Row(children:[IconButton(onPressed:()=>Navigator.maybePop(context),icon:const Icon(LucideIcons.chevronLeft)),Expanded(child:Text(title,textAlign:TextAlign.center,maxLines:1,overflow:TextOverflow.ellipsis,style:F.head.copyWith(color:p.ink))),const SizedBox(width:48)])),
       Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:Column(children:[
         dayRow,
-        PilotTimelineChart(controller:controller,graph:graph,interaction:interaction,annotations:annotations,onScrub:onScrub,onPan:onPan,onSelect:onAnnotation),
+        PilotTimelineChart(controller:controller,graph:graph,interaction:interaction,annotations:annotations,stages:stages,onScrub:onScrub,onPan:onPan,onSelect:onAnnotation),
         const SizedBox(height:6),
-        // The app's SubTabs (as on the alarm settings' day picker), with each
-        // tab's count as its badge (mock-up .etabs .cnt).
+        // Mock-up v16 .etabs, with each tab's count as its badge (.cnt).
         SubTabs([for(final value in PilotTimelineTab.values)switch(value){PilotTimelineTab.pending=>l.dayActivitiesPending,PilotTimelineTab.saved=>l.dayActivitiesSaved,PilotTimelineTab.discarded=>l.dayActivitiesDiscarded}],
           PilotTimelineTab.values.indexOf(tab),(i)=>onTab(PilotTimelineTab.values[i]),color:C.blue,
           itemKeys:[for(final value in PilotTimelineTab.values)ValueKey('pilot-tab:${value.name}')],

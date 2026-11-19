@@ -6,6 +6,7 @@ import '../models/chart_point.dart' show ChartOlder, OlderAt;
 export '../models/chart_point.dart' show ChartOlder;
 import 'older_version.dart';
 import 'dart:math' as math;
+import '../pilot/pilot_flags.dart' show PilotFlag;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/gestures.dart';
@@ -3534,6 +3535,10 @@ class SubTabs extends StatefulWidget {
   /// scrolls when a label or the text scale is wider.
   final bool dense;
 
+  /// Labels drawn struck through (a removed sleep block that can still be
+  /// opened). Only the full-width segmented look draws it.
+  final Set<int> struck;
+
   const SubTabs(
     this.items,
     this.index,
@@ -3547,6 +3552,7 @@ class SubTabs extends StatefulWidget {
     this.badges = const {},
     this.minHeight = S.tap,
     this.dense = false,
+    this.struck = const {},
   });
 
   @override
@@ -3604,22 +3610,7 @@ class _SubTabsState extends State<SubTabs> {
     final muted = widget.muted;
     final dense = widget.dense;
     final color = widget.color;
-    return SizedBox(
-      height: MediaQuery.textScalerOf(c).scale(widget.minHeight),
-      // The fifth tab is off the edge on every phone we ship to — at 360 pt
-      // it is entirely off-screen in both tab sets, and above 1.0x text every
-      // set overflows even a 430 pt screen. ScrollHint draws nothing at all
-      // while the row fits, and scales with how much is left to scroll.
-      child: ScrollHint(
-        child: SingleChildScrollView(
-          controller: _scroll,
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.only(right: S.x10),
-          child: Row(
-            children: [
-              for (var i = 0; i < items.length; i++) ...[
-                if (i > 0) SizedBox(width: dense ? 2 : S.x2),
-                Builder(
+    Widget tab(int i, {bool segmented = false}) => Builder(
                   builder: (_) {
                     final off = disabled.contains(i);
                     final on = i == index && !off;
@@ -3640,7 +3631,7 @@ class _SubTabsState extends State<SubTabs> {
                                   )?.supplementUnavailable(items[i]) ??
                                   '${items[i]}, unavailable')
                             : widget.semanticLabels?[i],
-                        child: AnimatedContainer(
+                        child: segmented ? _segment(c, i, on, off) : AnimatedContainer(
                           duration: motion(c, Motion.base),
                           constraints:
                               BoxConstraints(minWidth: dense ? 0 : S.tap),
@@ -3681,7 +3672,91 @@ class _SubTabsState extends State<SubTabs> {
                       )),
                     );
                   },
-                ),
+                );
+    // Owner m249/m250 (Labs "Full-width tabs", default on): the segmented
+    // control from the signed-off mock-ups (v11 .tabs, v22 tabs): one track,
+    // equal cells. If any tab needs more than its share, the scrolling pills
+    // below are used unchanged. Off: the scrolling pills, as before.
+    if (PilotFlag.fullWidthTabs.enabled) {
+      final scaler = MediaQuery.textScalerOf(c);
+      double need(int i) {
+        final t = TextPainter(
+            text: TextSpan(text: items[i], style: F.cap.copyWith(fontSize: 13)),
+            textDirection: TextDirection.ltr, textScaler: scaler, maxLines: 1)
+          ..layout();
+        final w = t.width + 12 + (widget.badges.containsKey(i) ? 6 + 24 : 0);
+        t.dispose();
+        return w;
+      }
+      final needs = [for (var i = 0; i < items.length; i++) need(i)];
+      return LayoutBuilder(builder: (c, box) {
+        final share = (box.maxWidth - 4 - 2.0 * (items.length - 1)) / items.length;
+        if (!box.hasBoundedWidth || items.isEmpty || needs.any((n) => n > share)) return _scrolling(c, tab);
+        return Container(
+          height: scaler.scale(widget.minHeight),
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(10)),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (var i = 0; i < items.length; i++) ...[
+              if (i > 0) const SizedBox(width: 2),
+              Expanded(child: tab(i, segmented: true)),
+            ],
+          ]),
+        );
+      });
+    }
+    return _scrolling(c, tab);
+  }
+
+  /// One cell of the segmented look: the selected cell takes the accent wash
+  /// and a half-strength accent border; disabled and muted keep `card2`.
+  Widget _segment(BuildContext c, int i, bool on, bool off) {
+    final p = P.of(c);
+    final accent = p.on(widget.color);
+    return AnimatedContainer(
+      duration: motion(c, Motion.base),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      decoration: BoxDecoration(
+        color: off || (widget.muted.contains(i) && !on)
+            ? p.card2
+            : on
+                ? p.wash(widget.color)
+                : null,
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: on ? accent.withValues(alpha: .5) : const Color(0x00000000)),
+      ),
+      child: FittedBox(fit: BoxFit.scaleDown, child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Text(widget.items[i], maxLines: 1, style: F.cap.copyWith(
+          fontSize: 13,
+          color: off ? p.ink3 : on ? p.ink : p.ink2,
+          fontWeight: on ? FontWeight.w600 : FontWeight.w500,
+          decoration: widget.struck.contains(i) ? TextDecoration.lineThrough : null,
+        )),
+        if (widget.badges[i] case final badge?) ...[const SizedBox(width: 6), badge],
+      ])),
+    );
+  }
+
+  Widget _scrolling(BuildContext c, Widget Function(int) tab) {
+    final items = widget.items;
+    final dense = widget.dense;
+    return SizedBox(
+      height: MediaQuery.textScalerOf(c).scale(widget.minHeight),
+      // The fifth tab is off the edge on every phone we ship to — at 360 pt
+      // it is entirely off-screen in both tab sets, and above 1.0x text every
+      // set overflows even a 430 pt screen. ScrollHint draws nothing at all
+      // while the row fits, and scales with how much is left to scroll.
+      child: ScrollHint(
+        child: SingleChildScrollView(
+          controller: _scroll,
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.only(right: S.x10),
+          child: Row(
+            children: [
+              for (var i = 0; i < items.length; i++) ...[
+                if (i > 0) SizedBox(width: dense ? 2 : S.x2),
+                tab(i),
               ],
             ],
           ),
@@ -3869,6 +3944,10 @@ class BigButton extends StatelessWidget {
   /// The row-sized form: one tap target tall, for buttons that sit several to
   /// a row (Keep / Discard / Edit) rather than commit a whole screen.
   final bool dense;
+
+  /// Keeps the label on one line, scaled down to fit, for a row of buttons
+  /// that must never wrap (the pilot day list, owner m192).
+  final bool oneLine;
   final VoidCallback? onTap;
   final VoidCallback? onPressStart;
   final VoidCallback? onPressEnd;
@@ -3882,6 +3961,7 @@ class BigButton extends StatelessWidget {
     this.soft = false,
     this.busy = false,
     this.dense = false,
+    this.oneLine = false,
     this.onTap,
     this.onPressStart,
     this.onPressEnd,
@@ -3924,21 +4004,26 @@ class BigButton extends StatelessWidget {
               const SizedBox(width: S.x2),
             ],
             Flexible(
-              child: PendingStatic(
+              child: _maybeFit(oneLine, PendingStatic(
                 child: Text(
                 label,
                 style: (dense ? F.body.copyWith(fontWeight: FontWeight.w600) : F.head)
                     .copyWith(color: ink),
                 textAlign: TextAlign.center,
-                maxLines: 2,
+                maxLines: oneLine ? 1 : 2,
+                softWrap: !oneLine,
                 ),
-              ),
+              )),
             ),
           ],
         ),
       ),
     );
   }
+
+  static Widget _maybeFit(bool fit, Widget child) => fit
+      ? FittedBox(fit: BoxFit.scaleDown, child: child)
+      : child;
 }
 
 // ══════════════════ CHART FRAME ══════════════════

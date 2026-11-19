@@ -31,6 +31,7 @@ class PilotTimelineCut {
 Color _pilotAnnotationColor(ChartAnnotation a)=>switch(a.id){
   'bed'=>C.indigo,'early'=>C.teal,'gradual'=>C.yellow,'sunrise'=>C.orange,
   'wake'||'expected'=>C.orange,'sound'||'vibration'||'flash'=>C.pink,'backup'=>C.blue,
+  final id when id.startsWith('snooze:')=>C.n500,
   _=>annotationColor(a.kind),
 };
 
@@ -73,7 +74,7 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
   String? _handle;
   double _width=1;
   final _annotationTargets=<({Offset center,String id})>[];
-  double? _zoomStart;int _edgeDirection=0,_edgeTicks=0;
+  double? _zoomStart,_lastHandle;int _edgeDirection=0,_edgeTicks=0;
   TimelineController get c=>widget.controller;
   TimelineInteraction get interaction=>widget.interaction;
   double _time(double dx)=>c.view.at((dx/_width).clamp(0,1));
@@ -118,8 +119,11 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
   }
   void _edit(double at){
     if(_handle!=null){
-      final step=_fine?60:300;
-      widget.onHandle?.call(_handle!,(at/step).round()*step.toDouble());
+      final step=_fine?60:300,value=(at/step).round()*step.toDouble();
+      // As the original sleep editor (TimelineHaptics): a tick per step, a
+      // stronger one on each hour.
+      if(value!=_lastHandle){if(value%3600==0){HapticFeedback.mediumImpact();}else{HapticFeedback.selectionClick();}_lastHandle=value;}
+      widget.onHandle?.call(_handle!,value);
     } else if(_scrub){_setCursor(at);}
   }
   void _move(PointerMoveEvent e){
@@ -166,14 +170,16 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
         _width=box.maxWidth;
         final visible=widget.annotations.where((a)=>a.at<=c.view.end&&(a.until??a.at)>=c.view.start).toList();
         final lanes=<double>[];final marks=<({ChartAnnotation annotation,double x,int lane})>[];
-        for(final a in visible){
+        // Mock-up v22: snoozes are dashed grey lines only, never icons.
+        bool iconless(ChartAnnotation a)=>a.id.startsWith('snooze:');
+        for(final a in visible.where((a)=>!iconless(a))){
           final x=(widget.cut?.x(a.at,c.view,_width)??c.view.fraction(a.at)*_width).clamp(12.0,math.max(12.0,_width-12)).toDouble();
           var lane=0;while(lane<lanes.length&&(lanes[lane]-x).abs()<24)lane++;
           if(lane==lanes.length)lanes.add(x);else lanes[lane]=x;
           marks.add((annotation:a,x:x,lane:lane));
         }
         _annotationTargets.clear();
-        for(final mark in marks){_annotationTargets.add((center:Offset(mark.x,mark.lane*22.0+9),id:mark.annotation.id));}
+        for(final mark in marks){_annotationTargets.add((center:Offset(mark.x,mark.lane*22.0+14),id:mark.annotation.id));}
         ChartAnnotation? nearest;
         for(final a in visible){if(nearest==null||(a.at-(c.scrub??c.view.center)).abs()<(nearest.at-(c.scrub??c.view.center)).abs())nearest=a;}
         if(widget.selectedAnnotationId!=null&&c.scrub==null){nearest=widget.annotations.where((a)=>a.id==widget.selectedAnnotationId).firstOrNull??nearest;}
@@ -181,7 +187,7 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
         final overviewGroups=<({double at,List<ChartAnnotation> items,double left,int lane})>[];
         if(widget.overview){
           final groups=<double,List<ChartAnnotation>>{};
-          for(final a in visible){(groups[(a.at/60).round()*60.0]??=[]).add(a);}
+          for(final a in visible.where((a)=>!iconless(a))){(groups[(a.at/60).round()*60.0]??=[]).add(a);}
           final ends=<double>[];
           for(final at in groups.keys.toList()..sort()){
             final items=groups[at]!,sx=widget.cut?.x(at,c.view,_width)??c.view.fraction(at)*_width;
@@ -196,9 +202,11 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
           }
         }
         final selectedLane=marks.where((m)=>m.annotation.id==widget.selectedAnnotationId).firstOrNull?.lane??0;
-        Widget chip(IconData icon,Color color,{bool on=false,bool small=false})=>Container(width:small?16:22,height:small?15:20,alignment:Alignment.center,
-          decoration:BoxDecoration(color:on?p.ink:p.bg,borderRadius:BorderRadius.circular(small?5:6),border:Border.all(color:on?p.ink:p.line)),
-          child:Icon(icon,size:small?10:13,color:on?p.bg:color));
+        // Mock-up .ico/.mico: #0d121b tile (stacked rows #0d121bcc), 1 px #3a4560
+        // border; the selected icon is filled #e8ecf3 with a dark glyph.
+        Widget chip(IconData icon,Color color,{bool on=false,bool small=false,int lane=0})=>Container(width:small?16:22,height:small?15:20,alignment:Alignment.center,
+          decoration:BoxDecoration(color:on?const Color(0xFFE8ECF3):lane>0?const Color(0xCC0D121B):const Color(0xFF0D121B),borderRadius:BorderRadius.circular(small?5:6),border:Border.all(color:on?const Color(0xFFE8ECF3):const Color(0xFF3A4560))),
+          child:Icon(icon,size:small?10:13,color:on?const Color(0xFF0D121B):color));
         final plotHeight=widget.overview?math.max(widget.height,overviewGroups.fold<double>(0,(h,g)=>math.max(h,(g.lane+g.items.length)*annotationStep+8))):widget.height;
         return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
           if(!widget.overview&&widget.showHeader)SizedBox(height:26,child:Row(children:[Expanded(child:Text(nearest?.label??'',maxLines:1,overflow:TextOverflow.ellipsis,style:F.cap.copyWith(color:p.ink2))),Text('bpm',style:F.cap.copyWith(color:p.on(C.red)))])),
@@ -211,19 +219,25 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
                   if(c.selection==null)for(final h in widget.handles)if(h.at>=c.view.start&&h.at<=c.view.end)
                     Positioned(left:c.view.fraction(h.at)*_width-24,top:22,width:48,height:math.max(48,widget.height-24),
                       child:IgnorePointer(child:Center(child:Container(width:h.active?6:2,height:widget.height-28,decoration:BoxDecoration(color:h.color.withValues(alpha:h.active?1:.35),borderRadius:BorderRadius.circular(3))))),),
-                  if(!widget.overview)for(final mark in marks)Positioned(left:mark.x-11,top:2+mark.lane*22.0,child:Tooltip(message:mark.annotation.label,
-                    child:chip(mark.annotation.icon??annotationIcon(mark.annotation.kind),p.on(_pilotAnnotationColor(mark.annotation)),on:c.scrub==null&&mark.annotation.id==widget.selectedAnnotationId))),
+                  if(!widget.overview)for(final mark in marks)Positioned(left:mark.x-11,top:4+mark.lane*22.0,child:Tooltip(message:mark.annotation.label,
+                    child:chip(mark.annotation.icon??annotationIcon(mark.annotation.kind),p.on(_pilotAnnotationColor(mark.annotation)),on:c.scrub==null&&mark.annotation.id==widget.selectedAnnotationId,lane:mark.lane))),
                   for(final group in overviewGroups)Positioned(left:group.left,top:group.lane*annotationStep,child:DecoratedBox(decoration:BoxDecoration(color:p.card.withValues(alpha:.9),borderRadius:BorderRadius.circular(4)),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
                     Column(children:[for(final a in group.items)Padding(padding:const EdgeInsets.only(bottom:1),child:Tooltip(message:a.label,child:chip(a.icon??annotationIcon(a.kind),p.on(_pilotAnnotationColor(a)),small:true)))]),
                     Text(pilotClock(group.at),key:ValueKey('pilot-overview-time:${group.at.round()}'),style:F.cap.copyWith(color:p.ink,fontSize:11)),
                   ]))),
-                  if(widget.selectedAnnotationId!=null&&!widget.overview)Builder(builder:(context){final at=(c.scrub??widget.handles.firstOrNull?.at??c.view.center),x=widget.cut?.x(at,c.view,_width)??c.view.fraction(at)*_width;var left=x+14;if(left>_width-52)left=x-58;
-                    return Positioned(left:left.clamp(0.0,math.max(0.0,_width-52)),top:4+(c.scrub==null?selectedLane*22.0:0),child:DecoratedBox(decoration:BoxDecoration(color:p.card2,borderRadius:BorderRadius.circular(6)),child:Padding(padding:const EdgeInsets.symmetric(horizontal:6,vertical:1),child:Text(pilotClock(at),style:F.cap.copyWith(color:p.ink,fontSize:11,fontWeight:FontWeight.w600)))));}),
+                  if(widget.selectedAnnotationId!=null&&!widget.overview)Builder(builder:(context){final at=(c.scrub??widget.handles.firstOrNull?.at??c.view.center),x=widget.cut?.x(at,c.view,_width)??c.view.fraction(at)*_width;
+                    // Mock-up tlab beside the selected icon (x+14, or x-58 at the right
+                    // edge) on that icon's row. If an icon of that row sits under the
+                    // label, try the other side, then the next free row (m244.8b).
+                    bool clear(double left,int lane)=>!marks.any((m)=>m.lane==lane&&m.x+11>left&&m.x-11<left+52);
+                    var lane=c.scrub==null?selectedLane:0,left=x+14>_width-52?x-58:x+14;
+                    if(!clear(left,lane)){final other=left==x+14?x-58:x+14;if(other>=0&&other<=_width-52&&clear(other,lane)){left=other;}else{while(!clear(left,lane)&&lane<8){lane++;}}}
+                    return Positioned(left:left.clamp(0.0,math.max(0.0,_width-52)),top:6+lane*22.0,child:DecoratedBox(decoration:BoxDecoration(color:p.card2,borderRadius:BorderRadius.circular(6)),child:Padding(padding:const EdgeInsets.symmetric(horizontal:6,vertical:1),child:Text(pilotClock(at),style:F.cap.copyWith(color:p.ink,fontSize:11,fontWeight:FontWeight.w600)))));}),
                   if(widget.cut!=null)Positioned(left:widget.cut!.leftWidth(_width)-3,top:plotHeight/2-10,width:34,child:Text('…',key:const ValueKey('pilot-overview-cut'),textAlign:TextAlign.center,style:F.head.copyWith(color:p.ink3))),
-                  // Mock-ups: a translucent pill in the bottom-left corner, clear of
-                  // the heart-rate graduations on the right.
-                  if(!widget.overview)Positioned(left:8,bottom:30,child:IgnorePointer(child:Opacity(opacity:_scrub||_fine?1:.6,child:DecoratedBox(decoration:BoxDecoration(color:p.card2.withValues(alpha:.6),borderRadius:BorderRadius.circular(6)),
-                    child:Padding(padding:const EdgeInsets.symmetric(horizontal:8,vertical:1),child:Text(_fine?l.pilotFineSteps:_scrub?l.pilotScrubbing:l.pilotHoldScrub,style:F.cap.copyWith(color:p.ink,fontSize:11))))))),
+                  // Mock-up .hint: drawn last (over the plot), bottom-left, a faint
+                  // #232c3d99 backing with #e8ecf3cc text, at .6 while idle.
+                  if(!widget.overview)Positioned(left:8,bottom:26,child:IgnorePointer(child:Opacity(opacity:_scrub||_fine?1:.6,child:DecoratedBox(decoration:BoxDecoration(color:const Color(0x99232C3D),borderRadius:BorderRadius.circular(6)),
+                    child:Padding(padding:const EdgeInsets.symmetric(horizontal:8,vertical:1),child:Text(_fine?l.pilotFineSteps:_scrub?l.pilotScrubbing:l.pilotHoldScrub,style:F.cap.copyWith(color:const Color(0xCCE8ECF3),fontSize:11))))))),
                 ]))))),
         ]);
       })));
@@ -258,7 +272,16 @@ class _PilotPainter extends CustomPainter {
     for(final a in annotations){
       final color=p.on(_pilotAnnotationColor(a));
       if(a.until!=null)canvas.drawRect(Rect.fromLTRB(x(a.at),20,x(a.until!),height),Paint()..color=color.withValues(alpha:.09));
-      for(final at in [a.at,if(a.until!=null)a.until!])for(var top=22.0;top<height;top+=7){canvas.drawLine(Offset(x(at),top),Offset(x(at),top+3),Paint()..color=color.withValues(alpha:.4));}
+      // Mock-ups: range edges and Fall asleep / Latest are 2 px solid (.sl);
+      // single moments are 1.5 px dashed (.dl); snoozes faded.
+      // The day timeline (v16) dashes both edges of everything at .55.
+      final day=dimHrInsideSleep&&showHeartRate;
+      final solid=!day&&(a.until!=null||a.id=='bed'||a.id=='wake'||a.id=='window');
+      final edge=Paint()..color=color.withValues(alpha:day ? .55 : a.id.startsWith('snooze:') ? .6 : 1)..strokeWidth=day ? 1 : solid ? 2 : 1.5;
+      for(final at in [a.at,if(a.until!=null&&(day||solid))a.until!]){
+        if(solid){canvas.drawLine(Offset(x(at),20),Offset(x(at),height),edge);}
+        else{for(var top=20.0;top<height;top+=7){canvas.drawLine(Offset(x(at),top),Offset(x(at),math.min(top+4,height)),edge);}}
+      }
     }
     // Stages go through the app's own Hypnogram painter, one call per
     // unbroken run, so runs merge and lanes have no per-slot seams (m233).
@@ -282,7 +305,7 @@ class _PilotPainter extends CustomPainter {
       final value=graph.hr[i];if(value==null||!value.isFinite||value<=0){previous=null;continue;}
       final point=Offset(x(base+i*60),y(value));
       final asleep=graph.rest.any((s)=>i>=s.$1&&i<s.$2);
-      if(previous!=null)canvas.drawLine(previous,point,Paint()..color=p.on(C.red).withValues(alpha:asleep && dimHrInsideSleep ? .38 : .75)..strokeWidth=1.4);
+      if(previous!=null)canvas.drawLine(previous,point,Paint()..color=p.on(C.red).withValues(alpha:dimHrInsideSleep ? (asleep ? .75 : 1.0) : .75)..strokeWidth=1.4);
       previous=point;
     }
     if(showHeartRate)for(var i=math.max(0,((view.start-base)/60).floor());i<graph.movement.length&&base+i*60<view.end;i++){
@@ -290,7 +313,7 @@ class _PilotPainter extends CustomPainter {
       canvas.drawRect(Rect.fromLTRB(x(base+i*60),height-v.clamp(0,1)*(height-25)*.32,x(base+(i+1)*60),height),Paint()..color=p.on(C.purple).withValues(alpha:.75));
     }
     if(selection!=null)canvas.drawRect(Rect.fromLTRB(x(selection!.start),0,x(selection!.end),height),Paint()..color=p.on(C.blue).withValues(alpha:.2));
-    if(scrub!=null)canvas.drawLine(Offset(x(scrub!),0),Offset(x(scrub!),height),Paint()..color=p.ink..strokeWidth=1.5);
+    if(scrub!=null)canvas.drawLine(Offset(x(scrub!),0),Offset(x(scrub!),height),Paint()..color=p.ink..strokeWidth=1.4);
     canvas.restore();
     for(final t in ticks)text('$t',w-3,y(t)-11,p.on(C.red),right:true);
     if(bpmInPlot&&ticks.isNotEmpty)text('bpm',w-3,2,p.on(C.red),right:true);
@@ -310,11 +333,18 @@ class PilotZoomControls extends StatelessWidget {
   final TimelineController controller;final Widget? trailing;final VoidCallback? onZoom;
   @override Widget build(BuildContext context){
     final l=AppLocalizations.of(context)??lookupAppLocalizations(const Locale('en'));
-    final buttonStyle=TextButton.styleFrom(minimumSize:const Size(48,48),padding:const EdgeInsets.symmetric(horizontal:4));
-    return ListenableBuilder(listenable:controller.zoomChanges,builder:(context,_)=>Row(children:[
-      Expanded(child:TextButton.icon(style:buttonStyle,onPressed:(){controller.clearScrub();onZoom?.call();controller.beginPilotSelection();},icon:const Icon(LucideIcons.zoomIn,size:16),label:Text(l.timelineZoomIn,maxLines:1,overflow:TextOverflow.ellipsis))),
-      Expanded(child:TextButton.icon(style:buttonStyle,onPressed:controller.zoomed||controller.selection!=null?(){controller.clearScrub();onZoom?.call();controller.resetZoom();}:null,icon:const Icon(LucideIcons.rotateCcw,size:16),label:Text(l.pilotZoomOut,maxLines:1,overflow:TextOverflow.ellipsis))),
-      if(trailing!=null)Expanded(child:trailing!),
-    ]));
+    // Owner m244.6: smaller zoom buttons so the trailing control (repeat days,
+    // Pin, Add block) gets the rest of the row at full length.
+    final buttonStyle=TextButton.styleFrom(minimumSize:const Size(44,48),padding:const EdgeInsets.symmetric(horizontal:4),textStyle:F.cap.copyWith(fontSize:13),iconSize:15);
+    // Mock-up v22 .ctl: the zoom buttons keep their natural width and only the
+    // trailing control shrinks. Past 62% of the row (large text) the zoom pair
+    // scales down instead of overflowing.
+    return ListenableBuilder(listenable:controller.zoomChanges,builder:(context,_)=>LayoutBuilder(builder:(context,box)=>Row(children:[
+      ConstrainedBox(constraints:BoxConstraints(maxWidth:box.maxWidth*.62),child:FittedBox(fit:BoxFit.scaleDown,alignment:Alignment.centerLeft,child:Row(mainAxisSize:MainAxisSize.min,children:[
+        TextButton.icon(style:buttonStyle,onPressed:(){controller.clearScrub();onZoom?.call();controller.beginPilotSelection();},icon:const Icon(LucideIcons.zoomIn,size:16),label:Text(l.timelineZoomIn,maxLines:1)),
+        TextButton.icon(style:buttonStyle,onPressed:controller.zoomed||controller.selection!=null?(){controller.clearScrub();onZoom?.call();controller.resetZoom();}:null,icon:const Icon(LucideIcons.rotateCcw,size:16),label:Text(l.pilotZoomOut,maxLines:1)),
+      ]))),
+      if(trailing!=null)Expanded(child:Align(alignment:Alignment.centerRight,child:trailing!)),
+    ])));
   }
 }

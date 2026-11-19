@@ -11,13 +11,14 @@ import 'package:openstrap_edge/pilot/pilot_readout.dart';
 import 'package:openstrap_edge/pilot/pilot_theme.dart';
 import 'package:openstrap_edge/pilot/sleep_editor.dart';
 import 'package:openstrap_edge/pilot/timeline_chart.dart';
+import 'package:openstrap_edge/ui2/charts.dart' show SleepStage;
 import 'package:openstrap_edge/pilot/timeline_policy.dart';
 import 'package:openstrap_edge/ui2/chart_annotations.dart';
 import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/day_timeline/day_graph.dart';
 import 'package:openstrap_edge/ui2/day_timeline/timeline_controller.dart';
-import 'package:openstrap_edge/ui2/grammar.dart' show SubTabs, BigButton;
+import 'package:openstrap_edge/ui2/grammar.dart' show BigButton,SubTabs;
 import 'package:openstrap_edge/ui2/profile/profile.dart' show SetRow;
 import 'screens_test.dart' show pump;
 
@@ -41,14 +42,20 @@ void main(){
     expect(find.text('06:10–06:30'),findsOneWidget);
     expect(find.text('~6 h 40 min'),findsOneWidget);expect(find.text('400 min'),findsNothing);
     expect(find.text('17:30–19:00'),findsOneWidget);expect(find.text('Zone 3+'),findsOneWidget);
-    for(final chart in t.widgetList<PilotTimelineChart>(find.byType(PilotTimelineChart)))expect(chart.showHeartRate,false);
+    // m244.3: the sleep alarm's chart draws no heart rate; the workout alarm's keeps it.
+    expect([for(final chart in t.widgetList<PilotTimelineChart>(find.byType(PilotTimelineChart)))chart.showHeartRate],unorderedEquals([false,true]));
   });
 
   // catches: bare ListTile timing rows, Material SwitchListTiles, text-only Cancel/Save, or a heart-rate alarm chart.
   testWidgets('alarm editor uses the app rows, tabs and buttons',(t)async{
     await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'A',earlyMinutes:20,phoneSound:true),now:day,reference:(_)async=>sample(),onSave:(_)async{}));
     expect(find.byType(SubTabs),findsOneWidget);
-    expect(find.descendant(of:find.byKey(const ValueKey('pilot-time:early')),matching:find.byType(SetRow)),findsOneWidget);
+    // The shared SubTabs in its segmented look: one full-width track, no scrolling row, as wide as the chart (v22 .tabs).
+    expect(find.descendant(of:find.byType(SubTabs),matching:find.byType(SingleChildScrollView)),findsNothing);
+    expect(t.getSize(find.byType(SubTabs)).width,t.getSize(find.byKey(const ValueKey('pilot-timeline-plot'))).width);
+    // Snoozes are dashed lines only, never icons (v22 marks()).
+    expect(find.descendant(of:find.byType(PilotTimelineChart),matching:find.byTooltip('Snooze')),findsNothing);
+    expect(find.descendant(of:find.byKey(const ValueKey('pilot-time:early')),matching:find.byType(PilotItemRow)),findsOneWidget);
     // v22 .item .t small: the subtitle sits under the time, right-aligned.
     final early=find.byKey(const ValueKey('pilot-time:early'));
     final time=t.getRect(find.descendant(of:early,matching:find.text('06:40'))),sub=t.getRect(find.descendant(of:early,matching:find.text('up to 20 min earlier')));
@@ -122,5 +129,21 @@ void main(){
       await t.tapAt(Offset(r.left+r.width*.25,r.center.dy));await t.pump();
       expect(c.scrub,isNull);
     });
+  });
+
+  // why: signed-off day timeline draws a half-opacity hypnogram inside sleep.
+  // catches: the day chart dropping the recorded stages it was given.
+  testWidgets('a day with a sleep block paints stage segments',(t)async{
+    Future<RenderObject> paint(List<SleepStage?> stages)async{
+      final c=TimelineController(homeStartSec:base,homeEndSec:base+86400);addTearDown(c.dispose);
+      final i=TimelineInteraction();addTearDown(i.dispose);
+      await pump(t,Scaffold(body:PilotTimelineChart(key:UniqueKey(),controller:c,interaction:i,stages:stages,
+        graph:DayGraph(dayStart:base,hr:List.filled(1440,62),movement:List.filled(1440,.1),rest:const [(0,400,Colors.pink)]))));
+      return t.renderObject(find.descendant(of:find.byKey(const ValueKey('pilot-timeline-plot')),matching:find.byType(CustomPaint)).first);
+    }
+    // 00:00-06:40 asleep: light, deep, rem runs in 5-min slots.
+    final night=<SleepStage?>[for(var k=0;k<288;k++)k<80?[SleepStage.light,SleepStage.deep,SleepStage.rem][(k~/10)%3]:null];
+    expect(await paint(night),paints..rrect()..rrect());
+    expect(await paint(const []),isNot(paints..rrect()..rrect()));
   });
 }

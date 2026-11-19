@@ -21728,6 +21728,7 @@
   "pilotNapEnds": "Nap ends",
   "pilotMainSleep": "Main sleep",
   "pilotDetected": "detected",
+  "pilotFixed": "fixed",
   "pilotEdited": "Edited",
   "pilotAdded": "Added",
   "pilotMotion": "Motion",
@@ -21759,5 +21760,7 @@
   "pilotForecastHoursMinutes": "~{hours} h {minutes} min",
   "@pilotForecastHoursMinutes": {"placeholders": {"hours": {"type": "int"}, "minutes": {"type": "int"}}},
   "pilotWakeShort": "Wake",
-  "pilotExpectedShort": "Expected"
+  "pilotExpectedShort": "Expected",
+  "pilotPinShort": "Pin",
+  "labsFullWidthTabs": "Full-width tabs"
 }

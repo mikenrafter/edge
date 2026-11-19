@@ -32,6 +32,8 @@ void main(){
       final bounds=t.getRect(row),keep=t.getRect(apk2Keep(id)),discard=t.getRect(apk2Discard(id)),edit=t.getRect(find.byKey(ValueKey('day-review-label:$id')));
       expect(keep.center.dy,discard.center.dy);expect(discard.center.dy,edit.center.dy);
       expect(keep.left,greaterThanOrEqualTo(bounds.left));expect(edit.right,lessThanOrEqualTo(bounds.right));
+      // m192: labels never wrap ("Discar / d" in the first fidelity shots).
+      expect(t.widget<Text>(find.descendant(of:apk2Discard(id),matching:find.text('Discard'))).maxLines,1);
     }
     expect(t.takeException(),null);
   });

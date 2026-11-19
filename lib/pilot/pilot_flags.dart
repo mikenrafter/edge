@@ -6,10 +6,14 @@ import '../state/prefs.dart';
 enum PilotFlag {
   alarmScreen('pilot.alarm_screen'),
   wakeMethods('pilot.wake_methods'),
-  timelines('pilot.timelines');
-  const PilotFlag(this.key);
+  timelines('pilot.timelines'),
+  /// Owner m249: SubTabs share the row's width equally. Default ON; off is
+  /// the original scrolling pills.
+  fullWidthTabs('ui.full_width_tabs', byDefault: true);
+  const PilotFlag(this.key, {this.byDefault = false});
   final String key;
-  bool get enabled => Prefs.getBool(key, false);
+  final bool byDefault;
+  bool get enabled => Prefs.getBool(key, byDefault);
 }
 
 class PilotFlags {
