@@ -559,6 +559,8 @@ class UpdateStore {
     }
     final held = await txn.query('update_notifications',
         columns: ['identity'], where: "state='held'");
+    // Keep the table literal so the write guard can check its ownership.
+    // [p21_write_seam_guard_test; update_store_test stale-hold exceptions]
     for (final row in held) {
       final identity = row['identity'];
       if (except.contains(identity)) continue;
