@@ -94,6 +94,7 @@ const _spec = <String, String>{
   'session_sensor': 'M',
   'sessions': 'M',
   'signal_priority': 'K',
+  'sleep_block': 'D',
   'sleep_edit_job': 'D',
   'sleep_nap': 'M',
   'sleep_override': 'M',
@@ -188,6 +189,22 @@ void main() {
       expect(officialProfile.tables['substrate_archive']!.merge!.rule, MergeRule.fillMissing);
     });
 
+    // WHY M1: fork interval metadata must not grow the frozen official layout.
+    // CLAIM(official-export-accounted-identities). The tagged receiver has no
+    // block ledger, nap counters, or main-override payload column.
+    test('M1 fork sleep metadata is omitted from the official file', () {
+      final block = officialProfile.tables['sleep_block']!;
+      expect(block.policy, TablePolicy.dropped);
+      expect(block.dest, isNull);
+      final job = officialProfile.tables['sleep_edit_job']!;
+      expect(job.columns['nap_revision'], ColumnDisposition.tableDropped);
+      expect(job.columns['nap_applied_revision'], ColumnDisposition.tableDropped);
+      final main = officialProfile.tables['sleep_override']!;
+      expect(main.columns['payload_json'], ColumnDisposition.omit);
+      expect(loadCapture('target_schema_62.json').tables['sleep_override']!.columnNames,
+          {'day_id', 'onset_ts', 'offset_ts', 'source', 'created_at'});
+    });
+
     test('every table carries meaning and evidence', () {
       for (final e in officialProfile.tables.entries) {
         expect(e.value.meaning.trim(), isNotEmpty, reason: e.key);
@@ -213,7 +230,7 @@ void main() {
         Map<String, Object> tuples(SchemaCatalog c) => c.tables.map((n, t) => MapEntry(n, [
           for (final c in t.columns) (c.name, c.type, c.notNull, c.defaultValue, c.pk),
         ]));
-        expect(tuples(await SchemaCatalog.read(db)), tuples(loadCapture('fork_schema_92.json')));
+        expect(tuples(await SchemaCatalog.read(db)), tuples(loadCapture('fork_schema_94.json')));
       });
     });
 
@@ -226,14 +243,14 @@ void main() {
     });
 
     test('the frozen capture of that schema is covered', () {
-      final catalog = loadCapture('fork_schema_92.json');
-      expect(catalog.tables, hasLength(108));
+      final catalog = loadCapture('fork_schema_94.json');
+      expect(catalog.tables, hasLength(109));
       expect(officialProfile.coverage(catalog), isEmpty);
     });
 
     test('creating on open and reopening change no table or column', () {
       final both = ['opened', 'reopened'].map(
-        (k) => loadCapture('fork_schema_92.json', key: k),
+        (k) => loadCapture('fork_schema_94.json', key: k),
       );
       expect(
         both.first.tables.map((n, t) => MapEntry(n, t.columnNames)),
@@ -242,7 +259,7 @@ void main() {
     });
 
     test('every carried table has a usable rowid in the real schema', () {
-      final catalog = loadCapture('fork_schema_92.json');
+      final catalog = loadCapture('fork_schema_94.json');
       for (final e in officialProfile.tables.entries) {
         final shape = catalog.tables[e.key];
         if (shape == null || !e.value.policy.carriesRows) continue;
@@ -251,7 +268,7 @@ void main() {
     });
 
     test('the only WITHOUT ROWID table is row_rev, policy D', () {
-      final catalog = loadCapture('fork_schema_92.json');
+      final catalog = loadCapture('fork_schema_94.json');
       final without = [
         for (final t in catalog.tables.values)
           if (t.withoutRowid) t.name,

@@ -630,11 +630,17 @@ const officialProfile = OfficialProfile(
       keep: ['signal', 'device_id', 'rank', 'user_set'],
       merge: MergeKey(['signal', 'device_id'], MergeRule.plainReplace),
     ),
+    'sleep_block': TableProfile(
+      policy: TablePolicy.dropped,
+      meaning: r'''Fork interval identity, ownership and edit history. Legacy sleep_nap/sleep_override projections carry the representable assertions; the block ledger remains in the fork and recovery file.''',
+      evidence: r'''`data/db/schema.dart:_ldbPrivCreateSleepBlock` (rung 94)''',
+      dropped: ['id', 'kind', 'owner_day', 'owner_rule', 'start_ts', 'end_ts', 'source', 'state', 'merged_into', 'history', 'detected_start', 'detected_end', 'detected_day', 'payload_json', 'revision', 'created_at', 'updated_at'],
+    ),
     'sleep_edit_job': TableProfile(
       policy: TablePolicy.dropped,
       meaning: r'''Fork work receipt/job/generation; user assertions travel separately.''',
       evidence: r'''`data/sleep_edit_store.dart:73`''',
-      dropped: ['day_id', 'revision', 'phase', 'error', 'applied_revision'],
+      dropped: ['day_id', 'revision', 'phase', 'error', 'applied_revision', 'nap_revision', 'nap_applied_revision'],
     ),
     'sleep_nap': TableProfile(
       policy: TablePolicy.mapped,
@@ -652,6 +658,8 @@ const officialProfile = OfficialProfile(
       meaning: r'''Same table; exact user boundaries/decisions. Report target-unrepresentable semantics without approximating them.''',
       evidence: r'''`data/db.dart:1884`''',
       keep: ['day_id', 'onset_ts', 'offset_ts', 'source', 'created_at'],
+      // v0.12.2:lib/data/db.dart:3281-3290 has only the five kept columns.
+      omit: ['payload_json'],
       rowRule: r'''only boundaries the target can represent''',
       merge: MergeKey(['day_id'], MergeRule.newerCreatedAtWins),
     ),

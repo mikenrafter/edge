@@ -74,7 +74,7 @@ void main() {
   test('the fork day_result has no `imported`: copying its layout is wrong',
       () {
     expect(
-      loadCapture('fork_schema_92.json').tables['day_result']!.columnNames,
+      loadCapture('fork_schema_94.json').tables['day_result']!.columnNames,
       isNot(contains('imported')),
     );
   });
