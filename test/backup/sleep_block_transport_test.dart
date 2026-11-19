@@ -16,6 +16,7 @@ import 'package:openstrap_edge/data/sleep_block_store.dart';
 import 'package:openstrap_edge/data/sleep_editor.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/prefs.dart';
+import 'package:openstrap_edge/sync/dev_log.dart';
 import 'package:openstrap_edge/gestures/moment_review_service.dart';
 import 'package:openstrap_edge/data/sleep_import_rules.dart';
 import '../data/support/sleep_block_fixture.dart' show blockRow, seedDay;
@@ -81,7 +82,12 @@ void main() {
     await LocalDb.close(); LocalDb.dbName=p.join(temp.path,'local.db');
     db=await LocalDb.instance;
   });
-  tearDown(() async { ImportHooks.reset(); await LocalDb.close(); await temp.delete(recursive:true); });
+  tearDown(() async {
+    ImportHooks.reset(); await LocalDb.close();
+    // Import logs are queued; finish their writes before removing their tree.
+    await DevLog.instance.flush();
+    await temp.delete(recursive:true);
+  });
 
   // catches: restore leaves the already-upgraded destination block table empty.
   test('T1 old backup without blocks is absorbed immediately', () async {
