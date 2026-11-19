@@ -550,6 +550,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
     final asked = HealthScreen.tabRequest.value;
     if (asked >= 0 && asked < _tabsOf(null).length) _tab = asked;
     HealthScreen.tabRequest.addListener(_onTabRequest);
+    PilotFlags.revision.addListener(_pilotChanged);
     _d = widget.data;
     _v = widget.vitals;
     _vDays = widget.vitals?.days;
@@ -566,6 +567,15 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
     });
   }
 
+  bool _observationsEnabled = PilotFlag.observations.enabled;
+  void _pilotChanged() {
+    final enabled = PilotFlag.observations.enabled;
+    if (enabled == _observationsEnabled || !mounted) return;
+    _observationsEnabled = enabled;
+    setState(() {});
+    if (widget.data == null) unawaited(_load());
+  }
+
   /// Health was already on screen when another screen asked for a sub-tab.
   void _onTabRequest() {
     final t = HealthScreen.tabRequest.value;
@@ -576,6 +586,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
   @override
   void dispose() {
     HealthScreen.tabRequest.removeListener(_onTabRequest);
+    PilotFlags.revision.removeListener(_pilotChanged);
     super.dispose();
   }
 

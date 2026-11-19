@@ -772,6 +772,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     super.initState();
     watchPausedRead();
     Prefs.sleepWakeZoomRevision.addListener(_zoomChanged);
+    PilotFlags.revision.addListener(_pilotChanged);
     _day = widget.day;
     if (widget.data != null) {
       _d = widget.data;
@@ -804,6 +805,15 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     if (widget.data == null && (_day == null || _day == todayLabel())) _load();
   }
 
+  bool _summaryEnabled = PilotFlag.sleepSummary.enabled;
+  void _pilotChanged() {
+    final enabled = PilotFlag.sleepSummary.enabled;
+    if (enabled == _summaryEnabled || !mounted) return;
+    _summaryEnabled = enabled;
+    setState(() => _scrub = null);
+    if (widget.data == null) unawaited(_load());
+  }
+
   void _zoomChanged() {
     if (mounted) setState(() => _scrub = null);
   }
@@ -811,6 +821,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   @override
   void dispose() {
     Prefs.sleepWakeZoomRevision.removeListener(_zoomChanged);
+    PilotFlags.revision.removeListener(_pilotChanged);
     stopWatchingPausedRead();
     super.dispose();
   }

@@ -57,9 +57,10 @@ class FindingsLog extends StatelessWidget {
   final String? today;
   final List<PulseEpisodeSummary> episodes;
   final Future<List<PulseEpisodeSummary>> Function()? loadEpisodes;
-  @override Widget build(BuildContext context) => PilotFlag.observations.enabled
-    ? SimplifiedFindingsLog(findings, rhr:rhr, today:today, episodes:episodes, loadEpisodes:loadEpisodes)
-    : LegacyFindingsLog(findings, rhr:rhr, today:today);
+  @override Widget build(BuildContext context) => ValueListenableBuilder<int>(
+    valueListenable:PilotFlags.revision, builder:(context,_,_) => PilotFlag.observations.enabled
+      ? SimplifiedFindingsLog(findings, rhr:rhr, today:today, episodes:episodes, loadEpisodes:loadEpisodes)
+      : LegacyFindingsLog(findings, rhr:rhr, today:today));
 }
 List<Finding> uniqueObservations(List<Finding> findings) =>
   [for(final entry in observationHistory(findings, const []))
