@@ -76,13 +76,14 @@ void main(){
     await t.tap(find.descendant(of:row,matching:find.text('Reset')));await t.pumpAndSettle();expect(find.descendant(of:row,matching:find.text('your usual')),findsOneWidget);expect(find.descendant(of:row,matching:find.text('23:30')),findsOneWidget);
   });
   // catches: showing only Wake in the overview, duplicating coincident time labels, or omitting the overnight cut.
-  testWidgets('overview cuts the night and labels every time with coincident icons stacked vertically',(t)async{
+  testWidgets('overview cuts the night and labels every time; a coincident column is an icon and a "…" under it (m269)',(t)async{
     await pump(t,PilotAlarmScreen(alarms:[PilotAlarm(id:'a',label:'A',wakeMinute:390,phoneSound:true,soundDelayMinutes:0,phoneVibration:true,vibrationDelayMinutes:0)],now:day,reference:(_)async=>sample(),onSave:(_)async{}));
     final chart=t.widget<PilotTimelineChart>(find.byType(PilotTimelineChart));expect(chart.overview,true);expect(chart.cut,isNotNull);expect(find.byKey(const ValueKey('pilot-overview-cut')),findsOneWidget);
     final time=find.byKey(ValueKey('pilot-overview-time:${base+390*60}'));expect(time,findsOneWidget);
     final group=find.ancestor(of:time,matching:find.byType(Row)).first;
-    final icons=find.descendant(of:group,matching:find.byType(Icon));expect(icons,findsNWidgets(4));
-    expect(t.getTopLeft(icons.at(1)).dy,greaterThan(t.getTopLeft(icons.first).dy));expect(t.getTopLeft(icons.at(1)).dx,t.getTopLeft(icons.first).dx);
+    final icons=find.descendant(of:group,matching:find.byType(Icon));expect(icons,findsOneWidget);
+    final more=find.descendant(of:group,matching:find.byKey(const ValueKey('pilot-overview-more')));expect(more,findsOneWidget);
+    expect(t.getTopLeft(more).dy,greaterThan(t.getTopLeft(icons.first).dy));expect(t.getCenter(more).dx,moreOrLessEquals(t.getCenter(icons.first).dx,epsilon:.5));
     expect(find.text('Usual sleep'),findsOneWidget);expect(find.text('Sleep'),findsNothing);expect(t.takeException(),null);
   });
   // catches: hiding the recorded usual-sleep stat merely because expected wake is outside the window.

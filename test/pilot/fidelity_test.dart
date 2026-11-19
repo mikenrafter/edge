@@ -96,7 +96,7 @@ void main(){
     expect(find.byTooltip('Sound'),findsOneWidget);
     expect(find.byTooltip('Vibration'),findsNothing);expect(find.byTooltip('Flash'),findsNothing);
     expect(find.byKey(const ValueKey('pilot-overview-more')),findsOneWidget);
-    expect(find.bySemanticsLabel('Vibration 06:30, Flash 06:30'),findsOneWidget);
+    expect(find.byWidgetPredicate((w)=>w is Semantics&&w.properties.label=='Vibration 06:30, Flash 06:30'),findsOneWidget);
     // Nearby different minutes: both drawn, as before.
     expect(find.byTooltip('Sunrise'),findsOneWidget);expect(find.byTooltip('Gradual'),findsOneWidget);
     handle.dispose();
