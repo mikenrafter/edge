@@ -1,4 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/l10n/app_localizations.dart';
+import 'package:openstrap_edge/ui2/theme.dart';
+import 'package:openstrap_edge/theme/theme_controller.dart';
+import 'package:openstrap_edge/pilot/pilot_flags.dart';
+import 'package:openstrap_edge/pilot/sleep_editor.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/moment_label.dart';
@@ -120,6 +127,36 @@ void main() {
     r.navigator.currentState!.pop();
     await settle(t);
     await opened;
+  });
+  // why: a main sleep starts yesterday but the wake calendar day owns it.
+  // catches: deriving the editor's day from its onset when cycles are joined.
+  testWidgets('main sleep editor keeps its wake calendar owner across midnight', (t) async {
+    final r=await Apk2Rig.create(t,pending:false);
+    await PilotFlags.set(PilotFlag.timelines,true);
+    final main=dayMoments(calendarDay:'2026-11-03',timeline:{
+      'sleep':[{'onset_ts':at(2,23).millisecondsSinceEpoch~/1000,
+        'wake_ts':at(3,7).millisecondsSinceEpoch~/1000}],
+    }).single;
+    expect(main.calendarDay,'2026-11-03');
+    final joined=personalTimelineOf(PersonalDayView(cycle,PersonalDayMode.wakeToWake,true,[cycle]),
+      [TimelineData(day:'2026-11-03',moments:[main])]);
+    t.view.physicalSize=const Size(390,1000);t.view.devicePixelRatio=1;addTearDown(t.view.reset);
+    final theme=ThemeController.seed(AppThemeChoice.light,Brightness.light);addTearDown(theme.dispose);
+    await t.pumpWidget(MultiProvider(providers:[
+      ChangeNotifierProvider<AppState>.value(value:r.app),
+      ChangeNotifierProvider<ThemeController>.value(value:theme)],
+      child:MaterialApp(navigatorKey:r.navigator,theme:buildTheme(Brightness.light),
+        localizationsDelegates:AppLocalizations.localizationsDelegates,
+        supportedLocales:AppLocalizations.supportedLocales,
+        home:DayTimelineScreen(day:cycle.start.toIso8601String(),data:joined,
+          reviewActivities:const [],reviewMoments:const [],
+          reviewEditor:MomentReviewEditor(preloaded:const [],preloadedAssumed:const [],now:at(4))))));
+    await settle(t);
+    final editor=t.state(find.byType(DayTimelineScreen)) as DayRowEditListener;
+    final opened=editor.openRowEditor(joined.moments.single);await settle(t);
+    expect(find.byType(PilotSleepEditor),findsOneWidget);
+    expect(t.widget<PilotSleepEditor>(find.byType(PilotSleepEditor)).day,'2026-11-03');
+    r.navigator.currentState!.pop();await settle(t);await opened;
   });
   test('navigation shows actual start date separately from the cycle name', () {
     final d = PersonalDay(at(1,23), at(2,23), '2026-11-02', '2026-11-02');

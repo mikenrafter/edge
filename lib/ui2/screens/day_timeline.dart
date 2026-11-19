@@ -326,6 +326,7 @@ List<Moment> dayMoments({
       icon: LucideIcons.moon,
       color: C.blue,
       annotationKind: isMain ? AnnotationKind.mainSleep : null,
+      calendarDay: calendarDay ?? timeline['date'] as String?,
       // Clock times only: the onset is usually the evening before, and the
       // chart's own axis already says which day it is.
       annotationLabel: isMain

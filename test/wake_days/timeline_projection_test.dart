@@ -43,7 +43,7 @@ void main() {
   testWidgets('personal graph axis shows its actual boundary clocks', (t) async {
     await t.pumpWidget(MaterialApp(home: Scaffold(body: Builder(builder: (c) =>
       dayGraphCard(c, DayGraph(dayStart: DateTime(2026,11,2,12).millisecondsSinceEpoch~/1000,
-        hr: List<double?>.filled(1440, 60), clockAxis: true))!))));
+        hr: List<double?>.filled(1440, 60)))!))));
     expect(find.text('Midnight'), findsNothing);
     // The landed chart paints clocks on canvas instead of Text widgets.
     // Pin its actual time domain; day_timeline_test checks painted axis labels.

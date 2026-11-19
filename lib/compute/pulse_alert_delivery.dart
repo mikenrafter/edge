@@ -126,7 +126,7 @@ class PulseAlertDelivery {
       dedupeKey: key,
       category: NotifCategory.health,
       priority: NotifPriority.critical,
-      silent: PilotFlag.observations.enabled && day != todayLabel(),
+      silent: PilotFlag.observations.enabled,
       title: notice.title(l),
       body: notice.body(l),
       date: day,
