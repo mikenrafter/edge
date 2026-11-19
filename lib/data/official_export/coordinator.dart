@@ -52,12 +52,15 @@ class OfficialExportCoordinator extends ChangeNotifier {
     if(active || official!=null)return;
     _root=root;
     await cleanupAbandoned(root);
-    final journal=File('${root.path}/interruption.json');
+    await _readInterruption();
+    if(_interruption!=null){progress=const ExportProgress(ExportStage.interrupted);notifyListeners();}
+  }
+  Future<void> _readInterruption() async {
+    final journal=File('${_root.path}/interruption.json');
     if(!await journal.exists())return;
     final decoded=await JsonPayloadLane.shared.decodeUncached(await journal.readAsString());
     if(decoded is! Map || decoded['version']!=1)throw const FormatException('Unreadable export receipt');
     _interruption=decoded.cast<String,Object?>();
-    progress=const ExportProgress(ExportStage.interrupted);notifyListeners();
   }
   Future<void> verifyInterrupted(ExportPrompts prompts) async {
     final record=_interruption;
@@ -86,14 +89,15 @@ class OfficialExportCoordinator extends ChangeNotifier {
       final tree=record['tree'];
       final storage=tree is String?AndroidCipherBackupStorage(BackupFolder(uri:tree,name:record['folder'] as String))
         :LocalCipherBackupStorage(File(file['path'] as String).parent);
-      try {await storage.deleteCiphertext(BackupFile(path:file['path'] as String,name:file['name'] as String));}
-      catch(_) {if(pendingName==null)rethrow;}
-      if(pendingName is String) {
-        for(final candidate in await storage.listCiphertext()) {
-          if(candidate.name==pendingName && candidate.name!=(record['official'] as Map?)?['name'])await storage.deleteCiphertext(candidate);
-        }
+      // Listing also makes cleanup idempotent if the prior deletion succeeded
+      // before the process died or before its receipt could be replaced.
+      for(final candidate in await storage.listCiphertext()) {
+        if((candidate.path==file['path'] || candidate.name==file['name'] || candidate.name==pendingName) &&
+            candidate.name!=(record['official'] as Map?)?['name'])await storage.deleteCiphertext(candidate);
       }
     }
+    final journal=File('${_root.path}/interruption.json');
+    if(await journal.exists())await journal.delete();
     _interruption=null;
   }
   bool get active=>_running!=null;
@@ -193,6 +197,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
     try {
       if(await FileSystemEntity.type(root.path,followLinks:false)==FileSystemEntityType.link)throw StateError('Unsafe private directory');
       await root.create(recursive:true);await cleanupAbandoned(root);
+      if(_interruption==null)await _readInterruption();
       if(_interruption!=null)await cleanInterrupted();
       _incomplete=null;_publicationName=null;
       _progress(ExportStage.preparing);
@@ -222,7 +227,10 @@ class OfficialExportCoordinator extends ChangeNotifier {
       final chosen=await prompts.askRecovery(_saved(RecoveryStatus.awaitingChoice));
       _cancellation.check();
       final result=chosen?await _recover():_saved(RecoveryStatus.declined);
-      _progress(ExportStage.complete);return outcome=result;
+      // Recovery cancellation is already a saved result with its own retry;
+      // a terminal update must not rethrow it as cancellation of the official file.
+      progress=ExportProgress(ExportStage.complete,elapsed:_elapsed.elapsed);
+      notifyListeners();return outcome=result;
     } on ExportCancelled {
       progress=const ExportProgress(ExportStage.cancelled);
       return outcome=OfficialExportCancelled(receipt:official);
@@ -259,6 +267,9 @@ class OfficialExportCoordinator extends ChangeNotifier {
   }
   Future<OfficialExportOutcome?> retryRecovery() async {
     if(!_retryAvailable)return outcome;
+    final running=_owner?._running;
+    if(running!=null)return running;
+    _owner=this;
     return _running??=_retryRecovery().whenComplete((){_running=null;notifyListeners();});
   }
   Future<OfficialExportOutcome> _retryRecovery() async {
