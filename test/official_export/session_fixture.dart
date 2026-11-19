@@ -2,6 +2,7 @@
 // CLAIM(official-export-saved-bytes): drive real mapping, crypto and publication.
 // catches: no preflight; trust staged bytes; recovery failure deletes official;
 // forget finally cleanup; delete official on cancellation.
+import 'dart:async';
 import 'dart:io';
 import 'package:openstrap_edge/data/backup_storage.dart';
 import 'package:openstrap_edge/data/official_export/coordinator.dart';
@@ -37,9 +38,11 @@ class Destination implements CipherBackupStorage {
   final Directory root; final Space space;
   bool corrupt=false, corruptRename=false, failRecovery=false, exhaust=false;
   int creates=0;
+  Completer<void>? recoveryStarted,recoveryRelease;
   @override String get label=>'Selected folder';
   @override Future<List<BackupFile>> listCiphertext() async=>[for(final file in root.listSync().whereType<File>())BackupFile(path:file.path,name:file.path.split('/').last)];
   @override Future<BackupFile> createCiphertext(String name) async {
+    if(creates==1 && recoveryRelease!=null){recoveryStarted!.complete();await recoveryRelease!.future;}
     if(failRecovery && creates==1) throw const FileSystemException('revoked');
     creates++; final file=File('${root.path}/$name'); await file.create(exclusive:true);
     return BackupFile(path:file.path,name:name);

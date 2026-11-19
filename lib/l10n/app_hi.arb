@@ -21338,5 +21338,6 @@
   "officialExportChecked": "आखिरी जाँच:",
   "officialExportRows": "रिकॉर्ड",
   "officialExportBytes": "बाइट",
-  "officialExportBeats": "धड़कन"
+  "officialExportBeats": "धड़कन",
+  "officialExportNoNewer": "पिछली जाँच में कोई नया आधिकारिक संस्करण नहीं मिला।"
 }

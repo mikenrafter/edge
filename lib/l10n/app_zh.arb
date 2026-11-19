@@ -21338,5 +21338,6 @@
   "officialExportChecked": "上次检查：",
   "officialExportRows": "条记录",
   "officialExportBytes": "字节",
-  "officialExportBeats": "心搏"
+  "officialExportBeats": "心搏",
+  "officialExportNoNewer": "上次检查未发现更新的官方版本。"
 }

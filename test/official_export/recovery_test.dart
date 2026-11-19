@@ -4,6 +4,7 @@
 // passphrase prompt; omit attachment; bypass normal importer/reload notices.
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/official_export/coordinator.dart';
@@ -17,6 +18,7 @@ void main(){
  TestWidgetsFlutterBinding.ensureInitialized();
  test('one-passphrase recovery restores through the actual fork importer twice',()async{
   final env=await BackupEnv.create('p3_recovery.db');
+  FlutterSecureStorage.setMockInitialValues({});
   try{
    await env.seedData();
    final db=await LocalDb.instance;

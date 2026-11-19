@@ -21386,5 +21386,6 @@
   "officialExportChecked": "ตรวจสอบล่าสุด:",
   "officialExportRows": "รายการ",
   "officialExportBytes": "ไบต์",
-  "officialExportBeats": "จังหวะหัวใจ"
+  "officialExportBeats": "จังหวะหัวใจ",
+  "officialExportNoNewer": "การตรวจสอบครั้งล่าสุดไม่พบรุ่นทางการที่ใหม่กว่า"
 }

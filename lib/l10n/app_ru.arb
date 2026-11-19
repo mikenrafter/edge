@@ -20776,5 +20776,6 @@
   "officialExportChecked": "Последняя проверка:",
   "officialExportRows": "записей",
   "officialExportBytes": "байт",
-  "officialExportBeats": "Удары"
+  "officialExportBeats": "Удары",
+  "officialExportNoNewer": "Последняя проверка не сообщила о более новой официальной версии."
 }

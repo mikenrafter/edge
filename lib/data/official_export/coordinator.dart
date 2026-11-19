@@ -43,6 +43,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
   String? _passphrase;
   bool _retryAvailable=false;
   bool _hasOmissions=false;
+  List<Map<String,Object?>>? _omissionGroups;
   Map<String,Object?>? _interruption;
   String? get interruptedName=>(_interruption?['official'] as Map?)?['name'] as String?;
   bool get hasInterruption=>_interruption!=null;
@@ -153,9 +154,9 @@ class OfficialExportCoordinator extends ChangeNotifier {
     final size=await plain.length();
     await _space.requireAvailable(size*2+8*1024*1024);
     final expected=(await runMappingWorker(MappingInput('fileHash','',const [],json:plain.path))).text!;
+    _progress(ExportStage.encrypting,artifact:artifact,total:size);
     _incomplete=await _destination.createCiphertext('$name.incomplete');
     await _journal();
-    _progress(ExportStage.encrypting,artifact:artifact,total:size);
     final encryptedHash=await encryptBackupStream(plain,_passphrase!, (chunk)async {
       _cancellation.check();await _space.requireAvailable(chunk.length+65536);
       await _destination.appendCiphertext(_incomplete!,chunk);
@@ -187,7 +188,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
       CipherBackupStorage destination,ExportSpaceBudget space,ExportPrompts prompts) async {
     await finish();
     _root=root;_destination=destination;_space=space;
-    _cancellation=ExportCancellation();_recoveryChoice=null;official=null;report=null;outcome=null;extrasOmissions=const [];
+    _cancellation=ExportCancellation();_recoveryChoice=null;_omissionGroups=null;official=null;report=null;outcome=null;extrasOmissions=const [];
     _elapsed..reset()..start();
     try {
       if(await FileSystemEntity.type(root.path,followLinks:false)==FileSystemEntityType.link)throw StateError('Unsafe private directory');
@@ -271,8 +272,9 @@ class OfficialExportCoordinator extends ChangeNotifier {
     ?OfficialExportSavedWithOmissions(official!,report!,status,recovery:recovery,recoveryError:recoveryError)
     :OfficialExportSaved(official!,report!,status,recovery:recovery,recoveryError:recoveryError);
   Future<List<Map<String,Object?>>> omissionSummary() async {
+    if(_omissionGroups!=null)return _omissionGroups!;
     final rows=(await runMappingWorker(MappingInput('omissionSummary','',const [],json:report?.tables??const {}))).rows;
-    return [...rows,if(extrasOmissions.isNotEmpty){'family':'settings','reason':'unsupported','count':extrasOmissions.length}];
+    return _omissionGroups=[...rows,if(extrasOmissions.isNotEmpty){'family':'settings','reason':'unsupported','count':extrasOmissions.length}];
   }
   Future<void> finish() async {
     _passphrase=null;_retryAvailable=false;

@@ -21338,5 +21338,6 @@
   "officialExportChecked": "Última comprobación:",
   "officialExportRows": "registros",
   "officialExportBytes": "bytes",
-  "officialExportBeats": "Latidos"
+  "officialExportBeats": "Latidos",
+  "officialExportNoNewer": "La última comprobación no encontró una versión oficial más reciente."
 }

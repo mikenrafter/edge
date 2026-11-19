@@ -21535,5 +21535,9 @@
   },
   "@officialExportBeats": {
     "description": "Unit for real export progress or per-day observed counts."
+  },
+  "officialExportNoNewer": "No newer official release was reported by the last check.",
+  "@officialExportNoNewer": {
+    "description": "A successful dated cached check, without starting new network work."
   }
 }

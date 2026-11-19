@@ -30,11 +30,13 @@ void main() {
     testWidgets('ready layout ${settings.$1} ${settings.$2} ${settings.$3}',(tester)async {
       tester.view.physicalSize=Size(settings.$2,900);tester.view.devicePixelRatio=1;
       addTearDown(tester.view.reset);
+      final boundary=GlobalKey();
       await tester.pumpWidget(MaterialApp(theme:buildTheme(Brightness.light),locale:Locale(settings.$1),
         localizationsDelegates:AppLocalizations.localizationsDelegates,supportedLocales:AppLocalizations.supportedLocales,
         builder:(c,child)=>MediaQuery(data:MediaQuery.of(c).copyWith(textScaler:TextScaler.linear(settings.$3)),child:child!),
-        home:const OfficialExportScreen()));
+        home:RepaintBoundary(key:boundary,child:const OfficialExportScreen())));
       await tester.pumpAndSettle();
+      await capture(tester,boundary,'ready-${settings.$1}-${settings.$2}-${settings.$3}');
       expect(find.byType(Scrollable),findsWidgets);
       expect(find.byType(CircularProgressIndicator),findsNothing);
       final l=await AppLocalizations.delegate.load(Locale(settings.$1));
@@ -50,6 +52,8 @@ void main() {
       final fx=(await tester.runAsync(RichFixture.build))!;
       final root=(await tester.runAsync(()=>Directory.systemTemp.createTemp('export_ui_')))!;
       final coordinator=OfficialExportCoordinator();
+      Future<OfficialExportOutcome>? pending;
+      Completer<void>? recoveryStarted,recoveryRelease;
       try {
         await tester.runAsync(()async {
           final db=await databaseFactoryFfi.openDatabase(fx.forkPath);
@@ -59,13 +63,19 @@ void main() {
           }finally{await db.close();}
         });
         final free=Space();final destination=Destination(root,free);
-        final ready=Completer<void>();
+        late Completer<void> ready;
         late Future<OfficialExportOutcome> running;
         await tester.runAsync(()async {
+          ready=Completer<void>();
+          if(recovery) {
+            recoveryStarted=Completer<void>();recoveryRelease=Completer<void>();
+            destination.recoveryStarted=recoveryStarted;destination.recoveryRelease=recoveryRelease;
+          }
           running=coordinator.export(snapshot:Snapshot(fx.forkPath),privateRoot:Directory('${root.path}/private'),
             destination:destination,space:ExportSpaceBudget(source:free),prompts:Prompts(()async=>'pw',(_) {
               final choice=coordinator.waitForRecoveryChoice();ready.complete();return choice;
             }));
+          pending=running;
           unawaited(running.then((_){if(!ready.isCompleted)ready.complete();}));
           await ready.future.timeout(const Duration(seconds:30));
         });
@@ -77,31 +87,60 @@ void main() {
           home:RepaintBoundary(key:boundary,child:OfficialExportScreen(coordinator:coordinator))));
         await tester.pumpAndSettle();
         await tester.scrollUntilVisible(find.text('Yes'),250,scrollable:find.byType(Scrollable).first);
+        await tester.pumpAndSettle();
         expect(find.text('Save a second file with data the official version does not yet support?'),findsOneWidget);
         expect(coordinator.official!.file.name,startsWith('openstrap-official-v0.12.2-'));
         final report=await tester.runAsync(()=>coordinator.omissionSummary());
         expect(report!.where((row)=>row['family']=='other').fold<int>(0,(n,row)=>n+(row['count'] as int)),greaterThanOrEqualTo(301));
-        final rect=tester.getRect(find.text('Saved and verified'));
-        await tester.pump(const Duration(seconds:1));expect(tester.getRect(find.text('Saved and verified')),rect);
-        if(Platform.environment['P3_CAPTURE_DIR'] case final String path) {
-          final rendered=boundary.currentContext!.findRenderObject()! as RenderRepaintBoundary;
-          final image=await rendered.toImage();final png=await image.toByteData(format:ui.ImageByteFormat.png);
-          await tester.runAsync(()async{await Directory(path).create(recursive:true);await File('$path/recovery-choice-$recovery.png').writeAsBytes(png!.buffer.asUint8List());});
-          image.dispose();
+        await capture(tester,boundary,'recovery-choice-$recovery');
+        await tester.scrollUntilVisible(find.text('Saved and verified'),-250,scrollable:find.byType(Scrollable).first);
+        await tester.pumpAndSettle();
+        final before=tester.getRect(find.text('Saved and verified'));
+        final choose=find.ancestor(of:find.text(recovery?'Yes':'No'),matching:find.byType(OutlinedButton));
+        tester.widget<OutlinedButton>(choose).onPressed!();
+        if(recovery) {
+          await tester.runAsync(()=>recoveryStarted!.future.timeout(const Duration(seconds:30)));
+          await tester.pumpAndSettle();
+          expect(coordinator.progress.artifact,ExportArtifact.recovery);
+          expect(coordinator.progress.stage,ExportStage.encrypting);
+          await capture(tester,boundary,'recovery-encrypting');
+          expect(tester.getRect(find.text('Saved and verified')),before,
+            reason:'recovery progress must not move the verified official receipt');
+          recoveryRelease!.complete();
         }
-        await tester.tap(find.text(recovery?'Yes':'No'));
         await tester.runAsync(()=>running.timeout(const Duration(seconds:30)));
         await tester.pumpAndSettle();
         final outcome=coordinator.outcome as OfficialExportSaved;
         expect(outcome.recoveryStatus,recovery?RecoveryStatus.saved:RecoveryStatus.declined);
         expect(destination.creates,recovery?2:1);
+        await tester.scrollUntilVisible(find.text('Changes and omissions'),250,scrollable:find.byType(Scrollable).first);
+        await tester.tap(find.text('Changes and omissions'));await tester.pumpAndSettle();
+        expect(find.textContaining('Other records'),findsWidgets);
+        expect(find.textContaining('private'),findsNothing);
         expect(tester.takeException(),isNull);
       } finally {
         await tester.pumpWidget(const SizedBox());
-        await tester.runAsync(()async{await coordinator.finish();await root.delete(recursive:true);await fx.dispose();});
+        coordinator.cancel();
+        if(recoveryRelease!=null && !recoveryRelease!.isCompleted)recoveryRelease!.complete();
+        await tester.runAsync(()async{if(pending!=null)await pending;await coordinator.finish();await root.delete(recursive:true);await fx.dispose();});
         coordinator.dispose();
       }
     });
   }
 
+}
+
+
+// Captures document the rendered production state; they are inspected manually.
+Future<void> capture(WidgetTester tester,GlobalKey key,String name) async {
+  final path=Platform.environment['P3_CAPTURE_DIR'];if(path==null)return;
+  final boundary=key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+  final image=await boundary.toImage();
+  try {
+    final png=await image.toByteData(format:ui.ImageByteFormat.png);
+    await tester.runAsync(()async {
+      await Directory(path).create(recursive:true);
+      await File('$path/$name.png').writeAsBytes(png!.buffer.asUint8List());
+    });
+  }finally{image.dispose();}
 }

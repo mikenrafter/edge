@@ -52,7 +52,7 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
     coordinator.removeListener(_changed);
     if(!coordinator.active) {
       unawaited(coordinator.finish());
-      if(_grant?.acquiredForSession==true)unawaited(AndroidBackupStorage.release(_grant!));
+      if(_grant?.acquiredForSession==true)unawaited(_releaseGrant());
     }
     super.dispose();
   }
@@ -70,7 +70,7 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
       if(Platform.isAndroid) {
         final folder=await AndroidBackupStorage.pick();
         if(folder==null)return;
-        if(_grant?.acquiredForSession==true)await AndroidBackupStorage.release(_grant!);
+        if(_grant?.acquiredForSession==true)await _releaseGrant();
         _grant=folder;_destination=AndroidCipherBackupStorage(folder);
       } else {
         // iOS exposes Documents in Files; sharing stays an explicit later action.
@@ -96,9 +96,25 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
       await ScreenWake.releaseOwner('official-export');
       // A preexisting/automatic-backup grant is never released by this session.
       if(_grant?.acquiredForSession==true && !coordinator.canRetryRecovery) {
-        await AndroidBackupStorage.release(_grant!);_grant=null;_destination=null;
+        await _releaseGrant();
       }
       if(mounted)setState((){_starting=false;});
+    }
+  }
+  Future<void> _releaseGrant() async {
+    final grant=_grant;
+    if(grant?.acquiredForSession!=true)return;
+    try {await AndroidBackupStorage.release(grant!);}
+    catch(error){if(mounted)setState((){_error=error;});}
+    finally {_grant=null;_destination=null;}
+  }
+  Future<void> _retryRecovery() async {
+    await ScreenWake.hold('official-export');
+    try {await coordinator.retryRecovery();}
+    catch(error){if(mounted)setState((){_error=error;});}
+    finally {
+      await ScreenWake.releaseOwner('official-export');
+      if(!coordinator.canRetryRecovery)await _releaseGrant();
     }
   }
   Future<bool> _confirmStop() async {
@@ -124,6 +140,7 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
         await Share.shareXFiles([XFile(file.file.path)],sharePositionOrigin:mounted?shareOrigin(context):null);
       }
     }catch(error){if(mounted)setState((){_error=error;});}
+    finally {await _releaseGrant();}
   }
   String _failure(AppLocalizations l,Object error)=>switch(error) {
     ExportSpaceExhausted()=>l.officialExportSpace,
@@ -161,7 +178,7 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
         Text(l.officialExportTitle,style:Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height:12),
         Text(l.officialExportTarget,style:Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height:12),Text(widget.newerOfficialAvailable?l.officialExportNewer:l.officialExportOffline),
+        const SizedBox(height:12),Text(widget.newerOfficialAvailable?l.officialExportNewer:widget.checkedAt!=null?l.officialExportNoNewer:l.officialExportOffline),
         if(widget.checkedAt!=null)Text('${l.officialExportChecked} ${MaterialLocalizations.of(context).formatMediumDate(widget.checkedAt!)}'),
         const SizedBox(height:12),Text(l.officialExportIntro),
         ExpansionTile(title:Text(l.officialExportChecklist.split('\n').first),children:[
@@ -179,6 +196,11 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
           if(_destination!=null)Text(_destination!.label),
           button(l.officialExportStart,_start),
         ],
+        if(official!=null)...[
+          const SizedBox(height:16),Text(l.officialExportSaved),
+          SelectableText(official.file.name),Text(official.folder),
+          button(l.officialExportShare,()=>_share(official)),
+        ],
         if(busy && progress.stage!=ExportStage.recoveryChoice)...[
           Semantics(liveRegion:true,child:Text(_stage(l,progress.stage))),
           if(progress.stage==ExportStage.mapping && progress.family!=null)Text(switch(exportRecordFamily(progress.family!)){
@@ -187,11 +209,6 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
           if(progress.total!=null && progress.total!>0)
             LinearProgressIndicator(value:(progress.done/progress.total!).clamp(0,1)),
           button(l.actionCancel,()async{await _confirmStop();}),
-        ],
-        if(official!=null)...[
-          const SizedBox(height:16),Text(l.officialExportSaved),
-          SelectableText(official.file.name),Text(official.folder),
-          button(l.officialExportShare,()=>_share(official)),
         ],
         if(coordinator.awaitingRecoveryChoice)...[
           Text(l.officialExportRecoveryQuestion,style:Theme.of(context).textTheme.titleMedium),
@@ -203,7 +220,7 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
           if(outcome.recovery!=null)...[SelectableText(outcome.recovery!.file.name),button(l.officialExportShare,()=>_share(outcome.recovery!))],
           if(outcome.recoveryError!=null)...[
             Text(l.officialExportRecoveryFailed),Text(_failure(l,outcome.recoveryError!)),
-            button(l.officialExportRetryRecovery,coordinator.active?null:()async{await coordinator.retryRecovery();}),
+            button(l.officialExportRetryRecovery,coordinator.active?null:_retryRecovery),
           ],
         ],
         if(outcome is OfficialExportRefused)...[Text(_failure(l,outcome.reason)),button(l.officialExportRetry,_start)],
