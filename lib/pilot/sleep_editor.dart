@@ -121,7 +121,7 @@ class _SleepEditorState extends State<PilotSleepEditor>{
     // Mock-up v11 .item on the app's SetRow: icon, name, snap/reset chip,
     // time with "detected" under it; the selected time sits on a card.
     final p=P.of(context),main=b.entry?.kind!=SleepBlockKind.nap,selectedRow=end==endSelected;
-    Widget chip(String label,VoidCallback tap)=>BigButton(label,dense:true,soft:true,color:C.n500,onTap:tap);
+    Widget chip(String label,VoidCallback tap)=>PilotRowChip(label,onTap:tap);
     return Container(margin:const EdgeInsets.symmetric(vertical:1),padding:const EdgeInsets.symmetric(horizontal:10),
       decoration:BoxDecoration(color:selectedRow?p.card2:null,borderRadius:BorderRadius.circular(12),border:Border.all(color:selectedRow?p.on(C.blue).withValues(alpha:.45):Colors.transparent)),
       child:SetRow(main?(end?LucideIcons.sunrise:LucideIcons.moon):LucideIcons.bedDouble,main?(end?C.orange:C.indigo):C.teal,

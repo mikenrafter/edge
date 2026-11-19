@@ -305,7 +305,7 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
             ])),
           ])))));}));
 
-  Widget _resetChip(VoidCallback tap)=>SizedBox(width:72,child:BigButton(l.pilotReset,dense:true,soft:true,color:C.n500,onTap:tap));
+  Widget _resetChip(VoidCallback tap)=>PilotRowChip(l.pilotReset,onTap:tap);
   Widget feelRow({bool chaos=false})=>Row(children:[TextButton.icon(onPressed:playing?null:()=>_feel(chaos:chaos),icon:const Icon(LucideIcons.vibrate,size:16),label:Text(l.pilotFeelIt)),const Spacer(),TextButton(onPressed:()=>Navigator.of(context).push(MaterialPageRoute(builder:(_)=>const HapticsSettings())),child:Text(l.pilotHaptics))]);
   Widget choices<T>(List<T> values,T selected,ValueChanged<T> change,String Function(T) label)=>Wrap(spacing:6,children:[for(final v in values)ChoiceChip(label:Text(label(v)),selected:v==selected,onSelected:methods?(_)=>setState(()=>change(v)):null,materialTapTargetSize:MaterialTapTargetSize.padded)]);
   @override Widget build(BuildContext context){

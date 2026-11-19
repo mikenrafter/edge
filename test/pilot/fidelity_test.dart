@@ -60,6 +60,7 @@ void main(){
     expect(find.byType(SwitchListTile),findsNothing);
     final band=find.widgetWithText(SetRow,'Band buzz');expect(band,findsOneWidget);
     expect(find.descendant(of:band,matching:find.byType(Switch)),findsOneWidget);
+    await t.scrollUntilVisible(find.text('Phone sound'),200,scrollable:find.byType(Scrollable).last);
     expect(find.descendant(of:find.widgetWithText(SetRow,'Phone sound'),matching:find.textContaining('min after · set on Times')),findsOneWidget);
   });
 
