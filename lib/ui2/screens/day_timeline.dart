@@ -1,3 +1,7 @@
+import '../../pilot/pilot_flags.dart';
+import '../../pilot/day_layout.dart';
+import '../../pilot/timeline_policy.dart';
+import '../../pilot/sleep_editor.dart';
 import '../day_timeline/day_graph.dart';
 export '../day_timeline/day_graph.dart' show DayGraph, kDayMinutes;
 import '../day_timeline/timeline_chart.dart';
@@ -1065,6 +1069,9 @@ class DayTimelineScreen extends StatefulWidget {
 class _DayTimelineScreenState extends State<DayTimelineScreen>
     implements EdgeSwipeListener, AnnotationListener, NerdStatsListener,
         DayRowEditListener {
+  final _pilotInteraction=TimelineInteraction();
+  PilotTimelineTab? _pilotTab;
+  String? _pilotTabDay,_openedDay;
   final _filter = TimelineFilter();
   TimelineController? _chart;
   List<({String id, Moment moment})> _visibleRows = const [];
@@ -1096,9 +1103,13 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
       final best=(nearest.moment.at-at).abs();
       if (distance < best || (distance == best && row.id == _highlight)) { nearest = row; }
     }
+    if(PilotFlag.timelines.enabled&&!_pilotInteraction.handScrubbing){
+      _chart?.setScrub(nearest.moment.at.toDouble());_pilotInteraction.focus(nearest.moment.at.toDouble());
+    }
     if (_highlight != nearest.id) _reveal(nearest.id);
   }
   void _listScrolled() {
+    if(PilotFlag.timelines.enabled && _pilotInteraction.handScrubbing)return;
     if (_programmaticScroll || !_listController.hasClients ||
         _listController.position.userScrollDirection == ScrollDirection.idle) { return; }
     final viewport = _listController.position.context.storageContext.findRenderObject();
@@ -1113,6 +1124,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
       if (delta < distance) { distance=delta; closest=row; }
     }
     if (closest != null) {
+      if(PilotFlag.timelines.enabled){_pilotInteraction.scroll();_pilotInteraction.focus(closest.moment.at.toDouble());}
       _chart?.reveal(closest.moment.at.toDouble());
       if (_highlight != closest.id) setState(() => _highlight=closest!.id);
     }
@@ -1132,6 +1144,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   @override
   void dispose() {
     _highlightTimer?.cancel();
+    _pilotInteraction.dispose();
     _chart?.dispose();
     _filter.removeListener(_filterChanged);
     _filter.dispose();
@@ -1242,6 +1255,11 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   @override
   Future<void> openRowEditor(Moment m) async {
     final ref = m.editRef, day = _day ?? _d?.day;
+    if(day!=null && PilotFlag.timelines.enabled && (ref=='nap'||m.annotationKind==AnnotationKind.mainSleep||m.annotationKind==AnnotationKind.nap)){
+      await go(context,PilotSleepEditor(day:day,initialTime:m.at));
+      if(mounted && widget.data==null)unawaited(_load());
+      return;
+    }
     if (ref == null || day == null) return;
     if (ref.startsWith('moment:')) {
       // Opens at once; the editor reads its own row (see MomentAnswerEditLoader).
@@ -1571,7 +1589,12 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         child: Container(
           key: ValueKey('apk2-day-row:${row.id}'),
           color: _highlight == row.id ? p.wash(C.domMind) : null,
-          child: DayReviewActions.shows(review, row.id, row.moment, this)
+          child: PilotFlag.timelines.enabled&&row.moment.timelineKind==DayTimelineKind.discarded
+              ? MomentRow(row.moment,below:Row(children:[Expanded(child:reviewButton(context,'pilot-restore:${row.id}',AppLocalizations.of(context)!.pilotRestore,
+                review?.canEdit==true?()=>review!.togglePilotRestore(row.id):null,selected:review?.pilotRestoreStaged(row.id)==true,glyph:LucideIcons.undo2))]))
+              : (PilotFlag.timelines.enabled && (row.moment.annotationKind==AnnotationKind.mainSleep||(row.moment.annotationKind==AnnotationKind.nap&&review?.needsReview(row.id)!=true)))
+              ? MomentRow(row.moment,below:Row(children:[Expanded(child:TextButton(onPressed:()=>openRowEditor(row.moment),child:Text(AppLocalizations.of(context)!.activityEdit)))]))
+              : DayReviewActions.shows(review, row.id, row.moment, this)
               // Buttons belong to their item: one inset card holds both.
               ? Container(
                   margin: const EdgeInsets.symmetric(vertical: S.x1),
@@ -1590,7 +1613,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   }
 
   @override
-  Widget build(BuildContext c) => DayNavigationFrame(
+  Widget build(BuildContext c) => PilotFlag.timelines.enabled?_content(c):DayNavigationFrame(
       selectedDay: _day ?? _d?.day ?? widget.day ?? todayLabel(),
       onSelect: _goDay, child: _content(c));
 
@@ -1646,7 +1669,15 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     ]..sort((a, b) => a.row.moment.at != b.row.moment.at
           ? a.row.moment.at.compareTo(b.row.moment.at)
           : a.rank.compareTo(b.rank));
+    if(PilotFlag.timelines.enabled && _pilotTabDay!=d.day){
+      _pilotTabDay=d.day;_openedDay??=d.day;
+      _pilotTab=initialTimelineTab(pending:ranked.any((r)=>r.row.moment.timelineKind==DayTimelineKind.pending),saved:ranked.any((r)=>r.row.moment.timelineKind!=DayTimelineKind.discarded));
+    }
     bool visible(Moment m) {
+      if(PilotFlag.timelines.enabled){
+        final kind=m.timelineKind??DayTimelineKind.saved;
+        return kind.name==(_pilotTab??PilotTimelineTab.pending).name;
+      }
       if (m.annotationKind == AnnotationKind.mainSleep || m.annotationKind == AnnotationKind.wake ||
           (m.annotationKind == null && m.timelineKind == null)) { return true; }
       return _filter.kinds.contains(m.timelineKind ?? DayTimelineKind.saved);
@@ -1654,10 +1685,29 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     final rows = [for (final e in ranked) if (visible(e.row.moment)) e.row];
     _visibleRows = rows;
     final chart = _chartFor(d.graph);
-    final annotations = [...dayAnnotations([for (final row in rows) row.moment]),...d.rhrMarks];
+    final annotations = [...dayAnnotations([for (final row in rows) row.moment]),...(!PilotFlag.timelines.enabled?d.rhrMarks:const <ChartAnnotation>[])];
     final title = widget.reviewEntry
         ? (l?.homeReviewActivities ?? 'Review activities')
         : (l?.dayTimelineTitle ?? 'Breakdown of your day');
+    if(PilotFlag.timelines.enabled && !_loading){
+      final day=_day??d.day??todayLabel(),days=d.days;
+      final index=days.indexOf(day);
+      return PopScope(canPop:_allowPop||(review?.hasChanges!=true&&review?.busy!=true),onPopInvokedWithResult:(didPop,result){if(!didPop)unawaited(_leave());},child:PilotDayLayout(title:title,dayRow:PilotDayRow(day:prettyDay(day,l),dirty:review?.hasChanges==true,busy:review?.busy==true,
+        onPrevious:index>=0&&index+1<days.length?()=>_goDay(days[index+1]):null,
+        onNext:index>0?()=>_goDay(days[index-1]):null,
+        onCancel:()async{await review?.discardDraft();if(mounted)setState((){});},onSave:()=>review?.save(c)),
+        graph:d.graph,controller:chart,interaction:_pilotInteraction,tab:_pilotTab??PilotTimelineTab.pending,
+        onTab:(value)=>setState(()=>_pilotTab=value),listController:_listController,
+        annotations:annotations,onAnnotation:annotationTapped,onScrub:_scrubRow,
+        onPan:(at){if(!_pilotInteraction.handScrubbing)_scrubRow(at);},
+        rows:_dayRows(rows,review),before:[
+          TextButton(onPressed:()=>go(c,const TypicalDayScreen()),child:Text(l?.typicalDayTitle??'Typical day')),
+          if(d.computedAtMs!=null)Text(l!.asOfTime(clockOfTs(d.computedAtMs!~/1000)),style:F.cap.copyWith(color:p.ink3)),
+        ],after:[
+          if(d.notes.isNotEmpty)alsoLoggedSection(c,d.notes),
+          if(widget.reviewEntry)const NapAutoLogRow(),DayReviewNotices(controller:review,reloader:this),
+        ],backToOpened:_openedDay!=null&&day!=_openedDay?TextButton(onPressed:()=>_goDay(_openedDay!),child:Text(_openedDay==todayLabel()?(l?.homeBackToToday??'Back to today'):l!.pilotBackToDay(prettyDay(_openedDay,l)))):null));
+    }
     return PopScope(
       canPop: _allowPop || (review?.hasChanges != true && review?.busy != true),
       onPopInvokedWithResult: (didPop, result) {

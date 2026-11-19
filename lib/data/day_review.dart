@@ -6,11 +6,12 @@ import '../models/activity_suggestion.dart';
 
 class ActivityDecision {
   const ActivityDecision(this.suggestion, {required this.keep, this.startTs,
-      this.endTs, this.workoutType});
+      this.endTs, this.workoutType,this.restore=false});
   final int? startTs, endTs;
   final String? workoutType;
   final ActivitySuggestion suggestion;
   final bool keep;
+  final bool restore;
 }
 
 class MomentDecision {

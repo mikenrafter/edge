@@ -1,3 +1,10 @@
+import '../pilot/alarm_pilot.dart' as pilot;
+import '../pilot/wake_runtime.dart';
+import '../haptics/pattern_store.dart';
+import '../haptics/phone_vibration.dart' show vibratePhoneFor;
+import '../l10n/app_localizations.dart';
+import '../pilot/alarm_pilot.dart' show selectedAlarmSchedule;
+import '../pilot/pilot_flags.dart';
 import '../data/sleep_block_store.dart';
 import '../util/callable.dart';
 import 'coalescing_runner.dart';
@@ -7,7 +14,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'package:flutter/services.dart' show HapticFeedback;
+import 'package:flutter/services.dart' show HapticFeedback, SystemSound, SystemSoundType;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
@@ -222,6 +229,7 @@ export 'derive_coordinator.dart' show DeriveRunHook;
 
 part 'app_state/pairing.dart';
 part 'app_state/sleep_edits.dart';
+part 'app_state/pilot_wake.dart';
 
 // AppState — the single ChangeNotifier the UI listens to. Orchestrates the BLE
 // engine, local DB writes (raw-first), live telemetry, and the screen data SEAM.
@@ -3511,6 +3519,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     sleepEditRunner.dispose();
     sleepOperations.dispose();
     screenRequest.dispose();
+    pilotWake.dispose();
     super.dispose();
   }
 
@@ -6397,16 +6406,34 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   List<AlarmScheduleEntry> _schedule = fillDefaultAlarmSchedule(const []);
   List<AlarmScheduleEntry> get alarmSchedule => _schedule;
 
+  List<pilot.PilotAlarm> _pilotAlarms=[];
+  pilot.PilotAlarm? _pilotFiredAlarm;
+  bool get _pilotWakeOn=>PilotFlag.alarmScreen.enabled&&PilotFlag.wakeMethods.enabled;
+  @visibleForTesting
+  Call2<pilot.PilotAlarm,DateTime,Future<bool>>? debugPilotAppFire;
+  pilot.PilotAlarm? _pilotForWake(DateTime at)=>_pilotAlarms.where((a)=>a.enabled&&a.type==pilot.PilotAlarmType.sleep&&
+    pilot.pilotPreviousAt(a,at.add(const Duration(seconds:1)))==at).firstOrNull;
+  late final PilotWakeRuntime pilotWake=_createPilotWake();
+
+  Future<void> refreshPilotAlarms({bool sourceChanged=false}) async {
+    if(sourceChanged){await _endSnooze('pilot settings changed');await pilot.PilotSnoozeSlot.clear();pilotWake.acknowledge();_pilotFiredAlarm=null;}
+    await _loadAlarmSchedule();
+    await _armNextAlarmOccurrence();
+    notifyListeners();
+  }
+
   Future<void> _loadAlarmSchedule() async {
     try {
-      final rows = await LocalDb.alarmScheduleRows();
-      _schedule = fillDefaultAlarmSchedule(
-          [for (final r in rows) AlarmScheduleEntry.fromRow(r)]);
+      _schedule = await selectedAlarmSchedule(() async => fillDefaultAlarmSchedule([
+        for(final r in await LocalDb.alarmScheduleRows()) AlarmScheduleEntry.fromRow(r),
+      ]),at:_wakeNow());
+      _pilotAlarms=PilotFlag.alarmScreen.enabled?await pilot.PilotAlarmStore.load():[];
     } catch (e) {
       _log('[alarm] schedule load failed: $e');
+      if(PilotFlag.alarmScreen.enabled){_schedule=[];rethrow;}
     }
     try {
-      await wake.reload();
+      if(!PilotFlag.alarmScreen.enabled)await wake.reload();
     } catch (e) {
       _log('[wake] reload failed: $e');
     }
@@ -6478,6 +6505,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   }
 
   Future<void> _persistScheduleEntry(AlarmScheduleEntry next) async {
+    if(PilotFlag.alarmScreen.enabled)throw StateError('Edit pilot alarms in Labs while the alarm pilot is on');
     for (var d = _disableInFlight; d != null; d = _disableInFlight) {
       await d;
     }
@@ -6751,12 +6779,13 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
           !terminationProbe.running) {
         await _recoverFromProbe(prefs, pendingProbe);
       }
+      await _loadAlarmSchedule();
       final armedFor = paired?.remoteId;
       final result = await armNextScheduledOccurrence(
         engine: _armWriter,
         schedule: _schedule,
         currentArmedEpoch: _savedAlarm ?? device.alarmEpoch,
-        now: alarmRearmFrom(DateTime.now(), _rearmPastEpoch),
+        now: alarmRearmFrom(_wakeNow(), _rearmPastEpoch),
         ackedThroughEpochSec: prefs.getInt(_kWakeAckedEpochPref),
       );
       final report = armReportOf(result);
@@ -6929,13 +6958,18 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   }
 
   FallbackStatus _wakeFallbackStatus(DateTime wakeAt) => FallbackStatus(
-        armedForWake: alarmEpoch == wakeAt.millisecondsSinceEpoch ~/ 1000,
+        armedForWake: alarmEpoch == wakeAt.millisecondsSinceEpoch ~/ 1000 || (_pilotWakeOn&&_pilotForWake(wakeAt)?.band==false&&alarmEpoch==wakeAt.add(const Duration(minutes:1)).millisecondsSinceEpoch~/1000),
         confirmed: _alarm.confirmed,
       );
 
   Future<WakeHapticResult> _sendWakeHaptic(WakeHapticRequest r) async {
     // Wake plays the band's measured vocabulary (not configurable). RUN_ALARM
     // stays for a band with no profile and as the fallback.
+    final pilotAlarm=_pilotWakeOn?_pilotForWake(r.wakeAt):null;
+    if(pilotAlarm!=null&&!pilotAlarm.band){
+      final sent=await pilotWake.appFire(pilotAlarm,_wakeNow(),occurrence:r.wakeAt,connected:isConnected);
+      return WakeHapticResult(delivered:sent?const ['phone']:const [],suppressionReason:sent?null:'phone-delivery-failed');
+    }
     final wakeHaptics = WakeHaptics(haptics);
     final natural = r.kind == WakeHapticKind.natural;
     final o = await _dispatchBandAlert(
@@ -6954,6 +6988,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       eventId: r.eventId,
       sourceTime: r.sourceTime,
     );
+    if(o.targets.isNotEmpty&&pilotAlarm!=null&&natural){_pilotFiredAlarm=pilotAlarm.copy();pilotWake.noteFire(pilotAlarm,_wakeNow(),occurrence:r.wakeAt);}
     if (o.targets.isNotEmpty) {
       wake.noteWakeAwaitingAck(r.wakeAt.millisecondsSinceEpoch ~/ 1000,
           natural ? WakePath.natural : WakePath.gradual);
@@ -6966,6 +7001,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// acknowledged (so no connect/sync re-arms it), then disables the band
   /// alarm. Returns false on any failure, leaving the arm as it was.
   Future<bool> _cancelNativeAlarmForWake(DateTime wakeAt) async {
+    if(_pilotWakeOn&&_pilotForWake(wakeAt)?.band==true)return false;
     if (!isConnected) return false;
     try {
       if (!await engine.disableAlarm()) return false;
@@ -6988,24 +7024,26 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     if (epoch == null) return null;
     final wakeAt = DateTime.fromMillisecondsSinceEpoch(epoch * 1000);
     final entry =
-        _schedule.where((e) => e.weekday == wakeAt.weekday - 1).firstOrNull;
+        _schedule.where((e) => e.weekday == wakeAt.weekday - 1 && (!PilotFlag.alarmScreen.enabled || (e.hour==wakeAt.hour&&e.minute==wakeAt.minute))).firstOrNull;
     if (entry == null) return null;
     return WakePlanInput(
-      wakeAt: wakeAt,
+      wakeAt: wakeAt.subtract(Duration(minutes:entry.nativeOffsetMinutes)),
       // FeatureFlag.naturalWake OFF gives the orchestrator no Natural window.
-      naturalMinutes: wake.naturalEnabled ? entry.naturalWindowMinutes : 0,
-      gradualMinutes: entry.gradualWindowMinutes,
+      naturalMinutes: (_pilotWakeOn||wake.naturalEnabled) ? entry.naturalWindowMinutes : 0,
+      gradualMinutes: PilotFlag.alarmScreen.enabled?0:entry.gradualWindowMinutes,
       gradualPattern: entry.gradualPattern,
       gradualCadenceSec: entry.gradualCadenceSec,
       expectedSchedule: sleepOperations.schedule,
-      upgradePending: wake.upgradeExplanationPending,
+      upgradePending: _pilotWakeOn?false:wake.upgradeExplanationPending,
     );
   }
 
   Future<WakeAckOutcome> _acknowledgeWake(bool cancelNative) async {
+    if(_pilotWakeOn){pilotWake.acknowledge();if((_pilotFiredAlarm??pilotWake.firedAlarm)?.band==true)cancelNative=false;}
     final epoch = wake.awaitingWakeEpoch;
     final plan = _currentWakePlan();
     await _snooze?.imUp();
+    if(_pilotWakeOn)await _clearPilotSnoozeSlot();
     if (epoch != null && plan?.wakeSec != epoch) {
       // The native fire may already have armed tomorrow. Never acknowledge or
       // cancel that future occurrence in response to this morning's button.
@@ -7046,8 +7084,9 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   // HAPTICS_TERMINATED hook ([_onHapticsTerminated]) starts it, _onLiveEvent
   // feeds it band double taps (after Natural Wake's own repeat check), and the
   // 30 s keep-alive ticks it ([_checkSmartWake]). Its haptics go through
-  // [_playSnoozeHaptic] (the shared band queue). It never arms, re-arms or
-  // disables the band's native alarm: the snooze is app-driven only.
+  // [_playSnoozeHaptic] (the shared band queue). Production snooze is app-driven.
+  // The Band-off pilot adds a native end+1 backstop through the same arm flight;
+  // the controller remains unaware of BLE and native slots.
   //
   // One clock domain: the strap's stamps (fire, stop, taps) become PHONE time
   // through the engine's ClockRef ([_driftSec]); the dismiss window, the snooze
@@ -7216,13 +7255,17 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   static const Duration kSnoozeGuardGrace = Duration(minutes: 15);
 
   SnoozeController? _snooze;
+  SnoozeSettings get _activeSnoozeSettings {
+    final alarm=_pilotWakeOn?_pilotFiredAlarm:null;
+    return alarm==null?_snoozeSettings:SnoozeSettings.clamped(enabled:alarm.snooze,minutes:alarm.snoozeMinutes,cap:alarm.maxSnoozes.clamp(1,20));
+  }
   SnoozeSettings _snoozeSettings = const SnoozeSettings();
 
   /// Snooze runs only when the wearer switched it on AND the paired band can
   /// drive it (it reports how an alarm stopped: [Feature.alarmSnooze]). A
   /// preference kept from another band is inert on one that cannot.
   bool get _snoozeOn =>
-      _snoozeSettings.enabled && capabilities.has(Feature.alarmSnooze);
+      _activeSnoozeSettings.enabled && capabilities.has(Feature.alarmSnooze);
 
   /// Bumped whenever a snooze chain ends; a band job queued for an earlier
   /// chain is no longer wanted.
@@ -7293,6 +7336,13 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     if (known != null && stamp.isBefore(known)) return;
     if (_quietEpoch != null) _quietFired = true;
     _nativeAlarmFiredAt = stamp;
+    if(_pilotWakeOn){
+      _pilotFiredAlarm=_pilotAlarms.where((a){
+        final at=pilot.pilotPreviousAt(a,stamp.add(const Duration(seconds:30)));
+        return a.type==pilot.PilotAlarmType.sleep&&at!=null&&stamp.difference(at).abs()<=const Duration(minutes:1);
+      }).firstOrNull;
+      if(_pilotFiredAlarm case final alarm?)pilotWake.noteFire(alarm,stamp,occurrence:pilot.pilotPreviousAt(alarm,stamp.add(const Duration(seconds:30))));
+    }
     _nativeFireReceivedAt = received;
     _nativeFireClockUnset = unset;
     _alarmClockUnset = unset;
@@ -7325,7 +7375,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
 
   void _armFireGuard(DateTime fire) {
     final now = _wakeNow();
-    final due = fire.add(_snoozeSettings.window + _snoozeSettings.snoozeFor);
+    final due = fire.add(_activeSnoozeSettings.window + _activeSnoozeSettings.snoozeFor);
     // A replayed old fire arms nothing.
     if (now.difference(fire) > kSnoozeAlarmWindow || !due.isAfter(now)) return;
     _fireGuardDue = due;
@@ -7391,6 +7441,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       // bound, ...) lands here: a band job queued for it is no longer wanted.
       _snoozeChain++;
     }
+    if(st.phase==SnoozePhase.idle&&_pilotWakeOn)unawaited(_clearPilotSnoozeSlot());
     _syncSnoozeGuard();
   }
 
@@ -7401,7 +7452,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     return BandPromptRequest.snooze(
       now: _wakeNow(),
       due: due,
-      snoozeLength: _snoozeSettings.snoozeFor,
+      snoozeLength: _activeSnoozeSettings.snoozeFor,
     );
   }
 
@@ -7435,6 +7486,11 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// The snooze controller (built on first use from the debug* seams below,
   /// which must be set before that).
   SnoozeController get snooze => _snooze ??= _buildSnooze();
+  Future<void> snoozePilotAlarm()async{
+    final at=pilotWake.firedAt;if(!_pilotWakeOn||at==null||pilotWake.acknowledged)return;
+    _nativeAlarmFiredAt??=at;
+    await snooze.onAlarmStopped(AlarmStopCause.expired,at:_wakeNow(),fire:at);
+  }
 
   SnoozeStore get _snoozeStore => debugSnoozeStore ?? const DbSnoozeStore();
 
@@ -7445,12 +7501,15 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       confirmedWake: debugSnoozeConfirmedWake ?? _snoozeConfirmedWake,
       recordEvidence: debugSnoozeEvidence ??
           (kind, at) async {
+            if(_pilotWakeOn&&kind==WakeEvidenceKind.alarmAcknowledged)pilotWake.acknowledge();
             await _noteWake(kind, at);
           },
       store: _snoozeStore,
-      settings: () => _snoozeSettings,
+      settings: () => _activeSnoozeSettings,
+      maximumSnoozes:()=>_pilotWakeOn?_pilotFiredAlarm?.maxSnoozes:null,
       knownFire: () => _nativeAlarmFiredAt,
       onRestoredChainOver: _dropDeadProcessBackstop,
+      onSnoozeStarted:_pilotSnoozeStarted,
       log: _log,
     );
     c.status.addListener(_onSnoozeStatus);
@@ -7640,6 +7699,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   Future<bool> _playSnoozeHaptic(String slot,
       {List<PatternEntry>? notes, void Function()? onFirstWrite}) async {
     if (_disposed) return false;
+    if(_pilotWakeOn&&(_pilotFiredAlarm??pilotWake.firedAlarm)?.band==false){if(slot==kAlarmReAlarmKey)return _playPilotPhoneSnooze();return true;}
     BuzzSequence? seq;
     if (slot == kAlarmReAlarmKey && notes != null) {
       final own = gestureCues.patternFor?.call(slot);
@@ -7666,6 +7726,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     Future<BuzzDelivery> deliver() => seq != null
         ? haptics.deliver(seq, onFirstWrite: onFirstWrite)
         : gestureCues.slot(slot, onFirstWrite: onFirstWrite);
+    if(_pilotWakeOn&&_pilotFiredAlarm!=null&&reAlarm){
+      final alarm=_pilotFiredAlarm!;
+      seq=BuzzSequence(pilot.snoozeOffsets(alarm.chaos,_snooze?.status.value.snoozeCount??1,math.Random()));
+    }
     final o = await _dispatchBandAlert(
       'wake',
       transportTargets: const {'band'},
@@ -7739,6 +7803,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// Smart Wake user's upgrade explanation is pending, Natural stays inactive
   /// and the old light-sleep heuristic keeps doing what they signed up for.
   Future<void> _checkSmartWake() async {
+    if(_pilotWakeOn){
+      try{await pilotWake.tick(now:_wakeNow(),connected:isConnected,alarms:_pilotAlarms,snoozed:_snooze?.status.value.phase==SnoozePhase.snoozed);}
+      catch(e){_log('[pilot wake] tick failed: $e');}
+    }
     // The main alarm's snooze first: a pending snooze or dismiss window must
     // not wait on anything below that can return early (no wake plan armed, no
     // link). It never throws.
@@ -7762,7 +7830,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       if (plan.naturalMinutes > 0 && plan.expectedSchedule == null) {
         plan = plan.withSleepOnset(await loadDetectedSleepOnset(plan.wakeAt));
       }
-      if (wake.legacySmartWakeActive) await _checkLegacySmartWake(plan.wakeAt);
+      if (!_pilotWakeOn&&wake.legacySmartWakeActive) await _checkLegacySmartWake(plan.wakeAt);
       // With neither feature on there is nothing to orchestrate: the existing
       // arm engine already keeps the native alarm armed.
       if (plan.configuration == WakeConfiguration.neither &&

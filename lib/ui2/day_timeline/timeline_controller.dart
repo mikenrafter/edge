@@ -148,6 +148,32 @@ class TimelineController extends ChangeNotifier {
     zoomChanges.notifyListeners();
   }
 
+  void clearScrub() {
+    _scrubTicker?.stop(); _scrubTo=null; _scrub=null; scrubChanges.notifyListeners();
+  }
+
+  void panBy(double seconds) => panTo(_view.start+seconds);
+  void panTo(double start) {
+    _ticker?.stop(); _to=null;
+    _view=TimelineView(start,start+_view.span).clampTo(home.start,home.end);
+    range.notifyListeners(); zoomChanges.notifyListeners();
+  }
+  void beginPilotSelection() {
+    clearScrub();
+    _selection=_selection==null?TimelineView(_view.start,_view.end):null;
+    zoomChanges.notifyListeners();
+  }
+  void updatePilotSelection(double first,double second) {
+    _selection=TimelineView(first<second?first:second,first<second?second:first);
+    zoomChanges.notifyListeners();
+  }
+  void finishPilotSelection() {
+    final selected=_selection; _selection=null;
+    clearScrub();
+    if(selected!=null&&selected.span>=1200)_glide(selected);
+    else zoomChanges.notifyListeners();
+  }
+
   void setScrub(double t) {
     _scrubTicker?.stop();
     _scrubTo = null;

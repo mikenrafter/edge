@@ -189,9 +189,14 @@ class SnoozeController {
     this.scheduler = defaultSnoozeScheduler,
     this.log,
     this.knownFire,
+    this.maximumSnoozes,
+    this.onSnoozeStarted,
     this.onRestoredChainOver,
   }) : _clock = Clock(now);
 
+  /// Pilot-only maximum; null preserves the production snooze policy.
+  final int? Function()? maximumSnoozes;
+  final Future<void> Function(SnoozeState)? onSnoozeStarted;
   final DateTime Function() now;
   // A concrete clock method lets the heavy-work guard resolve journal stamps.
   final Clock _clock;
@@ -614,9 +619,11 @@ class SnoozeController {
       await endSilently(reason: 'limit');
       return;
     }
+    final maximum=maximumSnoozes?.call();
+    final exhausted=maximum!=null&&(_state?.count??0)>=maximum;
     final st = SnoozeState(
         count: (_state?.count ?? 0) + 1,
-        reAlarmAt: anchor.add(s.snoozeFor),
+        reAlarmAt: exhausted?now():anchor.add(s.snoozeFor),
         fireAt: _fireAt);
     _state = st;
     _publish();
@@ -624,6 +631,8 @@ class SnoozeController {
     final due = left <= Duration.zero;
     if (!due) _snoozeTimer = scheduler(left, () => _fire(_snoozedStep));
     await _saveTransition(st, fire: fire, at: _clock.now(), count: st.count);
+    if (!_alive(g)) return;
+    await onSnoozeStarted?.call(st);
     if (!_alive(g)) return;
     if (due) {
       _log('the snooze is already due: re-alarming now.');

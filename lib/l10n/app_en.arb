@@ -21247,5 +21247,150 @@
   "pilotLabel": "Pilot",
   "@pilotLabel": {
     "description": "Badge for an experimental feature kept in this build"
-  }
+  },
+  "pilotLabs": "Labs",
+  "pilotAlarmScreen": "Alarm screen pilot",
+  "pilotWakeMethods": "Wake methods pilot",
+  "pilotTimelines": "Timelines pilot",
+  "pilotAlarms": "Alarms",
+  "pilotAddAlarm": "Add alarm",
+  "pilotSleepAlarm": "Sleep alarm",
+  "pilotWorkoutAlarm": "Workout alarm",
+  "pilotSleepAlarmDescription": "Wakes you from sleep, gently first",
+  "pilotWorkoutAlarmDescription": "Buzzes if you have not started a workout in time",
+  "pilotNoAlarms": "No alarms yet",
+  "pilotNext": "Next",
+  "pilotOnce": "Once",
+  "pilotEveryDay": "Every day",
+  "pilotWeekdays": "Weekdays",
+  "pilotWeekends": "Weekends",
+  "pilotMonday": "Mon",
+  "pilotTuesday": "Tue",
+  "pilotWednesday": "Wed",
+  "pilotThursday": "Thu",
+  "pilotFriday": "Fri",
+  "pilotSaturday": "Sat",
+  "pilotSunday": "Sun",
+  "pilotEditAlarm": "Edit \"{name}\"",
+  "@pilotEditAlarm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "pilotCancel": "Cancel",
+  "pilotSave": "Save",
+  "pilotAlarmName": "Alarm name",
+  "pilotWake": "Latest wake",
+  "pilotEarlyWake": "Early wake",
+  "pilotGradual": "Gradual wake",
+  "pilotExpected": "Expected wake",
+  "pilotUsualBedtime": "Usual bedtime",
+  "pilotTimes": "Times",
+  "pilotWaking": "Waking",
+  "pilotTonight": "Tonight",
+  "pilotWindow": "Window",
+  "pilotHeartRate": "Heart rate",
+  "pilotWindowStart": "Window start",
+  "pilotWindowEnd": "Window end",
+  "pilotPrimary": "Primary alarm",
+  "pilotPrimaryDescription": "The main sleep alarm for its repeat days",
+  "pilotWorkoutNoPrimary": "Workout alarms cannot be the primary sleep alarm",
+  "pilotDone": "Done",
+  "pilotReset": "Reset",
+  "pilotUpToEarlier": "Up to {minutes} min earlier",
+  "@pilotUpToEarlier": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "pilotFeelIt": "Feel it",
+  "pilotHaptics": "Haptics",
+  "pilotSnooze": "Snooze",
+  "pilotSnoozeLength": "Snooze length (min)",
+  "pilotMaxSnoozes": "Maximum snoozes",
+  "pilotSteady": "Steady",
+  "pilotLittleChaos": "A little",
+  "pilotLotChaos": "A lot",
+  "pilotWildChaos": "Wild",
+  "pilotRamp": "Ramp",
+  "pilotWave": "Wave",
+  "pilotSunrise": "Sunrise alarm",
+  "pilotBandBuzz": "Band buzz",
+  "pilotBandDefault": "Band default",
+  "pilotMyPattern": "My pattern",
+  "pilotCustomTradeoff": "The phone sends your pattern while connected, with up to about a minute of delay. If disconnected, the normal band alarm plays.",
+  "pilotPhoneVibration": "Phone vibration",
+  "pilotPhoneSound": "Phone sound",
+  "pilotPhoneDelay": "Delay after wake",
+  "pilotAwakeExplanation": "Press I'm up in the app or notification, or dismiss the alarm. It keeps escalating until you do.",
+  "pilotEnableWakeMethods": "Enable the wake methods pilot in Labs to try these options.",
+  "pilotWorkoutFailSafe": "The band is armed for the end of this window as soon as the previous alarm finishes. A qualifying workout started inside the window cancels it. It still buzzes if the phone disconnects.",
+  "pilotHeartRateZone": "Heart-rate zone or higher",
+  "pilotZoneMinutes": "Minutes in zone",
+  "pilotWakeWindowExplanation": "The alarm aims to give you as much sleep as possible within the wake window. The band still holds the latest wake time.",
+  "pilotHoldScrub": "Hold to scrub",
+  "pilotScrubbing": "Scrubbing",
+  "pilotFineSteps": "1 min steps",
+  "pilotZoomOut": "Zoom out",
+  "pilotStage": "Stage",
+  "pilotPin": "Pin to top",
+  "pilotUnpin": "Unpin",
+  "pilotBackToDay": "Back to {day}",
+  "@pilotBackToDay": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      }
+    }
+  },
+  "pilotSleepEditor": "Edit sleep",
+  "pilotAddBlock": "Add block",
+  "pilotRemoveBlock": "Remove block",
+  "pilotCalculateStages": "Calculate stages",
+  "pilotRestoreBlock": "Restore this block?",
+  "pilotRestore": "Restore",
+  "pilotKeepRemoved": "Keep removed",
+  "pilotAsleep": "Asleep",
+  "pilotSleepWindow": "Sleep window",
+  "pilotActual": "Actual",
+  "pilotPreview": "Preview",
+  "pilotResetDetected": "Reset to detected",
+  "pilotWokeDream": "Woke from a dream",
+  "pilotTapStart": "Tap where the new block starts",
+  "pilotTapEnd": "Tap where the new block ends",
+  "pilotUndo": "Undo",
+  "pilotRemoved": "Block removed",
+  "pilotResetDone": "Reset to detected",
+  "pilotStart": "Start",
+  "pilotEnd": "End",
+  "pilotSleepStages": "Sleep stages",
+  "pilotMerge": "Merge blocks",
+  "pilotOverlap": "These blocks overlap",
+  "pilotChooseBlock": "Choose a block",
+  "pilotNotRecorded": "No recorded stages in this window",
+  "pilotAlarmSaved": "Saved on this phone",
+  "pilotSourceFailed": "Could not save this change. Try again.",
+  "pilotPhoneLimit": "Sunrise, sound and vibration need Edge running. The native band alarm is the backup.",
+  "pilotBackupLimit": "Backup: the band still buzzes 1 min later if Edge can't wake you.",
+  "pilotUpToLater": "up to {minutes} min later",
+  "@pilotUpToLater": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "pilotBandBackup": "Band backup",
+  "pilotBackupAtLatest": "always rings on the band at Latest wake",
+  "pilotBackupAfterLatest": "1 min after Latest wake, only if the app’s alarm didn’t go off",
+  "pilotTimingPreview": "Times marked before or after it goes off move with the moment it actually wakes you. Graph shows tonight’s guess.",
+  "pilotBeforeFire": "{minutes} min before it goes off",
+  "@pilotBeforeFire": {"placeholders": {"minutes": {"type": "int"}}},
+  "pilotAfterFire": "{minutes} min after it goes off",
+  "@pilotAfterFire": {"placeholders": {"minutes": {"type": "int"}}},
+  "pilotBandAlarm": "Band alarm"
 }
