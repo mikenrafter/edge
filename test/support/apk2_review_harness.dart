@@ -5,12 +5,14 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/activity_store.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/moment_label.dart';
 import 'package:openstrap_edge/gestures/moment_follow_ups.dart';
@@ -24,6 +26,7 @@ import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'package:openstrap_edge/ui2/screens/moment_follow_up.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+import 'package:openstrap_edge/wake/wake_timeline.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -190,6 +193,80 @@ class Apk2Repository extends LocalRepositoryImpl {
       if (date == apk2Day) ...extraTimeline,
     };
   }
+  /// Stored nights by day label, for `getSleepDetailPrimary`. A day without
+  /// one reads through to the real repository.
+  Map<String, Map<String, dynamic>> nights = {};
+  @override
+  Future<SleepPrimaryRead?> getSleepDetailPrimary(String day) async {
+    final night = nights[day];
+    if (night == null) return super.getSleepDetailPrimary(day);
+    return SleepPrimaryRead(
+        bundle: SleepDetailBundle(night: night, timeline: const {},
+            insights: const {}, charts: const {}, windows: const []),
+        wake: const WakeNightTimeline());
+  }
+
+  /// A fictional, realistic [apk2Day] for screenshots (owner m250): per-minute
+  /// heart rate (resting ~64, lower asleep, a walk at 12:00 and a run at
+  /// 18:00 matching the pending workouts), 5-minute movement, a night ending
+  /// 06:40 and one starting 23:20, each with a staged hypnogram.
+  void useRealisticDay() {
+    final day0 = apk2At(0);
+    final morningOnset = day0 - 40 * 60, morningWake = apk2At(6, 40);
+    final eveningOnset = apk2At(23, 20), eveningWake = day0 + 24 * 3600 + 400 * 60;
+    bool asleep(int m) => m < 400 || m >= 1400;
+    double hr(int m) {
+      final wobble = 3 * math.sin(m / 7.3) + 2 * math.sin(m / 2.1);
+      if (asleep(m)) return 52 + 4 * math.sin(m / 37) + wobble / 2;
+      if (m >= 720 && m < 750) return 102 + wobble;          // walk
+      if (m >= 1080 && m < 1120) {                           // run
+        final k = m - 1080;
+        return math.min(152, 110 + k * 4) + wobble;
+      }
+      if (m >= 1120 && m < 1140) return 150 - (m - 1120) * 4 + wobble; // cool-down
+      if (m >= 900 && m < 920) return 57 + wobble / 2;       // nap
+      return 64 + 6 * math.sin(m / 53) + wobble;
+    }
+    double move(int m) {
+      if (asleep(m)) return m % 85 < 5 ? .12 : .02;
+      if (m >= 720 && m < 750) return .55;
+      if (m >= 1080 && m < 1120) return .9;
+      if (m >= 900 && m < 920) return .03;
+      return .15 + .12 * (1 + math.sin(m / 23)) + (m % 45 < 5 ? .2 : 0);
+    }
+    List<Map<String, Object>> hypnogram(int onset, int wake) {
+      // ~90-minute cycles: light, deep (shorter later), light, REM (longer later).
+      final out = <Map<String, Object>>[];
+      var t = onset;
+      void add(String stage, int minutes) {
+        if (t >= wake) return;
+        out.add({'t': t, 'stage': stage});
+        t = math.min(wake, t + minutes * 60);
+      }
+      for (var c = 0; t < wake; c++) {
+        add('light', 18);
+        add('deep', math.max(5, 40 - c * 9));
+        add('light', 20);
+        add('rem', 10 + c * 6);
+        if (c.isOdd) add('awake', 3);
+      }
+      out.add({'t': wake, 'stage': 'awake'});
+      return out;
+    }
+    extraTimeline = {
+      'hr': [for (var m = 0; m < 1440; m++) {'t': day0 + m * 60, 'v': hr(m).round()}],
+      'activity': [for (var m = 0; m < 1440; m += 5) {'t': day0 + m * 60, 'v': move(m)}],
+      'sleep': [
+        {'onset_ts': morningOnset, 'wake_ts': morningWake},
+        {'onset_ts': eveningOnset, 'wake_ts': eveningWake},
+      ],
+    };
+    nights = {
+      apk2Day: {'hypnogram': hypnogram(morningOnset, morningWake)},
+      apk2NewerDay: {'hypnogram': hypnogram(eveningOnset, eveningWake)},
+    };
+  }
+
   @override
   Future<Map<String, dynamic>> getDayWear(String date) async => {};
   @override
