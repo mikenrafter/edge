@@ -103,6 +103,30 @@ void main(){
     handle.dispose();
   });
 
+  // why: m279 — an icon over another item's thumb is half opacity and takes no touches, so a
+  // press there grabs the thumb rather than selecting the icon.
+  // catches: a full-strength icon over a thumb, a press there selecting that icon, or the thumb's
+  // own icon or an icon away from every thumb being dimmed.
+  testWidgets('icons over another thumb are dimmed and ignore touches',(t)async{
+    final c=TimelineController(homeStartSec:base,homeEndSec:base+86400);final i=TimelineInteraction(retention:PilotScrub.temporary);
+    addTearDown(c.dispose);addTearDown(i.dispose);c.selectRange(base+5*3600,base+8*3600);
+    ChartAnnotation a(String id,int minute)=>ChartAnnotation(id:id,kind:AnnotationKind.wake,at:base+minute*60.0,label:id);
+    final selected=<String>[];
+    await pump(t,Scaffold(body:Padding(padding:const EdgeInsets.all(16),child:PilotTimelineChart(controller:c,interaction:i,showHeartRate:false,
+      graph:DayGraph(dayStart:base,hr:List.filled(1440,62),movement:List.filled(1440,.1)),selectedAnnotationId:'Latest',onSelect:selected.add,
+      handles:[PilotHandle('Latest',base+420*60.0,Colors.white)],
+      annotations:[a('Latest',420),a('Flash',420),a('Sunrise',360)]))));
+    final over=find.byKey(const ValueKey('pilot-icon-over-thumb:Flash'));
+    expect(over,findsOneWidget);
+    expect(t.widget<Opacity>(find.descendant(of:over,matching:find.byType(Opacity))).opacity,.5);
+    expect(find.byKey(const ValueKey('pilot-icon-over-thumb:Latest')),findsNothing);
+    expect(find.byKey(const ValueKey('pilot-icon-over-thumb:Sunrise')),findsNothing);
+    await t.tapAt(t.getCenter(over));await t.pumpAndSettle();
+    expect(selected,isNot(contains('Flash')));
+    await t.tapAt(t.getCenter(find.byTooltip('Sunrise')));await t.pumpAndSettle();
+    expect(selected.last,'Sunrise');
+  });
+
   // why: m273 + v22 open(nw) — the + sheet's palette, a new alarm's title, the workout caption.
   // catches: an unstyled type picker, a new alarm titled Edit "…", or TIMES on a workout editor.
   testWidgets('+ opens the v22 sheet and the new alarm is titled as new',(t)async{
