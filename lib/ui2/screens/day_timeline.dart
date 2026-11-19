@@ -1192,7 +1192,9 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
   }
   TimelineController _chartFor(DayGraph graph) {
     final cycle = _d?.personalView?.day;
-    final calendarDay = _d?.day ?? dayLabelOf(DateTime.parse(_day ?? todayLabel()));
+    // While a personal cycle loads, its placeholder's day is the cycle id (an
+    // ISO instant); only a date label has a local day start, so reduce both.
+    final calendarDay = dayLabelOf(DateTime.parse(_d?.day ?? _day ?? todayLabel()));
     final start = graph.dayStart ?? (cycle == null
         ? localDayStartSec(calendarDay)! : cycle.start.millisecondsSinceEpoch ~/ 1000);
     final end = graph.slots > 0 ? start + graph.slots * 60
@@ -1813,7 +1815,7 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
           ? a.row.moment.at.compareTo(b.row.moment.at)
           : a.rank.compareTo(b.rank));
     if(PilotFlag.timelines.enabled && _pilotTabDay!=d.day){
-      _pilotTabDay=d.day;_openedDay??=d.day;
+      _pilotTabDay=d.day;_openedDay??=d.personalView?.day.id.value??d.day;
       _pilotTab=initialTimelineTab(pending:ranked.any((r)=>r.row.moment.timelineKind==DayTimelineKind.pending),saved:ranked.any((r)=>r.row.moment.timelineKind!=DayTimelineKind.discarded));
     }
     bool visible(Moment m) {
@@ -1835,8 +1837,13 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
     if(PilotFlag.timelines.enabled && !_loading){
       final day=_day??d.day??todayLabel(),days=d.days;
       unawaited(_loadPilotStages(day,d.graph));
-      final index=days.indexOf(day);
-      return PopScope(canPop:_allowPop||(review?.hasChanges!=true&&review?.busy!=true),onPopInvokedWithResult:(didPop,result){if(!didPop)unawaited(_leave());},child:PilotDayLayout(title:title,dayRow:PilotDayRow(day:prettyDay(day,l),dirty:review?.hasChanges==true,busy:review?.busy==true,
+      // Personal days step over cycle ids (what [TimelineData.days] holds), not
+      // over the calendar score day [day]; DayNav reads them the same way.
+      final nav=d.personalView?.day.id.value??day;
+      final cycles=d.personalView?.cycles??const <PersonalDay>[];
+      String named(String id)=>cycles.where((c)=>c.id.value==id).map(personalDayNavLabel).firstOrNull??prettyDay(id,l);
+      final index=days.indexOf(nav);
+      return PopScope(canPop:_allowPop||(review?.hasChanges!=true&&review?.busy!=true),onPopInvokedWithResult:(didPop,result){if(!didPop)unawaited(_leave());},child:PilotDayLayout(title:title,dayRow:PilotDayRow(day:d.personalView==null?prettyDay(day,l):named(nav),dirty:review?.hasChanges==true,busy:review?.busy==true,
         onPrevious:index>=0&&index+1<days.length?()=>_goDay(days[index+1]):null,
         onNext:index>0?()=>_goDay(days[index-1]):null,
         onCancel:()async{await review?.discardDraft();if(mounted)setState((){});},onSave:()=>review?.save(c)),
@@ -1853,7 +1860,7 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
           Align(alignment:Alignment.centerLeft,child:TextButton(onPressed:()=>go(c,const TypicalDayScreen()),child:Text('${l?.typicalDayTitle??'Typical day'} ›'))),
           if(d.computedAtMs!=null)Text(l!.asOfTime(clockOfTs(d.computedAtMs!~/1000)),style:F.cap.copyWith(color:p.ink3)),
           if(widget.reviewEntry)const NapAutoLogRow(),DayReviewNotices(controller:review,reloader:this),
-        ],backToOpened:_openedDay!=null&&day!=_openedDay?TextButton(onPressed:()=>_goDay(_openedDay!),child:Text(_openedDay==todayLabel()?(l?.homeBackToToday??'Back to today'):l!.pilotBackToDay(prettyDay(_openedDay,l)))):null));
+        ],backToOpened:_openedDay!=null&&nav!=_openedDay?TextButton(onPressed:()=>_goDay(_openedDay!),child:Text(_openedDay==todayLabel()||cycles.any((c)=>c.id.value==_openedDay&&c.contains(DateTime.now()))?(l?.homeBackToToday??'Back to today'):l!.pilotBackToDay(named(_openedDay!)))):null));
     }
     return PopScope(
       canPop: _allowPop || (review?.hasChanges != true && review?.busy != true),
