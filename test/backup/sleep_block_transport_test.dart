@@ -468,4 +468,26 @@ void main() {
     expect(value['naps']['value'].map((n)=>n['start']),[start]);
     expect(value['scalars']['nap_min'],20);
   });
+  // WHY G2: journal progress is not an input replacement. Empty sleep stages
+  // must preserve cached-input identity; a real accepted block must change it.
+  // CLAIM(sleep-editor-transport); full E16/input-revision gate regression.
+  test('G2 empty sleep stage preserves identity but a real import rotates it',() async {
+    final path=p.join(temp.path,'empty-sleep-stage.db');
+    final ddl=(await db.query('sqlite_master',columns:['sql'],
+      where:"type = 'table' AND name = 'sleep_block'")).single['sql'] as String;
+    var src=await databaseFactory.openDatabase(path);
+    await src.execute(ddl);await src.close();
+    final identity=await LocalDb.storeIdentity();
+    final generation=LocalDb.cacheGeneration;
+    await restoreBackup(path);
+    expect(await LocalDb.storeIdentity(),identity,reason:'an empty stage committed no input history');
+    expect(LocalDb.cacheGeneration,generation,reason:'journal-only progress must not invalidate computed inputs');
+    expect(await rows(),isEmpty);
+    src=await databaseFactory.openDatabase(path);
+    await src.insert('sleep_block',block('real-input-change'));await src.close();
+    await restoreBackup(path);
+    expect((await rows()).single['id'],'real-input-change');
+    expect(await LocalDb.storeIdentity(),isNot(identity),reason:'accepted block and new identity commit atomically');
+    expect(LocalDb.cacheGeneration,greaterThan(generation));
+  });
 }
