@@ -72,7 +72,7 @@ class _PersonalDaySettingsState extends State<PersonalDaySettings> {
     final l = AppLocalizations.of(c);
     return Column(children: [
       SetRow(LucideIcons.sunrise, C.blue, l?.personalDaySetting ?? 'Your day',
-        value: Prefs.personalDayEnabled ? personalDayTitle(Prefs.personalDayMode, l)
+        sub: Prefs.personalDayEnabled ? personalDayTitle(Prefs.personalDayMode, l)
           : (l?.personalDayCurrent ?? 'Current behaviour'),
         onTap: _saving ? null : () async {
           final picked = await showModalBottomSheet<PersonalDayMode>(context: c,
@@ -87,7 +87,7 @@ class _PersonalDaySettingsState extends State<PersonalDaySettings> {
           if (picked != null && mounted) await _save(() => Prefs.setPersonalDayMode(picked));
         }),
       SetRow(LucideIcons.calendarDays, C.blue, l?.personalDayTotals ?? 'Daily scores and totals',
-        value: _totalsValue(l),
+        sub: _totalsValue(l),
         onTap: _saving ? null : () => _save(() => Prefs.setPersonalDayTotals(
           Prefs.personalDayTotalsIsDefault ? PersonalDayTotals.first
             : Prefs.personalDayTotals == PersonalDayTotals.first ? PersonalDayTotals.last : null))),
