@@ -98,7 +98,10 @@ class _AlarmListState extends State<PilotAlarmScreen>{
 }
 String _wakeText(PilotAlarm a){final w=formatClock(a.wakeMinute~/60,a.wakeMinute%60);if(a.earlyMinutes<=0)return w;final e=a.wakeMinute-a.earlyMinutes;return '${formatClock(((e%1440)+1440)%1440~/60,((e%60)+60)%60)}–$w';}
 String _daysLabel(PilotAlarm a,AppLocalizations l)=>a.days.isEmpty?l.pilotOnce:a.days.length==7?l.pilotEveryDay:a.days.length==5&&a.days.containsAll({1,2,3,4,5})?l.pilotWeekdays:a.days.length==2&&a.days.containsAll({6,7})?l.pilotWeekends:a.days.toList().sortedDays(l);
-extension on List<int>{String sortedDays(AppLocalizations l){sort();final names=[l.pilotMonday,l.pilotTuesday,l.pilotWednesday,l.pilotThursday,l.pilotFriday,l.pilotSaturday,l.pilotSunday];return map((d)=>names[d-1]).join(', ');}}
+// Mock-up v22 daysText: three or more days in a row read as a range (Mon–Wed, Fri).
+extension on List<int>{String sortedDays(AppLocalizations l){sort();final names=[l.pilotMonday,l.pilotTuesday,l.pilotWednesday,l.pilotThursday,l.pilotFriday,l.pilotSaturday,l.pilotSunday];
+  final runs=<List<int>>[];for(final d in this){if(runs.isNotEmpty&&runs.last.last==d-1){runs.last.add(d);}else{runs.add([d]);}}
+  return [for(final r in runs)r.length>=3?'${names[r.first-1]}–${names[r.last-1]}':r.map((d)=>names[d-1]).join(', ')].join(', ');}}
 
 class _AlarmChart extends StatefulWidget{
   const _AlarmChart({required this.alarm,required this.now,required this.graph,required this.stages,this.reference});

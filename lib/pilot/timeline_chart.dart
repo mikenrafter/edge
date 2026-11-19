@@ -336,11 +336,15 @@ class PilotZoomControls extends StatelessWidget {
     // Owner m244.6: smaller zoom buttons so the trailing control (repeat days,
     // Pin, Add block) gets the rest of the row at full length.
     final buttonStyle=TextButton.styleFrom(minimumSize:const Size(44,48),padding:const EdgeInsets.symmetric(horizontal:4),textStyle:F.cap.copyWith(fontSize:13),iconSize:15);
-    return ListenableBuilder(listenable:controller.zoomChanges,builder:(context,_)=>Row(children:[
-      // Flexible: at large text the buttons shrink and ellipsize instead of overflowing the row.
-      Flexible(child:TextButton.icon(style:buttonStyle,onPressed:(){controller.clearScrub();onZoom?.call();controller.beginPilotSelection();},icon:const Icon(LucideIcons.zoomIn,size:16),label:Text(l.timelineZoomIn,maxLines:1,overflow:TextOverflow.ellipsis))),
-      Flexible(child:TextButton.icon(style:buttonStyle,onPressed:controller.zoomed||controller.selection!=null?(){controller.clearScrub();onZoom?.call();controller.resetZoom();}:null,icon:const Icon(LucideIcons.rotateCcw,size:16),label:Text(l.pilotZoomOut,maxLines:1,overflow:TextOverflow.ellipsis))),
+    // Mock-up v22 .ctl: the zoom buttons keep their natural width and only the
+    // trailing control shrinks. Past 62% of the row (large text) the zoom pair
+    // scales down instead of overflowing.
+    return ListenableBuilder(listenable:controller.zoomChanges,builder:(context,_)=>LayoutBuilder(builder:(context,box)=>Row(children:[
+      ConstrainedBox(constraints:BoxConstraints(maxWidth:box.maxWidth*.62),child:FittedBox(fit:BoxFit.scaleDown,alignment:Alignment.centerLeft,child:Row(mainAxisSize:MainAxisSize.min,children:[
+        TextButton.icon(style:buttonStyle,onPressed:(){controller.clearScrub();onZoom?.call();controller.beginPilotSelection();},icon:const Icon(LucideIcons.zoomIn,size:16),label:Text(l.timelineZoomIn,maxLines:1)),
+        TextButton.icon(style:buttonStyle,onPressed:controller.zoomed||controller.selection!=null?(){controller.clearScrub();onZoom?.call();controller.resetZoom();}:null,icon:const Icon(LucideIcons.rotateCcw,size:16),label:Text(l.pilotZoomOut,maxLines:1)),
+      ]))),
       if(trailing!=null)Expanded(child:Align(alignment:Alignment.centerRight,child:trailing!)),
-    ]));
+    ])));
   }
 }
