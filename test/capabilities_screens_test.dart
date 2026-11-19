@@ -182,7 +182,7 @@ void main() {
   group('Band gestures', () {
     testWidgets('tap rows are hidden when tapClassifiers is off', (t) async {
       await pump(t, const BandGestures(), _caps(devMode: true));
-      expect(find.text('Count extra taps with'), findsOneWidget);
+      expect(find.byKey(const ValueKey('gestures-tab:3')), findsOneWidget);
       await pump(t, const BandGestures(),
           _caps(devMode: true, flagsOff: {FeatureFlag.tapClassifiers}));
       expect(find.text('Count extra taps with'), findsNothing);
@@ -205,24 +205,26 @@ void main() {
       expect(find.byKey(const ValueKey('gestures-tab:3')), findsOneWidget,
           reason: 'the double-tap counts stay for everyone');
     });
-    testWidgets('ECG method is dimmed and inert without the ECG feature, '
-        'live without it from AppState', (t) async {
-      await pump(t, const BandGestures(), _caps(devMode: true));
-      final off = find.text('ECG sensor touches');
-      expect(off, findsOneWidget);
-      expect(isDimmed(t, off), isTrue);
-      await pump(t, const BandGestures(), _caps(devMode: true, ecgPaired: true));
-      expect(isDimmed(t, find.text('ECG sensor touches')), isFalse);
+    // ECG hardware capability must not bring the retired counting picker back.
+    // CLAIM(retired-ecg-gestures).
+    testWidgets('ECG counting stays absent on bands with and without ECG hardware',
+        (t) async {
+      for (final paired in [false, true]) {
+        await pump(t, const BandGestures(), _caps(devMode: true, ecgPaired: paired));
+        expect(find.text('ECG sensor touches'), findsNothing);
+        expect(find.text('Count extra taps with'), findsNothing);
+        expect(find.byKey(const ValueKey('gestures-tab:3')), findsOneWidget);
+      }
     });
   });
 
   group('Device lab', () {
     testWidgets('tap tools follow deviceLabTapTools', (t) async {
       await pump(t, const DeviceLab(), _caps());
-      expect(find.text('ECG on double tap'), findsOneWidget);
+      expect(find.text('Repeated double taps'), findsOneWidget);
       await pump(
           t, const DeviceLab(), _caps(flagsOff: {FeatureFlag.tapClassifiers}));
-      expect(find.text('ECG on double tap'), findsNothing);
+      expect(find.text('Repeated double taps'), findsNothing);
     });
     testWidgets('the real screen offers Taps, Probes, Live and Logs; the '
         'flag off takes Taps away', (t) async {
@@ -247,11 +249,13 @@ void main() {
       expect(find.text('Record motion'), findsOneWidget);
       expect(find.text('Saved recordings'), findsOneWidget);
     });
-    testWidgets('the ECG switch says why it is off', (t) async {
-      await pump(t, const DeviceLab(), _caps());
-      expect(find.text('This band has no ECG sensor'), findsOneWidget);
-      await pump(t, const DeviceLab(), _caps(ecgPaired: true));
-      expect(find.text('This band has no ECG sensor'), findsNothing);
+    testWidgets('the retired ECG counting switch stays absent on every band', (t) async {
+      for (final paired in [false, true]) {
+        await pump(t, const DeviceLab(), _caps(ecgPaired: paired));
+        expect(find.text('Repeated double taps'), findsOneWidget);
+        expect(find.text('ECG on double tap'), findsNothing);
+        expect(find.text('This band has no ECG sensor'), findsNothing);
+      }
     });
   });
 
