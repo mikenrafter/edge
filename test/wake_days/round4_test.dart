@@ -68,9 +68,12 @@ void main() {
     }
   }
 
-  // WHY / CLAIM(home-now): Home has one current view; history/navigation is on
-  // the timeline. Catches: retaining a mode-labelled day picker on Home.
-  testWidgets('Home has a start caption and no day picker', (tester) async {
+  // WHY / CLAIM(home-day-bar): owner m294 supersedes the 2026-11-18 "no day
+  // picker" half of CLAIM(home-now): Home shows the app's one day bar in
+  // personal-day mode too, plus the start caption (stepping is in
+  // home_day_bar_test.dart). Catches: dropping the bar, or a mode-labelled
+  // picker (the title row stays off Home).
+  testWidgets('Home has a start caption and the day bar', (tester) async {
     await Prefs.setPersonalDayMode(PersonalDayMode.sleepToSleep);
     final now = at(3, 10);
     final home = (await tester.runAsync(() =>
@@ -87,7 +90,7 @@ void main() {
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(body: HomeScreen(data: home, now: now, hour: 10)))));
-    expect(find.byType(DayNav), findsNothing);
+    expect(find.byType(DayNav), findsOneWidget);
     expect(find.text('Your day started 08:00'), findsOneWidget);
     expect(find.text('Your day (sleep to sleep)'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());

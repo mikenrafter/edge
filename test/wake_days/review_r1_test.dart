@@ -54,7 +54,8 @@ void main() {
     await r.mount(t, size: const Size(430, 1600), screen: Scaffold(body: HomeScreen(
       now: now, data: HomeData(dayId: '2026-11-02', personalDay: cycle,
         personalMode: PersonalDayMode.sleepToSleep, personalCycles: [cycle]))));
-    expect(find.byType(DayNav), findsNothing);
+    // CLAIM(home-day-bar) [owner m294]: Home shows the day bar in personal-day mode.
+    expect(find.byType(DayNav), findsOneWidget);
     await apk2Tap(t, find.byKey(const ValueKey('track-quick-log')));
     expect(find.byType(TrackLogScreen), findsOneWidget);
     await apk2Tap(t, find.byKey(const ValueKey('track-log-save')));

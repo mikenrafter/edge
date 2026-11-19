@@ -2404,14 +2404,18 @@ class HomeData {
 
   static Future<HomeData> _personal(LocalRepository repo, HomeData base,
       String date, AppLocalizations? l, {bool current = false}) async {
-    final view = await readPersonalDay(repo, date, now: pc.clock.now(), current: current, home: current);
+    // CLAIM(home-day-bar) [owner m294]: every Home read is wake-to-wake, the
+    // current cycle and the neighbours the bar steps to alike, so the shown
+    // cycle, its numbers and the bar's list are one set. Following the timeline's
+    // mode would start a new, empty cycle at sleep onset (CLAIM(home-now)).
+    final view = await readPersonalDay(repo, date, now: pc.clock.now(), current: current, home: true);
     final score = view?.day.scoreDay;
     final chosen = score == null ? const HomeData()
       : score == base.dayId ? base : await _loadCalendarForDay(repo, score, l);
     return HomeData(
       dayId: view?.day.label ?? date, personalDay: view?.day,
       personalMode: view?.mode ?? PersonalDayMode.wakeToWake,
-      personalCycles: current ? const [] : view?.cycles ?? const [],
+      personalCycles: view?.cycles ?? const [],
       wakeObserved: view?.awake ?? false, name: base.name ?? chosen.name,
       readiness: chosen.readiness, sleepMin: chosen.sleepMin, rhr: chosen.rhr,
       strain: chosen.strain, steps: chosen.steps, calories: chosen.calories,
@@ -2622,6 +2626,9 @@ class _HomeScreenState extends State<HomeScreen>
   /// null-means-today convention [_load] and [HomeData.load] already used
   /// before there was a switcher.
   String? _day;
+  /// The personal cycle Home shows when it is not the current one (a cycle id);
+  /// [_day] then holds that cycle's calendar day for the day-keyed readers.
+  String? _cycleId;
 
   /// `availableDays()` — newest first — for [DayNav]. Refetched with every
   /// load: cheap, and a switcher stepping onto a day that just finished
@@ -2703,6 +2710,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _personalDayChanged() {
     _day = null;
+    _cycleId = null;
     if (widget.data == null) { _load(); }
     else if (mounted) { setState(() {}); }
   }
@@ -2846,6 +2854,7 @@ class _HomeScreenState extends State<HomeScreen>
     final releasePrefetch = ReadPrefetch.shared.visibleRead('home');
     try {
       final day = _day;
+      final cycleId = _cycleId;
       final l = AppLocalizations.of(context);
       final focus = ImportFocus.active.value;
       final today = todayLabel();
@@ -2864,9 +2873,9 @@ class _HomeScreenState extends State<HomeScreen>
           ? HomeData.fromPublishedToday(publishedToday, l)
           : publishedOverview is Map<String, dynamic>
               ? HomeData.fromPublishedOverview(day!, publishedOverview)
-              : day == null || day == today
+              : cycleId == null && (day == null || day == today)
                   ? await HomeData.load(repo, l, true)
-                  : await HomeData.loadForDay(repo, day, l);
+                  : await HomeData.loadForDay(repo, cycleId ?? day!, l);
       // During focus only today and yesterday are on offer, in every case.
       final List<String> days = focus
           ? _focusDays(day)
@@ -2950,8 +2959,11 @@ class _HomeScreenState extends State<HomeScreen>
     setState(() {
       final at = widget.now ?? pc.clock.now();
       final cycle = _d?.personalCycles.where((c) => c.id.value == day).firstOrNull;
+      final current = Prefs.personalDayEnabled &&
+          (day == todayLabel(at) || cycle?.contains(at) == true);
+      _cycleId = Prefs.personalDayEnabled && !current ? (cycle?.id.value ?? day) : null;
       _day = !Prefs.personalDayEnabled ? homeSwitcherDay(day, now: widget.now)
-          : day == todayLabel(at) || cycle?.contains(at) == true ? null : day;
+          : current ? null : cycle?.scoreDay ?? cycle?.label ?? day;
       _d = null;
       _recordingsThrough = null;
       _loading = true;
@@ -3018,7 +3030,7 @@ class _HomeScreenState extends State<HomeScreen>
     // Whether the switcher is showing today or a day stepped back onto —
     // gates the plan/live-workout copy below, which is about what to DO
     // today and reads as a stale instruction on a day already in the past.
-    final isToday = _day == null || _day == todayLabel();
+    final isToday = _cycleId == null && (_day == null || _day == todayLabel());
     // The alarm is AppState's. Only TODAY's rings estimate toward it.
     final ringData =
         isToday ? d.withSleepInputs(
@@ -3137,7 +3149,7 @@ class _HomeScreenState extends State<HomeScreen>
             ringData.overnightAt ?? ringData.activityAt)
         : null;
 
-    return DayNavigationFrame(selectedDay: _day ?? todayLabel(),
+    return DayNavigationFrame(selectedDay: _cycleId ?? _day ?? todayLabel(),
       onSelect: _goDay,
       child: _refreshable(tabRootList(padding: pad.copyWith(
         bottom: pad.bottom + DayNavigationFrame.clearance), children: [
@@ -3175,11 +3187,11 @@ class _HomeScreenState extends State<HomeScreen>
       // against the safe area.
       ?rebuilt,
 
-      // The unset experience keeps its day switcher. Pilot history lives in
-      // the timeline, leaving Home on the current cycle.
-      if (!Prefs.personalDayEnabled) card('daynav',
+      // The one day bar on every screen (owner m261); with a personal day on
+      // it steps the wake cycles (owner m294, superseding CLAIM(home-now)).
+      card('daynav',
           DayNav(day: d.personalDay?.id.value ?? _day ?? d.dayId,
-            days: !Prefs.personalDayEnabled && d.personalCycles.isEmpty ? _days : d.personalCycles.reversed.map((c) => c.id.value).toList(),
+            days: Prefs.personalDayEnabled ? d.personalCycles.reversed.map((c) => c.id.value).toList() : _days,
             labels: {for (final cycle in d.personalCycles) cycle.id.value: personalDayNavLabel(cycle)},
             onDay: _goDay, alwaysShow: true)),
       if (Prefs.personalDayEnabled && d.personalDay != null)
@@ -3758,6 +3770,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (_day != null && !back) return;
     setState(() {
       _day = null;
+      _cycleId = null;
       if (_d?.dayId != todayLabel(widget.now)) {
         _d = null;
         _loading = true;
