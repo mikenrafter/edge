@@ -738,7 +738,9 @@ void main() {
     final saved=(await db.query('sleep_block')).single;
     expect([suggestion['end_ts'],suggestion['detection_end'],saved['detected_end']],
       [_a0+2400,_a0+3000,_a0+2400]);
-    await expectLater(store.discard(kept),completes);
+    Object? discardError;
+    try { await store.discard(kept); } catch(error) { discardError=error; }
+    expect(discardError,isNull,reason:'refining detection must not turn an ordinary kept nap into a merge');
     expect((await store.get(first.id))!.status,ActivityReviewStatus.discarded);
     expect((await db.query('sleep_block')).single['state'],'removed');
   });
