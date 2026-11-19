@@ -6,9 +6,35 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/data/backup_extras.dart';
 import 'package:openstrap_edge/ui2/skeleton/load_memory.dart';
+// ignore: depend_on_referenced_packages
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
+import 'support/failing_preferences_store.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // Why: a best-effort layout cache must not leak an asynchronous platform
+  // error into the UI. Catches: using the fire-and-forget preference setter.
+  for (final throws in [false, true]) {
+    testWidgets('a failed cache write keeps usable memory, throws=$throws', (t) async {
+      SharedPreferences.setMockInitialValues({});
+      await Prefs.reload();
+      final original = SharedPreferencesStorePlatform.instance;
+      SharedPreferencesStorePlatform.instance = FailingPreferencesStore(
+        original, key: LoadMemory.prefKey, throws: throws);
+      addTearDown(() => SharedPreferencesStorePlatform.instance = original);
+      final memory = LoadMemory(userKey: () => 'failure-profile');
+      memory.record('section', 100);
+      await t.pump();
+      expect(memory.estimate('section'), 100);
+      expect(t.takeException(), isNull);
+      memory.record('next-section', 200);
+      await t.pump();
+      await Prefs.reload();
+      final restored = LoadMemory(userKey: () => 'failure-profile');
+      expect(restored.estimate('next-section'), 200,
+        reason: 'a later write recovers through the real preferences backend');
+    });
+  }
   test(
     'presentation memory is bounded, isolated by user, durable and excluded from exports',
     () async {
@@ -31,7 +57,7 @@ void main() {
         reason: 'the oldest key must be evicted',
       );
       await Future<void>.value();
-      await Future<void>.value();
+      await Prefs.reload();
       final restored = LoadMemory(userKey: () => user, limit: 4);
       expect(restored.estimate('third'), 400);
       expect(kPrefsNotBackedUp.containsKey(LoadMemory.prefKey), isTrue);
