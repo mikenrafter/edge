@@ -41,6 +41,45 @@ void main() {
     } finally { await fx.dispose(); }
   }, timeout: const Timeout(Duration(minutes: 8)));
 
+  // WHY: a retired nullable provenance column must not withhold surviving ECG
+  // bytes, and legacy-only records must be counted. CLAIM(official-export-accounted-identities).
+  for(final legacy in [true,false]) {
+    test('retired ECG objects export safely with legacy layout $legacy',()async {
+      final fx=await RichFixture.build();
+      try {
+        final db=await databaseFactoryFfi.openDatabase(fx.forkPath);
+        late int packets;
+        try {
+          if(legacy) {
+            await db.execute("UPDATE ecg_raw_packet SET origin='gesture'");
+          } else {
+            await db.execute('DROP TABLE ecg_gesture_session');
+            await db.execute('ALTER TABLE ecg_raw_packet DROP COLUMN origin');
+          }
+          packets=Sqflite.firstIntValue(await db.rawQuery('SELECT count(*) FROM ecg_raw_packet'))!;
+        }finally{await db.close();}
+        expect(packets,greaterThan(0));
+        final path='${File(fx.forkPath).parent.path}/retired.db';
+        final report=await mapOfficialSnapshot(snapshotPath:fx.forkPath,outputPath:path,
+          factory:databaseFactoryFfi,calendar:const FixedOffsetCalendar(0));
+        final out=await databaseFactoryFfi.openDatabase(path);
+        try {
+          expect(Sqflite.firstIntValue(await out.rawQuery('SELECT count(*) FROM ecg_raw_packet')),packets);
+          expect(await out.rawQuery("SELECT name FROM sqlite_master WHERE name='ecg_gesture_session'"),isEmpty);
+          expect((await out.rawQuery('PRAGMA table_info(ecg_raw_packet)')).map((r)=>r['name']),isNot(contains('origin')));
+        }finally{await out.close();}
+        if(legacy) {
+          expect(report.tables['ecg_gesture_session']!['omitted_all'],isTrue);
+          expect(report.tables['ecg_gesture_session']!['source_count'],greaterThan(0));
+          expect((report.tables['ecg_raw_packet']!['rowid_ranges'] as Map).keys,contains('mapped; columns=origin'));
+        }else {
+          expect(report.tables, isNot(contains('ecg_gesture_session')));
+          expect((report.tables['ecg_raw_packet']!['rowid_ranges'] as Map).keys,contains('mapped; columns='));
+        }
+      }finally{await fx.dispose();}
+    });
+  }
+
   test('oldest mapped exact input uses positive rec_ts across both tables', () async {
     sqfliteFfiInit();
     final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
