@@ -36,7 +36,7 @@ def batch(files,label):
    if name.startswith('loading ') and event.get('result')=='success':continue
    key='skipped' if event.get('skipped') else 'passed' if event.get('result')=='success' else 'failed'
    counts[key]+=1
-   if key=='failed':failures.append(dict(file=(t.get('url') or suites.get(t.get('suiteID'),'')).split('/test/',1)[-1],name=name))
+   if key=='failed':failures.append(dict(file=(suites.get(t.get('suiteID')) or t.get('url') or '').split('/test/',1)[-1],name=name))
   if event.get('type')=='done':done=True
  result=dict(label=label,files=files,exit=code,counts=counts,failures=failures,incomplete=not done,seconds=round(time.monotonic()-start,2))
  print(json.dumps(result),flush=True);return result
