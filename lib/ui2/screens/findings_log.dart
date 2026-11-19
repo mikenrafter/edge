@@ -366,7 +366,7 @@ class _FindingsLogState extends State<SimplifiedFindingsLog> {
               builder: (_) => PulseEpisodesScreen(episodes: _episodes),
             ),
           ),
-          child: const Text('See all pulse episodes'),
+          child: const Text('Recent pulse episodes'),
         ),
       ),
       const SizedBox(height: S.x3),

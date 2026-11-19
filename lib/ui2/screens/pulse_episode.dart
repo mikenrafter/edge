@@ -25,7 +25,11 @@ class PulseEpisodeRow extends StatelessWidget {
           Text(prettyDay(episode.day,l),style:F.cap),
           if(episode.deliveryState case final state?) Text(switch(state) { 'sent'=>'Alert sent', 'summary'=>'Alert included in a summary', 'pending'||'unknown'=>'Alert delivery unknown; it will not be repeated', 'before_version'=>'Recorded before this version', 'not_sent'=>'Alert not sent', 'held'=>'Alert held', _=>'No delivery recorded' },style:F.cap),
           const SizedBox(height:S.x4),
-          const Text('Episode beat review is not enabled in this build. Stored recordings are retained.'),
+          Text(switch(episode.evidenceStatus) {
+            'available'||'partial'=>'This build shows the episode summary. Beat review is not enabled.',
+            'expired'=>'The beat recording has expired. The episode summary is retained.',
+            _=>'The beat recording is unavailable. The episode summary is retained.',
+          }),
         ])))));
   }
 }
@@ -34,6 +38,6 @@ class PulseEpisodesScreen extends StatelessWidget {
   const PulseEpisodesScreen({super.key,required this.episodes});
   final List<PulseEpisodeSummary> episodes;
   @override Widget build(BuildContext c) => Scaffold(
-    appBar:AppBar(title:const Text('Pulse episodes')),
+    appBar:AppBar(title:const Text('Recent pulse episodes')),
     body:ListView(children:[for(final e in episodes) PulseEpisodeRow(e)]));
 }
