@@ -3,6 +3,8 @@
 // CLAIM(official-export-saved-bytes); catches: encrypt mapped SQL twice; second
 // passphrase prompt; omit attachment; bypass normal importer/reload notices.
 import 'dart:io';
+import 'dart:convert';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -36,6 +38,25 @@ void main(){
    expect(prompts,1);expect(saved.recoveryStatus,RecoveryStatus.saved);
    final recovery=File('${env.root.path}/recovery.db');
    await decryptBackupFile(File(saved.recovery!.file.path),recovery,'pw');
+   // Both artifacts explain the same frozen boundary and export session.
+   final officialPlain=File('${env.root.path}/official-check.db');
+   await decryptBackupFile(File(saved.official.file.path),officialPlain,'pw');
+   final manifests=<Map>[];
+   for(final file in [officialPlain,recovery]) {
+    final opened=await databaseFactoryFfi.openDatabase(file.path);
+    try {
+     final manifest=jsonDecode((await opened.query('fork_transition_manifest')).single['payload_json'] as String) as Map;
+     manifests.add(manifest);
+     expect(manifest['export_id'],isA<String>().having((id)=>id.isNotEmpty,'nonempty',isTrue));
+     expect(manifest['profile_sha256'],matches(RegExp(r'^[a-f0-9]{64}$')));
+     for(final key in ['source_sha','source_tag','source_schema','source_algorithm','target_tag','target_sha','target_schema','target_algorithm','snapshot_receipt','snapshot_sha256','archive_accounting','tables','days']) {
+      expect(manifest,contains(key),reason:key);
+     }
+    }finally{await opened.close();}
+   }
+   expect(manifests.last['export_id'],manifests.first['export_id']);
+   expect(manifests.last['snapshot_sha256'],manifests.first['snapshot_sha256']);
+
    await env.wipe();
    final summary=await LocalDb.importFromDbFile(recovery.path);
    expect(summary.needsReentry,contains('coach_api_key'));
