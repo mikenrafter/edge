@@ -143,7 +143,6 @@ void main() {
     for (final c in calls)
       if (c.method == 'cancel') ((c.arguments as Map?)?['id'] ?? c.arguments) as int,
   };
-  DateTime when(MethodCall c) => _utc((c.arguments as Map)['scheduledDateTime'] as String);
 
   test('arms one morning one-shot per assigned day, in the experiment band', () async {
     await startAt(morning);

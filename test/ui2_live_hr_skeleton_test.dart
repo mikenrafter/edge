@@ -102,7 +102,7 @@ Rect _plot(WidgetTester t) {
   final f = find.descendant(
       of: find.byType(LiveHrCard),
       matching: find.byWidgetPredicate((x) =>
-          x is CustomPaint && x.painter != null && x is! _Never));
+          x is CustomPaint && x.painter != null));
   final rs = [
     for (final e in f.evaluate())
       if (t.getRect(find.byWidget(e.widget)).height >= 56 &&
@@ -112,8 +112,6 @@ Rect _plot(WidgetTester t) {
   expect(rs, hasLength(1), reason: 'exactly one plot slot');
   return rs.single;
 }
-
-abstract class _Never {}
 
 bool _isHidden(Element e) {
   var hidden = false;
