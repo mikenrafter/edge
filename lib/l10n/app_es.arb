@@ -21333,5 +21333,7 @@
   "officialExportYes": "Sí",
   "officialExportNo": "No",
   "officialExportInterrupted": "La exportación anterior se interrumpió. Se borraron las copias privadas incompletas. Verifica los archivos guardados antes de usarlos.",
-  "officialExportVerifySaved": "Verificar archivo guardado"
+  "officialExportVerifySaved": "Verificar archivo guardado",
+  "officialExportNewer": "Hay una versión oficial más reciente. Este archivo está probado para v0.12.2.",
+  "officialExportChecked": "Última comprobación:"
 }

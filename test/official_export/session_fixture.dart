@@ -38,13 +38,15 @@ class Destination implements CipherBackupStorage {
   bool corrupt=false, corruptRename=false, failRecovery=false, exhaust=false;
   int creates=0;
   @override String get label=>'Selected folder';
+  @override Future<List<BackupFile>> listCiphertext() async=>[for(final file in root.listSync().whereType<File>())BackupFile(path:file.path,name:file.path.split('/').last)];
   @override Future<BackupFile> createCiphertext(String name) async {
     if(failRecovery && creates==1) throw const FileSystemException('revoked');
     creates++; final file=File('${root.path}/$name'); await file.create(exclusive:true);
     return BackupFile(path:file.path,name:name);
   }
   @override Future<void> appendCiphertext(BackupFile file,List<int> bytes) async {
-    if(exhaust) space.available=64*1024*1024;
+    if(exhaust) space.available=64*1024*1024+bytes.length+65536;
+    space.available-=bytes.length;
     await File(file.path).writeAsBytes(bytes,mode:FileMode.append);
   }
   @override Future<void> closeCiphertext(BackupFile file) async {}

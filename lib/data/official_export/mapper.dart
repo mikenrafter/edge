@@ -74,7 +74,7 @@ Future<OfficialMapReport> mapOfficialSnapshot({
     dst = targetFile.read;
     // This unpublished scratch file is discarded on every failure. Sync once
     // before verification instead of fsyncing thousands of page batches.
-    await targetFile.applySql('PRAGMA synchronous = OFF');
+    await targetFile.setScratchSync(ScratchSync.off);
     for (final o in officialTargetObjects.where((o) => o.type == 'table')) {
       await targetFile.applySql(o.sql);
     }
@@ -325,7 +325,6 @@ class _Mapper {
           [?after]);
       if (page.isEmpty) { break; }
       after = page.last['__export_rowid'] as int;
-      onProgress?.call(name, after);
       Set<(Object?,Object?)>? liveBeatParents;
       if(name=='decoded_rr') {
         final matches=await LocalDb.exportMatchingParents(dst,[
@@ -398,6 +397,7 @@ class _Mapper {
         final decision = decisions[id]!;
         ledger.add(id, decision.$1, columns: decision.$2, keyMap: decision.$3);
       }
+      onProgress?.call(name,ledger.accounted);
       await space?.requireAvailable(256 * 32768);
       await batch.flush();
       expectedCounts[policy.dest!] = (expectedCounts[policy.dest!] ?? 0) + written;

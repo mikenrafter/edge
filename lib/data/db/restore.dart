@@ -51,9 +51,18 @@ Future<String> _ldbExportCopy({required bool includeSubstrateArchive, required B
       // This capability is minted only by exclusive creation of a new file.
       // No live-store handle enters this branch. Keep dynamic file SQL at the
       // existing export seam rather than creating a second unrestricted writer.
+      final operations=privateWrite.operations;
+      if(operations.length==1 && operations.single is ExportFileSync) {
+        final mode=(operations.single as ExportFileSync).mode;
+        // SQLite refuses changes to synchronous inside a transaction.
+        await privateWrite.file.read.execute(mode==ScratchSync.off?'PRAGMA synchronous = OFF':'PRAGMA synchronous = FULL');
+        return privateWrite.file.path;
+      }
       final batch = privateWrite.file.read.batch();
       for (final operation in privateWrite.operations) {
         switch (operation) {
+          case ExportFileSync():
+            throw StateError('Scratch sync must be a separate operation');
           case ExportFileStatement(:final sql,:final arguments):
             batch.execute(sql,arguments);
           case ExportFileRow(:final table,:final row):

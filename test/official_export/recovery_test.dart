@@ -28,10 +28,12 @@ void main(){
    var prompts=0;
    final coordinator=OfficialExportCoordinator();
    final result=await coordinator.export(snapshot:LocalDbExportSnapshot(),privateRoot:Directory('${env.root.path}/private'),destination:dest,
-    space:ExportSpaceBudget(source:free),prompts:Prompts(()async{prompts++;return 'pw';},(_)async=>true)) as OfficialExportSaved;
-   expect(prompts,1);expect(result.recoveryStatus,RecoveryStatus.saved);
+    space:ExportSpaceBudget(source:free),prompts:Prompts(()async{prompts++;return 'pw';},(_)async=>true));
+   expect(result,isA<OfficialExportSaved>(),reason:result is OfficialExportFailed?'${result.stage}: ${result.reason}':result.toString());
+   final saved=result as OfficialExportSaved;
+   expect(prompts,1);expect(saved.recoveryStatus,RecoveryStatus.saved);
    final recovery=File('${env.root.path}/recovery.db');
-   await decryptBackupFile(File(result.recovery!.file.path),recovery,'pw');
+   await decryptBackupFile(File(saved.recovery!.file.path),recovery,'pw');
    await env.wipe();
    final summary=await LocalDb.importFromDbFile(recovery.path);
    expect(summary.needsReentry,contains('coach_api_key'));

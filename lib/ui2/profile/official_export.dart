@@ -19,14 +19,16 @@ import '../ui2.dart';
 
 final officialExportCoordinator=OfficialExportCoordinator();
 bool _routeOpen=false;
-Future<void> openOfficialExport(BuildContext context) async {
+Future<void> openOfficialExport(BuildContext context,{bool newerOfficialAvailable=false,DateTime? checkedAt}) async {
   if(_routeOpen)return;
   _routeOpen=true;
-  try {await Navigator.of(context).push(MaterialPageRoute<void>(builder:(_)=>const OfficialExportScreen()));}
+  try {await Navigator.of(context).push(MaterialPageRoute<void>(builder:(_)=>OfficialExportScreen(newerOfficialAvailable:newerOfficialAvailable,checkedAt:checkedAt)));}
   finally {_routeOpen=false;}
 }
 class OfficialExportScreen extends StatefulWidget {
-  const OfficialExportScreen({super.key,this.coordinator,this.snapshot,this.destination,this.space,this.privateRoot,this.passphrasePrompt});
+  const OfficialExportScreen({super.key,this.coordinator,this.snapshot,this.destination,this.space,this.privateRoot,this.passphrasePrompt,this.newerOfficialAvailable=false,this.checkedAt});
+  final bool newerOfficialAvailable;
+  final DateTime? checkedAt;
   final OfficialExportCoordinator? coordinator;
   final OfficialSnapshotSource? snapshot;
   final CipherBackupStorage? destination;
@@ -39,7 +41,6 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
   late final OfficialExportCoordinator coordinator=widget.coordinator??officialExportCoordinator;
   CipherBackupStorage? _destination;
   BackupFolder? _grant;
-  Completer<bool>? _recovery;
   bool _starting=false;
   Object? _error;
   @override void initState(){super.initState();coordinator.addListener(_changed);_destination=widget.destination;unawaited(_loadInterruption());}
@@ -53,7 +54,10 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
   void _changed(){if(mounted)setState((){});}
   @override void dispose(){
     coordinator.removeListener(_changed);
-    if(!coordinator.active)unawaited(coordinator.finish());
+    if(!coordinator.active) {
+      unawaited(coordinator.finish());
+      if(_grant?.acquiredForSession==true)unawaited(AndroidBackupStorage.release(_grant!));
+    }
     super.dispose();
   }
   @override Future<String?> askPassphrase() async {
@@ -62,9 +66,9 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
     try{return await askBackupPassphrase(context,creating:true);}on PassphraseCancelled{return null;}
   }
   @override Future<bool> askRecovery(OfficialExportSaved saved) async {
-    _recovery=Completer<bool>();
+    final choice=coordinator.waitForRecoveryChoice();
     if(mounted)setState((){});
-    return _recovery!.future;
+    return choice;
   }
   Future<void> _chooseFolder() async {
     try {
@@ -110,7 +114,6 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
         TextButton(onPressed:()=>Navigator.pop(c,true),child:Text(l.officialExportStop))]));
     if(stop==true) {
       coordinator.cancel();
-      if(_recovery?.isCompleted==false)_recovery!.complete(false);
       return true;
     }
     return false;
@@ -163,7 +166,8 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
         Text(l.officialExportTitle,style:Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height:12),
         Text(l.officialExportTarget,style:Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height:12),Text(l.officialExportOffline),
+        const SizedBox(height:12),Text(widget.newerOfficialAvailable?l.officialExportNewer:l.officialExportOffline),
+        if(widget.checkedAt!=null)Text('${l.officialExportChecked} ${MaterialLocalizations.of(context).formatMediumDate(widget.checkedAt!)}'),
         const SizedBox(height:12),Text(l.officialExportIntro),
         ExpansionTile(title:Text(l.officialExportChecklist.split('\n').first),children:[
           Padding(padding:const EdgeInsets.all(16),child:Text(l.officialExportChecklist)),
@@ -171,9 +175,9 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
         ]),
         const SizedBox(height:16),
         if(coordinator.hasInterruption)...[
-          Text(l.officialExportInterrupted),
+          if(coordinator.wasInterrupted)Text(l.officialExportInterrupted),
           if(coordinator.interruptedName!=null)Text(coordinator.interruptedName!),
-          button(l.officialExportVerifySaved,()async{try{await coordinator.verifyInterrupted(this);}catch(error){if(mounted)setState((){_error=error;});}}),
+          if(coordinator.interruptedName!=null)button(l.officialExportVerifySaved,()async{try{await coordinator.verifyInterrupted(this);}catch(error){if(mounted)setState((){_error=error;});}}),
         ],
         if(!busy && official==null)...[
           button(l.officialExportChooseFolder,_chooseFolder),
@@ -192,10 +196,10 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
           SelectableText(official.file.name),Text(official.folder),
           button(l.officialExportShare,()=>_share(official)),
         ],
-        if(_recovery!=null && !_recovery!.isCompleted)...[
+        if(coordinator.awaitingRecoveryChoice)...[
           Text(l.officialExportRecoveryQuestion,style:Theme.of(context).textTheme.titleMedium),
-          Semantics(selected:true,child:button(l.officialExportYes,(){_recovery!.complete(true);setState((){});})),
-          button(l.officialExportNo,(){_recovery!.complete(false);setState((){});}),
+          Semantics(selected:true,child:button(l.officialExportYes,(){coordinator.chooseRecovery(true);setState((){});})),
+          button(l.officialExportNo,(){coordinator.chooseRecovery(false);setState((){});}),
         ],
         if(outcome is OfficialExportSaved)...[
           if(outcome.recoveryStatus==RecoveryStatus.declined)Text(l.officialExportNotSaved),
@@ -232,7 +236,13 @@ class _OmissionsState extends State<_Omissions> {
         final groups=snapshot.data;
         if(groups==null)return Padding(padding:const EdgeInsets.all(16),child:Text(l.officialExportPreparing));
         return ListView.builder(itemCount:groups.length+1,itemBuilder:(c,i){
-          if(i==0)return Padding(padding:const EdgeInsets.all(16),child:Text(widget.coordinator.outcome is OfficialExportSaved && (widget.coordinator.outcome as OfficialExportSaved).recoveryStatus==RecoveryStatus.saved?l.officialExportSaved:l.officialExportNotSaved));
+          if(i==0) {
+            final outcome=widget.coordinator.outcome;
+            final label=widget.coordinator.progress.stage==ExportStage.recoveryChoice?l.officialExportRecoveryQuestion
+              :outcome is OfficialExportSaved && outcome.recoveryStatus==RecoveryStatus.saved?l.officialExportSaved
+              :outcome is OfficialExportSaved && outcome.recoveryError!=null?l.officialExportRecoveryFailed:l.officialExportNotSaved;
+            return Padding(padding:const EdgeInsets.all(16),child:Text(label));
+          }
           final group=groups[i-1];
           final family=switch(group['family']){'recordings'=>l.officialExportRecordings,'entries'=>l.officialExportEntries,'settings'=>l.officialExportSettings,_=>l.officialExportOther};
           return ListTile(title:Text('$family · ${group['count']}'),subtitle:Text(group['reason']=='rebuilt'?l.officialExportRebuilt:l.officialExportUnsupported));

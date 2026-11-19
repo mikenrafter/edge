@@ -24,10 +24,10 @@ void main(){
    final bytes=List<int>.generate(3*1024*1024+7,(i)=>i%251);
    File('${recordings.path}/saved.jsonl').writeAsBytesSync(bytes);
    File('${recordings.path}/unfinished.part').writeAsStringSync('unfinished');
-   await db.insert('journal',{'date':'2026-10-01','tags_json':'[]','note':'before'});
+   await db.insert('journal',{'date':'2026-10-01','tags_json':'[]','note':'before','updated_at':1});
    final session=Directory('${root.path}/session')..createSync();
    final snapshot=await LocalDbExportSnapshot().capture(session,ExportSpaceBudget(source:Plenty()),ExportCancellation());
-   await db.insert('journal',{'date':'2026-10-02','tags_json':'[]','note':'after'});
+   await db.insert('journal',{'date':'2026-10-02','tags_json':'[]','note':'after','updated_at':2});
    final copy=await databaseFactoryFfi.openDatabase(snapshot.path);
    try{
     expect((await copy.query('journal')).map((r)=>r['date']),['2026-10-01']);

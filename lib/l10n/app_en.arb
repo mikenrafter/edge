@@ -21515,5 +21515,13 @@
   },
   "@officialExportVerifySaved": {
     "description": "Interrupted official-app export."
+  },
+  "officialExportNewer": "A newer official release is available. This file is tested for v0.12.2.",
+  "officialExportChecked": "Last checked:",
+  "@officialExportNewer": {
+    "description": "Cached release status on official-app export. Opening this route does not check online."
+  },
+  "@officialExportChecked": {
+    "description": "Cached release status on official-app export. Opening this route does not check online."
   }
 }

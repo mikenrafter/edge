@@ -157,6 +157,7 @@ class AndroidBackupStorage implements BackupStorage {
 /// incomplete until authenticated read-back and publication both succeed.
 abstract interface class CipherBackupStorage {
   String get label;
+  Future<List<BackupFile>> listCiphertext();
   Future<BackupFile> createCiphertext(String name);
   Future<void> appendCiphertext(BackupFile file, List<int> bytes);
   Future<void> closeCiphertext(BackupFile file);
@@ -169,6 +170,7 @@ class LocalCipherBackupStorage implements CipherBackupStorage {
   const LocalCipherBackupStorage(this.directory);
   final Directory directory;
   @override String get label=>directory.path;
+  @override Future<List<BackupFile>> listCiphertext()=>LocalBackupStorage(directory).list();
   Future<File> _file(BackupFile file) async {
     final root=await directory.resolveSymbolicLinks();
     final resolved=await File(file.path).resolveSymbolicLinks();
@@ -204,6 +206,7 @@ class AndroidCipherBackupStorage implements CipherBackupStorage {
   const AndroidCipherBackupStorage(this.folder);
   final BackupFolder folder;
   @override String get label=>folder.name;
+  @override Future<List<BackupFile>> listCiphertext()=>AndroidBackupStorage(folder).list();
   Map<String,Object?> _args([BackupFile? file])=>{'tree':folder.uri,if(file!=null)'uri':file.path};
   BackupFile _file(Map<dynamic,dynamic> value)=>BackupFile(path:value['uri'] as String,name:value['name'] as String);
   @override Future<BackupFile> createCiphertext(String name) async {

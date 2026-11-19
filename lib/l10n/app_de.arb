@@ -21333,5 +21333,7 @@
   "officialExportYes": "Ja",
   "officialExportNo": "Nein",
   "officialExportInterrupted": "Der vorige Export wurde unterbrochen. Unfertige private Kopien wurden entfernt. Gespeicherte Dateien vor der Nutzung prüfen.",
-  "officialExportVerifySaved": "Gespeicherte Datei prüfen"
+  "officialExportVerifySaved": "Gespeicherte Datei prüfen",
+  "officialExportNewer": "Eine neuere offizielle Version ist verfügbar. Diese Datei ist für v0.12.2 getestet.",
+  "officialExportChecked": "Zuletzt geprüft:"
 }

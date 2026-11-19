@@ -47,7 +47,8 @@ void main() {
   }
   for(final recovery in [false,true]) {
     testWidgets('production saved report and recovery choice $recovery',(tester)async {
-      final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('export_ui_');
+      final fx=(await tester.runAsync(RichFixture.build))!;
+      final root=(await tester.runAsync(()=>Directory.systemTemp.createTemp('export_ui_')))!;
       final coordinator=OfficialExportCoordinator();
       try {
         await tester.runAsync(()async {
@@ -59,7 +60,7 @@ void main() {
         });
         final free=Space();final destination=Destination(root,free);
         final ready=Completer<void>();
-        void changed(){if(coordinator.progress.stage==ExportStage.recoveryChoice && !ready.isCompleted)ready.complete();}
+        void changed(){if((coordinator.progress.stage==ExportStage.recoveryChoice || (!coordinator.active && coordinator.outcome!=null)) && !ready.isCompleted)ready.complete();}
         coordinator.addListener(changed);
         final boundary=GlobalKey();
         await tester.pumpWidget(MaterialApp(theme:buildTheme(Brightness.light),
@@ -69,8 +70,12 @@ void main() {
             passphrasePrompt:Prompts(()async=>'pw',(_)async=>false)))));
         await tester.pumpAndSettle();
         await tester.scrollUntilVisible(find.text('Export').last,200,scrollable:find.byType(Scrollable).first);
-        await tester.tap(find.text('Export').last);
-        await tester.runAsync(()=>ready.future.timeout(const Duration(minutes:2)));
+        final start=find.ancestor(of:find.text('Export').last,matching:find.byType(OutlinedButton));
+        await tester.runAsync(()async {
+          tester.widget<OutlinedButton>(start).onPressed!();
+          await ready.future.timeout(const Duration(minutes:2));
+        });
+        expect(coordinator.progress.stage,ExportStage.recoveryChoice,reason:'${coordinator.outcome}');
         await tester.pumpAndSettle();
         await tester.scrollUntilVisible(find.text('Yes'),250,scrollable:find.byType(Scrollable).first);
         expect(find.text('Save a second file with data the official version does not yet support?'),findsOneWidget);

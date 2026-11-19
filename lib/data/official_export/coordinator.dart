@@ -1,6 +1,7 @@
 // Owns UI-engine sessions, cancellation, passphrase lifetime and saved receipts.
 // CLAIM(official-export-saved-bytes) [coordinator_test; spec §3.2]: receipts
 // follow authentication of the actual final destination handle.
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
@@ -38,12 +39,14 @@ class OfficialExportCoordinator extends ChangeNotifier {
   late SnapshotReceipt _snapshot;
   late String _id;
   BackupFile? _incomplete;
+  String? _publicationName;
   String? _passphrase;
   bool _retryAvailable=false;
   bool _hasOmissions=false;
   Map<String,Object?>? _interruption;
   String? get interruptedName=>(_interruption?['official'] as Map?)?['name'] as String?;
   bool get hasInterruption=>_interruption!=null;
+  bool get wasInterrupted=>_interruption!=null && _interruption!['finished']!=true;
   Future<void> loadInterruption(Directory root) async {
     if(active || official!=null)return;
     _root=root;
@@ -77,17 +80,28 @@ class OfficialExportCoordinator extends ChangeNotifier {
     final record=_interruption;
     if(record==null)return;
     final file=record['incomplete'];
+    final pendingName=record['pending_name'];
     if(file is Map && file['path'] is String && file['name'] is String) {
       final tree=record['tree'];
       final storage=tree is String?AndroidCipherBackupStorage(BackupFolder(uri:tree,name:record['folder'] as String))
         :LocalCipherBackupStorage(File(file['path'] as String).parent);
-      await storage.deleteCiphertext(BackupFile(path:file['path'] as String,name:file['name'] as String));
+      try {await storage.deleteCiphertext(BackupFile(path:file['path'] as String,name:file['name'] as String));}
+      catch(_) {if(pendingName==null)rethrow;}
+      if(pendingName is String) {
+        for(final candidate in await storage.listCiphertext()) {
+          if(candidate.name==pendingName && candidate.name!=(record['official'] as Map?)?['name'])await storage.deleteCiphertext(candidate);
+        }
+      }
     }
     _interruption=null;
   }
   bool get active=>_running!=null;
   bool get canRetryRecovery=>_retryAvailable;
-  void cancel()=>_cancellation.cancel();
+  Completer<bool>? _recoveryChoice;
+  bool get awaitingRecoveryChoice=>_recoveryChoice!=null && !_recoveryChoice!.isCompleted;
+  Future<bool> waitForRecoveryChoice() => (_recoveryChoice??=Completer<bool>()).future;
+  void chooseRecovery(bool yes) {if(awaitingRecoveryChoice)_recoveryChoice!.complete(yes);}
+  void cancel(){_cancellation.cancel();chooseRecovery(false);}
   void _progress(ExportStage stage,{ExportArtifact artifact=ExportArtifact.official,int done=0,int? total,String? family}) {
     _cancellation.check();
     progress=ExportProgress(stage,artifact:artifact,done:done,total:total,family:family,elapsed:_elapsed.elapsed);
@@ -104,7 +118,8 @@ class OfficialExportCoordinator extends ChangeNotifier {
   }
   Future<void> _journal() async {
     final text=(await runMappingWorker(MappingInput('json','',const [],json:{
-      'version':1,'folder':_destination.label,
+      'version':1,'folder':_destination.label,'finished':progress.stage==ExportStage.complete,
+      if(_publicationName!=null)'pending_name':_publicationName,
       if(_destination is AndroidCipherBackupStorage)'tree':(_destination as AndroidCipherBackupStorage).folder.uri,
       if(official!=null)'official':{'path':official!.file.path,'name':official!.file.name,'sha256':official!.plainSha256,'bytes':official!.bytes},
       if(_incomplete!=null)'incomplete':{'path':_incomplete!.path,'name':_incomplete!.name},
@@ -116,11 +131,22 @@ class OfficialExportCoordinator extends ChangeNotifier {
   }
   Future<void> _cleanIncomplete() async {
     final file=_incomplete;
-    if(file==null)return;
+    if(file==null && _publicationName==null)return;
     try {
+      if(file!=null) {
       await _destination.closeCiphertext(file);
       await _destination.deleteCiphertext(file);_incomplete=null;
-    } catch(_) { /* Journal retains the handle when provider access was lost. */ }
+      }
+    } catch(_) { /* The provider may have changed identity during publication. */ }
+    final name=_publicationName;
+    if(name!=null) {
+      try {
+        for(final pending in await _destination.listCiphertext()) {
+          if(pending.name==name && official?.file.name!=name)await _destination.deleteCiphertext(pending);
+        }
+        _publicationName=null;_incomplete=null;
+      }catch(_) { /* Journal retains pending_name when provider access was lost. */ }
+    }
   }
   Future<VerifiedExportFile> _save(File plain,String name,ExportArtifact artifact) async {
     _cancellation.check();
@@ -139,12 +165,13 @@ class OfficialExportCoordinator extends ChangeNotifier {
     await _verify(_incomplete!,expected,size,artifact);
     _progress(ExportStage.publishing,artifact:artifact);
     await _space.requireAvailable(size+54);
+    _publicationName=name;await _journal();
     _incomplete=await _destination.publishCiphertext(_incomplete!,name);
     await _journal();
     // Provider rename may copy bytes or change identity, a new trust boundary.
     await _verify(_incomplete!,expected,size,artifact);
     final saved=VerifiedExportFile(_incomplete!,_destination.label,expected,size+54);
-    _incomplete=null;
+    _incomplete=null;_publicationName=null;
     if(artifact==ExportArtifact.official)official=saved;
     await _journal();
     await plain.delete();
@@ -160,12 +187,13 @@ class OfficialExportCoordinator extends ChangeNotifier {
       CipherBackupStorage destination,ExportSpaceBudget space,ExportPrompts prompts) async {
     await finish();
     _root=root;_destination=destination;_space=space;
-    _cancellation=ExportCancellation();official=null;report=null;outcome=null;extrasOmissions=const [];
+    _cancellation=ExportCancellation();_recoveryChoice=null;official=null;report=null;outcome=null;extrasOmissions=const [];
     _elapsed..reset()..start();
     try {
       if(await FileSystemEntity.type(root.path,followLinks:false)==FileSystemEntityType.link)throw StateError('Unsafe private directory');
       await root.create(recursive:true);await cleanupAbandoned(root);
       if(_interruption!=null)await cleanInterrupted();
+      _incomplete=null;_publicationName=null;
       _progress(ExportStage.preparing);
       _estimate=await source.estimate();
       try {await space.requireAvailable(_estimate.peakBytes);} on ExportSpaceExhausted catch(error) {
