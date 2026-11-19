@@ -3,8 +3,10 @@
 // catches: no preflight; trust staged bytes; recovery failure deletes official;
 // forget finally cleanup; delete official on cancellation.
 import 'dart:io';
+import 'dart:async';
 import 'dart:convert';
 import 'package:openstrap_edge/data/backup_storage.dart';
+import 'package:openstrap_edge/data/json_payload_lane.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/official_export/coordinator.dart';
@@ -55,6 +57,26 @@ class FullOnceSpace extends Space {
     if(first){first=false;return 64*1024*1024;}
     return super.readAvailableBytes();
   }
+}
+
+class PausedEstimateSnapshot extends Snapshot {
+  PausedEstimateSnapshot(super.path);
+  final entered=Completer<void>(),release=Completer<void>();
+  @override Future<ExportEstimate> estimate()async {
+    entered.complete();await release.future;return super.estimate();
+  }
+}
+class PausedJournalDecode implements JsonPayloadDecodeLane {
+  final entered=Completer<void>(),release=Completer<void>();
+  bool first=true;
+  @override Future<JsonPayloadsResult> run(JsonPayloadsInput input)async {
+    if(first && !input.encode){first=false;entered.complete();await release.future;}
+    return const IsolateJsonPayloadLane().run(input);
+  }
+}
+class FinishSpyCoordinator extends OfficialExportCoordinator {
+  int finishes=0;
+  @override Future<void> finish(){finishes++;return super.finish();}
 }
 
 void main() {
@@ -271,6 +293,57 @@ void main() {
     await File('${private.path}/interruption.json').writeAsString(jsonEncode(record));
   }
   const staleRecord={'version':1,'folder':'Old folder','tree':'content://old/tree','pending_name':'openstrap-official-x.db.osbk.incomplete','official':{'name':'previous.db.osbk'}};
+  // WHY: Dismiss and export share interruption.json. A stale Dismiss must
+  // never replace a live export receipt, or its incomplete file is forgotten.
+  // catches: allowing Dismiss to rewrite a journal while export owns it.
+  test('cleanup journal ownership Dismiss cannot rewrite an active export receipt',()async {
+    final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('cleanup_active_');
+    final coordinator=OfficialExportCoordinator()..trees=Trees(RevokedTree.new);
+    final snapshot=PausedEstimateSnapshot(fx.forkPath);
+    Future<OfficialExportOutcome>? running;
+    try {
+      final free=Space(),private=Directory('${root.path}/private');
+      final dest=Destination(Directory('${root.path}/new')..createSync(),free);
+      running=coordinator.export(snapshot:snapshot,privateRoot:private,destination:dest,
+        space:ExportSpaceBudget(source:free),prompts:Prompts(()async=>'pw',(_)async=>false));
+      await snapshot.entered.future;
+      const current={'version':1,'folder':'Current export','pending_name':'current.incomplete',
+        'leftovers':[{'folder':'Old folder','tree':'content://old/tree','name':'old.incomplete'}]};
+      await journalWith(private,current);
+      final journal=File('${private.path}/interruption.json');
+      final before=await journal.readAsBytes();
+      await coordinator.dismissNotices();
+      expect(await journal.readAsBytes(),before,reason:'an active export owns its durable receipt');
+    }finally{
+      coordinator.cancel();if(!snapshot.release.isCompleted)snapshot.release.complete();
+      await running;await coordinator.finish();coordinator.dispose();await root.delete(recursive:true);await fx.dispose();
+    }
+  });
+  // WHY: an export started during Dismiss must wait before even cleaning an
+  // earlier session. The JSON barrier holds real Dismiss work in flight.
+  // catches: starting _run/finish before the prior journal edit has settled.
+  test('cleanup journal ownership export waits for an in-flight Dismiss',()async {
+    final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('cleanup_wait_');
+    final coordinator=FinishSpyCoordinator()..trees=Trees(RevokedTree.new);
+    final lane=PausedJournalDecode();Future<void>? dismiss;Future<OfficialExportOutcome>? running;
+    try {
+      final free=Space()..available=64*1024*1024;
+      final private=Directory('${root.path}/private');
+      final dest=Destination(Directory('${root.path}/new')..createSync(),free);
+      await journalWith(private,{...staleRecord,'leftovers':[
+        {'folder':'Old folder','tree':'content://old/tree','name':'old.incomplete'}]});
+      await coordinator.loadInterruption(private);
+      JsonPayloadLane.debugUseShared(JsonPayloadLane(lane:lane));
+      dismiss=coordinator.dismissNotices();await lane.entered.future;
+      final before=coordinator.finishes;
+      running=exportTo(coordinator,fx,root,private,dest,free);
+      expect(coordinator.finishes,before,reason:'export must wait before touching files owned by Dismiss');
+    }finally{
+      if(!lane.release.isCompleted)lane.release.complete();await dismiss;
+      coordinator.cancel();await running;JsonPayloadLane.debugResetShared();
+      await coordinator.finish();coordinator.dispose();await root.delete(recursive:true);await fx.dispose();
+    }
+  });
   test('a revoked old folder does not block a new export and names the leftover',()async {
     final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('f1_revoked_');
     final coordinator=OfficialExportCoordinator()..trees=Trees(RevokedTree.new);
