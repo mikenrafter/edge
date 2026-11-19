@@ -123,6 +123,7 @@ class TableProfile {
     this.rewrite = const [],
     this.merge,
     this.optional = false,
+    this.optionalOmissions = const [],
     this.createsEmptyDest = false,
     this.dropped = const [],
     this.provenance = const [],
@@ -164,6 +165,11 @@ class TableProfile {
 
   /// Created lazily or only on legacy paths: absent from some real databases.
   final bool optional;
+
+  /// Known retired fork columns: classified when present, absent on fresh
+  /// installs. Only omitted columns may be optional; portable bytes stay required.
+  final List<String> optionalOmissions;
+  Set<String> get requiredColumns => columns.keys.toSet().difference(optionalOmissions.toSet());
 
   /// R tables whose target layout needs the table to exist (empty).
   final bool createsEmptyDest;
@@ -312,6 +318,9 @@ class OfficialProfile {
           out.add('${e.key}: ${t.policy.code} dest needs createsEmptyDest');
         }
       }
+      for (final c in t.optionalOmissions) {
+        if (!t.omit.contains(c)) out.add('${e.key}.$c: optional column must be omitted');
+      }
       for (final c in t.emptyConstants.keys) {
         if (!t.clear.contains(c)) out.add('${e.key}.$c: empty constant on a column that is not cleared');
       }
@@ -345,7 +354,7 @@ class OfficialProfile {
           gaps.add(UnclassifiedColumn(shape.name, c));
         }
       }
-      for (final c in profiled.keys) {
+      for (final c in t.requiredColumns) {
         if (!shape.columnNames.contains(c)) gaps.add(StaleColumn(shape.name, c));
       }
       if (t.policy.carriesRows) {

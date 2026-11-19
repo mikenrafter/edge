@@ -57,7 +57,7 @@ try:
   with tarfile.open(base_archive) as archive:archive.extractall(root)
   # Generated locale code is absent in the Git archive, and must match base.
   subprocess.run(['flutter','gen-l10n'],check=True,stdout=subprocess.DEVNULL)
-  old=[str(pathlib.Path('test')/f) for f in sorted(failures) if (root/'test'/f).exists()]
+  old=[str(pathlib.Path('test')/f) for f in sorted(failures) if (root/'test'/f).is_file()]
   for i in range(0,len(old),5):baseline.append(batch(old[i:i+5],f'base-{i//5:03}'))
  head_errors={(f['file'],f['name']) for r in head for f in r['failures']}
  base_errors={(f['file'],f['name']) for r in baseline for f in r['failures']}

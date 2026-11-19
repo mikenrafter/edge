@@ -109,6 +109,7 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
         'policy': e.value.policy.code, 'columns': {for (final c in e.value.columns.entries) c.key: c.value.name},
         'destination': e.value.dest, 'rule': e.value.rowRule, 'transforms': e.value.transforms,
         'constants': e.value.emptyConstants,
+        'optional':e.value.optional,'optional_omissions':e.value.optionalOmissions,
       }},
       'target_objects': [for (final o in officialTargetObjects) o.sql],
       'enums': [for (final e in officialProfile.enums) [e.table,e.column,e.targetValues.toList(),e.onOther.name]],

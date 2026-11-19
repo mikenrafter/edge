@@ -210,11 +210,16 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
             LinearProgressIndicator(value:(progress.done/progress.total!).clamp(0,1)),
           button(l.actionCancel,()async{await _confirmStop();}),
         ],
-        if(coordinator.awaitingRecoveryChoice)...[
+        // Keep the choice's extent while recovery runs: removing it clamps
+        // the scroll offset and moves the already verified official receipt.
+        if(coordinator.awaitingRecoveryChoice || (busy && official!=null))
+          Visibility(visible:coordinator.awaitingRecoveryChoice,
+            maintainSize:true,maintainAnimation:true,maintainState:true,
+            child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
           Text(l.officialExportRecoveryQuestion,style:Theme.of(context).textTheme.titleMedium),
           Semantics(selected:true,child:button(l.officialExportYes,(){coordinator.chooseRecovery(true);setState((){});})),
           button(l.officialExportNo,(){coordinator.chooseRecovery(false);setState((){});}),
-        ],
+        ])),
         if(outcome is OfficialExportSaved)...[
           if(outcome.recoveryStatus==RecoveryStatus.declined)Text(l.officialExportNotSaved),
           if(outcome.recovery!=null)...[SelectableText(outcome.recovery!.file.name),button(l.officialExportShare,()=>_share(outcome.recovery!))],

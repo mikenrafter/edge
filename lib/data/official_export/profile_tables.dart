@@ -232,7 +232,8 @@ const officialProfile = OfficialProfile(
     ),
     'ecg_gesture_session': TableProfile(
       policy: TablePolicy.dropped,
-      meaning: r'''Fork gesture provenance unsupported by importer.''',
+      meaning: r'''Retired fork-only ECG gesture sessions; retained only in recovery.''',
+      optional: true,
       evidence: r'''`schema.dart:1576`''',
       dropped: ['device_id', 'created_at', 'strap_start', 'strap_end', 'final_count', 'outcome', 'reason'],
     ),
@@ -243,6 +244,8 @@ const officialProfile = OfficialProfile(
       evidence: r'''`schema.dart:1547`''',
       keep: ['hex', 'device_id', 'sequence', 'strap_seconds', 'strap_subsec', 'captured_at', 'reading_id'],
       omit: ['origin'],
+      // integrate/next f36a4c663 stopped creating this provenance column.
+      optionalOmissions: ['origin'],
       merge: MergeKey(['hex'], MergeRule.plainReplace, r'''same frame identity'''),
     ),
     'ecg_reading': TableProfile(

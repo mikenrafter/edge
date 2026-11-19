@@ -291,7 +291,7 @@ class _Mapper {
     final ledger = _RowLedger(count);
     if (policy == null || !policy.policy.carriesRows || shape.rowidAlias == null || shape.nonPlainColumns.isNotEmpty ||
         (shape.columnNames.difference(policy.columns.keys.toSet()).isNotEmpty ||
-        policy.columns.keys.toSet().difference(shape.columnNames).isNotEmpty)) {
+        policy.requiredColumns.difference(shape.columnNames).isNotEmpty)) {
       reports[name] = {'source_count': count, 'omitted_all': true,
         'reason': policy == null ? pilotPulseOmissions.contains(name) ? 'pilot Pulse table; recovery only' : 'unsupported table; retained in snapshot' : policy.policy.carriesRows ? 'unsupported source shape' : policy.meaning,
         'columns': shape.columnNames.toList()};
