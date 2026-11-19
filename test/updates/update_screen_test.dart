@@ -176,7 +176,10 @@ void main() {
     });
 
     // catches: P3's export entry shown (or crashing) before its route exists.
-    testWidgets('the export entry appears only when the shared route is registered', (t) async {
+    // WHY: informational releases must not become newer-release warnings at handoff.
+    // catches: passing true for every official-app relationship.
+    for (final newer in [true, false]) {
+    testWidgets('the shared export route receives the actual news relationship $newer', (t) async {
       service.snapshot = UpdateSnapshot(
         enabled: true,
         phase: UpdatePhase.available,
@@ -185,7 +188,7 @@ void main() {
             candidate: ReleaseCandidate(
               source: ReleaseSource.official, id: 3, tag: 'v0.12.3',
               asset: 'a.apk', prerelease: false,
-              relation: ReleaseRelation.officialSeparateApp),
+              relation: newer ? ReleaseRelation.officialSeparateApp : ReleaseRelation.officialInformational),
             checkedAt: DateTime.utc(2026, 11, 15)),
         },
       );
@@ -205,9 +208,10 @@ void main() {
       await t.pumpAndSettle();
       await t.tap(entry);
       await t.pump();
-      expect(news, isTrue);
+      expect(news, newer);
       expect(at, DateTime.utc(2026, 11, 15));
     });
+    }
 
     // WHY: 48 dp targets and no overflow at 320 dp / 2x text, English, Thai, Russian.
     for (final locale in ['en', 'th', 'ru']) {

@@ -279,6 +279,30 @@ void main() {
       expect(coordinator.notices.single.kind,ExportNoticeKind.leftover,reason:'still unverified, still named');
     }finally{await coordinator.finish();coordinator.dispose();await root.delete(recursive:true);await fx.dispose();}
   },timeout:const Timeout(Duration(minutes:4)));
+  // WHY: R2-1, a disk-full leftovers write must retain the only durable cleanup receipt.
+  // catches: deleting interruption.json after a swallowed leftovers write failure.
+  test('a full device retains the cleanup receipt across coordinator restart',()async {
+    final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('cleanup_full_');
+    final coordinator=OfficialExportCoordinator()..trees=Trees(RevokedTree.new);
+    final restarted=OfficialExportCoordinator()..trees=Trees(RevokedTree.new);
+    try {
+      final free=Space()..available=64*1024*1024;
+      final private=Directory('${root.path}/private');
+      final dest=Destination(Directory('${root.path}/new')..createSync(),free);
+      await journalWith(private,staleRecord);
+      expect(await exportTo(coordinator,fx,root,private,dest,free),isA<OfficialExportRefused>());
+      final journal=File('${private.path}/interruption.json');
+      expect(journal.existsSync(),isTrue,reason:'the failed leftovers write cannot discard cleanup ownership');
+      expect(jsonDecode(await journal.readAsString()),staleRecord);
+      expect(File('${private.path}/leftovers.json').existsSync(),isFalse);
+      await restarted.loadInterruption(private);
+      expect(restarted.hasInterruption,isTrue);
+      free.available=1<<40;
+      expect(await exportTo(restarted,fx,root,private,dest,free),isA<OfficialExportSaved>());
+      expect(restarted.notices.map((n)=>n.file),['openstrap-official-x.db.osbk.incomplete']);
+      expect(await File('${private.path}/leftovers.json').readAsString(),contains('openstrap-official-x.db.osbk.incomplete'));
+    }finally{await coordinator.finish();await restarted.finish();coordinator.dispose();restarted.dispose();await root.delete(recursive:true);await fx.dispose();}
+  });
   test('an unreadable journal is set aside and does not block a new export',()async {
     final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('f1_corrupt_');
     final coordinator=OfficialExportCoordinator();
