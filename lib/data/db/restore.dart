@@ -466,6 +466,37 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
         await copyRows('metric_method', where: 'date = ?', whereArgs: [dayId]);
         // What became of each flagged day's alert travels with the day.
         await copyRows('pulse_alert', where: 'day = ?', whereArgs: [dayId]);
+        // Episodes intersecting this local day travel WHOLE (a cross-midnight one
+        // is an explicitly labeled dependency, not a claim about the next day),
+        // with their evidence and delivery history; the upgrade keys and admission
+        // batches of the day travel so the receiver classifies them the same way.
+        // Checkpoints, certificates and the marker are local authority: omitted.
+        const pulseDay = 'start_day <= ? AND end_day >= ?';
+        await copyRows('pulse_ep_episode', where: pulseDay, whereArgs: [dayId, dayId]);
+        // Evidence blobs are read in chunks, never as a page of whole rows.
+        final evidence = await src.rawQuery(
+            'SELECT episode_id, revision, encoded_bytes, expanded_bytes, checksum, '
+            'retained_json, omitted_json, created_ms FROM pulse_ep_evidence '
+            'WHERE episode_id IN (SELECT id FROM pulse_ep_episode WHERE $pulseDay)',
+            [dayId, dayId]);
+        for (final e in evidence) {
+          final payload = await PulseEpisodeStore.readPayload(src,
+              e['episode_id'] as String, (e['revision'] as num).toInt(),
+              (e['encoded_bytes'] as num).toInt());
+          await out.insert('pulse_ep_evidence', {...e, 'payload': payload},
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+        for (final t in ['pulse_ep_revision', 'pulse_ep_outbox']) {
+          await copyRows(t,
+              where: 'episode_id IN (SELECT id FROM pulse_ep_episode WHERE $pulseDay)',
+              whereArgs: [dayId, dayId]);
+        }
+        await copyRows('pulse_ep_admission',
+            where: 'start_ms < ? AND end_ms > ?',
+            whereArgs: [endSec * 1000, startSec * 1000]);
+        await copyRows('pulse_ep_upgrade_record',
+            where: 'ts_ms >= ? AND ts_ms < ?',
+            whereArgs: [startSec * 1000, endSec * 1000]);
         await copyRows('journal', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('journal_metric', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('cycle_log', where: 'date = ?', whereArgs: [dayId]);
@@ -974,6 +1005,13 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
       // Shadow group payloads of the deleted day (a reimport starts at revision 1).
       await deleteByIn(txn, 'group_row', 'day_id', sorted);
       await deleteByIn(txn, 'day_manifest', 'day_id', sorted);
+      // A Pulse recording that touches a deleted day goes whole (evidence,
+      // revisions, features); only an opaque consumed tombstone and the upgrade
+      // membership keys stay, so a re-import cannot re-alert. This deliberately
+      // keeps those rows although deleteDays otherwise drops per-day rows.
+      await PulseEpisodeStore.deleteDays(txn, [
+        for (final d in sorted) (d, LocalDb._localDayWindow(d).$1, LocalDb._localDayWindow(d).$2),
+      ]);
     });
     // Fence pending Home reads and queued snapshot writes only after commit.
     // The bounded presentation cache is rebuildable, so clear it as a unit.
@@ -1004,6 +1042,11 @@ Future<int> _ldbWipeAll() async {
       deleted += await txn.delete('input_rev');
       deleted += await txn.delete('session_ceiling_rev');
       await LocalDb._rotateStoreIdentity(txn);
+      // Every decoded row is gone, so the boundary is the empty set; without a
+      // marker the next open would capture it, but a running install must not
+      // wait for that.
+      await PulseEpisodeStore.reinitializeAfterWipe(txn,
+          nowMs: DateTime.now().millisecondsSinceEpoch);
     });
     await LocalDb._markStoreReplaced();
     return deleted;
@@ -1270,6 +1313,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       // acquires the main connection [phase2 hang fix a6afc9365].
       await SleepImportReport.save(sleepNotes,unionWithStored:resumed);
     }
+    final pulseConflicts = <(Object?, Object?)>{};
     // DISTINCT DAYS ACTUALLY WRITTEN — the number the caller reports as
     // "N days imported".
     //
@@ -2041,7 +2085,10 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           // more than an Android cursor window holds. [restoreRows] reads each
           // blob in chunks instead (see [SubstrateArchive.readBlob]).
           final isArchive = t == SubstrateArchive.table;
-          final pageSize = isArchive ? 8 : 2000;
+          // A Pulse recording is up to 1 MiB: paged small, payload never in the
+          // page (read in chunks by [PulseEpisodeStore.readPayload]).
+          final isPulseEvidence = t == 'pulse_ep_evidence';
+          final pageSize = isArchive ? 8 : (isPulseEvidence ? 4 : 2000);
           const rowidKey = '_rowid';
           // Start BELOW any possible rowid, not at 0: a table keyed by an
           // INTEGER PRIMARY KEY of its own (alarm_schedule.weekday, 0 = Monday)
@@ -2051,15 +2098,46 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           var lastRowid = resumeRowid == 0 ? LocalDb._kBelowAnyRowid : resumeRowid;
           final projection = isArchive
               ? SubstrateArchive.metaColumns.join(', ')
-              : '*';
+              : isPulseEvidence
+                  ? 'episode_id, revision, encoded_bytes, expanded_bytes, checksum, '
+                      'retained_json, omitted_json, created_ms'
+                  : '*';
           var sourceQueryMs = 0;
+          final pulseRecordings = <(Object?, Object?), PulseImportedRecording>{};
           Future<List<Map<String, Object?>>> nextPage() async {
+            pulseRecordings.clear();
             final queryWatch = Stopwatch()..start();
             final rows = await src.rawQuery(
               'SELECT rowid AS $rowidKey, $projection FROM $t '
               'WHERE rowid > ? ORDER BY rowid ASC LIMIT ?',
               [lastRowid, pageSize],
             );
+            if (t == 'pulse_ep_outbox') {
+              final withChecksums = <Map<String, Object?>>[];
+              for (final row in rows) {
+                final revision = await src.query('pulse_ep_revision', columns: ['checksum'],
+                    where: 'episode_id = ? AND revision = ?',
+                    whereArgs: [row['episode_id'], row['revision']], limit: 1);
+                withChecksums.add({...row, 'recording_checksum': row['recording_checksum'] ??
+                    (revision.isEmpty ? null : revision.single['checksum'])});
+              }
+              return withChecksums;
+            }
+            if (isPulseEvidence) {
+              final withBlobs = <Map<String, Object?>>[];
+              for (final r in rows) {
+                final size = (r['encoded_bytes'] as num?)?.toInt() ?? 0;
+                final payload = size <= 0 || size > kPulseEvidenceMaxBytes ? <int>[] :
+                    await PulseEpisodeStore.readPayload(src,
+                        r['episode_id'] as String, (r['revision'] as num).toInt(), size);
+                final metadata = Map<String, Object?>.of(r)..remove(rowidKey);
+                final recording = await PulseEpisodeWorker.prepareImportedRecording(metadata, payload);
+                pulseRecordings[(r['episode_id'], r['revision'])] = recording;
+                withBlobs.add(r);
+              }
+              sourceQueryMs += queryWatch.elapsedMilliseconds;
+              return withBlobs;
+            }
             sourceQueryMs += queryWatch.elapsedMilliseconds;
             return rows;
           }
@@ -2533,6 +2611,26 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                     LocalDb._wakeMetaTransientKeys.contains(row['key'])) {
                   continue;
                 }
+                if (t.startsWith('pulse_ep_')) {
+                  // Stable-identity merge, never REPLACE (see mergeImportedRow).
+                  final recording = t == 'pulse_ep_evidence'
+                      ? pulseRecordings[(row['episode_id'], row['revision'])] : null;
+                  if (recording != null && !recording.available) {
+                    final key = '_pulse_evidence_${recording.status.wire}';
+                    counts[key] = (counts[key] ?? 0) + 1;
+                  }
+                  final outcome = await PulseEpisodeStore.mergeImportedRow(txn, t, row,
+                      recording: recording, nowMs: DateTime.now().millisecondsSinceEpoch);
+                  if (outcome is PulseApplied) copied++;
+                  if (outcome is PulseRefused && outcome.reason == 'conflicting revision checksum') {
+                    pulseConflicts.add((row['episode_id'], row['revision']));
+                    counts['_pulse_conflicts'] = pulseConflicts.length;
+                  }
+                  if (outcome is PulseRefused && outcome.reason == 'evidence budget full') {
+                    counts['_pulse_evidence_budget_refused'] = (counts['_pulse_evidence_budget_refused'] ?? 0) + 1;
+                  }
+                  continue;
+                }
                 if (t == 'wake_trace') {
                   // Foreign row IDs are allocation order, never event identity.
                   // Insert directly so another row on this page sees it too.
@@ -2657,6 +2755,8 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           ImportPerf.write(perfId, 'table_end', 'table=$t path=$perfPath rows=${counts[t] ?? 0} pages=${perfPages[t] ?? 0} serialized_in_rows=${perfSerialized[t] ?? 0} wal_bytes=${await ImportPerf.walBytes(db.path)} ms=${tableWatch.elapsedMilliseconds}');
         }
       }
+      await db.transaction((txn) => PulseEpisodeStore.reconcileImported(txn,
+          nowMs: DateTime.now().millisecondsSinceEpoch));
       ImportPerf.phase('tables', prepWatch, run: perfId);
       plan?.finish();
       if (run != null && order.isNotEmpty) {

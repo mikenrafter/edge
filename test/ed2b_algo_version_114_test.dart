@@ -7,7 +7,7 @@ void main() {
   // WHY: a merge must name shipped output changes and the actual sibling pin,
   // without claiming main's deferred analytics fixes already run on the fork.
   test('the merge version names shipped changes and the retained analytics pin', () {
-    expect(kAlgoVersion, 125);
+    expect(kAlgoVersion, 126);
     expect(kAnalyticsPin, 'd876c427ce59eed95b5e54411e3b69253f294ae6');
     final src = File('lib/compute/derivation_engine.dart').readAsStringSync();
     final at = src.indexOf('// 122 → 125');

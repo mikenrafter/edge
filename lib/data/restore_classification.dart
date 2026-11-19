@@ -36,6 +36,13 @@ const Map<String, String> kTablesNotRestored = {
   'input_rev_bulk': 'transient flag while a restore batches its revision bumps',
   'row_rev': 'maintained by triggers on the derived tables',
   'store_rev': 'maintained by triggers; a counter of this install\'s writes',
+  // Pulse local authority: another phone's progress or certificates would be false here.
+  'pulse_ep_checkpoint': 'evaluated-through watermark of THIS install\'s detector; a foreign one would '
+      'skip ranges this phone never evaluated',
+  'pulse_ep_complete': 'completeness certificates for THIS phone\'s history; an imported one is not '
+      'authority to close detector support',
+  'pulse_ep_upgrade': 'this install\'s initialization marker and store generation; the receiver\'s '
+      'boundary is never overwritten or recaptured by an import (upgrade membership travels)',
   // Diagnostics and replay ledgers whose content is carried elsewhere.
   'raw_archive_frames': 'durable archive restored through the raw_archive row adapter',
   'raw_archive_legacy': 'durable archive restored through the raw_archive row adapter',

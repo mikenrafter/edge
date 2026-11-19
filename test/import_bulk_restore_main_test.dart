@@ -72,6 +72,8 @@ const _wallClockColumns = {
   'activity_review_meta': {'activated_at', 'alert_after_ts'},
   'substrate_archive': {'updated_at'},
   'store_identity': {'id'},
+  // This phone captures its own upgrade instant; membership/generation remain exact.
+  'pulse_ep_upgrade': {'recorded_ms'},
   // Each import stages its own file; compare its content and completion state.
   'import_journal': {'started_at', 'source_mtime', 'source_path'},
 };

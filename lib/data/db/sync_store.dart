@@ -432,6 +432,11 @@ Future<void> _ldbPrivCommitSyncBatchLocked(List<RawRecord> raws, List<Sample?> s
             // Delivery metadata must never prevent raw capture or ACK.
           }
         }
+        // Pulse admission provenance rides the ACK transaction. Not swallowed: a
+        // failed write rolls the decoded rows back, so the band never trims data
+        // whose provenance was lost.
+        await _ldbPrivPulseAdmit(txn, raws, samples,
+            neutrals: neutrals, deviceId: deviceId, origin: processingOrigin);
         // Read the existing high-water THROUGH the txn — never via the global db
         // handle, which would deadlock against this same open transaction.
         final kCounter = LocalDb.cursorKeyFor('counter_hw', deviceId);
@@ -1570,6 +1575,8 @@ Future<void> _ldbInsertRecordsBatch(List<RawRecord> raws, List<Sample?> samples,
       if (processingOrigin == ProcessingOrigin.recentSync) {
         try { pulseContext = await _ldbPrivPulseArrivalContext(txn, raws, samples); } catch (_) {}
       }
+      await _ldbPrivPulseAdmit(txn, raws, samples,
+          deviceId: LocalDb.kPrimaryDeviceId, origin: processingOrigin);
       final batch = txn.batch();
       for (var i = 0; i < raws.length; i++) {
         final raw = raws[i];
@@ -2108,6 +2115,14 @@ Future<int> _ldbPruneDecodedBeforeRecTs(int cutoffSec, {required String? cursorN
           kTriathlonClockDriftSec,
         ],
       );
+      // Pulse admission batches go with decoded retention (a consumed batch at the
+      // cutoff; an unconsumed one held to the 14-day floor only while scheduling
+      // is on, with a durable refusal first), and recordings past their 365 days
+      // or the 128 MiB budget expire in the same transaction.
+      await PulseEpisodeStore.pruneAdmissions(txn,
+          cutoffMs: cutoffSec * 1000,
+          hardFloorMs: (hardFloorSec ?? cutoffSec) * 1000);
+      await PulseEpisodeStore.retainIn(txn, nowMs: DateTime.now().millisecondsSinceEpoch);
       // THE UNDECODABLE ARCHIVE IS THINNED, NOT KEPT WHOLE. See
       // [thinRawArchiveBefore] — this is the only caller, so the archive is
       // capped by the same retention pass that caps the substrate.
@@ -2171,6 +2186,38 @@ Future<int?> _ldbLastDecodedRecTs() async {
     );
   }
 
+
+/// One admission batch per committed range (spec 4.2). Runs BEFORE the decoded
+/// rows are replaced so novelty by `(device_id, ts_ms)` is exact, and THROWS on
+/// failure so the caller's transaction rolls back.
+Future<void> _ldbPrivPulseAdmit(DatabaseExecutor txn, List<RawRecord> raws,
+    List<Sample?> samples,
+    {List<NeutralSample>? neutrals,
+    required String deviceId,
+    required ProcessingOrigin origin}) async {
+  // One record per second, last write wins, as the decoded REPLACE does.
+  final byTs = <int, List<int>>{};
+  for (var i = 0; i < raws.length && i < samples.length; i++) {
+    final sample = samples[i];
+    if (sample == null) continue;
+    final rr = [for (final v in sample.rrIntervalsMs) if (v > 0) v];
+    if (rr.isEmpty) continue;
+    final sec = LocalDb._recTsFrom(raws[i], sample);
+    if (sec <= 0) continue;
+    byTs[sec * 1000] = rr;
+  }
+  for (final n in neutrals ?? const <NeutralSample>[]) {
+    final rr = [for (final v in n.rrMs) if (v > 0) v];
+    if (rr.isEmpty || n.tsEpoch <= 0) continue;
+    byTs[n.tsEpoch * 1000] = rr;
+  }
+  if (byTs.isEmpty) return;
+  await PulseEpisodeStore.recordAdmission(txn,
+      source: deviceId,
+      records: [for (final e in byTs.entries) PulseAdmittedRecord(e.key, e.value)],
+      origin: origin,
+      nowMs: DateTime.now().millisecondsSinceEpoch);
+  }
 
 // Bounded to the incoming pulse-bearing records; no history-wide scan.
 Future<ProcessingContext> _ldbPrivPulseArrivalContext(DatabaseExecutor txn,

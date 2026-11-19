@@ -2030,7 +2030,12 @@ part 'engine/settled.dart';
 // RSA/CVHR refuse unordered clocks and breathing bins use the correction owner.
 // Pending-day merge repair: rescan and quiet re-passes share the pool fence,
 // preventing waking metrics from freezing before the next night is derived.
-const int kAlgoVersion = 125;
+// 125 → 126 (Pulse structural): analytics 6c45f3b0 adds the v4 Pulse episode
+// detector (one narrow respiratory fit per five-minute window) and range-stable
+// episode closure; Edge stores each episode and its evidence in pulse_ep_*
+// under this version. Day payloads, sleep staging and every existing metric are
+// unchanged; the version separates episode output from earlier calculations.
+const int kAlgoVersion = 126;
 
 enum SleepEditCalculation { complete, incomplete, superseded }
 
