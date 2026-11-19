@@ -4,6 +4,8 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
+import 'package:flutter/services.dart';
+import '../support/bundled_fonts.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -17,7 +19,20 @@ import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/ui2/profile/official_export.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
+ThemeData evidenceTheme(String locale) {
+  final theme=buildTheme(Brightness.light);
+  if(locale!='th' || Platform.environment['EDGE_TEST_THAI_FONT']==null)return theme;
+  return theme.copyWith(textTheme:theme.textTheme.apply(fontFamily:'P3Thai'));
+}
 void main() {
+  setUpAll(()async {
+    await loadFonts();
+    final thai=Platform.environment['EDGE_TEST_THAI_FONT'];
+    if(thai!=null) {
+      final loader=FontLoader('P3Thai')..addFont(File(thai).readAsBytes().then((bytes)=>ByteData.sublistView(bytes)));
+      await loader.load();
+    }
+  });
   testWidgets('entry pushes immediately and a double tap joins one route',(tester)async {
     await tester.pumpWidget(MaterialApp(localizationsDelegates:AppLocalizations.localizationsDelegates,supportedLocales:AppLocalizations.supportedLocales,
       home:Builder(builder:(context)=>TextButton(onPressed:(){openOfficialExport(context);openOfficialExport(context);},child:const Text('Open')))));
@@ -31,7 +46,7 @@ void main() {
       tester.view.physicalSize=Size(settings.$2,900);tester.view.devicePixelRatio=1;
       addTearDown(tester.view.reset);
       final boundary=GlobalKey();
-      await tester.pumpWidget(MaterialApp(theme:buildTheme(Brightness.light),locale:Locale(settings.$1),
+      await tester.pumpWidget(MaterialApp(theme:evidenceTheme(settings.$1),locale:Locale(settings.$1),
         localizationsDelegates:AppLocalizations.localizationsDelegates,supportedLocales:AppLocalizations.supportedLocales,
         builder:(c,child)=>MediaQuery(data:MediaQuery.of(c).copyWith(textScaler:TextScaler.linear(settings.$3)),child:child!),
         home:RepaintBoundary(key:boundary,child:const OfficialExportScreen())));
