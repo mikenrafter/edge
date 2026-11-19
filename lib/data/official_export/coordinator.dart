@@ -16,6 +16,14 @@ import 'mapping_worker.dart';
 import 'session.dart';
 import 'space_budget.dart';
 
+abstract interface class TreeStorageOpener {
+  CipherBackupStorage open(BackupFolder folder);
+}
+class AndroidTreeStorageOpener implements TreeStorageOpener {
+  const AndroidTreeStorageOpener();
+  @override CipherBackupStorage open(BackupFolder folder)=>AndroidCipherBackupStorage(folder);
+}
+
 abstract interface class ExportPrompts {
   Future<String?> askPassphrase();
   Future<bool> askRecovery(OfficialExportSaved saved);
@@ -30,7 +38,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
   List<Map<String,Object?>> extrasOmissions=const [];
   List<ExportNotice> notices=const [];
   /// Opens a document tree named by an earlier export's journal.
-  CipherBackupStorage Function(BackupFolder) storageForTree=AndroidCipherBackupStorage.new;
+  TreeStorageOpener trees=const AndroidTreeStorageOpener();
   Future<OfficialExportOutcome>? _running;
   ExportCancellation _cancellation=ExportCancellation();
   final Stopwatch _elapsed=Stopwatch();
@@ -146,7 +154,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
     for(final e in _leftovers) {
       try {
         final tree=e['tree'];final local=e['local_root'];
-        final CipherBackupStorage storage=tree is String?storageForTree(BackupFolder(uri:tree,name:e['folder'] as String))
+        final CipherBackupStorage storage=tree is String?trees.open(BackupFolder(uri:tree,name:e['folder'] as String))
           :LocalCipherBackupStorage(Directory(local as String));
         for(final file in await storage.listCiphertext()) {
           if(file.name==e['name'])await storage.deleteCiphertext(file);
@@ -171,7 +179,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
     }
     final file=BackupFile(path:candidate['path'] as String,name:candidate['name'] as String);
     final tree=record['tree'];
-    _destination=tree is String?storageForTree(BackupFolder(uri:tree,name:record['folder'] as String))
+    _destination=tree is String?trees.open(BackupFolder(uri:tree,name:record['folder'] as String))
       :LocalCipherBackupStorage(File(file.path).parent);
     final passphrase=await prompts.askPassphrase();
     if(passphrase==null)return;
@@ -191,7 +199,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
       final path=file is Map?file['path']:null;
       final CipherBackupStorage storage;
       if(tree is String) {
-        storage=storageForTree(BackupFolder(uri:tree,name:record['folder'] as String));
+        storage=trees.open(BackupFolder(uri:tree,name:record['folder'] as String));
       }else if(path is String) {
         storage=LocalCipherBackupStorage(File(path).parent);
       }else if(localRoot is String) {

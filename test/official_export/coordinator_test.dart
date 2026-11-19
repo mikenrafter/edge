@@ -31,6 +31,11 @@ class IntentDestination extends Destination {
   }
 }
 
+class Trees implements TreeStorageOpener {
+  Trees(this.make);
+  final CipherBackupStorage Function() make;
+  @override CipherBackupStorage open(BackupFolder folder)=>make();
+}
 // A tree whose persisted grant is gone: every call fails like the native bridge.
 class RevokedTree implements CipherBackupStorage {
   @override String get label=>'Old folder';
@@ -260,7 +265,7 @@ void main() {
   const staleRecord={'version':1,'folder':'Old folder','tree':'content://old/tree','pending_name':'openstrap-official-x.db.osbk.incomplete','official':{'name':'previous.db.osbk'}};
   test('a revoked old folder does not block a new export and names the leftover',()async {
     final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('f1_revoked_');
-    final coordinator=OfficialExportCoordinator()..storageForTree=((_)=>RevokedTree());
+    final coordinator=OfficialExportCoordinator()..trees=Trees(RevokedTree.new);
     try {
       final free=Space();final private=Directory('${root.path}/private');final dest=Destination(Directory('${root.path}/new')..createSync(),free);
       await journalWith(private,staleRecord);
@@ -291,7 +296,7 @@ void main() {
   },timeout:const Timeout(Duration(minutes:4)));
   test('a leftover is deleted quietly once the old folder is reachable again',()async {
     final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('f1_regrant_');
-    final coordinator=OfficialExportCoordinator()..storageForTree=((_)=>RevokedTree());
+    final coordinator=OfficialExportCoordinator()..trees=Trees(RevokedTree.new);
     try {
       final old=Directory('${root.path}/old')..createSync();
       final leftover=File('${old.path}/openstrap-official-x.db.osbk.incomplete')..writeAsStringSync('half');
@@ -301,7 +306,7 @@ void main() {
       final first=await exportTo(coordinator,fx,root,private,dest,free);
       expect(first,isA<OfficialExportSaved>());
       expect(leftover.existsSync(),isTrue,reason:'nothing is deleted without access');
-      coordinator.storageForTree=((_)=>LocalCipherBackupStorage(old));
+      coordinator.trees=Trees(()=>LocalCipherBackupStorage(old));
       final second=await exportTo(coordinator,fx,root,private,dest,free);
       expect(second,isA<OfficialExportSaved>());
       expect(leftover.existsSync(),isFalse);expect(other.existsSync(),isTrue);
