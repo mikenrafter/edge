@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/ui2/grammar.dart' show SubTabs;
+import 'package:openstrap_edge/pilot/pilot_theme.dart' show PilotSegmented;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/pilot/alarm_pilot.dart';
 import 'package:openstrap_edge/pilot/alarm_screen.dart';
@@ -39,7 +39,7 @@ void main(){
   testWidgets('Once has one preview night and only Times and Waking tabs',(t)async{
     await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'A',days:{}),now:day,onSave:(_)async{}));
     expect(t.widget<IconButton>(find.ancestor(of:find.byTooltip('Next night'),matching:find.byType(IconButton))).onPressed,null);
-    Finder tab(String text)=>find.descendant(of:find.byType(SubTabs),matching:find.text(text));
+    Finder tab(String text)=>find.descendant(of:find.byType(PilotSegmented),matching:find.text(text));
     expect(tab('Tonight'),findsNothing);
     expect(tab('Times'),findsOneWidget);expect(tab('Waking'),findsOneWidget);
     expect(find.byKey(const ValueKey('pilot-time:bed')),findsNothing);

@@ -6,7 +6,6 @@ import '../l10n/app_localizations.dart';
 import '../ui2/chart_annotations.dart';
 import '../ui2/day_timeline/day_graph.dart';
 import '../ui2/day_timeline/timeline_controller.dart';
-import '../ui2/grammar.dart' show SubTabs;
 import '../ui2/theme.dart';
 import 'pilot_readout.dart';
 import 'timeline_chart.dart';
@@ -30,17 +29,16 @@ class PilotDayLayout extends StatelessWidget {
     // Zoom and pin live inside the readout card (mock-up v16 .ro .ctl), so a
     // manual pin carries them into the pinned area with it.
     final readout=PilotReadout(controller:controller,graph:graph,compact:true,controls:PilotZoomControls(controller:controller,onZoom:(){interaction.zoom();controller.clearScrub();},trailing:TextButton.icon(
-          key:const ValueKey('pilot-pin'),onPressed:interaction.togglePin,icon:Icon(interaction.userPinned?LucideIcons.pinOff:LucideIcons.pin,size:16),label:Text(interaction.userPinned?l.pilotUnpin:l.pilotPin,maxLines:1))));
+          key:const ValueKey('pilot-pin'),onPressed:interaction.togglePin,icon:Icon(interaction.userPinned?LucideIcons.pinOff:LucideIcons.pin,size:16),label:FittedBox(fit:BoxFit.scaleDown,child:Text(interaction.userPinned?l.pilotUnpin:l.pilotPin,maxLines:1)))));
     return PilotTheme(child:ListenableBuilder(listenable:interaction,builder:(context,_)=>Scaffold(backgroundColor:p.bg,body:SafeArea(child:Column(children:[
       SizedBox(height:52,child:Row(children:[IconButton(onPressed:()=>Navigator.maybePop(context),icon:const Icon(LucideIcons.chevronLeft)),Expanded(child:Text(title,textAlign:TextAlign.center,maxLines:1,overflow:TextOverflow.ellipsis,style:F.head.copyWith(color:p.ink))),const SizedBox(width:48)])),
       Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:Column(children:[
         dayRow,
         PilotTimelineChart(controller:controller,graph:graph,interaction:interaction,annotations:annotations,onScrub:onScrub,onPan:onPan,onSelect:onAnnotation),
         const SizedBox(height:6),
-        // The app's SubTabs (as on the alarm settings' day picker), with each
-        // tab's count as its badge (mock-up .etabs .cnt).
-        SubTabs([for(final value in PilotTimelineTab.values)switch(value){PilotTimelineTab.pending=>l.dayActivitiesPending,PilotTimelineTab.saved=>l.dayActivitiesSaved,PilotTimelineTab.discarded=>l.dayActivitiesDiscarded}],
-          PilotTimelineTab.values.indexOf(tab),(i)=>onTab(PilotTimelineTab.values[i]),color:C.blue,
+        // Mock-up v16 .etabs, with each tab's count as its badge (.cnt).
+        PilotSegmented([for(final value in PilotTimelineTab.values)switch(value){PilotTimelineTab.pending=>l.dayActivitiesPending,PilotTimelineTab.saved=>l.dayActivitiesSaved,PilotTimelineTab.discarded=>l.dayActivitiesDiscarded}],
+          PilotTimelineTab.values.indexOf(tab),(i)=>onTab(PilotTimelineTab.values[i]),
           itemKeys:[for(final value in PilotTimelineTab.values)ValueKey('pilot-tab:${value.name}')],
           badges:{for(var i=0;i<PilotTimelineTab.values.length;i++)i:_Count(counts[PilotTimelineTab.values[i]]??0)}),
         if(interaction.userPinned)Padding(padding:const EdgeInsets.only(top:6),child:readout)

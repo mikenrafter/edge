@@ -14,7 +14,7 @@ import '../notify/buzz_sequence.dart';
 import '../haptics/pattern_store.dart';
 import '../haptics/example_playback.dart' show HapticCancel;
 import '../ui2/screens/home_screen.dart' show repoOf;
-import '../ui2/grammar.dart' show SubTabs,BigButton;
+import '../ui2/grammar.dart' show BigButton;
 import '../ui2/profile/profile.dart' show SetRow;
 import '../state/app_state.dart';
 import '../state/clock_format.dart' show formatClock,formatClockOf;
@@ -298,8 +298,9 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
         // The right column is capped at 45% of the row and both lines are one
         // line with an ellipsis, so the title keeps its line and the row its height.
         child:LayoutBuilder(builder:(context,box)=>SetRow(look.$1,look.$2,title,titleMaxLines:1,chevron:false,onTap:()=>select(id,start+value*60.0),
-          trailing:ConstrainedBox(constraints:BoxConstraints(maxWidth:box.maxWidth*.45),child:Row(mainAxisSize:MainAxisSize.min,children:[if(trailing!=null)...[trailing,const SizedBox(width:8)],
-            Flexible(child:Column(crossAxisAlignment:CrossAxisAlignment.end,mainAxisSize:MainAxisSize.min,children:[
+          // Reset sits left of the right column, which keeps its full 45%.
+          trailing:Row(mainAxisSize:MainAxisSize.min,children:[if(trailing!=null)...[trailing,const SizedBox(width:8)],
+            ConstrainedBox(constraints:BoxConstraints(maxWidth:box.maxWidth*.45),child:Column(crossAxisAlignment:CrossAxisAlignment.end,mainAxisSize:MainAxisSize.min,children:[
               Text(showTime?formatClock(((value%1440)+1440)%1440~/60,((value%60)+60)%60):'—',maxLines:1,style:F.body.copyWith(color:timeColor??(showTime?p.ink:p.ink3),fontFeatures:const [FontFeature.tabularFigures()])),
               Text(sub??'',maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.right,style:F.cap.copyWith(color:p.ink3,fontSize:11)),
             ])),
@@ -326,9 +327,9 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
       ])),
       Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:PilotTimelineChart(controller:c,graph:graph,interaction:interaction,stages:stages,handles:handles,selectedAnnotationId:focus,onHandle:_handle,onSelect:(id){if({'bed','wake','early','gradual','sunrise','sound','vibration','flash','window'}.contains(id))select(id,start+_minuteFor(id)*60.0);},
         showHeartRate:false,showHeader:false,annotations:pilotAlarmAnnotations(a,l,start,bedMinute:previewBed,expectedWake:expectedWake))),
-      // The app's SubTabs; a new phone timing flashes the Times tab (m206).
+      // Mock-up v22 .tabs; a new phone timing flashes the Times tab (m206).
       Padding(padding:const EdgeInsets.fromLTRB(16,6,16,0),child:Stack(children:[
-        SubTabs(tabs,tab,_openTab,color:C.blue,itemKeys:[for(final t in tabs)ValueKey('pilot-alarm-tab:$t')]),
+        PilotSegmented(tabs,tab,_openTab,itemKeys:[for(final t in tabs)ValueKey('pilot-alarm-tab:$t')]),
         if(_tabFlash.isAnimating)Positioned.fill(child:IgnorePointer(child:FractionallySizedBox(alignment:Alignment.centerLeft,widthFactor:1/tabs.length,
           child:DecoratedBox(key:const ValueKey('pilot-times-flash'),decoration:BoxDecoration(color:p.on(C.blue).withValues(alpha:.6*math.pow(math.sin(2*math.pi*_tabFlash.value),2).toDouble()),borderRadius:BorderRadius.circular(10)))))),
       ])),

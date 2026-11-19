@@ -17,7 +17,7 @@ import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/day_timeline/day_graph.dart';
 import 'package:openstrap_edge/ui2/day_timeline/timeline_controller.dart';
-import 'package:openstrap_edge/ui2/grammar.dart' show SubTabs, BigButton;
+import 'package:openstrap_edge/ui2/grammar.dart' show BigButton;
 import 'package:openstrap_edge/ui2/profile/profile.dart' show SetRow;
 import 'screens_test.dart' show pump;
 
@@ -47,7 +47,11 @@ void main(){
   // catches: bare ListTile timing rows, Material SwitchListTiles, text-only Cancel/Save, or a heart-rate alarm chart.
   testWidgets('alarm editor uses the app rows, tabs and buttons',(t)async{
     await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'A',earlyMinutes:20,phoneSound:true),now:day,reference:(_)async=>sample(),onSave:(_)async{}));
-    expect(find.byType(SubTabs),findsOneWidget);
+    expect(find.byType(PilotSegmented),findsOneWidget);
+    // Full-width two-column control, as wide as the chart (v22 .tabs).
+    expect(t.getSize(find.byType(PilotSegmented)).width,t.getSize(find.byKey(const ValueKey('pilot-timeline-plot'))).width);
+    // Snoozes are dashed lines only, never icons (v22 marks()).
+    expect(find.descendant(of:find.byType(PilotTimelineChart),matching:find.byTooltip('Snooze')),findsNothing);
     expect(find.descendant(of:find.byKey(const ValueKey('pilot-time:early')),matching:find.byType(SetRow)),findsOneWidget);
     // v22 .item .t small: the subtitle sits under the time, right-aligned.
     final early=find.byKey(const ValueKey('pilot-time:early'));

@@ -18,7 +18,7 @@ import '../ui2/day_timeline/timeline_controller.dart';
 import '../ui2/screens/day_timeline.dart' show dayGraph;
 import '../ui2/screens/home_screen.dart' show repoOf;
 import '../ui2/theme.dart';
-import '../ui2/grammar.dart' show SubTabs,BigButton;
+import '../ui2/grammar.dart' show BigButton;
 import '../ui2/profile/profile.dart' show SetRow;
 import '../ui2/screens/home_screen.dart' show hm;
 import '../l10n/date_text.dart' show prettyDay;
@@ -179,9 +179,9 @@ class _SleepEditorState extends State<PilotSleepEditor>{
           annotations:[...wakeEvents,for(final row in blocks)ChartAnnotation(id:row.id,kind:row.entry?.kind==SleepBlockKind.main?AnnotationKind.mainSleep:AnnotationKind.nap,at:row.start.toDouble(),until:row.end.toDouble(),label:row.entry?.kind==SleepBlockKind.main?l.tabSleep:l.dayTimelineNap)],
           onSelect:(id){if(id=='start'||id=='end'){setState(()=>endSelected=id=='end');return;}final match=blocks.where((b)=>b.id==id).firstOrNull;if(match!=null)_select(match);}),
         Builder(builder:(context){final ordered=[...blocks]..sort((a,b)=>a.start.compareTo(b.start));
-          // The app's SubTabs, one per block in time order; a removed block is muted.
-          return Padding(padding:const EdgeInsets.only(top:6),child:SubTabs([for(final row in ordered)_label(row)],math.max(0,ordered.indexWhere((r)=>r.id==selected)),(i)=>_select(ordered[i]),color:C.blue,
-            muted:{for(var i=0;i<ordered.length;i++)if(ordered[i].removed)i}));}),
+          // Mock-up v11 .tabs, one per block in time order; a removed block is struck through.
+          return Padding(padding:const EdgeInsets.only(top:6),child:PilotSegmented([for(final row in ordered)_label(row)],math.max(0,ordered.indexWhere((r)=>r.id==selected)),(i)=>_select(ordered[i]),
+            struck:{for(var i=0;i<ordered.length;i++)if(ordered[i].removed)i}));}),
       ])),
       Expanded(child:ListView(padding:const EdgeInsets.fromLTRB(16,8,16,32),children:[
         if(error!=null)Text(error!,style:TextStyle(color:p.on(C.red))),
@@ -198,7 +198,7 @@ class _SleepEditorState extends State<PilotSleepEditor>{
             Row(children:[for(final cell in [(l.pilotAsleep,_asleep(b)??'—'),(l.pilotSleepWindow,hm((b.end-b.start)~/60)),(l.pilotWindow,'${pilotClock(b.start.toDouble())}–${pilotClock(b.end.toDouble())}')])
               Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(cell.$1,maxLines:1,overflow:TextOverflow.ellipsis,style:F.cap.copyWith(color:p.ink3)),Text(cell.$2,maxLines:1,overflow:TextOverflow.ellipsis,style:F.head.copyWith(color:p.ink,fontSize:15))]))]),
           ]),
-          controls:PilotZoomControls(controller:controller,onZoom:interaction.zoom,trailing:Align(alignment:Alignment.centerRight,child:TextButton.icon(onPressed:()=>setState((){adding=!adding;addedStart=null;}),icon:Icon(adding?LucideIcons.x:LucideIcons.plus,size:16),label:Text(l.pilotAddBlock,maxLines:1))))),
+          controls:PilotZoomControls(controller:controller,onZoom:interaction.zoom,trailing:Align(alignment:Alignment.centerRight,child:TextButton.icon(onPressed:()=>setState((){adding=!adding;addedStart=null;}),icon:Icon(adding?LucideIcons.x:LucideIcons.plus,size:16),label:FittedBox(fit:BoxFit.scaleDown,child:Text(l.pilotAddBlock,maxLines:1)))))),
         if(b!=null)Padding(padding:const EdgeInsets.fromLTRB(2,12,2,4),child:Text(l.pilotDragHint.toUpperCase(),style:F.cap.copyWith(color:p.ink3,fontSize:11,letterSpacing:.4))),
         if(b!=null&&!b.removed)...[
           _timeRow(b,false),_timeRow(b,true),

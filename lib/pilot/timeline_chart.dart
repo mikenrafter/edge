@@ -31,6 +31,7 @@ class PilotTimelineCut {
 Color _pilotAnnotationColor(ChartAnnotation a)=>switch(a.id){
   'bed'=>C.indigo,'early'=>C.teal,'gradual'=>C.yellow,'sunrise'=>C.orange,
   'wake'||'expected'=>C.orange,'sound'||'vibration'||'flash'=>C.pink,'backup'=>C.blue,
+  final id when id.startsWith('snooze:')=>C.n500,
   _=>annotationColor(a.kind),
 };
 
@@ -166,7 +167,9 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
         _width=box.maxWidth;
         final visible=widget.annotations.where((a)=>a.at<=c.view.end&&(a.until??a.at)>=c.view.start).toList();
         final lanes=<double>[];final marks=<({ChartAnnotation annotation,double x,int lane})>[];
-        for(final a in visible){
+        // Mock-up v22: snoozes are dashed grey lines only, never icons.
+        bool iconless(ChartAnnotation a)=>a.id.startsWith('snooze:');
+        for(final a in visible.where((a)=>!iconless(a))){
           final x=(widget.cut?.x(a.at,c.view,_width)??c.view.fraction(a.at)*_width).clamp(12.0,math.max(12.0,_width-12)).toDouble();
           var lane=0;while(lane<lanes.length&&(lanes[lane]-x).abs()<24)lane++;
           if(lane==lanes.length)lanes.add(x);else lanes[lane]=x;
@@ -181,7 +184,7 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
         final overviewGroups=<({double at,List<ChartAnnotation> items,double left,int lane})>[];
         if(widget.overview){
           final groups=<double,List<ChartAnnotation>>{};
-          for(final a in visible){(groups[(a.at/60).round()*60.0]??=[]).add(a);}
+          for(final a in visible.where((a)=>!iconless(a))){(groups[(a.at/60).round()*60.0]??=[]).add(a);}
           final ends=<double>[];
           for(final at in groups.keys.toList()..sort()){
             final items=groups[at]!,sx=widget.cut?.x(at,c.view,_width)??c.view.fraction(at)*_width;
@@ -222,7 +225,7 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
                   if(widget.cut!=null)Positioned(left:widget.cut!.leftWidth(_width)-3,top:plotHeight/2-10,width:34,child:Text('…',key:const ValueKey('pilot-overview-cut'),textAlign:TextAlign.center,style:F.head.copyWith(color:p.ink3))),
                   // Mock-ups: a translucent pill in the bottom-left corner, clear of
                   // the heart-rate graduations on the right.
-                  if(!widget.overview)Positioned(left:8,bottom:30,child:IgnorePointer(child:Opacity(opacity:_scrub||_fine?1:.6,child:DecoratedBox(decoration:BoxDecoration(color:p.card2.withValues(alpha:.6),borderRadius:BorderRadius.circular(6)),
+                  if(!widget.overview)Positioned(left:8,bottom:30,child:IgnorePointer(child:Opacity(opacity:_scrub||_fine?1:.6,child:DecoratedBox(decoration:BoxDecoration(color:p.bg.withValues(alpha:.85),borderRadius:BorderRadius.circular(6)),
                     child:Padding(padding:const EdgeInsets.symmetric(horizontal:8,vertical:1),child:Text(_fine?l.pilotFineSteps:_scrub?l.pilotScrubbing:l.pilotHoldScrub,style:F.cap.copyWith(color:p.ink,fontSize:11))))))),
                 ]))))),
         ]);
