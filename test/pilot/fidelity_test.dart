@@ -1,6 +1,7 @@
 // why: owner m233 fidelity fixes against the signed-off mock-ups (alarms v22,
 // day timeline v16, sleep editor v11). Behaviour checks, not pixel goldens.
 import 'package:flutter/material.dart';
+import 'dart:ui' show Tristate;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/data/sleep_editor.dart';
@@ -67,10 +68,10 @@ void main(){
     await t.scrollUntilVisible(row,200,scrollable:find.byType(Scrollable).last);
     expect(find.descendant(of:row,matching:find.byType(Switch)),findsNothing);
     expect(find.text('Not the primary alarm'),findsOneWidget);
-    expect(t.getSemantics(row).flagsCollection.isToggled,isFalse);
+    expect(t.getSemantics(row).flagsCollection.isToggled,Tristate.isFalse);
     await t.tap(row);await t.pumpAndSettle();
     expect(find.text('Primary alarm for these days'),findsOneWidget);
-    expect(t.getSemantics(row).flagsCollection.isToggled,isTrue);
+    expect(t.getSemantics(row).flagsCollection.isToggled,Tristate.isTrue);
     handle.dispose();
   });
 

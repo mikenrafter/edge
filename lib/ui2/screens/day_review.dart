@@ -348,6 +348,9 @@ class DayReviewController extends ChangeNotifier {
             color: C.domMind)),
     for (final s in _activities)
       (id: 'activity:${s.id}', moment: Moment(at: _activityEdits['activity:${s.id}']?.startTs ?? s.startTs,
+          // Pilot day timeline (m255): a pending activity is a range, so the
+          // chart shades it. The non-Labs chart keeps drawing it as a point.
+          until: PilotFlag.timelines.enabled ? _activityEdits['activity:${s.id}']?.endTs ?? s.endTs : null,
           title: title(c, 'activity:${s.id}'), detail: listDetail(c, 'activity:${s.id}'),
           icon: s.kind == ActivityKind.track
               ? (s.isPrompt ? LucideIcons.circleHelp : LucideIcons.tag) :
