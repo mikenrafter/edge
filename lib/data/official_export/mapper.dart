@@ -90,7 +90,7 @@ Future<OfficialMapReport> mapOfficialSnapshot({
     // Parents precede dependent rows. No source ID allocation or generic remap.
     final names = catalog.tables.keys.toList()..sort();
     for (final name in const ['device', 'journal_field_def', 'lab_marker_def', 'sessions',
-        'imported_workout', 'hyrox_session', 'triathlon_session', 'ecg_reading']) {
+        'imported_workout', 'hyrox_session', 'triathlon_session', 'ecg_reading', 'sleep_nap']) {
       if (names.remove(name)) { await builder.copyTable(name); }
     }
     for (final name in names.where((n) => n != 'substrate_archive' && n != 'sync_cursor' && n != 'decoded_rr')) {
@@ -267,6 +267,29 @@ class _Mapper {
   Future<bool> parentExists(String table, String key, Object? id) async =>
       (await dst.query(table, columns: [key], where: '${_q(key)} = ?', whereArgs: [id], limit: 1)).isNotEmpty;
 
+  // Sleep keeps block ids, while v0.12.2 activity_store.keep uses day:start.
+  // Follow merges to the current projection, never the suggestion's old span.
+  // CLAIM(official-export-nap-link) [nap_links_test; v0.12.2 activity_store.keep].
+  Future<String?> officialNapLink(Object? linked) async {
+    if (linked is! String) return null;
+    if (source.tables['sleep_block']?.columnNames.containsAll(
+        ['id','merged_into','state','kind','owner_day','start_ts']) ?? false) {
+      final blocks=await src.rawQuery('''WITH RECURSIVE links(id) AS (
+        SELECT ? UNION SELECT b.merged_into FROM sleep_block b
+        JOIN links l ON b.id=l.id WHERE b.state='merged' AND b.merged_into IS NOT NULL
+      ) SELECT b.owner_day,b.start_ts FROM sleep_block b JOIN links l ON b.id=l.id
+        WHERE b.kind='nap' AND b.state='live' LIMIT 2''',[linked]);
+      if(blocks.length==1) {
+        final block=blocks.single;
+        final nap=await dst.rawQuery("SELECT 1 FROM sleep_nap WHERE day_id=? AND start_ts=? AND source!='rejected' LIMIT 1",
+          [block['owner_day'],block['start_ts']]);
+        if(nap.isNotEmpty)return '${block['owner_day']}:${block['start_ts']}';
+      }
+    }
+    final legacy=await dst.rawQuery("SELECT 1 FROM sleep_nap WHERE day_id || ':' || start_ts = ? AND source!='rejected' LIMIT 1",[linked]);
+    return legacy.isEmpty?null:linked;
+  }
+
   Future<String?> dependency(String table, Map<String, Object?> row) async {
     final parent = switch (table) {
       'strength_set' || 'workout_split' => ('sessions', 'id', row['session_id']),
@@ -351,6 +374,8 @@ class _Mapper {
             ? liveBeatParents!.contains((original['device_id'],original['ts_ms'])) ? null : 'orphan live beat'
             : await dependency(name, original));
         if (reason != null) { decisions[id] = (reason, const [], null); continue; }
+        final napLink=name=='activity_suggestions' && row['kind']=='nap' && row['status']=='confirmed';
+        if(napLink)row['linked_id']=await officialNapLink(row['linked_id']);
         if (collidingDefinitions.contains(row['key'])) {
           decisions[id] = ('unit-qualified key collision', const [], null); continue;
         }
@@ -390,7 +415,8 @@ class _Mapper {
         if (invalid != null) { decisions[id] = (invalid,const [],null); continue; }
         batch.writeRow(policy.dest!, row);
         written++;
-        decisions[id] = ('mapped', [...(notes[id]?['columns'] as List? ?? const []), if (lostLink) 'workout_id'], notes[id]?['key_map']);
+        decisions[id] = ('mapped', [...(notes[id]?['columns'] as List? ?? const []), if (lostLink) 'workout_id',
+          if(napLink && row['linked_id']!=original['linked_id']) 'linked_id'], notes[id]?['key_map']);
       }
       for (final note in projected.notes.where((n) => n['omitted'] == true)) {
         decisions[note['rowid'] as int] = (note['reason'] as String, const [], null);

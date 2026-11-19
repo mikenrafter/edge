@@ -84,18 +84,19 @@ class OfficialExportCoordinator extends ChangeNotifier {
       }
     } catch(_) {_leftovers=[];}
   }
-  Future<void> _saveLeftovers([ExportSpaceBudget? space]) async {
+  Future<bool> _saveLeftovers([ExportSpaceBudget? space]) async {
     try {
       if(_leftovers.isEmpty) {
         if(await _leftoversFile.exists())await _leftoversFile.delete();
-        return;
+        return true;
       }
       final text=(await runMappingWorker(MappingInput('json','',const [],json:{'version':1,'entries':_leftovers}))).text!;
       await space?.requireAvailable(8192);
       final pending=File('${_root.path}/leftovers.pending');
       await pending.writeAsString(text,flush:true);
       await pending.rename(_leftoversFile.path);
-    } catch(_) { /* The notice still shows from memory for this session. */ }
+      return true;
+    } catch(_) { return false; }
   }
   void _refreshNotices() {
     notices=[
@@ -132,8 +133,8 @@ class OfficialExportCoordinator extends ChangeNotifier {
           _leftovers.add({'folder':folder,'name':name,...location!});
         }
       }
-      await _saveLeftovers(space);
-      try {
+      final saved=await _saveLeftovers(space);
+      if(saved)try {
         final journal=File('${_root.path}/interruption.json');
         if(await journal.exists())await journal.delete();
       } catch(_) { /* A later run reads and settles it again. */ }
@@ -169,6 +170,16 @@ class OfficialExportCoordinator extends ChangeNotifier {
     final decoded=await JsonPayloadLane.shared.decodeUncached(await journal.readAsString());
     if(decoded is! Map || decoded['version']!=1)throw const FormatException('Unreadable export receipt');
     _interruption=decoded.cast<String,Object?>();
+    final leftovers=decoded['leftovers'];
+    if(leftovers is List) {
+      for(final entry in leftovers) {
+        if(entry is Map && entry['name'] is String && entry['folder'] is String &&
+            !_leftovers.any((e)=>e['name']==entry['name'] && e['folder']==entry['folder'] &&
+              e['tree']==entry['tree'] && e['local_root']==entry['local_root'])) {
+          _leftovers.add(entry.cast<String,Object?>());
+        }
+      }
+    }
   }
   Future<void> verifyInterrupted(ExportPrompts prompts) async {
     final record=_interruption;
@@ -242,6 +253,9 @@ class OfficialExportCoordinator extends ChangeNotifier {
   Future<void> _journal() async {
     final text=(await runMappingWorker(MappingInput('json','',const [],json:{
       'version':1,'folder':_destination.label,'finished':progress.stage==ExportStage.complete,
+      // If the separate list could not be saved, replacing this receipt must
+      // still retain its cleanup names. [coordinator_test, R2-1]
+      if(_leftovers.isNotEmpty)'leftovers':_leftovers,
       if(_publicationName!=null)'pending_name':_publicationName,
       if(_destination is LocalCipherBackupStorage)'local_root':(_destination as LocalCipherBackupStorage).directory.path,
       if(_destination is AndroidCipherBackupStorage)'tree':(_destination as AndroidCipherBackupStorage).folder.uri,

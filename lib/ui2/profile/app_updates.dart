@@ -10,6 +10,7 @@ import '../../state/clock_format.dart';
 import '../../sync/update_coordinator.dart';
 import '../ui2.dart';
 import 'profile.dart' show SetRow;
+import 'official_export.dart' show openOfficialExport;
 
 /// A touch target is never smaller than this (Material minimum; `S.tap` alone
 /// is 44).
@@ -102,6 +103,14 @@ abstract interface class ExportRoute {
   });
 }
 
+class _OfficialExportRoute implements ExportRoute {
+  const _OfficialExportRoute();
+  @override
+  void open(BuildContext context,{bool newerOfficialAvailable=false,DateTime? checkedAt}) {
+    openOfficialExport(context,newerOfficialAvailable:newerOfficialAvailable,checkedAt:checkedAt);
+  }
+}
+
 class AppUpdatesScreen extends StatefulWidget {
   const AppUpdatesScreen({
     super.key,
@@ -118,11 +127,8 @@ class AppUpdatesScreen extends StatefulWidget {
   /// Opens the OS app-settings page; defaults to the notification service's.
   final Future<void> Function()? openAppSettings;
 
-  /// SEAM for P3's shared export route. At merge, set this to an [ExportRoute]
-  /// whose `open` calls P3's `openOfficialExport(context,
-  /// newerOfficialAvailable:, checkedAt:)` (lib/ui2/profile/official_export.dart).
-  /// Null until then, and the card entry is not shown.
-  static ExportRoute? exportRoute;
+  /// Shared with Profile > Data; injectable for hosts that supply another route.
+  static ExportRoute? exportRoute=const _OfficialExportRoute();
 
   @override
   State<AppUpdatesScreen> createState() => _AppUpdatesScreenState();
@@ -405,7 +411,7 @@ class _AppUpdatesScreenState extends State<AppUpdatesScreen> {
                 TextButton(
                   onPressed: () => AppUpdatesScreen.exportRoute!.open(
                     context,
-                    newerOfficialAvailable: true,
+                    newerOfficialAvailable: candidate!.relation.announces,
                     checkedAt: result.checkedAt,
                   ),
                   child: Text(l.updatesExportEntry),
