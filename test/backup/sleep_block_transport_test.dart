@@ -427,4 +427,45 @@ void main() {
       expect(value['scalars']['nap_min'],20);
     });
   }
+  // WHY G1: old exports can lack optional result columns. Reading their naps
+  // must neither abort the entire import nor lose the source's recorded night.
+  // CLAIM(sleep-editor-transport); discovered by the full db_integrity gate.
+  test('G1 sparse legacy results import safely and retain the next-night exclusion',() async {
+    const protectedDay='2026-10-11';
+    await seedDay(db,protectedDay);
+    final protected=(await db.query('day_result')).single;
+    final path=p.join(temp.path,'sparse-source.db');
+    final src=await databaseFactory.openDatabase(path);
+    await src.execute('CREATE TABLE day_result(day_id TEXT NOT NULL, algo_version INTEGER NOT NULL, '
+      'payload_json TEXT NOT NULL, computed_at INTEGER NOT NULL, finalized INTEGER NOT NULL, '
+      'PRIMARY KEY(day_id,algo_version))');
+    final phantom=start+8*3600+600;
+    for(final value in [
+      {'day':day,'payload':{'naps':{'value':[
+        {'start':start,'end':start+1200,'duration_min':20},
+        {'start':phantom,'end':phantom+600,'duration_min':10},
+      ]},'scalars':{'nap_min':30}}},
+      {'day':otherDay,'payload':{'sleep':{'window':{'value':{
+        'onset_ms':(start+8*3600)*1000,'offset_ms':(start+17*3600)*1000}}},'naps':{'value':[]}}},
+      {'day':protectedDay,'payload':{'src':'foreign'}},
+    ]) {
+      await src.insert('day_result',{'day_id':value['day'],
+        'algo_version':protected['algo_version'],'payload_json':jsonEncode(value['payload']),
+        'computed_at':1,'finalized':1});
+    }
+    await src.close();
+    await expectLater(restoreBackup(path),completes,
+      reason:'missing skipped/window columns are a legacy shape, not a reason to abort all tables');
+    expect((await db.query('day_result',where:'day_id = ?',whereArgs:[protectedDay])).single['payload_json'],
+      protected['payload_json'],reason:'source compatibility must retain the finalized-row guard');
+    final naps=await rows();
+    expect(naps,hasLength(1),reason:'retain the real nap, exclude the recorded next night');
+    expect([naps.single['start_ts'],naps.single['source'],naps.single['history']],[start,'legacy','known']);
+    final jobs=await db.query('sleep_edit_job',where:'day_id = ?',whereArgs:[day]);
+    expect(jobs,hasLength(1));
+    await LocalDb.recomposeNaps(day,jobs.single['nap_revision'] as int);
+    final value=jsonDecode((await LocalDb.dayResult(day))!['payload_json'] as String);
+    expect(value['naps']['value'].map((n)=>n['start']),[start]);
+    expect(value['scalars']['nap_min'],20);
+  });
 }
