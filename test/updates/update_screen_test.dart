@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/sync/update_models.dart';
 import 'package:openstrap_edge/ui2/profile/app_updates.dart';
+import 'package:openstrap_edge/ui2/profile/official_export.dart' show OfficialExportScreen;
 
 Widget host(Widget child) => MaterialApp(
   localizationsDelegates: const [
@@ -31,6 +32,18 @@ Widget host(Widget child) => MaterialApp(
 );
 
 void main() {
+  final productionExportRoute=AppUpdatesScreen.exportRoute;
+  // WHY: deleting the production registration must fail even when fake routes work.
+  // catches: leaving exportRoute null or discarding the cached release date.
+  testWidgets('the production update route opens the shared official export screen', (t)async {
+    await t.pumpWidget(host(Builder(builder:(context)=>TextButton(
+      onPressed:()=>productionExportRoute!.open(context,newerOfficialAvailable:true,checkedAt:DateTime.utc(2026,11,15)),
+      child:const Text('Export')))));
+    await t.tap(find.text('Export'));await t.pumpAndSettle();
+    final screen=t.widget<OfficialExportScreen>(find.byType(OfficialExportScreen));
+    expect(screen.newerOfficialAvailable,isTrue);expect(screen.checkedAt,DateTime.utc(2026,11,15));
+    await t.pumpWidget(const SizedBox.shrink());
+  });
   // catches: a Settings row that says nothing about state, or hides the
   // separate-app relationship that keeps the user's data where it is.
   testWidgets('the Settings row names the feature and the newest release', (t) async {
@@ -94,6 +107,7 @@ void main() {
     tearDown(() {
       NotificationService.instance.debugRequestPermission = null;
       service.dispose();
+      AppUpdatesScreen.exportRoute=productionExportRoute;
     });
     Widget screen({ReleaseAlertAccess access = ReleaseAlertAccess.granted}) =>
         host(AppUpdatesScreen(

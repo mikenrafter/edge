@@ -12,6 +12,7 @@ import 'package:openstrap_edge/data/official_export/profile_tables.dart';
 import 'package:openstrap_edge/data/official_export/schema_catalog.dart';
 
 import 'support.dart';
+import 'retired_ecg_fixture.dart';
 
 /// Policy per source table, transcribed from the spec's §4.2 table (the owner
 /// reviewed that table) plus `android_metadata`, which Android adds to every
@@ -174,13 +175,15 @@ const _specialReceiverPaths = {
 void main() {
   // WHY: trimmed builds stop creating these objects, while SQLite upgrades
   // retain them. Both histories must remain covered. CLAIM(official-export-accounted-identities).
-  test('retired ECG objects are known on legacy databases and optional on fresh ones', () {
-    final legacy=loadCapture('fork_schema_92.json');
+  test('retired ECG objects are known on legacy databases and optional on fresh ones', () async {
+    final fresh=loadCapture('fork_schema_95.json');
+    final retired=await catalogOf([retiredGestureDdl]);
+    final packet=fresh.tables['ecg_raw_packet']!;
+    final legacy=SchemaCatalog({...fresh.tables,...retired.tables});
+    legacy.tables['ecg_raw_packet']=TableShape(name:packet.name,
+      columns:[...packet.columns,const ColumnShape(name:'origin',type:'TEXT',notNull:false,defaultValue:null,pk:0,hidden:0)],
+      sql:packet.sql,indexes:packet.indexes);
     expect(officialProfile.coverage(legacy),isEmpty);
-    final packet=legacy.tables['ecg_raw_packet']!;
-    final fresh=SchemaCatalog({...legacy.tables}..remove('ecg_gesture_session'));
-    fresh.tables['ecg_raw_packet']=TableShape(name:packet.name,
-      columns:packet.columns.where((c)=>c.name!='origin').toList(),sql:packet.sql,indexes:packet.indexes);
     expect(officialProfile.coverage(fresh),isEmpty);
     // Only the retired column may disappear; missing packet bytes stay a gap.
     final missingBytes=SchemaCatalog({...fresh.tables});

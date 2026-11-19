@@ -114,7 +114,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
   Future<void> _settleInterruption(ExportSpaceBudget space) async {
     final record=_interruption;
     if(record==null)return;
-    try {await cleanInterrupted();return;} catch(_) { /* Fall through to the leftovers list. */ }
+    try {await cleanInterrupted(space:space);return;} catch(_) { /* Fall through to the leftovers list. */ }
     final officialName=(record['official'] as Map?)?['name'];
     final incomplete=record['incomplete'];
     final names={
@@ -199,7 +199,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
     official=VerifiedExportFile(file,_destination.label,hash,candidate['bytes'] as int);
     progress=const ExportProgress(ExportStage.complete);_interruption=null;notifyListeners();
   }
-  Future<void> cleanInterrupted() async {
+  Future<void> cleanInterrupted({ExportSpaceBudget? space}) async {
     final record=_interruption;
     if(record==null)return;
     final file=record['incomplete'];
@@ -224,6 +224,9 @@ class OfficialExportCoordinator extends ChangeNotifier {
           await storage.deleteCiphertext(candidate);
         }
       }
+    }
+    if(_leftovers.isNotEmpty && !await _saveLeftovers(space)) {
+      throw const FileSystemException('Could not save export cleanup receipt');
     }
     final journal=File('${_root.path}/interruption.json');
     if(await journal.exists())await journal.delete();

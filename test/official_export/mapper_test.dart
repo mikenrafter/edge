@@ -11,6 +11,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'rich_fixture.dart';
 import 'support.dart';
 import 'conservation.dart';
+import 'retired_ecg_fixture.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -52,6 +53,7 @@ void main() {
         final db=await databaseFactoryFfi.openDatabase(fx.forkPath);
         late int packets;
         try {
+          await addRetiredEcg(db);
           if(legacy) {
             await db.execute("UPDATE ecg_raw_packet SET origin='gesture'");
           } else {
@@ -89,6 +91,7 @@ void main() {
     try {
       final db=await databaseFactoryFfi.openDatabase(fx.forkPath);
       try {
+        await addRetiredEcg(db);
         await db.delete('ecg_gesture_session');await db.delete('ecg_raw_packet');
       }finally{await db.close();}
       final path='${File(fx.forkPath).parent.path}/empty-retired.db';

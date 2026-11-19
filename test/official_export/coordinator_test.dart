@@ -49,6 +49,14 @@ class RevokedTree implements CipherBackupStorage {
   @override Future<BackupFile> publishCiphertext(BackupFile file,String name)async=>_deny();
 }
 
+class FullOnceSpace extends Space {
+  bool first=true;
+  @override Future<int> readAvailableBytes()async {
+    if(first){first=false;return 64*1024*1024;}
+    return super.readAvailableBytes();
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   // WHY: review F2. Extras omissions come from the snapshot, so neither saved
@@ -303,6 +311,29 @@ void main() {
       expect(await File('${private.path}/leftovers.json').readAsString(),contains('openstrap-official-x.db.osbk.incomplete'));
     }finally{await coordinator.finish();await restarted.finish();coordinator.dispose();restarted.dispose();await root.delete(recursive:true);await fx.dispose();}
   });
+  // WHY: if free space recovers later in the same export, the new receipt
+  // must retain cleanup names whose separate list was never saved (R2-1).
+  // catches: overwriting interruption.json without its unsaved leftovers.
+  test('a new saved receipt carries unsaved cleanup names across restart',()async {
+    final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('cleanup_transient_');
+    final coordinator=OfficialExportCoordinator()..trees=Trees(RevokedTree.new);
+    final restarted=OfficialExportCoordinator()..trees=Trees(RevokedTree.new);
+    try {
+      final free=FullOnceSpace();final private=Directory('${root.path}/private');
+      final dest=Destination(Directory('${root.path}/new')..createSync(),free);
+      await journalWith(private,staleRecord);
+      expect(await exportTo(coordinator,fx,root,private,dest,free),isA<OfficialExportSaved>());
+      expect(File('${private.path}/leftovers.json').existsSync(),isFalse);
+      await restarted.loadInterruption(private);
+      // The retry cannot save the list or start a new export. Its old record
+      // must still survive after load/settle, even though it names a saved file.
+      free.available=64*1024*1024;
+      expect(await exportTo(restarted,fx,root,private,dest,free),isA<OfficialExportRefused>());
+      final record=jsonDecode(await File('${private.path}/interruption.json').readAsString()) as Map;
+      expect((record['leftovers'] as List).single['name'],'openstrap-official-x.db.osbk.incomplete');
+      expect(restarted.notices.map((n)=>n.file),['openstrap-official-x.db.osbk.incomplete']);
+    }finally{await coordinator.finish();await restarted.finish();coordinator.dispose();restarted.dispose();await root.delete(recursive:true);await fx.dispose();}
+  });
   test('an unreadable journal is set aside and does not block a new export',()async {
     final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('f1_corrupt_');
     final coordinator=OfficialExportCoordinator();
@@ -324,7 +355,7 @@ void main() {
     try {
       final old=Directory('${root.path}/old')..createSync();
       final leftover=File('${old.path}/openstrap-official-x.db.osbk.incomplete')..writeAsStringSync('half');
-      final other=File('${old.path}/keep.txt')..writeAsStringSync('mine');
+      final other=File('${old.path}/previous.db.osbk')..writeAsStringSync('verified official file');
       final free=Space();final private=Directory('${root.path}/private');final dest=Destination(Directory('${root.path}/new')..createSync(),free);
       await journalWith(private,staleRecord);
       final first=await exportTo(coordinator,fx,root,private,dest,free);
@@ -333,7 +364,7 @@ void main() {
       coordinator.trees=Trees(()=>LocalCipherBackupStorage(old));
       final second=await exportTo(coordinator,fx,root,private,dest,free);
       expect(second,isA<OfficialExportSaved>());
-      expect(leftover.existsSync(),isFalse);expect(other.existsSync(),isTrue);
+      expect(leftover.existsSync(),isFalse);expect(other.readAsStringSync(),'verified official file');
       expect(coordinator.notices,isEmpty);
       expect(File(second.official!.file.path).existsSync(),isTrue);
       expect(File('${private.path}/leftovers.json').existsSync()?File('${private.path}/leftovers.json').readAsStringSync():'',isNot(contains('x.db.osbk')));
