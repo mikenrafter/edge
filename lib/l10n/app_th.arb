@@ -17215,5 +17215,22 @@
   "profileHelpRow": "วิธีใช้",
   "helpLookingForSomething": "กำลังมองหาอะไรอยู่ไหม?",
   "helpAllGuides": "คู่มือทั้งหมด",
-  "helpTopicEmpty": "ยังไม่มีคู่มือสำหรับแท็บนี้"
+  "helpTopicEmpty": "ยังไม่มีคู่มือสำหรับแท็บนี้",
+  "pendingSectionContent": "content",
+  "pendingSectionLoaded": "Loaded, {name}",
+  "@pendingSectionLoaded": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "pendingSectionLoading": "Loading, {name}",
+  "@pendingSectionLoading": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }

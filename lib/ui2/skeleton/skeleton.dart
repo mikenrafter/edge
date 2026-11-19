@@ -1,3 +1,17 @@
+import 'dart:math' as math;
+import 'dart:ui' show ClipOp;
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
+import '../../l10n/app_localizations.dart';
+import '../grammar.dart' show ChartFrame, GuideBox, NavBar, Pressable, ScreenTitle, Section, Surface, SubTabs;
+import '../guides/guide_target.dart';
+import '../guides/guide_accordion.dart';
+import '../guides/tree_geometry.dart';
+import '../theme.dart';
+import 'guide_plot.dart';
+import 'async_section.dart' show PendingTone;
+
 // SKELETON OVERLAY (phase 1)
 //
 // Turns the real, laid-out screen into skeleton except the guide's target,
@@ -22,26 +36,18 @@
 // The guide run draws it live; the review views (test/support/guide_view.dart)
 // draw it on demo data.
 
-import 'dart:math' as math;
-import 'dart:ui' show ClipOp;
 
-import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
-import 'package:flutter/scheduler.dart';
 
-import '../../l10n/app_localizations.dart';
-import '../grammar.dart' show ChartFrame, GuideBox, NavBar, Pressable, ScreenTitle, Section, Surface, SubTabs;
-import '../guides/guide_target.dart';
-import '../guides/guide_accordion.dart';
-import '../guides/tree_geometry.dart';
-import '../theme.dart';
-import 'guide_plot.dart';
 
 enum SkeletonKind {
   /// A card rect repainted in its own surface colour ([SkeletonShape.color]).
   surface,
 
   sine,
+  columns,
+  steps,
+  dots,
+  band,
 
   /// An empty ring track in a muted pigment: what a dial (a ring painter) becomes. No arc,
   /// no value. [SkeletonShape.color] is the pigment.
@@ -76,8 +82,15 @@ enum SkeletonKind {
 }
 
 /// What a plot becomes inside a placeholder: a dial is an empty ring track, every other
-/// plot one wave. The one mapping the plan and the paint share.
-SkeletonKind skeletonKindOfPlot(GuidePlot plot) => plot is GuideRing ? SkeletonKind.ring : SkeletonKind.sine;
+/// plot its own chart family. The plan and paint share this mapping.
+SkeletonKind skeletonKindOfPlot(GuidePlot plot) => switch (plot) {
+  GuideRing() => SkeletonKind.ring,
+  GuideBars() => SkeletonKind.columns,
+  GuideSteps() => SkeletonKind.steps,
+  GuideScatter() => SkeletonKind.dots,
+  GuideBand() => SkeletonKind.band,
+  _ => SkeletonKind.sine,
+};
 
 @immutable
 class SkeletonShape {
@@ -813,11 +826,12 @@ const kPlaceholderStrength = .14;
 /// the review overlay ([Skeletonize]) and the components that paint themselves.
 /// A heading is the REAL text: the surface fills leave a hole at its line and a
 /// veil dims it. An icon is a hole in every fill. [fade] (0..1) scales the dim
-/// layers' alpha (the dim fades in; placeholders never fade).
-void paintSkeletonShapes(Canvas canvas, Iterable<SkeletonShape> shapes, P palette, {double fade = 1, double pulse = 1}) {
+/// layers only. Guide ink appears at once; [inkFade] is separate.
+void paintSkeletonShapes(Canvas canvas, Iterable<SkeletonShape> shapes, P palette, {double fade = 1, double inkFade = 1, double pulse = 1}) {
   Color pulsed(Color color) {
     final hsv = HSVColor.fromColor(color);
-    return hsv.withValue((hsv.value * pulse).clamp(0.0, 1.0)).toColor();
+    return hsv.withValue((hsv.value * pulse).clamp(0.0, 1.0)).toColor()
+        .withValues(alpha: color.a * inkFade);
   }
   final headings = [for (final s in shapes) if (s.kind == SkeletonKind.heading) s.rect];
   final icons = [for (final s in shapes) if (s.kind == SkeletonKind.icon) s.rect];
@@ -832,6 +846,33 @@ void paintSkeletonShapes(Canvas canvas, Iterable<SkeletonShape> shapes, P palett
   ];
   for (final s in ordered) {
     switch (s.kind) {
+      case SkeletonKind.columns:
+        for (var i = 0; i < 8; i++) {
+          final w = s.rect.width / 8;
+          final h = s.rect.height * (.3 + .45 * (1 + math.sin(i * .9)) / 2);
+          canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(
+            s.rect.left + i * w + 2, s.rect.bottom - h, math.max(0, w - 4), h),
+            const Radius.circular(2)), Paint()..color = pulsed(s.color ?? palette.ink3));
+        }
+      case SkeletonKind.steps:
+        final path = Path()..moveTo(s.rect.left, s.rect.center.dy);
+        for (var i = 0; i < 10; i++) {
+          final x = s.rect.left + s.rect.width * i / 10;
+          final y = s.rect.top + s.rect.height * [.3, .65, .5, .8, .4][i % 5];
+          path..lineTo(x, y)..lineTo(x + s.rect.width / 10, y);
+        }
+        canvas.drawPath(path, Paint()..color = pulsed(s.color ?? palette.ink3)
+          ..style = PaintingStyle.stroke..strokeWidth = 5);
+      case SkeletonKind.dots:
+        for (var i = 0; i < 25; i++) {
+          canvas.drawCircle(Offset(s.rect.left + s.rect.width * (.15 + .7 * (i % 5) / 4),
+            s.rect.top + s.rect.height * (.15 + .7 * (i ~/ 5) / 4)), 2,
+            Paint()..color = pulsed(s.color ?? palette.ink3));
+        }
+      case SkeletonKind.band:
+        canvas.drawRRect(R.rMd.toRRect(Rect.fromLTWH(s.rect.left,
+          s.rect.top + s.rect.height * .35, s.rect.width, s.rect.height * .3)),
+          Paint()..color = pulsed(s.color ?? palette.ink3));
       case SkeletonKind.sine:
         final path = Path();
         for (var i = 0; i <= 80; i++) {
@@ -920,7 +961,7 @@ class _Placeholder extends StatelessWidget {
   Widget build(BuildContext context) => SizedBox(
         width: width,
         height: height,
-        child: DecoratedBox(decoration: BoxDecoration(color: P.of(context).line, borderRadius: radius)),
+        child: DecoratedBox(decoration: BoxDecoration(color: PendingTone.colorOf(context, P.of(context).line), borderRadius: radius)),
       );
 }
 

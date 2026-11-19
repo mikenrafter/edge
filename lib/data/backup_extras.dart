@@ -11,6 +11,7 @@ import 'package:sqflite/sqflite.dart';
 import '../coach/coach_config.dart' show CoachConfig;
 
 const Map<String, String> kPrefsNotBackedUp = {
+  'ui.load_memory.v1': 'Local presentation estimates, not portable health data',
   'install_device_id': 'identifies this install; a restore must not clone it',
   'paired_remote_id': 'BLE address bonded to this phone; pair again',
   'paired_serial': 'identity mirror of the band paired to this phone',

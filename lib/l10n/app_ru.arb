@@ -9007,5 +9007,22 @@
   },
   "helpLookingForSomething": "Что-то ищете?",
   "helpAllGuides": "Все руководства",
-  "helpTopicEmpty": "Для этой вкладки пока нет руководств."
+  "helpTopicEmpty": "Для этой вкладки пока нет руководств.",
+  "pendingSectionLoading": "Загрузка, {name}",
+  "pendingSectionLoaded": "Загружено, {name}",
+  "pendingSectionContent": "содержимое",
+  "@pendingSectionLoaded": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@pendingSectionLoading": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }

@@ -18065,5 +18065,22 @@
   "helpTopicEmpty": "There are no guides for this tab yet.",
   "@helpTopicEmpty": {
     "description": "Empty state for a tab with no guides; All guides remains available."
-  }
+  },
+  "pendingSectionLoading": "Loading, {name}",
+  "@pendingSectionLoading": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "pendingSectionLoaded": "Loaded, {name}",
+  "@pendingSectionLoaded": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "pendingSectionContent": "content"
 }

@@ -1,9 +1,10 @@
 import 'package:flutter/painting.dart';
 import 'package:flutter/rendering.dart' show CustomPainter;
 
+
 // CLAIM(guide-painters-classified): every CustomPainter under lib/ui2 declares what a
 // guide placeholder does with it, by implementing exactly one of the four interfaces
-// below [test/ui2/guide_paint_regression_test.dart]. A painter that declares none is drawn as
+// below [test/ui2/guide_r3_painters_test.dart]. A painter that declares none is drawn as
 // NOTHING inside a placeholder, never as its real data: the safe default for the
 // next chart someone adds.
 
@@ -13,6 +14,12 @@ import 'package:flutter/rendering.dart' show CustomPainter;
 abstract interface class GuidePlot {
   Color get guideLineColor;
 }
+
+/// Shape categories shared by loading placeholders and guide placeholders.
+abstract interface class GuideBars implements GuidePlot {}
+abstract interface class GuideSteps implements GuidePlot {}
+abstract interface class GuideScatter implements GuidePlot {}
+abstract interface class GuideBand implements GuidePlot {}
 
 /// A [GuidePlot] that is a dial. Inside a placeholder it becomes an empty ring track
 /// (no arc, no value), not a wave.

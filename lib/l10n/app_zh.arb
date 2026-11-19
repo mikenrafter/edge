@@ -3982,5 +3982,22 @@
   },
   "helpLookingForSomething": "在找什么吗？",
   "helpAllGuides": "所有指南",
-  "helpTopicEmpty": "此标签页暂无指南。"
+  "helpTopicEmpty": "此标签页暂无指南。",
+  "pendingSectionLoading": "正在加载，{name}",
+  "pendingSectionLoaded": "已加载，{name}",
+  "pendingSectionContent": "内容",
+  "@pendingSectionLoaded": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@pendingSectionLoading": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }
