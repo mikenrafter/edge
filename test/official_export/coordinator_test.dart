@@ -329,7 +329,9 @@ void main() {
       // must still survive after load/settle, even though it names a saved file.
       free.available=64*1024*1024;
       expect(await exportTo(restarted,fx,root,private,dest,free),isA<OfficialExportRefused>());
-      final record=jsonDecode(await File('${private.path}/interruption.json').readAsString()) as Map;
+      final journal=File('${private.path}/interruption.json');
+      expect(journal.existsSync(),isTrue,reason:'settling a loaded receipt must preserve unsaved cleanup names');
+      final record=jsonDecode(await journal.readAsString()) as Map;
       expect(record['leftovers'],[{'folder':'Old folder','name':'openstrap-official-x.db.osbk.incomplete','tree':'content://old/tree'}]);
       expect(restarted.notices.map((n)=>n.file),['openstrap-official-x.db.osbk.incomplete']);
       await restarted.dismissNotices();

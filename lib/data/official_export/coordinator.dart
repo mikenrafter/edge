@@ -178,6 +178,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
     if(kept.length!=_leftovers.length) {_leftovers=kept;await _saveLeftovers();}
   }
   Future<void> _readInterruption() async {
+    _interruption=null;
     final journal=File('${_root.path}/interruption.json');
     if(!await journal.exists())return;
     final decoded=await JsonPayloadLane.shared.decodeUncached(await journal.readAsString());
@@ -354,7 +355,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
       if(await FileSystemEntity.type(root.path,followLinks:false)==FileSystemEntityType.link)throw StateError('Unsafe private directory');
       await root.create(recursive:true);await cleanupAbandoned(root);
       _asideThisRun=false;await _loadLeftovers();
-      if(_interruption==null)await _readInterruptionSafe();
+      await _readInterruptionSafe();
       await _settleInterruption(space);
       _refreshNotices();notifyListeners();
       _incomplete=null;_publicationName=null;
