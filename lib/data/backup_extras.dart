@@ -157,6 +157,9 @@ const Map<String, String> kFileRootsBackedUp = {
 };
 
 const Map<String, String> kFileRootsNotBackedUp = {
+  'lib/ui2/profile/official_export.dart': 'encrypted export artifacts in '
+      'Documents/official_exports are output files for import/share; backing '
+      'them up recursively would duplicate prior backups, not preserve input',
   'lib/data/disk_space.dart': 'reads the database volume free-space counter; writes no files',
   'lib/data/auto_backup.dart': 'the automatic backups themselves; they are '
       'what an import reads',
