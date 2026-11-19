@@ -10,11 +10,20 @@ import 'package:openstrap_edge/data/official_export/session.dart';
 import 'package:openstrap_edge/data/official_export/space_budget.dart';
 import 'package:openstrap_edge/data/backup_extras.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqflite/sqflite.dart' show Sqflite, DatabaseExecutor;
 import 'support.dart';
 import 'session_fixture.dart';
 import 'package:openstrap_edge/data/official_export/coordinator.dart';
+import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/models.dart';
 class UnreadablePreferences extends Fake implements SharedPreferences {
  @override Future<void> reload()async{throw StateError('unavailable');}
+}
+class HookSpace implements ExportFreeSpace {
+ HookSpace(this.hook);
+ final Future<void> Function(int call) hook;
+ int calls=0;
+ @override Future<int> readAvailableBytes()async{await hook(++calls);return 1<<40;}
 }
 class Plenty implements ExportFreeSpace {@override Future<int> readAvailableBytes()async=>1<<40;}
 void main(){
@@ -68,5 +77,44 @@ void main(){
     expect(File('${recordings.path}/large.jsonl').lengthSync(),3*1024*1024);
   });
  });
+ // WHY: spec 6.2 / review F10. The capture holds one DEFERRED read transaction
+ // for its whole copy; a band commit while it is open must neither block nor
+ // leak into the snapshot. catches: BEGIN IMMEDIATE; a rollback-journal source.
+ // Harness limit: sqflite_common_ffi serves every connection from one isolate, so
+ // this proves the write commits between statements of the open read transaction,
+ // not during one long INSERT...SELECT (that stays device-trial evidence).
+ test('a band commit during capture is not blocked and stays out of the snapshot',()async{
+  await withFreshForkDb((db,path)async{
+   expect((await db.rawQuery('PRAGMA journal_mode')).single.values.single,'wal');
+   RawRecord rec(int n)=>RawRecord(counter:n,packetType:0x2F,hex:'2f18aabbccdd',capturedAt:1750000000000+n,recTs:1750000000+n);
+   Future<void> commit(int n)=>LocalDb.commitSyncBatch([rec(n)],<Sample?>[Sample(tsEpoch:1750000000+n,counter:n,hr:60)]);
+   Future<int> count(DatabaseExecutor d)async=>Sqflite.firstIntValue(await d.rawQuery('SELECT count(*) FROM decoded_onehz'))!;
+   await commit(1);
+   final order=[for(final r in await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY rowid"))r['name'] as String];
+   final target=order.indexOf('decoded_onehz');
+   // The Nth hook call precedes the copy of table N-1: at least one table is
+   // already copied, and the written table is copied only after the write.
+   expect(target,greaterThan(0));
+   final before=await count(db);
+   expect(before,greaterThan(0));
+   var wrote=false;
+   final free=HookSpace((call)async{
+    if(call!=target+1)return;
+    await commit(2).timeout(const Duration(seconds:5));
+    wrote=true;
+   });
+   final session=Directory('${File(path).parent.path}/session')..createSync();
+   final snapshot=await LocalDbExportSnapshot().capture(session,ExportSpaceBudget(source:free),ExportCancellation());
+   expect(wrote,isTrue);
+   expect(await count(db),greaterThan(before),reason:'the write committed on the live store');
+   final copy=await databaseFactoryFfi.openDatabase(snapshot.path);
+   try{
+    expect(await count(copy),before,reason:'the snapshot keeps its read point');
+    expect((await copy.rawQuery('PRAGMA integrity_check')).single.values.single,'ok');
+   }finally{await copy.close();}
+   await commit(3);
+   expect(await count(db),greaterThan(before+1));
+  });
+ },timeout:const Timeout(Duration(minutes:2)));
 
 }
