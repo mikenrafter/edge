@@ -61,9 +61,11 @@ void main() {
     await directory.delete(recursive: true);
   });
 
-  for (final count in [65, 73]) {
+  for (final (count, counters) in [(65, false), (73, false), (73, true)]) {
     // catches: restarting manifest traversal with only 64 retained entries.
-    test('$count manifests finish with negative entries and an out-of-order maximum', () async {
+    // N1: downloads and reactions must not erase traversal across restarts.
+    // catches: hashing GitHub counters instead of normalized release facts.
+    test('$count manifests finish with negative entries and an out-of-order maximum, counters=$counters', () async {
       final catalog = <Map<String, Object?>>[];
       final manifests = <int, Map<String, dynamic>>{};
       final fetched = <int>[];
@@ -82,6 +84,14 @@ void main() {
           // Five older entries are negatively cached. They cannot poison #10.
           return id <= 1005 ? http.Response('', 404)
               : http.Response(jsonEncode(manifests[id]), 200);
+        }
+        if (counters) {
+          for (final row in catalog) {
+            row['reactions'] = {'total_count': now.millisecondsSinceEpoch};
+            for (final asset in row['assets'] as List) {
+              (asset as Map)['download_count'] = now.millisecondsSinceEpoch;
+            }
+          }
         }
         return http.Response(jsonEncode(r.url.path.contains('mikenrafter') ? catalog : []), 200);
       };
@@ -109,7 +119,8 @@ void main() {
     });
   }
 
-  for (final change in ['none', 'head', 'later']) {
+  for (final change in ['none', 'head', 'later', 'counters']) {
+    // WHY/N1: changing counters must not restart pagination or revalidation.
     // catches: restarting at page one forever, or trusting stale continuation.
     test('page four completes across restarts, catalog change=$change', () async {
       var changed = false;
@@ -123,6 +134,14 @@ void main() {
             : page == 2 && changed && change == 'later' ? [release('v9.0.0', id: 99)]
             : page == 4 ? [release('v1.0.0', id: 4)]
             : [release('unsupported-$page', id: page, draft: true)];
+        if (change == 'counters') {
+          for (final row in rows) {
+            row['reactions'] = {'total_count': pagesSeen.length};
+            for (final asset in row['assets'] as List) {
+              (asset as Map)['download_count'] = pagesSeen.length;
+            }
+          }
+        }
         return http.Response(jsonEncode(rows), 200, headers: {
           'etag': changed ? '"changed"' : '"original"',
           if (page < 4) 'link': '<${listingUri(ReleaseSource.official, page + 1)}>; rel="next"',
@@ -136,8 +155,16 @@ void main() {
         result = await batch(ReleaseSource.official);
       }
       expect(result.error, isNull);
-      expect(result.candidate?.tag, change != 'none' ? 'v9.0.0' : 'v1.0.0');
+      expect(result.candidate?.tag, ['head', 'later'].contains(change) ? 'v9.0.0' : 'v1.0.0');
       expect(pagesSeen, contains(4));
+      if (change == 'counters') {
+        result = await batch(ReleaseSource.official);
+        for (var i = 0; i < 12 && result.error == UpdateError.incomplete; i++) {
+          result = await batch(ReleaseSource.official);
+        }
+        expect(result.error, isNull, reason: 'revalidation also ignores counter churn');
+        expect(result.candidate?.tag, 'v1.0.0');
+      }
     });
   }
 }
