@@ -72,6 +72,9 @@ Future<OfficialMapReport> mapOfficialSnapshot({
     lap('source_inventory_hash');
     targetFile = await PrivateExportFile.create(outputPath,factory:dbFactory);
     dst = targetFile.read;
+    // This unpublished scratch file is discarded on every failure. Sync once
+    // before verification instead of fsyncing thousands of page batches.
+    await targetFile.applySql('PRAGMA synchronous = OFF');
     for (final o in officialTargetObjects.where((o) => o.type == 'table')) {
       await targetFile.applySql(o.sql);
     }
@@ -112,6 +115,7 @@ Future<OfficialMapReport> mapOfficialSnapshot({
       }
     }
     await targetFile.applySql('PRAGMA user_version = $officialTargetSchema');
+    await targetFile.syncForVerification();
     final inventory = await PayloadInventory.read(dst);
     final violations = checkPayload(inventory, officialProfile,
         target: SchemaCatalog(target.tables, objects: [

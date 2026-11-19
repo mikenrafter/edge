@@ -24,13 +24,13 @@ void main(){
    final bytes=List<int>.generate(3*1024*1024+7,(i)=>i%251);
    File('${recordings.path}/saved.jsonl').writeAsBytesSync(bytes);
    File('${recordings.path}/unfinished.part').writeAsStringSync('unfinished');
-   await db.insert('journal',{'day_id':'2026-10-01','note':'before'});
+   await db.insert('journal',{'date':'2026-10-01','tags_json':'[]','note':'before'});
    final session=Directory('${root.path}/session')..createSync();
    final snapshot=await LocalDbExportSnapshot().capture(session,ExportSpaceBudget(source:Plenty()),ExportCancellation());
-   await db.insert('journal',{'day_id':'2026-10-02','note':'after'});
+   await db.insert('journal',{'date':'2026-10-02','tags_json':'[]','note':'after'});
    final copy=await databaseFactoryFfi.openDatabase(snapshot.path);
    try{
-    expect((await copy.query('journal')).map((r)=>r['day_id']),['2026-10-01']);
+    expect((await copy.query('journal')).map((r)=>r['date']),['2026-10-01']);
     expect((await db.query('journal')).length,2);
     final chunk=(await copy.rawQuery('SELECT length(bytes) n, substr(bytes,3145729,7) tail FROM backup_files')).single;
     expect(chunk['n'],3145735);expect(chunk['tail'],bytes.sublist(3145728));

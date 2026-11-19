@@ -157,6 +157,7 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
       if(didPop)return;
       await _confirmStop();
     },child:Scaffold(
+      backgroundColor:P.of(context).bg,
       appBar:AppBar(),
       body:SafeArea(child:ListView(padding:const EdgeInsets.all(16),children:[
         Text(l.officialExportTitle,style:Theme.of(context).textTheme.headlineSmall),

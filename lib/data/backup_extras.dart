@@ -252,7 +252,7 @@ Future<void> writeBackupExtras(
     await copy.transaction((txn) async {
       await txn.delete('backup_secrets');
       if(sp==null)return;
-      final capturedPrefs=sp!;
+      final capturedPrefs=sp;
       for (final key in ['coach_api_key', 'coach_chatgpt']) {
         if (capturedPrefs.get('${key}_present') == true) {
           await txn.insert('backup_secrets', {'key': key});

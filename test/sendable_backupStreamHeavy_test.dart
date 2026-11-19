@@ -1,3 +1,4 @@
+// ignore_for_file: file_names
 // WHY: registered streaming crypto messages and actual results must cross the
 // isolate boundary. CLAIM(official-export-saved-bytes).
 import 'package:flutter_test/flutter_test.dart';

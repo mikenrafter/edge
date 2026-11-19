@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/import/backup_crypto.dart';
-import 'package:openstrap_edge/import/backup_stream.dart';
 
 void main() {
   test('independent Python AESGCM fixture authenticates literal OSBK bytes',()async {

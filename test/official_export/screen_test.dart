@@ -41,7 +41,7 @@ void main() {
       await tester.scrollUntilVisible(find.text(l.officialExportChooseFolder),200,scrollable:find.byType(Scrollable).first);
       final buttons=find.byType(OutlinedButton);
       expect(buttons,findsWidgets);
-      for(final button in buttons.evaluate()) expect(tester.getSize(find.byWidget(button.widget)).height,greaterThanOrEqualTo(48));
+      for(final button in buttons.evaluate()) {expect(tester.getSize(find.byWidget(button.widget)).height,greaterThanOrEqualTo(48));}
       expect(tester.takeException(),isNull);
     });
   }

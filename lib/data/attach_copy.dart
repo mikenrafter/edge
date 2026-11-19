@@ -62,6 +62,16 @@ class PrivateExportFile {
   }
 
   PrivateExportBatch beginBatch() => PrivateExportBatch(this);
+  /// Scratch writes may skip per-commit disk syncs because failed files are
+  /// discarded. One FULL transaction syncs the file before integrity checks.
+  Future<void> syncForVerification() async {
+    await applySql('PRAGMA synchronous = FULL');
+    await LocalDb.exportCopy(privateWrite:ExportFileWrite(this,const [
+      ExportFileStatement('CREATE TABLE export_sync_barrier(value INTEGER)',[]),
+      ExportFileStatement('DROP TABLE export_sync_barrier',[]),
+    ]));
+    await read.rawQuery('PRAGMA wal_checkpoint(FULL)');
+  }
   Future<void> close() => read.close();
   Future<void> discard() => factory.deleteDatabase(path);
 }

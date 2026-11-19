@@ -124,7 +124,11 @@ void main() {
 
     final mapperPhases = <String, int>{};
     final mappedReport = await mapOfficialSnapshot(snapshotPath: copy,
-        onPhase: (phase, ms) { mapperPhases[phase] = ms; print('Owner mapper $phase: $ms ms'); },
+        onPhase: (phase, ms) {
+          mapperPhases[phase] = ms;
+          // ignore: avoid_print
+          print('Owner mapper $phase: $ms ms');
+        },
         outputPath: '${work.path}/policy.db', factory: databaseFactoryFfi);
     final mapped = await databaseFactoryFfi.openDatabase(mappedReport.path,
         options: OpenDatabaseOptions(readOnly: true));
