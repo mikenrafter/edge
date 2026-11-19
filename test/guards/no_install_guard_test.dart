@@ -154,4 +154,19 @@ void main() {
       });
     });
   }
+  final dump = Platform.environment['EDGE_APK_MANIFEST_DUMP'];
+  if (dump != null) {
+    // WHY: dependency manifests can restore an installer in the packaged APK.
+    // catches: a banned permission/provider present only in aapt's final tree.
+    test('the packaged APK manifest carries no install capability', () {
+      final file = File(dump);
+      expect(file.existsSync(), isTrue, reason: 'APK manifest dump is required');
+      final text = file.readAsStringSync();
+      expect(text, matches(RegExp(r'^\s*E: manifest(?:\s|$)', multiLine: true)));
+      expect(text, matches(RegExp(r'^\s*E: application(?:\s|$)', multiLine: true)));
+      final found = scanManifest(file.path, text);
+      expect(found, isEmpty, reason: found.join('\n'));
+    });
+  }
+
 }

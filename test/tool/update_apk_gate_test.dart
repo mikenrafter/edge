@@ -15,5 +15,21 @@ void main() {
       '--head', 'a' * 40, '--variant', 'devProfile']);
     expect(absent.exitCode, 2);
     expect(absent.stderr, contains('APK does not exist'));
+    final directory = await Directory.systemTemp.createTemp('apk-gate-inputs-');
+    try {
+      final apk = await File('${directory.path}/edge.apk').writeAsString('input fixture');
+      final noManifest = await Process.run('bash', [script.path,
+        '--apk', apk.path, '--merged-manifest', '${directory.path}/missing',
+        '--head', 'a' * 40, '--variant', 'devProfile']);
+      expect(noManifest.exitCode, 2);
+      expect(noManifest.stderr, contains('Merged manifest directory does not exist'));
+      final emptyManifest = await Process.run('bash', [script.path,
+        '--apk', apk.path, '--merged-manifest', directory.path,
+        '--head', 'a' * 40, '--variant', 'devProfile']);
+      expect(emptyManifest.exitCode, 2);
+      expect(emptyManifest.stderr, contains('No nonempty merged AndroidManifest.xml'));
+    } finally {
+      await directory.delete(recursive: true);
+    }
   });
 }

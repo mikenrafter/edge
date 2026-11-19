@@ -24,7 +24,9 @@ unmetered capabilities. A persisted deadline and lease coordinate both paths.
 Check now is a separate one-time request, with a metered-network warning and a
 60-second minimum interval. Disabling checks cancels the task, invalidates an
 active generation and clears results. A response from that generation cannot
-restore cache or authorize another metadata request.
+restore cache or authorize another metadata request. Each alert claim also carries
+its consent generation, checked after the final policy await at every delivery
+destination. Turning consent off and back on cannot revive an older attempt.
 
 Requests contain only static GitHub headers and an optional ETag. No health,
 installed version, ABI, package, identifier, credentials or telemetry is sent.
@@ -33,7 +35,11 @@ GitHub sees the IP address, request time and resource. Release listings use
 response. Fork manifests use the API's numeric asset endpoint, at most eight
 new manifests and 256 KiB each. Validated manifest fields are cached by release,
 asset ID and API modification time; a large cold catalog makes progress across
-checks. Cache entries are revalidated against the current asset list before use. Each request has a 12-second timeout. List redirects
+checks. A bounded selection summary preserves the maximum and blockers after
+manifest eviction. Pagination continues across batches, rechecking page 1 and
+every later page before publishing a result. A changed page restarts discovery.
+Continuation is capped at 64 pages, 1024 relevant releases and 128 KiB per source;
+an exceeded bound stays incomplete. Cache entries are revalidated against the current asset list before use. Each request has a 12-second timeout. List redirects
 are refused. Manifest redirects are restricted to HTTPS
 `release-assets.githubusercontent.com`, at most three hops; their URLs are not
 cached. No APK URL is ever requested. A bound that prevents a complete result
@@ -48,8 +54,10 @@ through the same release-page validator. Update announcements use the existing
 `NotificationCenter.emit` path through the central alert policy: quiet hours and
 sleep HOLD the alert (its claim stays reserved and is reused when the policy
 releases it), phone by default, with the global fallback destination. The claim
-ledger and OS id come from this store, never the health database. Permission is
-checked without prompting before an atomic permanent release-identity claim;
+ledger and OS id come from this store. The background worker scopes a DB-free
+sleep source that holds unknown sleep eligibility for a foreground recovery
+pass. It never opens the health database. After the atomic release claim,
+permission is checked without prompting;
 only the Settings permission button may prompt. A crash after a claim can lose
 one alert, but cannot repeat it. Claims and OS notification IDs stay in this update database. A held or permission-deferred alert is re-offered from fresh cache on resume and
 on the shared recovery pass, without another request. Claims are not dated and never expire.
@@ -96,3 +104,22 @@ app neither downloads an APK nor claims its signer or binary compatibility.
 Focused coverage lives in `test/updates/`. Android scheduling on restricted OEM
 builds and end-to-end OS notification taps still need a device trial before
 public release.
+
+## First APK hardening gate
+
+Before distributing the first APK containing this checker, run this on its build
+host with the Android SDK available. Supply that APK's exact source head, variant
+and Gradle merged-manifest directory:
+
+```sh
+tool/check_update_apk.sh --apk /path/to/edge.apk \
+  --merged-manifest /path/to/merged-manifest-dir \
+  --head FULL_COMMIT_SHA --variant devProfile --output /path/to/evidence
+```
+
+The script requires nonempty inputs, dumps the packaged manifest with `aapt`,
+and runs `test/guards` against both that dump and the merged manifest. Evidence
+contains the head, variant, input hashes and guard log. `PASS` is written only
+after all guards succeed. Missing inputs, a failed dump or a banned installer
+capability fail the gate. This command inspects an existing APK and never installs
+it. `AAPT` and `FLUTTER` can name the build host's tool executables.
