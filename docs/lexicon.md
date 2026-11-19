@@ -193,3 +193,9 @@ in the same change that introduces it (AGENTS.md §6).
 - **Sleep receipt failure**: a night and operation-specific failed save retained by `SleepCoordinator` until acknowledged or superseded by a later successful save. App-level presentation survives route disposal.
 - **Withheld night**: while a night's own edit is unapplied, only its sleep-derived numbers are withheld. Its other measurements, and every later day, keep their values; later days carry a `sleep_edit` mark.
 - **Load timing**: an opt-in (Developer, off by default), bounded local diagnostic sample identifying a stored read, reader acquisition, writer queue, transaction or decode span. Elapsed parallel reads overlap and are never summed into load time.
+
+
+- **Certified target**: the exact official release tag and peeled source commit whose receiver was exercised by the export proof. Defined by `data/official_export/profile.dart`.
+- **Compatibility profile**: reviewed source-table, column and value dispositions for that certified target. Owned by `data/official_export/profile_tables.dart`.
+- **Snapshot receipt**: capture start/end instants, schema, immutable SQL content hash and independently omitted extras. Owned by `data/official_export/session.dart`.
+- **Recovery file**: an optional OSBK-encrypted copy of the same frozen fork SQL and supported extras, including data the certified target cannot use. Owned by `OfficialExportCoordinator`.

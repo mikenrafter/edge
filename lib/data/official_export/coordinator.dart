@@ -40,6 +40,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
   BackupFile? _incomplete;
   String? _passphrase;
   bool _retryAvailable=false;
+  bool _hasOmissions=false;
   Map<String,Object?>? _interruption;
   String? get interruptedName=>(_interruption?['official'] as Map?)?['name'] as String?;
   bool get hasInterruption=>_interruption!=null;
@@ -144,6 +145,8 @@ class OfficialExportCoordinator extends ChangeNotifier {
     await _verify(_incomplete!,expected,size,artifact);
     final saved=VerifiedExportFile(_incomplete!,_destination.label,expected,size+54);
     _incomplete=null;
+    if(artifact==ExportArtifact.official)official=saved;
+    await _journal();
     await plain.delete();
     return saved;
   }
@@ -166,7 +169,11 @@ class OfficialExportCoordinator extends ChangeNotifier {
       _progress(ExportStage.preparing);
       _estimate=await source.estimate();
       try {await space.requireAvailable(_estimate.peakBytes);} on ExportSpaceExhausted catch(error) {
-        return outcome=OfficialExportRefused(error);
+        if(source is! PartialExportSnapshotSource)return outcome=OfficialExportRefused(error);
+        _estimate=await source.estimateWithoutSavedFiles();
+        try {await space.requireAvailable(_estimate.peakBytes);} on ExportSpaceExhausted catch(error) {
+          return outcome=OfficialExportRefused(error);
+        }
       }
       _cancellation.check();
       _id='${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1<<32).toRadixString(16)}';
@@ -178,13 +185,14 @@ class OfficialExportCoordinator extends ChangeNotifier {
       _progress(ExportStage.mapping);
       report=await mapOfficialSnapshot(snapshotPath:_snapshot.path,outputPath:'${_session!.path}/official.db',space:space,
         snapshotReceipt:_snapshot.toJson(),onProgress:(family,done)=>_progress(ExportStage.mapping,family:family,done:done));
+      _hasOmissions=(await omissionSummary()).isNotEmpty;
       _cancellation.check();_passphrase=await prompts.askPassphrase();
       if(_passphrase==null)throw const ExportCancelled();
       official=await _save(File(report!.path),'openstrap-official-v0.12.2-$_id.db.osbk',ExportArtifact.official);
       await _journal();_progress(ExportStage.recoveryChoice);
-      final chosen=await prompts.askRecovery(OfficialExportSaved(official!,report!,RecoveryStatus.awaitingChoice));
+      final chosen=await prompts.askRecovery(_saved(RecoveryStatus.awaitingChoice));
       _cancellation.check();
-      final result=chosen?await _recover():OfficialExportSaved(official!,report!,RecoveryStatus.declined);
+      final result=chosen?await _recover():_saved(RecoveryStatus.declined);
       _progress(ExportStage.complete);return outcome=result;
     } on ExportCancelled {
       progress=const ExportProgress(ExportStage.cancelled);
@@ -212,13 +220,13 @@ class OfficialExportCoordinator extends ChangeNotifier {
         beforeCopyWrite:()async {_cancellation.check();await _space.requireAvailable(_estimate.sqlBytes*3+_estimate.extrasBytes);});
       final saved=await _save(File(path),'openstrap-fork-recovery-$_id.db.osbk',ExportArtifact.recovery);
       _retryAvailable=false;await _journal();
-      return OfficialExportSaved(official!,report!,RecoveryStatus.saved,recovery:saved);
+      return _saved(RecoveryStatus.saved,recovery:saved);
     } catch(error) {
       await _cleanIncomplete();await _journal();
       final partial=File('${_session!.path}/recovery.db');
       if(await partial.exists())await databaseFactory.deleteDatabase(partial.path);
       _retryAvailable=true;
-      return OfficialExportSaved(official!,report!,error is ExportCancelled?RecoveryStatus.cancelled:RecoveryStatus.failed,recoveryError:error);
+      return _saved(error is ExportCancelled?RecoveryStatus.cancelled:RecoveryStatus.failed,recoveryError:error);
     }
   }
   Future<OfficialExportOutcome?> retryRecovery() async {
@@ -231,6 +239,9 @@ class OfficialExportCoordinator extends ChangeNotifier {
     if(!_retryAvailable)await finish();
     progress=const ExportProgress(ExportStage.complete);notifyListeners();return result;
   }
+  OfficialExportSaved _saved(RecoveryStatus status,{VerifiedExportFile? recovery,Object? recoveryError}) => _hasOmissions
+    ?OfficialExportSavedWithOmissions(official!,report!,status,recovery:recovery,recoveryError:recoveryError)
+    :OfficialExportSaved(official!,report!,status,recovery:recovery,recoveryError:recoveryError);
   Future<List<Map<String,Object?>>> omissionSummary() async {
     final rows=(await runMappingWorker(MappingInput('omissionSummary','',const [],json:report?.tables??const {}))).rows;
     return [...rows,if(extrasOmissions.isNotEmpty){'family':'settings','reason':'unsupported','count':extrasOmissions.length}];

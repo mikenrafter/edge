@@ -41,6 +41,9 @@ abstract interface class OfficialSnapshotSource {
   Future<ExportEstimate> estimate();
   Future<SnapshotReceipt> capture(Directory session, ExportSpaceBudget space, ExportCancellation cancellation);
 }
+abstract interface class PartialExportSnapshotSource implements OfficialSnapshotSource {
+  Future<ExportEstimate> estimateWithoutSavedFiles();
+}
 class VerifiedExportFile {
   const VerifiedExportFile(this.file, this.folder, this.plainSha256, this.bytes);
   final BackupFile file;
@@ -76,4 +79,8 @@ class OfficialExportCancelled extends OfficialExportOutcome {
   const OfficialExportCancelled({this.receipt});
   final VerifiedExportFile? receipt;
   @override VerifiedExportFile? get official => receipt;
+}
+
+class OfficialExportSavedWithOmissions extends OfficialExportSaved {
+  const OfficialExportSavedWithOmissions(super.receipt,super.report,super.recoveryStatus,{super.recovery,super.recoveryError});
 }

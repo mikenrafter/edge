@@ -26,8 +26,13 @@ Future<void> openOfficialExport(BuildContext context) async {
   finally {_routeOpen=false;}
 }
 class OfficialExportScreen extends StatefulWidget {
-  const OfficialExportScreen({super.key,this.coordinator});
+  const OfficialExportScreen({super.key,this.coordinator,this.snapshot,this.destination,this.space,this.privateRoot,this.passphrasePrompt});
   final OfficialExportCoordinator? coordinator;
+  final OfficialSnapshotSource? snapshot;
+  final CipherBackupStorage? destination;
+  final ExportSpaceBudget? space;
+  final Directory? privateRoot;
+  final ExportPrompts? passphrasePrompt;
   @override State<OfficialExportScreen> createState()=>_OfficialExportScreenState();
 }
 class _OfficialExportScreenState extends State<OfficialExportScreen> implements ExportPrompts {
@@ -37,7 +42,7 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
   Completer<bool>? _recovery;
   bool _starting=false;
   Object? _error;
-  @override void initState(){super.initState();coordinator.addListener(_changed);unawaited(_loadInterruption());}
+  @override void initState(){super.initState();coordinator.addListener(_changed);_destination=widget.destination;unawaited(_loadInterruption());}
   Future<void> _loadInterruption() async {
     try {
       if(widget.coordinator!=null)return;
@@ -52,6 +57,7 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
     super.dispose();
   }
   @override Future<String?> askPassphrase() async {
+    if(widget.passphrasePrompt!=null)return widget.passphrasePrompt!.askPassphrase();
     if(!mounted)return null;
     try{return await askBackupPassphrase(context,creating:true);}on PassphraseCancelled{return null;}
   }
@@ -82,10 +88,10 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
     try {
       if(_destination==null)await _chooseFolder();
       if(_destination==null || !mounted)return;
-      final support=await getApplicationSupportDirectory();
+      final support=widget.privateRoot??await getApplicationSupportDirectory();
       await ScreenWake.hold('official-export');
-      await coordinator.export(snapshot:LocalDbExportSnapshot(),privateRoot:Directory('${support.path}/official-export'),
-        destination:_destination!,space:ExportSpaceBudget(source:AndroidExportFreeSpace()),prompts:this);
+      await coordinator.export(snapshot:widget.snapshot??LocalDbExportSnapshot(),privateRoot:widget.privateRoot??Directory('${support.path}/official-export'),
+        destination:_destination!,space:widget.space??ExportSpaceBudget(source:AndroidExportFreeSpace()),prompts:this);
     } catch(error){if(mounted)setState((){_error=error;});}
     finally {
       await ScreenWake.releaseOwner('official-export');

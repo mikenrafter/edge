@@ -13,6 +13,7 @@ import 'profile_target.dart';
 import 'prune_cursor.dart';
 import 'schema_catalog.dart';
 import 'space_budget.dart';
+import '../../compute/derivation_engine.dart' show kAlgoVersion;
 import '../json_payload_lane.dart';
 import '../attach_copy.dart';
 import '../db.dart' show LocalDb;
@@ -62,6 +63,7 @@ Future<OfficialMapReport> mapOfficialSnapshot({
   var verified = false;
   try {
     final sourceHash = (await runMappingWorker(MappingInput('fileHash','',const [],json:snapshotPath))).text!;
+    if(snapshotReceipt!=null && snapshotReceipt['sha256']!=sourceHash)throw StateError('Snapshot differs from capture receipt');
     final profileHash = (await runMappingWorker(const MappingInput('profileHash','',[]))).text!;
     final catalog = await SchemaCatalog.read(src);
     final archiveBytes = catalog.tables.containsKey('substrate_archive')
@@ -130,7 +132,10 @@ Future<OfficialMapReport> mapOfficialSnapshot({
     final days = await builder.dayInventory();
     final manifest = await runMappingWorker(MappingInput('json', '', const [], json: {
       'format': 1, 'snapshot_sha256': sourceHash, 'profile_sha256': profileHash, 'target_tag': officialTargetTag, 'target_sha': officialTargetSha,
-      'source_schema': await src.getVersion(), 'target_schema': officialTargetSchema,
+      'source_schema': await src.getVersion(), 'source_algorithm':kAlgoVersion,
+      'source_sha':const String.fromEnvironment('OPENSTRAP_SOURCE_SHA'),
+      'source_tag':const String.fromEnvironment('OPENSTRAP_SOURCE_TAG'),
+      'target_schema': officialTargetSchema, 'target_algorithm':officialTargetAlgorithm,
       'cursor': {'value': choice.sec, 'reason': choice.reason.name},
       'tables': builder.reports, 'target_counts': inventory.rowCounts,
       'omitted_source_objects': [for (final o in catalog.objects)

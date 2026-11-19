@@ -16,7 +16,9 @@ class AndroidExportFreeSpace implements ExportFreeSpace {
     return bytes;
   }
 }
-class LocalDbExportSnapshot implements OfficialSnapshotSource {
+class LocalDbExportSnapshot implements PartialExportSnapshotSource {
+  bool _omitFiles=false;
+  @override Future<ExportEstimate> estimateWithoutSavedFiles() async {_omitFiles=true;return estimate();}
   @override Future<ExportEstimate> estimate() async {
     final db=await LocalDb.instance;
     final pages=Sqflite.firstIntValue(await db.rawQuery('PRAGMA page_count'))!;
@@ -24,7 +26,7 @@ class LocalDbExportSnapshot implements OfficialSnapshotSource {
     final archive=Sqflite.firstIntValue(await db.rawQuery('SELECT sum(raw_bytes) FROM substrate_archive'))??0;
     // Saved-file byte estimate is captured by the extras owner, before any copy.
     int extras;
-    try {extras=await estimateBackupFiles();} catch(_) {extras=0;}
+    try {extras=_omitFiles?0:await estimateBackupFiles();} catch(_) {extras=0;}
     return ExportEstimate(pages*pageSize,archive,extras);
   }
   @override Future<SnapshotReceipt> capture(Directory session,ExportSpaceBudget space,ExportCancellation cancellation) async {
@@ -34,7 +36,7 @@ class LocalDbExportSnapshot implements OfficialSnapshotSource {
     final path=await LocalDb.exportCopy(into:session,extras:BackupExtras.none,
       beforeCopyWrite:()async {cancellation.check();await space.requireAvailable(estimate.sqlBytes*3+estimate.extrasBytes);});
     cancellation.check();
-    await writeBackupExtras(path,audit:audit);
+    await writeBackupExtras(path,audit:audit,omitFiles:_omitFiles);
     final copy=await databaseFactory.openDatabase(path,options:OpenDatabaseOptions(singleInstance:false));
     int schema;
     try {

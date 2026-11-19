@@ -230,13 +230,15 @@ Future<void> writeBackupExtras(
   SharedPreferences? prefs,
   BackupExtras extras = BackupExtras.all,
   BackupExtrasAudit? audit,
+  bool omitFiles=false,
 }) async {
   if (extras == BackupExtras.none) return;
   SharedPreferences? sp;
   try {
     sp = prefs ?? await SharedPreferences.getInstance();
-    if (prefs == null) await sp.reload();
+    if (prefs == null || audit != null) await sp.reload();
   } on Object {
+    sp=null;
     audit?.omit('settings','portable preferences','preference store unavailable');
     // No preference store on this platform (a bare test host): nothing to
     // carry, and the export itself is still whole.
@@ -275,6 +277,7 @@ Future<void> writeBackupExtras(
       await copy.execute('CREATE TABLE IF NOT EXISTS backup_files '
           '(rel_path TEXT PRIMARY KEY, bytes BLOB)');
       Future<void> captureFile(File file,String rel) async {
+        if(omitFiles){audit?.omit('saved files',rel,'omitted to preserve space for new recordings');return;}
         try {
           audit?.checkCancelled();
           final before=await file.stat();

@@ -4,12 +4,16 @@
 // read a whole BLOB; include transactions after capture.
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/data/official_export/snapshot.dart';
 import 'package:openstrap_edge/data/official_export/session.dart';
 import 'package:openstrap_edge/data/official_export/space_budget.dart';
 import 'package:openstrap_edge/data/backup_extras.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'support.dart';
+class UnreadablePreferences extends Fake implements SharedPreferences {
+ @override Future<void> reload()async{throw StateError('unavailable');}
+}
 class Plenty implements ExportFreeSpace {@override Future<int> readAvailableBytes()async=>1<<40;}
 void main(){
  TestWidgetsFlutterBinding.ensureInitialized();
@@ -40,7 +44,8 @@ void main(){
     // Positive fixture and strict audit through existing owner.
     final file=File('${File(path).parent.path}/coach_s_fixture.json')..writeAsStringSync('{"note":"saved"}');
     final audit=BackupExtrasAudit(beforeWrite:(_)async{},checkCancelled:(){});
-    await writeBackupExtras(path,audit:audit);
+    await writeBackupExtras(path,audit:audit,prefs:UnreadablePreferences());
+    expect(audit.omissions.single,{'family':'settings','identity':'portable preferences','reason':'preference store unavailable'});
     expect((await db.rawQuery('SELECT length(bytes) n FROM backup_files')).single['n'],file.lengthSync());
   });
  });

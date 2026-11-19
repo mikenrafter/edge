@@ -192,6 +192,25 @@ object BackupFolderBridge {
             }
             return null
         }
+        // Closing our own descriptor must still work after the provider grant
+        // is revoked. No provider read/write is authorized by these branches.
+        if (call.method == "closeCiphertext" || call.method == "closeCiphertextRead") {
+            val uri = call.argument<String>("uri") ?: ""
+            if (call.method == "closeCiphertext") {
+                cipherWrites[uri]?.let {
+                    if (it.first != tree) throw SecurityException("Export belongs to another folder")
+                    cipherWrites.remove(uri)
+                    it.second.close()
+                }
+            } else {
+                cipherReads[uri]?.let {
+                    if (it.first != tree) throw SecurityException("Export belongs to another folder")
+                    cipherReads.remove(uri)
+                    it.second.close()
+                }
+            }
+            return null
+        }
         val root = root(context, tree)
         return when (call.method) {
             "shareCiphertext" -> {
@@ -234,15 +253,6 @@ object BackupFolderBridge {
                 }
                 null
             }
-            "closeCiphertext" -> {
-                val uri = call.argument<String>("uri") ?: ""
-                cipherWrites[uri]?.let {
-                    if (it.first != tree) throw SecurityException("Export belongs to another folder")
-                    cipherWrites.remove(uri)
-                    it.second.close()
-                }
-                null
-            }
             "readCiphertext" -> {
                 val uri = call.argument<String>("uri") ?: ""
                 val pending = cipherReads[uri] ?: run {
@@ -264,15 +274,6 @@ object BackupFolderBridge {
                     try { pending.second.close() } catch (_: Exception) {}
                     throw e
                 }
-            }
-            "closeCiphertextRead" -> {
-                val uri = call.argument<String>("uri") ?: ""
-                cipherReads[uri]?.let {
-                    if (it.first != tree) throw SecurityException("Export belongs to another folder")
-                    cipherReads.remove(uri)
-                    it.second.close()
-                }
-                null
             }
             "list" -> children(context, root).filter { !it.directory }.map { it.json() }
             "write" -> {

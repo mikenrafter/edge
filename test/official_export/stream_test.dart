@@ -8,6 +8,14 @@ import 'package:openstrap_edge/import/backup_crypto.dart';
 import 'package:openstrap_edge/import/backup_stream.dart';
 
 void main() {
+  test('independent Python AESGCM fixture authenticates literal OSBK bytes',()async {
+    // Oracle: Python cryptography AESGCM, hashlib.pbkdf2_hmac SHA256, 1000
+    // rounds, 16 zero salt bytes, 12 zero nonce bytes. Plaintext ends 00 ff.
+    const hex='4f53424b0101000003e800000000000000000000000000000000000000000000000000000000740d5a1462514d1886a8014ec2754962680f4ed0a1580ad028954b13f47d816fe2f7cbecc031683ff1ba';
+    final bytes=[for(var i=0;i<hex.length;i+=2)int.parse(hex.substring(i,i+2),radix:16)];
+    expect(await verifyBackupStream(Stream.value(bytes),'fixture pass'),
+      'a0d43cd3f2f558d6015523a7d1de963c9180c66b0589a556f58d9edb05e9e7e7');
+  });
   test('OSBK stream authenticates actual bytes and matches legacy reader', () async {
     final root=await Directory.systemTemp.createTemp('stream_');
     try {
