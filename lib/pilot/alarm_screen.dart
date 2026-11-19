@@ -14,7 +14,7 @@ import '../notify/buzz_sequence.dart';
 import '../haptics/pattern_store.dart';
 import '../haptics/example_playback.dart' show HapticCancel;
 import '../ui2/screens/home_screen.dart' show repoOf;
-import '../ui2/grammar.dart' show BigButton;
+import '../ui2/grammar.dart' show BigButton,SubTabs;
 import '../ui2/profile/profile.dart' show SetRow;
 import '../state/app_state.dart';
 import '../state/clock_format.dart' show formatClock,formatClockOf;
@@ -318,7 +318,7 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
         showHeartRate:a.type==PilotAlarmType.workout,showHeader:false,annotations:pilotAlarmAnnotations(a,l,start,bedMinute:previewBed,expectedWake:expectedWake))),
       // Mock-up v22 .tabs; a new phone timing flashes the Times tab (m206).
       Padding(padding:const EdgeInsets.fromLTRB(16,6,16,0),child:Stack(children:[
-        PilotSegmented(tabs,tab,_openTab,itemKeys:[for(final t in tabs)ValueKey('pilot-alarm-tab:$t')]),
+        SubTabs(tabs,tab,_openTab,color:C.blue,itemKeys:[for(final t in tabs)ValueKey('pilot-alarm-tab:$t')]),
         if(_tabFlash.isAnimating)Positioned.fill(child:IgnorePointer(child:FractionallySizedBox(alignment:Alignment.centerLeft,widthFactor:1/tabs.length,
           child:DecoratedBox(key:const ValueKey('pilot-times-flash'),decoration:BoxDecoration(color:p.on(C.blue).withValues(alpha:.6*math.pow(math.sin(2*math.pi*_tabFlash.value),2).toDouble()),borderRadius:BorderRadius.circular(10)))))),
       ])),
@@ -355,8 +355,10 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
             if(methods&&a.phoneSound)timeRow('sound',l.pilotPhoneSound,expectedMinute+a.soundDelayMinutes,sub:l.pilotAfterFire(a.soundDelayMinutes)),
             if(methods&&a.phoneVibration)timeRow('vibration',l.pilotPhoneVibration,expectedMinute+a.vibrationDelayMinutes,sub:l.pilotAfterFire(a.vibrationDelayMinutes)),
             if(methods&&a.phoneFlash)timeRow('flash',l.pilotPhoneFlash,expectedMinute+a.flashDelayMinutes,sub:l.pilotAfterFire(a.flashDelayMinutes)),
-            Padding(padding:const EdgeInsets.symmetric(horizontal:10),child:Opacity(opacity:.85,child:SetRow(key:const ValueKey('pilot-band-backup'),a.band?LucideIcons.watch:LucideIcons.shieldCheck,C.blue,a.band?l.pilotBandAlarm:l.pilotBandBackup,sub:methods&&!a.band?l.pilotBackupAfterLatest:l.pilotBackupAtLatest,chevron:false,
-              trailing:Text(formatClock((a.wakeMinute+(methods&&!a.band?1:0))%1440~/60,(a.wakeMinute+(methods&&!a.band?1:0))%60),style:F.body.copyWith(color:p.ink2))))),
+            // Mock-up v22 .item.ro: read-only at 85%, the time in #c9d2e0, "fixed" under it.
+            Opacity(opacity:.85,child:PilotItemRow(key:const ValueKey('pilot-band-backup'),icon:a.band?LucideIcons.watch:LucideIcons.shieldCheck,color:C.blue,title:a.band?l.pilotBandAlarm:l.pilotBandBackup,
+              titleSub:methods&&!a.band?l.pilotBackupAfterLatest:l.pilotBackupAtLatest,timeColor:const Color(0xFFC9D2E0),timeSub:l.pilotFixed,
+              time:formatClock((a.wakeMinute+(methods&&!a.band?1:0))%1440~/60,(a.wakeMinute+(methods&&!a.band?1:0))%60))),
           ]else...[timeRow('window',l.pilotWindowStart,a.workoutStartMinute),timeRow('wake',l.pilotWindowEnd,a.wakeMinute)],
           Divider(height:1,color:p.line),
           // Owner m165: the whole primary row is the toggle.

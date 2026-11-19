@@ -27,24 +27,6 @@ class PilotRowChip extends StatelessWidget {
       child:Text(label,maxLines:1,overflow:TextOverflow.ellipsis,style:F.cap.copyWith(color:p.ink,fontSize:12)))));}
 }
 
-/// The mock-ups' full-width segmented control (.tabs/.etabs: a 2 px track,
-/// 40 px cells, the selected cell washed with an inset border). SubTabs scrolls
-/// pills of their own width, which is not what was signed off.
-class PilotSegmented extends StatelessWidget {
-  const PilotSegmented(this.items,this.index,this.onTap,{super.key,this.badges=const {},this.struck=const {},this.itemKeys});
-  final List<String> items;final int index;final ValueChanged<int> onTap;
-  final Map<int,Widget> badges;final Set<int> struck;final List<Key?>? itemKeys;
-  @override Widget build(BuildContext context){final p=P.of(context),blue=p.on(C.blue);
-    return Container(padding:const EdgeInsets.all(2),decoration:BoxDecoration(color:p.card,borderRadius:BorderRadius.circular(10)),
-      child:Row(children:[for(var i=0;i<items.length;i++)Expanded(child:Padding(padding:EdgeInsets.only(left:i==0?0:2),child:Semantics(selected:i==index,button:true,
-        child:Pressable(key:itemKeys?[i],onTap:()=>onTap(i),semanticLabel:items[i],child:Container(height:40,alignment:Alignment.center,padding:const EdgeInsets.symmetric(horizontal:6),
-          decoration:BoxDecoration(color:i==index?p.wash(C.blue):null,borderRadius:BorderRadius.circular(9),border:Border.all(color:i==index?blue.withValues(alpha:.5):Colors.transparent)),
-          child:FittedBox(fit:BoxFit.scaleDown,child:Row(mainAxisSize:MainAxisSize.min,children:[
-            Text(items[i],maxLines:1,style:F.cap.copyWith(fontSize:13,color:i==index?p.ink:p.ink2,decoration:struck.contains(i)?TextDecoration.lineThrough:null)),
-            if(badges[i] case final b?)...[const SizedBox(width:6),b],
-          ])))))))]));}
-}
-
 /// Mock-ups' timing row (alarms v22 / sleep editor v11 `.item`): a coloured
 /// glyph (no tile), the name, an optional in-row action right after it, and
 /// the time on the right with its subtitle under it (11 px #9aa6b8). Selected:

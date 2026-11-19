@@ -18,7 +18,7 @@ import '../ui2/day_timeline/timeline_controller.dart';
 import '../ui2/screens/day_timeline.dart' show dayGraph;
 import '../ui2/screens/home_screen.dart' show repoOf;
 import '../ui2/theme.dart';
-import '../ui2/grammar.dart' show BigButton;
+import '../ui2/grammar.dart' show BigButton,SubTabs;
 import '../ui2/profile/profile.dart' show SetRow;
 import '../ui2/screens/home_screen.dart' show hm;
 import '../l10n/date_text.dart' show prettyDay;
@@ -118,24 +118,16 @@ class _SleepEditorState extends State<PilotSleepEditor>{
     final candidates=_targets(b).where((t)=>(t.at-at).abs()>0&&(t.at-at).abs()<=1800).toList()..sort((a,b)=>(a.at-at).abs().compareTo((b.at-at).abs()));
     final snapped=b.snapped[end];
     final offer=detected!=at&&(snapped==null||(at-snapped).abs()>1200)?candidates.firstOrNull:null;
-    // Mock-up v11 .item on the app's SetRow: icon, name, snap/reset chip,
-    // time with "detected" under it; the selected time sits on a card.
-    final p=P.of(context),main=b.entry?.kind!=SleepBlockKind.nap,selectedRow=end==endSelected;
+    // Mock-up v11 .item: glyph, name, snap/reset chip right after it, the time
+    // with "detected" under it; the selected time has the .item.sel card.
+    final main=b.entry?.kind!=SleepBlockKind.nap;
     Widget chip(String label,VoidCallback tap)=>PilotRowChip(label,onTap:tap);
-    return Container(margin:const EdgeInsets.symmetric(vertical:1),padding:const EdgeInsets.symmetric(horizontal:10),
-      decoration:BoxDecoration(color:selectedRow?p.card2:null,borderRadius:BorderRadius.circular(12),border:Border.all(color:selectedRow?p.on(C.blue).withValues(alpha:.45):Colors.transparent)),
-      child:SetRow(main?(end?LucideIcons.sunrise:LucideIcons.moon):LucideIcons.bedDouble,main?(end?C.orange:C.indigo):C.teal,
-        main?(end?l.pilotWokeUp:l.pilotFellAsleep):(end?l.pilotNapEnds:l.pilotNapStarts),chevron:false,
-        onTap:(){setState(()=>endSelected=end);c!.reveal(at.toDouble());},
-        trailing:Row(mainAxisSize:MainAxisSize.min,children:[
-          if(offer!=null)chip('${offer.label} ${pilotClock(offer.at.toDouble())}',(){_checkpoint();setState((){if(end)b.end=math.max(b.start+600,offer.at);else b.start=math.min(b.end-600,offer.at);b.snapped[end]=offer.at;});})
-          else if(detected!=null&&at!=detected)chip(l.pilotResetDetected,(){_checkpoint();setState((){if(end)b.end=detected;else b.start=detected;b.snapped.remove(end);});}),
-          const SizedBox(width:8),
-          Column(crossAxisAlignment:CrossAxisAlignment.end,children:[
-            Text(pilotClock(at.toDouble()),style:F.body.copyWith(color:p.ink)),
-            Text(detected==null?l.pilotAddedByYou:at==detected?l.pilotDetected:l.pilotDetectedAt(pilotClock(detected.toDouble())),style:F.cap.copyWith(color:p.ink3,fontSize:11)),
-          ]),
-        ])));
+    return PilotItemRow(icon:main?(end?LucideIcons.sunrise:LucideIcons.moon):LucideIcons.bedDouble,color:main?(end?C.orange:C.indigo):C.teal,
+      title:main?(end?l.pilotWokeUp:l.pilotFellAsleep):(end?l.pilotNapEnds:l.pilotNapStarts),selected:end==endSelected,
+      onTap:(){setState(()=>endSelected=end);c!.reveal(at.toDouble());},
+      action:offer!=null?chip('${offer.label} ${pilotClock(offer.at.toDouble())}',(){_checkpoint();setState((){if(end)b.end=math.max(b.start+600,offer.at);else b.start=math.min(b.end-600,offer.at);b.snapped[end]=offer.at;});})
+        :detected!=null&&at!=detected?chip(l.pilotResetDetected,(){_checkpoint();setState((){if(end)b.end=detected;else b.start=detected;b.snapped.remove(end);});}):null,
+      time:pilotClock(at.toDouble()),timeSub:detected==null?l.pilotAddedByYou:at==detected?l.pilotDetected:l.pilotDetectedAt(pilotClock(detected.toDouble())));
   }
   String _label(SleepIntervalDraft b)=>b.entry?.kind==SleepBlockKind.nap||b.entry==null?l.pilotNapAt(pilotClock(b.start.toDouble())):l.pilotMainSleep;
   Future<void> _save({SleepMergeProposal? merge})async{
@@ -180,7 +172,7 @@ class _SleepEditorState extends State<PilotSleepEditor>{
           onSelect:(id){if(id=='start'||id=='end'){setState(()=>endSelected=id=='end');return;}final match=blocks.where((b)=>b.id==id).firstOrNull;if(match!=null)_select(match);}),
         Builder(builder:(context){final ordered=[...blocks]..sort((a,b)=>a.start.compareTo(b.start));
           // Mock-up v11 .tabs, one per block in time order; a removed block is struck through.
-          return Padding(padding:const EdgeInsets.only(top:6),child:PilotSegmented([for(final row in ordered)_label(row)],math.max(0,ordered.indexWhere((r)=>r.id==selected)),(i)=>_select(ordered[i]),
+          return Padding(padding:const EdgeInsets.only(top:6),child:SubTabs([for(final row in ordered)_label(row)],math.max(0,ordered.indexWhere((r)=>r.id==selected)),(i)=>_select(ordered[i]),color:C.blue,
             struck:{for(var i=0;i<ordered.length;i++)if(ordered[i].removed)i}));}),
       ])),
       Expanded(child:ListView(padding:const EdgeInsets.fromLTRB(16,8,16,32),children:[

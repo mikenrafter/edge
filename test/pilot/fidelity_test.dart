@@ -18,7 +18,7 @@ import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/day_timeline/day_graph.dart';
 import 'package:openstrap_edge/ui2/day_timeline/timeline_controller.dart';
-import 'package:openstrap_edge/ui2/grammar.dart' show BigButton;
+import 'package:openstrap_edge/ui2/grammar.dart' show BigButton,SubTabs;
 import 'package:openstrap_edge/ui2/profile/profile.dart' show SetRow;
 import 'screens_test.dart' show pump;
 
@@ -48,12 +48,13 @@ void main(){
   // catches: bare ListTile timing rows, Material SwitchListTiles, text-only Cancel/Save, or a heart-rate alarm chart.
   testWidgets('alarm editor uses the app rows, tabs and buttons',(t)async{
     await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'A',earlyMinutes:20,phoneSound:true),now:day,reference:(_)async=>sample(),onSave:(_)async{}));
-    expect(find.byType(PilotSegmented),findsOneWidget);
-    // Full-width two-column control, as wide as the chart (v22 .tabs).
-    expect(t.getSize(find.byType(PilotSegmented)).width,t.getSize(find.byKey(const ValueKey('pilot-timeline-plot'))).width);
+    expect(find.byType(SubTabs),findsOneWidget);
+    // The shared SubTabs in its segmented look: one full-width track, no scrolling row, as wide as the chart (v22 .tabs).
+    expect(find.descendant(of:find.byType(SubTabs),matching:find.byType(SingleChildScrollView)),findsNothing);
+    expect(t.getSize(find.byType(SubTabs)).width,t.getSize(find.byKey(const ValueKey('pilot-timeline-plot'))).width);
     // Snoozes are dashed lines only, never icons (v22 marks()).
     expect(find.descendant(of:find.byType(PilotTimelineChart),matching:find.byTooltip('Snooze')),findsNothing);
-    expect(find.descendant(of:find.byKey(const ValueKey('pilot-time:early')),matching:find.byType(SetRow)),findsOneWidget);
+    expect(find.descendant(of:find.byKey(const ValueKey('pilot-time:early')),matching:find.byType(PilotItemRow)),findsOneWidget);
     // v22 .item .t small: the subtitle sits under the time, right-aligned.
     final early=find.byKey(const ValueKey('pilot-time:early'));
     final time=t.getRect(find.descendant(of:early,matching:find.text('06:40'))),sub=t.getRect(find.descendant(of:early,matching:find.text('up to 20 min earlier')));

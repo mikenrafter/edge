@@ -21,6 +21,12 @@ void main(){
     expect(w[0],moreOrLessEquals(w[1],epsilon:.5));expect(w[1],moreOrLessEquals(w[2],epsilon:.5));
     expect(w.reduce((a,b)=>a+b),greaterThan(358-3*8));
   });
+  // m250: the segmented control lives in SubTabs; a removed sleep block is struck through.
+  testWidgets('segmented look draws struck labels',(t)async{
+    await pump(t,Scaffold(body:SubTabs(const ['Main sleep','Nap 14:00'],0,(_){},struck:const {1})));
+    expect(t.widget<Text>(find.text('Nap 14:00')).style?.decoration,TextDecoration.lineThrough);
+    expect(t.widget<Text>(find.text('Main sleep')).style?.decoration,isNull);
+  });
   testWidgets('six long tabs scroll at their minimum width',(t)async{
     await tabs(t,[for(var i=0;i<6;i++)'Long tab label $i']);
     expect(find.descendant(of:find.byType(SubTabs),matching:find.byType(SingleChildScrollView)),findsOneWidget);

@@ -7,6 +7,7 @@ import '../ui2/chart_annotations.dart';
 import '../ui2/day_timeline/day_graph.dart';
 import '../ui2/day_timeline/timeline_controller.dart';
 import '../ui2/theme.dart';
+import '../ui2/grammar.dart' show SubTabs;
 import '../ui2/charts.dart' show SleepStage;
 import 'pilot_readout.dart';
 import 'timeline_chart.dart';
@@ -41,8 +42,8 @@ class PilotDayLayout extends StatelessWidget {
         PilotTimelineChart(controller:controller,graph:graph,interaction:interaction,annotations:annotations,stages:stages,onScrub:onScrub,onPan:onPan,onSelect:onAnnotation),
         const SizedBox(height:6),
         // Mock-up v16 .etabs, with each tab's count as its badge (.cnt).
-        PilotSegmented([for(final value in PilotTimelineTab.values)switch(value){PilotTimelineTab.pending=>l.dayActivitiesPending,PilotTimelineTab.saved=>l.dayActivitiesSaved,PilotTimelineTab.discarded=>l.dayActivitiesDiscarded}],
-          PilotTimelineTab.values.indexOf(tab),(i)=>onTab(PilotTimelineTab.values[i]),
+        SubTabs([for(final value in PilotTimelineTab.values)switch(value){PilotTimelineTab.pending=>l.dayActivitiesPending,PilotTimelineTab.saved=>l.dayActivitiesSaved,PilotTimelineTab.discarded=>l.dayActivitiesDiscarded}],
+          PilotTimelineTab.values.indexOf(tab),(i)=>onTab(PilotTimelineTab.values[i]),color:C.blue,
           itemKeys:[for(final value in PilotTimelineTab.values)ValueKey('pilot-tab:${value.name}')],
           badges:{for(var i=0;i<PilotTimelineTab.values.length;i++)i:_Count(counts[PilotTimelineTab.values[i]]??0)}),
         if(interaction.userPinned)Padding(padding:const EdgeInsets.only(top:6),child:readout)
