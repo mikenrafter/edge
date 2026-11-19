@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/notify/event_claim_ledger.dart';
 import 'package:openstrap_edge/sync/update_models.dart';
 import 'package:openstrap_edge/sync/update_store.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
@@ -100,6 +101,16 @@ void main() {
       final snapshot = await store.read();
       expect(snapshot.enabled, isFalse);
       expect(snapshot.authorizationReset, isTrue);
+    });
+
+    // WHY: prior companion consent never authorizes GitHub (spec §5.1).
+    test('a restored legacy switch grants nothing', () async {
+      SharedPreferences.setMockInitialValues({
+        UpdateStore.retiredCompanionSwitch: true,
+      });
+      await SharedPreferences.getInstance();
+      expect((await store.read()).enabled, isFalse);
+      expect(await store.claim(t0, manual: false), isNull);
     });
 
     // CLAIM(release-check-consent) catches: stale results crossing an opt-out.

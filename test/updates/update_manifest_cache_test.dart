@@ -3,6 +3,7 @@
 // Proves CLAIM(update-manifest-cache), CLAIM(update-network-consent).
 import 'dart:convert';
 import 'dart:io';
+import 'package:clock/clock.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -74,7 +75,7 @@ void main() {
       final service = UpdateCoordinator(
         store: store,
         client: client,
-        now: () => now,
+        clock: Clock(() => now),
         installed: const InstalledRelease(
           version: '0.11.3',
           build: 78,

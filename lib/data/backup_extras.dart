@@ -49,6 +49,7 @@ const String kBackupFilesTable = 'backup_files';
 const Map<String, String> kPrefsNotBackedUp = {
   'device_alerts.charge_pending_ts': 'Local pending hardware notice; re-evaluate live band state after restore.',
   'notif_critical_override': 'Retired quiet-hours override; accepted from old storage but ignored.',
+  'update_checks_enabled': 'Retired companion update pointer switch; release-check consent lives in the install-local update store and a restored value grants nothing.',
   'developer.load_timings.v1': 'local performance diagnostics for this install',
   'developer.load_timings_enabled.v1': 'switch for those diagnostics on this install',
   'install_device_id': 'identifies THIS install; a restore must not clone it',

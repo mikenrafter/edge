@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/ui2/profile/app_updates.dart';
+import 'package:clock/clock.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -78,7 +79,7 @@ void main() {
       fork: fork,
       mode: mode,
     ),
-    now: () => now,
+    clock: Clock(() => now),
     unmetered: () async => true,
     schedule: (_) async {},
     onRelease: notifyRelease,

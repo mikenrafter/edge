@@ -7,6 +7,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:clock/clock.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -55,7 +56,7 @@ void main() {
       mode: 'profile',
       abis: ['arm64-v8a'],
     ),
-    now: () => now,
+    clock: Clock(() => now),
     unmetered: () async => unmetered,
     schedule: (_) async {},
     jitter: () => jitter,

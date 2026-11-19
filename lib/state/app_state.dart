@@ -2762,73 +2762,19 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   bool get profileComplete => _profile.isComplete;
 
   // ── release checks ─────────────────────────────────────────────────────────
-  // The checker notifies and opens a GitHub release PAGE. It never downloads or
-  // installs an APK (owner rule: NO INSTALLS, EVER). Its state is install-local
-  // (UpdateStore), outside the health database and every export.
-  UpdateCoordinator? updates;
-  bool _updateInitializationFailed = false;
-  Future<void>? _updatesLoading;
+  // Notify and open a GitHub release PAGE; never download or install an APK.
+  // State is install-local (UpdateStore), outside the health database/exports.
+  final ReleaseChecks releaseChecks = ReleaseChecks();
+  UpdateSnapshot get releaseChecksSnapshot => releaseChecks.snapshot;
+  Future<UpdateCoordinator?> ensureUpdates() => releaseChecks.ensure();
+  bool get updateChecksAvailable => true;
+  Future<void> refreshReleaseChecks() => releaseChecks.refresh();
 
-  UpdateSnapshot get releaseChecksSnapshot =>
-      updates?.snapshot ??
-      (_updateInitializationFailed
-          ? const UpdateSnapshot(phase: UpdatePhase.error, sources: {
-              ReleaseSource.official: SourceUpdate(error: UpdateError.storage),
-              ReleaseSource.fork: SourceUpdate(error: UpdateError.storage),
-            })
-          : const UpdateSnapshot());
-
-  /// The coordinator, created on first need (never blocks launch).
-  Future<UpdateCoordinator?> ensureUpdates() async {
-    await _loadReleaseChecks();
-    return updates;
-  }
-
-  Future<void> _loadReleaseChecks() => _updatesLoading ??=
-      _initializeUpdates().whenComplete(() => _updatesLoading = null);
-
-  Future<void> _initializeUpdates() async {
+  Future<void> _loadVersionLabel() async {
     try {
       final info = await PackageInfo.fromPlatform();
       _appVersionLabel = '${info.version}+${info.buildNumber}';
-    } catch (_) {
-      /* the About row stays blank */
-    }
-    if (updates != null) return;
-    UpdateCoordinator? created;
-    try {
-      registerUpdateLedgers();
-      created = await createUpdateCoordinator();
-      await created.load();
-      if (created.supported) await scheduleUpdateChecks(created.snapshot.enabled);
-      if (_disposed) {
-        created.dispose();
-        return;
-      }
-      updates = created;
-      _updateInitializationFailed = false;
-      updates!.addListener(notifyListeners);
-      notifyListeners();
-      // Runs after runApp; no BLE or derive prerequisite, no startup blocking.
-      unawaited(updates!.check());
-    } catch (_) {
-      created?.dispose();
-      _updateInitializationFailed = true;
-      if (!_disposed) notifyListeners();
-    }
-  }
-
-  /// The row is shown on every platform: where the install cannot be
-  /// identified the screen says so and offers the two release pages.
-  bool get updateChecksAvailable => true;
-
-  /// Resume reads cache and observes the persisted daily deadline.
-  Future<void> refreshReleaseChecks() async {
-    if (updates == null) {
-      await _loadReleaseChecks();
-    } else {
-      await updates!.check();
-    }
+    } catch (_) {/* the About row stays blank */}
   }
 
   /// Whether Cycle is shown at all.
@@ -3483,8 +3429,8 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     // The breathing recompute timer and _workoutTimer used to survive dispose, and
     // each of their callbacks ends in notifyListeners() on a disposed
     // ChangeNotifier (which throws in release).
-    updates?.removeListener(notifyListeners);
-    updates?.dispose();
+    releaseChecks.removeListener(notifyListeners);
+    releaseChecks.dispose();
     releaseOpenFailed.dispose();
     _tapSub?.cancel();
     _deviceRowSub?.cancel();
@@ -3644,7 +3590,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       await _ensureRemindersScheduled();
       // An eligible recovery pass for held release announcements: from cache,
       // revalidated, no request.
-      unawaited(updates?.releaseHeld() ?? Future<void>.value());
+      unawaited(releaseChecks.releaseHeld());
       if (!_disposed) bumpInsights(); // withdrawal can change totals without logging a new slot
     } catch (_) { /* Retried on the next publication or foreground refresh. */ }
   }
@@ -4801,7 +4747,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     // arm the water-reminder strap buzz (timers don't persist)
     unawaited(armWaterReminder());
     // App status (OTA pointer + admin alert banner) — best-effort, non-blocking.
-    unawaited(_loadReleaseChecks());
+    unawaited(_loadVersionLabel());
+    releaseChecks.addListener(notifyListeners);
+    // Only Android checks on its own; elsewhere the screen explains.
+    if (Platform.isAndroid) unawaited(releaseChecks.ensure());
     // Register the recurring wall-clock nudges as real OS-scheduled notifications
     // (wind-down, weekly recap) so they fire even when the app is closed.
     if (isPaired) unawaited(_ensureRemindersScheduled());

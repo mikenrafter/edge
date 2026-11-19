@@ -13,6 +13,7 @@ import 'package:openstrap_edge/sync/update_coordinator.dart';
 import 'package:openstrap_edge/sync/update_store.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:clock/clock.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/sync/update_models.dart';
@@ -88,7 +89,7 @@ void main() {
     setUp(() {
       service = _Service();
       settingsOpened = 0;
-      AppUpdatesScreen.openExport = null;
+      AppUpdatesScreen.exportRoute = null;
     });
     tearDown(() {
       NotificationService.instance.debugRequestPermission = null;
@@ -193,10 +194,10 @@ void main() {
       expect(find.text('Move your data to the official app'), findsNothing);
       bool? news;
       DateTime? at;
-      AppUpdatesScreen.openExport = (c, {bool newerOfficialAvailable = false, DateTime? checkedAt}) {
-        news = newerOfficialAvailable;
-        at = checkedAt;
-      };
+      AppUpdatesScreen.exportRoute = _Export((n, c) {
+        news = n;
+        at = c;
+      });
       await t.pumpWidget(screen());
       await t.pump();
       final entry = find.widgetWithText(TextButton, 'Move your data to the official app');
@@ -257,7 +258,7 @@ class _Service extends UpdateCoordinator {
         store: UpdateStore(_NoDatabase()),
         client: MockClient((_) async => http.Response('[]', 200)),
         installed: const InstalledRelease(version: '0.11.3', build: 78, fork: true, mode: 'profile'),
-        now: DateTime.now,
+        clock: const Clock(),
         unmetered: () async => true,
         schedule: (_) async {},
       ) {
@@ -282,4 +283,15 @@ class _Service extends UpdateCoordinator {
     snapshot = UpdateSnapshot(enabled: enabled);
     notifyListeners();
   }
+}
+
+class _Export implements ExportRoute {
+  _Export(this.sink);
+  final void Function(bool, DateTime?) sink;
+  @override
+  void open(
+    BuildContext context, {
+    bool newerOfficialAvailable = false,
+    DateTime? checkedAt,
+  }) => sink(newerOfficialAvailable, checkedAt);
 }

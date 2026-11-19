@@ -7,6 +7,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
@@ -28,7 +29,7 @@ class UpdateCoordinator extends ChangeNotifier {
     required this.store,
     required this.client,
     required this.installed,
-    required this.now,
+    this.clock = const Clock(),
     required this.unmetered,
     required this.schedule,
     this.onRelease,
@@ -40,7 +41,8 @@ class UpdateCoordinator extends ChangeNotifier {
   final http.Client client;
   final http.Client Function()? clientFactory;
   final InstalledRelease installed;
-  final DateTime Function() now;
+  /// The only clock the checker reads (tests pass a fixed or stepping one).
+  final Clock clock;
   final Future<bool> Function() unmetered;
   final Future<void> Function(bool) schedule;
   final Future<void> Function(ReleaseCandidate)? onRelease;
@@ -144,7 +146,7 @@ class UpdateCoordinator extends ChangeNotifier {
   }
 
   bool _fresh(SourceUpdate r) {
-    final age = r.checkedAt == null ? null : now().difference(r.checkedAt!);
+    final age = r.checkedAt == null ? null : clock.now().difference(r.checkedAt!);
     return r.error == null &&
         r.candidate != null &&
         r.candidate!.relation.announces &&
@@ -217,7 +219,7 @@ class UpdateCoordinator extends ChangeNotifier {
         return const CheckDeferred(DeferReason.metered);
       }
       lease = await store.claim(
-        now(),
+        clock.now(),
         manual: manual,
         jitter: jitter?.call() ?? Duration.zero,
       );
@@ -238,9 +240,9 @@ class UpdateCoordinator extends ChangeNotifier {
           outcome = const CheckRefused(DeferReason.disabled);
           break;
         }
-        await store.renew(lease, now());
+        await store.renew(lease, clock.now());
         final previous = snapshot.sources[source];
-        if (previous?.retryAt != null && now().isBefore(previous!.retryAt!)) {
+        if (previous?.retryAt != null && clock.now().isBefore(previous!.retryAt!)) {
           continue;
         }
         final result = await _source(source, previous, lease, automatic: !manual);
@@ -380,7 +382,7 @@ class UpdateCoordinator extends ChangeNotifier {
         return SourceUpdate(
           candidate: selected,
           releasePage: selected.page,
-          checkedAt: now(),
+          checkedAt: clock.now(),
           etag: paginated ? null : etag,
         );
       }
@@ -390,7 +392,7 @@ class UpdateCoordinator extends ChangeNotifier {
       return SourceUpdate(
         candidate: retained,
         releasePage: inspectedPage,
-        checkedAt: retained == null ? now() : previous!.checkedAt,
+        checkedAt: retained == null ? clock.now() : previous!.checkedAt,
         etag: paginated ? null : etag,
         error: releases.isEmpty ? UpdateError.noRelease : UpdateError.noAsset,
       );
@@ -427,7 +429,7 @@ class UpdateCoordinator extends ChangeNotifier {
     return SourceUpdate(
       candidate: previous.candidate,
       releasePage: previous.releasePage,
-      checkedAt: now(),
+      checkedAt: clock.now(),
       etag: previous.etag,
       error: previous.error,
     );
@@ -531,7 +533,7 @@ class UpdateCoordinator extends ChangeNotifier {
         releasePage: previous?.releasePage,
         checkedAt: previous?.checkedAt,
         error: UpdateError.rateLimited,
-        retryAt: retryDeadline(r, now()),
+        retryAt: retryDeadline(r, clock.now()),
       );
 
   /// Open a canonical release page in the browser. The one outward action.

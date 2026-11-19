@@ -762,18 +762,9 @@ class NotificationService {
   /// Whether release announcements can reach the wearer now, without ever
   /// prompting: granted, denied (or never asked), or granted with the app's
   /// update channel muted in the OS.
-  @visibleForTesting
-  Future<bool> Function()? debugProbeUpdateChannelMuted;
-
   Future<ReleaseAlertAccess> releaseAlertAccess() async {
     if (!await hasPermission()) return ReleaseAlertAccess.denied;
     try {
-      final probe = debugProbeUpdateChannelMuted;
-      if (probe != null) {
-        return await probe()
-            ? ReleaseAlertAccess.channelMuted
-            : ReleaseAlertAccess.granted;
-      }
       final android = _plugin.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
       final channels = await android?.getNotificationChannels();

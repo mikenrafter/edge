@@ -59,6 +59,11 @@ class UpdateStore {
   /// no other category (see NotificationIds.bandBaseFor).
   static const osIdBase = 500000;
 
+  /// The retired companion-pointer switch older builds wrote to
+  /// SharedPreferences. Nothing reads it: it is listed as never restored
+  /// (kPrefsNotBackedUp) and grants this store no consent.
+  static const retiredCompanionSwitch = 'update_checks_enabled';
+
   static Future<UpdateStore>? _opening;
 
   /// The production file under Android's noBackupFilesDir (or the app support

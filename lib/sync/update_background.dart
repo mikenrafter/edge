@@ -3,6 +3,7 @@
 // notification. Independent of BLE and headless sync: nothing here opens LocalDb
 // or runs band sync or derivation.
 import 'dart:io';
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -112,7 +113,6 @@ Future<UpdateCoordinator> createUpdateCoordinator({
     client: http.Client(),
     clientFactory: () => http.Client(),
     installed: await readInstalledRelease(),
-    now: DateTime.now,
     unmetered: () async =>
         Platform.isAndroid &&
         (await _environment.invokeMethod<bool>('unmetered') ?? false),
@@ -156,4 +156,75 @@ void updateCallbackDispatcher() {
       service?.dispose();
     }
   });
+}
+
+/// The app's handle on the checker: created on first need, never blocks launch,
+/// and says so when it could not start. AppState forwards its changes.
+class ReleaseChecks extends ChangeNotifier {
+  UpdateCoordinator? coordinator;
+  bool _failed = false;
+  bool _closed = false;
+  Future<void>? _loading;
+
+  UpdateSnapshot get snapshot =>
+      coordinator?.snapshot ??
+      (_failed
+          ? const UpdateSnapshot(
+              phase: UpdatePhase.error,
+              sources: {
+                ReleaseSource.official: SourceUpdate(error: UpdateError.storage),
+                ReleaseSource.fork: SourceUpdate(error: UpdateError.storage),
+              },
+            )
+          : const UpdateSnapshot());
+
+  Future<UpdateCoordinator?> ensure() async {
+    await (_loading ??= _start().whenComplete(() => _loading = null));
+    return coordinator;
+  }
+
+  Future<void> _start() async {
+    if (coordinator != null) return;
+    UpdateCoordinator? created;
+    try {
+      registerUpdateLedgers();
+      created = await createUpdateCoordinator();
+      await created.load();
+      if (created.supported) await scheduleUpdateChecks(created.snapshot.enabled);
+      if (_closed) {
+        created.dispose();
+        return;
+      }
+      coordinator = created;
+      _failed = false;
+      created.addListener(notifyListeners);
+      notifyListeners();
+      unawaited(created.check());
+    } catch (_) {
+      created?.dispose();
+      _failed = true;
+      if (!_closed) notifyListeners();
+    }
+  }
+
+  /// App resume: cached results and the persisted daily deadline.
+  Future<void> refresh() async {
+    final c = coordinator;
+    if (c == null) {
+      await ensure();
+    } else {
+      await c.check();
+    }
+  }
+
+  /// An eligible recovery pass of the shared alert policy.
+  Future<void> releaseHeld() async => coordinator?.releaseHeld();
+
+  @override
+  void dispose() {
+    _closed = true;
+    coordinator?.removeListener(notifyListeners);
+    coordinator?.dispose();
+    super.dispose();
+  }
 }

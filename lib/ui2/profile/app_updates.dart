@@ -91,6 +91,16 @@ class AppUpdatesRow extends StatelessWidget {
   }
 }
 
+/// The shared export route as this screen sees it (spec §2: one route, opened
+/// from the update card and the Data row). No network request is made by it.
+abstract interface class ExportRoute {
+  void open(
+    BuildContext context, {
+    bool newerOfficialAvailable = false,
+    DateTime? checkedAt,
+  });
+}
+
 class AppUpdatesScreen extends StatefulWidget {
   const AppUpdatesScreen({
     super.key,
@@ -107,14 +117,11 @@ class AppUpdatesScreen extends StatefulWidget {
   /// Opens the OS app-settings page; defaults to the notification service's.
   final Future<void> Function()? openAppSettings;
 
-  /// SEAM for P3's shared export route. At merge, set this to P3's
-  /// `openOfficialExport` (lib/ui2/profile/official_export.dart); same
-  /// signature. Null until then, and the card entry is not shown.
-  static void Function(
-    BuildContext context, {
-    bool newerOfficialAvailable,
-    DateTime? checkedAt,
-  })? openExport;
+  /// SEAM for P3's shared export route. At merge, set this to an [ExportRoute]
+  /// whose `open` calls P3's `openOfficialExport(context,
+  /// newerOfficialAvailable:, checkedAt:)` (lib/ui2/profile/official_export.dart).
+  /// Null until then, and the card entry is not shown.
+  static ExportRoute? exportRoute;
 
   @override
   State<AppUpdatesScreen> createState() => _AppUpdatesScreenState();
@@ -392,10 +399,10 @@ class _AppUpdatesScreenState extends State<AppUpdatesScreen> {
               Text(l.updatesNotChecked),
             if (candidate?.separateApp == true &&
                 result!.error == null &&
-                AppUpdatesScreen.openExport != null)
+                AppUpdatesScreen.exportRoute != null)
               _target(
                 TextButton(
-                  onPressed: () => AppUpdatesScreen.openExport!(
+                  onPressed: () => AppUpdatesScreen.exportRoute!.open(
                     context,
                     newerOfficialAvailable: true,
                     checkedAt: result.checkedAt,

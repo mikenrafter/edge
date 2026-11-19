@@ -334,7 +334,7 @@ void main() {
         );
       }),
       installed: InstalledRelease(version: version, build: 81, fork: true, mode: 'profile'),
-      now: () => now,
+      clock: Clock(() => now),
       unmetered: () async => true,
       schedule: (_) async {},
       onRelease: notifyRelease,

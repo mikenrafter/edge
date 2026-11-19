@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:clock/clock.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -68,7 +69,7 @@ void main() {
         requests.add(request);
         return respond(request);
       }),
-      now: () => now,
+      clock: Clock(() => now),
       unmetered: () async => unmetered,
       installed: const InstalledRelease(
         version: '0.11.3',
@@ -712,7 +713,7 @@ void main() {
       final upgraded = UpdateCoordinator(
         store: store,
         client: service.client,
-        now: () => now,
+        clock: Clock(() => now),
         unmetered: () async => true,
         schedule: (_) async {},
         installed: const InstalledRelease(
@@ -889,7 +890,7 @@ void main() {
       store: store,
       client: service.client,
       installed: service.installed,
-      now: () => now,
+      clock: Clock(() => now),
       unmetered: () async => true,
       schedule: (_) async {},
       clientFactory: () {

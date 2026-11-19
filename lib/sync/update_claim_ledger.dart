@@ -3,6 +3,8 @@
 // release announcement: claims, OS ids and consent come from here.
 import 'dart:convert';
 
+import 'package:clock/clock.dart';
+
 import '../notify/alert_dispatcher.dart' show AlertDeliveryLedger;
 import '../notify/event_claim_ledger.dart';
 import '../notify/notification_event.dart';
@@ -11,14 +13,13 @@ import 'update_store.dart';
 /// One permanent claim per `(repository, release id)`; see
 /// [UpdateStore.beginRelease] for the states.
 class UpdateClaimLedger implements EventClaimLedger {
-  UpdateClaimLedger(this.open, {DateTime Function()? now})
-    : _now = now ?? DateTime.now;
+  UpdateClaimLedger(this.open, {this.clock = const Clock()});
   final Future<UpdateStore> Function() open;
-  final DateTime Function() _now;
+  final Clock clock;
 
   @override
   Future<EventClaim?> begin(NotificationEvent event) async {
-    final ticket = await (await open()).beginRelease(event.dedupeKey, _now());
+    final ticket = await (await open()).beginRelease(event.dedupeKey, clock.now());
     return ticket == null ? null : EventClaim(osId: ticket.osId, token: ticket);
   }
 
