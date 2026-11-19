@@ -59,6 +59,10 @@ class FullOnceSpace extends Space {
   }
 }
 
+class CountingSpace extends Space {
+  int reads=0;
+  @override Future<int> readAvailableBytes(){reads++;return super.readAvailableBytes();}
+}
 class PausedEstimateSnapshot extends Snapshot {
   PausedEstimateSnapshot(super.path);
   final entered=Completer<void>(),release=Completer<void>();
@@ -338,9 +342,42 @@ void main() {
       final before=coordinator.finishes;
       running=exportTo(coordinator,fx,root,private,dest,free);
       expect(coordinator.finishes,before,reason:'export must wait before touching files owned by Dismiss');
+      coordinator.cancel();lane.release.complete();await dismiss;
+      expect(await running,isA<OfficialExportCancelled>(),reason:'a queued export must retain cancellation');
     }finally{
       if(!lane.release.isCompleted)lane.release.complete();await dismiss;
       coordinator.cancel();await running;JsonPayloadLane.debugResetShared();
+      await coordinator.finish();coordinator.dispose();await root.delete(recursive:true);await fx.dispose();
+    }
+  });
+  // WHY: retry recovery also replaces interruption.json, using the same
+  // receipt owner. A queued retry must retain cancellation and the official file.
+  // catches: starting recovery before Dismiss settles, or resetting queued cancellation.
+  test('cleanup journal ownership recovery retry waits for Dismiss and keeps cancellation',()async {
+    final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('cleanup_retry_');
+    final coordinator=OfficialExportCoordinator();final lane=PausedJournalDecode();
+    Future<void>? dismiss;Future<OfficialExportOutcome?>? retry;
+    try {
+      final free=CountingSpace(),private=Directory('${root.path}/private');
+      final dest=Destination(Directory('${root.path}/new')..createSync(),free)..failRecovery=true;
+      final saved=await coordinator.export(snapshot:Snapshot(fx.forkPath),privateRoot:private,destination:dest,
+        space:ExportSpaceBudget(source:free),prompts:Prompts(()async=>'pw',(_)async=>true));
+      expect((saved as OfficialExportSaved).recoveryStatus,RecoveryStatus.failed);
+      final officialPath=saved.official.file.path;
+      final journal=File('${private.path}/interruption.json');
+      final record=jsonDecode(await journal.readAsString()) as Map;
+      record['leftovers']=[{'folder':'Old folder','tree':'content://old/tree','name':'old.incomplete'}];
+      await journal.writeAsString(jsonEncode(record));
+      JsonPayloadLane.debugUseShared(JsonPayloadLane(lane:lane));
+      dismiss=coordinator.dismissNotices();await lane.entered.future;
+      final reads=free.reads;retry=coordinator.retryRecovery();
+      expect(free.reads,reads,reason:'retry must wait before doing work against the prior receipt');
+      coordinator.cancel();lane.release.complete();await dismiss;
+      expect((await retry as OfficialExportSaved).recoveryStatus,RecoveryStatus.cancelled);
+      expect(File(officialPath).existsSync(),isTrue);
+    }finally{
+      if(!lane.release.isCompleted)lane.release.complete();await dismiss;
+      coordinator.cancel();await retry;JsonPayloadLane.debugResetShared();
       await coordinator.finish();coordinator.dispose();await root.delete(recursive:true);await fx.dispose();
     }
   });
