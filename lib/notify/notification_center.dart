@@ -220,7 +220,7 @@ class NotificationCenter {
     var reached = <String>{};
     var handedOff = false;
     try {
-      if (!await ledger.stillWanted(e)) return const {};
+      if (!await ledger.stillWanted(e, claim)) return const {};
       final disposition = await AlertPolicy.dispositionOf(rule);
       if (disposition != AlertDisposition.deliver) {
         outcome = disposition == AlertDisposition.hold
@@ -241,9 +241,9 @@ class NotificationCenter {
       );
       Future<bool> phoneTransport() async {
         if (!await claimedPermission()) return false;
-        if (!await ledger.stillWanted(e)) return false;
+        if (!await ledger.stillWanted(e, claim)) return false;
         Future<bool> permit() async =>
-            await ledger.stillWanted(e) && await AlertPolicy.permits(rule, 'phone');
+            await AlertPolicy.permits(rule, 'phone') && await ledger.stillWanted(e, claim);
         try {
           handedOff = true;
           return await runZoned(
@@ -266,6 +266,7 @@ class NotificationCenter {
           sourceTime: DateTime.now(),
           historical: false,
           targetAllowed: (_) => true,
+          handoffAllowed: () => ledger.stillWanted(e, claim),
           phoneTransport: phoneTransport,
         );
         reached = out.targets.toSet();

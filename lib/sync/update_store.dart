@@ -27,9 +27,9 @@ class UpdateLease {
 
 /// What [UpdateStore.beginRelease] hands the one delivering owner.
 class ReleaseTicket {
-  const ReleaseTicket(this.identity, this.osId, this.token);
+  const ReleaseTicket(this.identity, this.osId, this.token, this.generation);
   final String identity;
-  final int osId, token;
+  final int osId, token, generation;
 }
 
 /// The store file cannot be used by this build (a newer schema).
@@ -404,6 +404,8 @@ class UpdateStore {
   /// A held or freed claim is taken back with the SAME OS id.
   Future<ReleaseTicket?> beginRelease(String identity, DateTime now) =>
       _tx((txn) async {
+        final consent = (await txn.query('update_state')).single;
+        final generation = consent['generation'] as int;
         final rows = await txn.query(
           'update_notifications',
           where: 'identity=?',
@@ -415,7 +417,7 @@ class UpdateStore {
             'state': 'presenting',
             'token': 1,
           });
-          return ReleaseTicket(identity, osIdBase + seq, 1);
+          return ReleaseTicket(identity, osIdBase + seq, 1, generation);
         }
         final row = rows.single;
         if (row['state'] != 'held' && row['state'] != 'free') return null;
@@ -426,25 +428,37 @@ class UpdateStore {
           where: 'identity=?',
           whereArgs: [identity],
         );
-        return ReleaseTicket(identity, osIdBase + (row['seq'] as int), token);
+        return ReleaseTicket(identity, osIdBase + (row['seq'] as int), token, generation);
       });
 
-  /// Record the outcome of [ticket]. A stale owner (older token) is ignored.
+  /// Consent belongs to this attempt's generation, including across off/on.
+  Future<bool> releaseWanted(ReleaseTicket ticket) => _tx((txn) async {
+    final row = (await txn.query('update_state')).single;
+    return row['enabled'] == 1 && row['generation'] == ticket.generation;
+  });
+
+  /// A stale attempt may consume a delivery, but cannot resurrect a held intent.
   Future<void> settleRelease(ReleaseTicket ticket, ClaimOutcome outcome) =>
-      db.rawUpdate(
-        'UPDATE update_notifications SET state=? '
-        "WHERE identity=? AND token=? AND state='presenting'",
-        [
-          switch (outcome) {
-            ClaimOutcome.sent => 'sent',
-            ClaimOutcome.held => 'held',
-            ClaimOutcome.released => 'free',
-            ClaimOutcome.unknown => 'unknown',
-          },
-          ticket.identity,
-          ticket.token,
-        ],
-      ).then((_) {});
+      _tx((txn) async {
+        final consent = (await txn.query('update_state')).single;
+        final wanted = consent['generation'] == ticket.generation;
+        final settled = outcome == ClaimOutcome.held && !wanted
+            ? ClaimOutcome.released : outcome;
+        await txn.rawUpdate(
+          'UPDATE update_notifications SET state=? '
+          "WHERE identity=? AND token=? AND state='presenting'",
+          [
+            switch (settled) {
+              ClaimOutcome.sent => 'sent',
+              ClaimOutcome.held => 'held',
+              ClaimOutcome.released => 'free',
+              ClaimOutcome.unknown => 'unknown',
+            },
+            ticket.identity,
+            ticket.token,
+          ],
+        );
+      });
 
   /// Identities whose alert the quiet/sleep policy is holding.
   Future<List<String>> heldReleases() async => [

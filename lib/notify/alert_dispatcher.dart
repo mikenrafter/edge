@@ -146,6 +146,7 @@ class AlertDispatcher {
     Future<BuzzDelivery> Function()? bandDelivery,
     Set<String>? transportTargets,
     bool Function(String target)? targetAllowed,
+    Future<bool> Function()? handoffAllowed,
     // A band transport that legitimately runs longer than [transportTimeout]
     // (a recorded rhythm: up to 8 buzzes, 2 s apart) asks for the time it
     // needs. Never shorter than the default.
@@ -251,7 +252,8 @@ class AlertDispatcher {
           if (!(await policy?.call(current, target) ?? true)) return false;
           final allowed = targetAllowed;
           return unavailable(target, current) == null &&
-              (allowed == null || [target].every(allowed));
+              (allowed == null || [target].every(allowed)) &&
+              (handoffAllowed == null || await handoffAllowed());
         }
         if (!await permit()) {
           if (target == 'band' && unavailable(target) != null) bandRefused = true;

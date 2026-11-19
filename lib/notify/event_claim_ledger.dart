@@ -46,5 +46,5 @@ abstract interface class EventClaimLedger {
 
   /// Whether consent to this category's alerts still stands. Checked again after
   /// every await between claim and handoff.
-  Future<bool> stillWanted(NotificationEvent event);
+  Future<bool> stillWanted(NotificationEvent event, EventClaim claim);
 }

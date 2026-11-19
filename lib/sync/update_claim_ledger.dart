@@ -30,8 +30,8 @@ class UpdateClaimLedger implements EventClaimLedger {
   /// Consent to release alerts is the automatic-check opt-in. A one-time
   /// Check now does not authorize a continuing alert channel.
   @override
-  Future<bool> stillWanted(NotificationEvent event) async =>
-      (await (await open()).read()).enabled;
+  Future<bool> stillWanted(NotificationEvent event, EventClaim claim) async =>
+      (await open()).releaseWanted(claim.token as ReleaseTicket);
 }
 
 /// Once-only marks for each routed destination of a release rule (phone, band),
