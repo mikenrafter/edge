@@ -69,9 +69,7 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
     final tables=(input.json as Map).cast<String,Object?>();
     for(final entry in tables.entries) {
       final report=entry.value as Map;
-      String family=const {'decoded_onehz','decoded_rr','substrate_archive','samples','raw_archive_frames','raw_archive','raw_archive_legacy','spectral_archive'}.contains(entry.key)?'recordings'
-        :entry.key.startsWith('backup_')?'settings'
-        :officialProfile.tables[entry.key]?.policy.carriesRows==true?'entries':'other';
+      final family=exportRecordFamily(entry.key);
       if(report['omitted_all']==true) {
         final count=report['source_count'] as int? ?? 0;
         if(count==0)continue;
@@ -400,3 +398,11 @@ Object _typed(Object? v) => v == null ? const ['n']
   : v is String ? ['t', v]
   : v is Uint8List ? ['b', base64Encode(v)]
   : ['x', '${v.runtimeType}:$v'];
+
+
+/// Human record-family grouping shared by progress and the omission report.
+String exportRecordFamily(String table) => const {
+  'decoded_onehz','decoded_rr','substrate_archive','samples','raw_archive_frames',
+  'raw_archive','raw_archive_legacy','spectral_archive',
+}.contains(table)?'recordings':table.startsWith('backup_')?'settings'
+  :officialProfile.tables[table]?.policy.carriesRows==true?'entries':'other';

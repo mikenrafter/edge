@@ -21383,5 +21383,8 @@
   "officialExportInterrupted": "การส่งออกครั้งก่อนหยุดลง ลบสำเนาส่วนตัวที่ยังไม่เสร็จแล้ว โปรดตรวจสอบไฟล์ที่บันทึกไว้ก่อนใช้",
   "officialExportVerifySaved": "ตรวจสอบไฟล์ที่บันทึก",
   "officialExportNewer": "มีรุ่นทางการที่ใหม่กว่า ไฟล์นี้ทดสอบกับ v0.12.2",
-  "officialExportChecked": "ตรวจสอบล่าสุด:"
+  "officialExportChecked": "ตรวจสอบล่าสุด:",
+  "officialExportRows": "รายการ",
+  "officialExportBytes": "ไบต์",
+  "officialExportBeats": "จังหวะหัวใจ"
 }

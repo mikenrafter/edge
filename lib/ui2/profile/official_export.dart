@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../data/backup_storage.dart';
 import '../../data/official_export/coordinator.dart';
+import '../../data/official_export/mapping_worker.dart' show exportRecordFamily;
 import '../../data/official_export/session.dart';
 import '../../data/official_export/snapshot.dart';
 import '../../data/official_export/space_budget.dart';
@@ -26,15 +27,10 @@ Future<void> openOfficialExport(BuildContext context,{bool newerOfficialAvailabl
   finally {_routeOpen=false;}
 }
 class OfficialExportScreen extends StatefulWidget {
-  const OfficialExportScreen({super.key,this.coordinator,this.snapshot,this.destination,this.space,this.privateRoot,this.passphrasePrompt,this.newerOfficialAvailable=false,this.checkedAt});
+  const OfficialExportScreen({super.key,this.coordinator,this.newerOfficialAvailable=false,this.checkedAt});
   final bool newerOfficialAvailable;
   final DateTime? checkedAt;
   final OfficialExportCoordinator? coordinator;
-  final OfficialSnapshotSource? snapshot;
-  final CipherBackupStorage? destination;
-  final ExportSpaceBudget? space;
-  final Directory? privateRoot;
-  final ExportPrompts? passphrasePrompt;
   @override State<OfficialExportScreen> createState()=>_OfficialExportScreenState();
 }
 class _OfficialExportScreenState extends State<OfficialExportScreen> implements ExportPrompts {
@@ -43,7 +39,7 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
   BackupFolder? _grant;
   bool _starting=false;
   Object? _error;
-  @override void initState(){super.initState();coordinator.addListener(_changed);_destination=widget.destination;unawaited(_loadInterruption());}
+  @override void initState(){super.initState();coordinator.addListener(_changed);unawaited(_loadInterruption());}
   Future<void> _loadInterruption() async {
     try {
       if(widget.coordinator!=null)return;
@@ -61,7 +57,6 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
     super.dispose();
   }
   @override Future<String?> askPassphrase() async {
-    if(widget.passphrasePrompt!=null)return widget.passphrasePrompt!.askPassphrase();
     if(!mounted)return null;
     try{return await askBackupPassphrase(context,creating:true);}on PassphraseCancelled{return null;}
   }
@@ -92,10 +87,10 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
     try {
       if(_destination==null)await _chooseFolder();
       if(_destination==null || !mounted)return;
-      final support=widget.privateRoot??await getApplicationSupportDirectory();
+      final support=await getApplicationSupportDirectory();
       await ScreenWake.hold('official-export');
-      await coordinator.export(snapshot:widget.snapshot??LocalDbExportSnapshot(),privateRoot:widget.privateRoot??Directory('${support.path}/official-export'),
-        destination:_destination!,space:widget.space??ExportSpaceBudget(source:AndroidExportFreeSpace()),prompts:this);
+      await coordinator.export(snapshot:LocalDbExportSnapshot(),privateRoot:Directory('${support.path}/official-export'),
+        destination:_destination!,space:ExportSpaceBudget(source:AndroidExportFreeSpace()),prompts:this);
     } catch(error){if(mounted)setState((){_error=error;});}
     finally {
       await ScreenWake.releaseOwner('official-export');
@@ -186,7 +181,9 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
         ],
         if(busy && progress.stage!=ExportStage.recoveryChoice)...[
           Semantics(liveRegion:true,child:Text(_stage(l,progress.stage))),
-          Text('${progress.done}${progress.total==null?'':' / ${progress.total}'} · ${progress.elapsed.inSeconds} s'),
+          if(progress.stage==ExportStage.mapping && progress.family!=null)Text(switch(exportRecordFamily(progress.family!)){
+            'recordings'=>l.officialExportRecordings,'settings'=>l.officialExportSettings,'entries'=>l.officialExportEntries,_=>l.officialExportOther}),
+          Text('${progress.done}${progress.total==null?'':' / ${progress.total}'} ${progress.stage==ExportStage.mapping?l.officialExportRows:l.officialExportBytes} · ${l.snoozeValueSeconds(progress.elapsed.inSeconds)}'),
           if(progress.total!=null && progress.total!>0)
             LinearProgressIndicator(value:(progress.done/progress.total!).clamp(0,1)),
           button(l.actionCancel,()async{await _confirmStop();}),
@@ -259,7 +256,7 @@ class _Days extends StatelessWidget {
       if(i==0)return Padding(padding:const EdgeInsets.all(16),child:Text(l.officialExportBoundary));
       final day=days[i-1];
       final coverage=switch(day['coverage']){'Exact input retained'=>l.officialExportExact,'Partial input retained'=>l.officialExportPartial,_=>l.officialExportNone};
-      return ListTile(title:Text('${day['day']}'),subtitle:Text('$coverage\n${l.officialExportRecordings}: ${day['source_live_parents']} + ${day['exact_archive_additions']}\n${day['target_beats']}'));
+      return ListTile(title:Text('${day['day']}'),subtitle:Text('$coverage\n${l.officialExportRecordings}: ${day['source_live_parents']} + ${day['exact_archive_additions']}\n${l.officialExportBeats}: ${day['target_beats']}'));
     }));
   }
 }

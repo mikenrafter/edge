@@ -20773,5 +20773,8 @@
   "officialExportInterrupted": "Предыдущий экспорт прерван. Незавершённые частные копии удалены. Проверьте сохранённый файл перед использованием.",
   "officialExportVerifySaved": "Проверить сохранённый файл",
   "officialExportNewer": "Доступна новая официальная версия. Этот файл проверен для v0.12.2.",
-  "officialExportChecked": "Последняя проверка:"
+  "officialExportChecked": "Последняя проверка:",
+  "officialExportRows": "записей",
+  "officialExportBytes": "байт",
+  "officialExportBeats": "Удары"
 }

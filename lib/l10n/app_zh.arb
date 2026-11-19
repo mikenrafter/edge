@@ -21335,5 +21335,8 @@
   "officialExportInterrupted": "上次导出已中断。未完成的私有副本已删除。请先验证已保存的文件再使用。",
   "officialExportVerifySaved": "验证已保存的文件",
   "officialExportNewer": "有更新的官方版本可用。此文件已针对 v0.12.2 测试。",
-  "officialExportChecked": "上次检查："
+  "officialExportChecked": "上次检查：",
+  "officialExportRows": "条记录",
+  "officialExportBytes": "字节",
+  "officialExportBeats": "心搏"
 }

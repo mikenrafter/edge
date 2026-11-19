@@ -60,22 +60,21 @@ void main() {
         });
         final free=Space();final destination=Destination(root,free);
         final ready=Completer<void>();
-        void changed(){if((coordinator.progress.stage==ExportStage.recoveryChoice || (!coordinator.active && coordinator.outcome!=null)) && !ready.isCompleted)ready.complete();}
-        coordinator.addListener(changed);
+        late Future<OfficialExportOutcome> running;
+        await tester.runAsync(()async {
+          running=coordinator.export(snapshot:Snapshot(fx.forkPath),privateRoot:Directory('${root.path}/private'),
+            destination:destination,space:ExportSpaceBudget(source:free),prompts:Prompts(()async=>'pw',(_) {
+              final choice=coordinator.waitForRecoveryChoice();ready.complete();return choice;
+            }));
+          unawaited(running.then((_){if(!ready.isCompleted)ready.complete();}));
+          await ready.future.timeout(const Duration(seconds:30));
+        });
+        expect(coordinator.progress.stage,ExportStage.recoveryChoice,
+          reason:coordinator.outcome is OfficialExportFailed?'${(coordinator.outcome as OfficialExportFailed).reason}':'${coordinator.outcome}');
         final boundary=GlobalKey();
         await tester.pumpWidget(MaterialApp(theme:buildTheme(Brightness.light),
           localizationsDelegates:AppLocalizations.localizationsDelegates,supportedLocales:AppLocalizations.supportedLocales,
-          home:RepaintBoundary(key:boundary,child:OfficialExportScreen(coordinator:coordinator,
-            snapshot:Snapshot(fx.forkPath),destination:destination,space:ExportSpaceBudget(source:free),privateRoot:Directory('${root.path}/private'),
-            passphrasePrompt:Prompts(()async=>'pw',(_)async=>false)))));
-        await tester.pumpAndSettle();
-        await tester.scrollUntilVisible(find.text('Export').last,200,scrollable:find.byType(Scrollable).first);
-        final start=find.ancestor(of:find.text('Export').last,matching:find.byType(OutlinedButton));
-        await tester.runAsync(()async {
-          tester.widget<OutlinedButton>(start).onPressed!();
-          await ready.future.timeout(const Duration(minutes:2));
-        });
-        expect(coordinator.progress.stage,ExportStage.recoveryChoice,reason:'${coordinator.outcome}');
+          home:RepaintBoundary(key:boundary,child:OfficialExportScreen(coordinator:coordinator))));
         await tester.pumpAndSettle();
         await tester.scrollUntilVisible(find.text('Yes'),250,scrollable:find.byType(Scrollable).first);
         expect(find.text('Save a second file with data the official version does not yet support?'),findsOneWidget);
@@ -90,17 +89,13 @@ void main() {
           await tester.runAsync(()async{await Directory(path).create(recursive:true);await File('$path/recovery-choice-$recovery.png').writeAsBytes(png!.buffer.asUint8List());});
           image.dispose();
         }
-        final finished=Completer<void>();
-        void finish(){if(!coordinator.active && !finished.isCompleted)finished.complete();}
-        coordinator.addListener(finish);
         await tester.tap(find.text(recovery?'Yes':'No'));
-        await tester.runAsync(()=>finished.future.timeout(const Duration(minutes:2)));
+        await tester.runAsync(()=>running.timeout(const Duration(seconds:30)));
         await tester.pumpAndSettle();
         final outcome=coordinator.outcome as OfficialExportSaved;
         expect(outcome.recoveryStatus,recovery?RecoveryStatus.saved:RecoveryStatus.declined);
         expect(destination.creates,recovery?2:1);
         expect(tester.takeException(),isNull);
-        coordinator.removeListener(changed);coordinator.removeListener(finish);
       } finally {
         await tester.pumpWidget(const SizedBox());
         await tester.runAsync(()async{await coordinator.finish();await root.delete(recursive:true);await fx.dispose();});

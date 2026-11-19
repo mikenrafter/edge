@@ -21335,5 +21335,8 @@
   "officialExportInterrupted": "पिछला निर्यात रुक गया था। अधूरी निजी प्रतियाँ हटा दी गई हैं। सहेजी फ़ाइल उपयोग से पहले जाँचें।",
   "officialExportVerifySaved": "सहेजी फ़ाइल जाँचें",
   "officialExportNewer": "एक नया आधिकारिक संस्करण उपलब्ध है। यह फ़ाइल v0.12.2 के लिए जाँची गई है।",
-  "officialExportChecked": "आखिरी जाँच:"
+  "officialExportChecked": "आखिरी जाँच:",
+  "officialExportRows": "रिकॉर्ड",
+  "officialExportBytes": "बाइट",
+  "officialExportBeats": "धड़कन"
 }

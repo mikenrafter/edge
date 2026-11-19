@@ -21523,5 +21523,17 @@
   },
   "@officialExportChecked": {
     "description": "Cached release status on official-app export. Opening this route does not check online."
+  },
+  "officialExportRows": "records",
+  "officialExportBytes": "bytes",
+  "officialExportBeats": "Beats",
+  "@officialExportRows": {
+    "description": "Unit for real export progress or per-day observed counts."
+  },
+  "@officialExportBytes": {
+    "description": "Unit for real export progress or per-day observed counts."
+  },
+  "@officialExportBeats": {
+    "description": "Unit for real export progress or per-day observed counts."
   }
 }
