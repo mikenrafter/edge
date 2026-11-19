@@ -42,5 +42,5 @@ class PilotSegmented extends StatelessWidget {
           child:FittedBox(fit:BoxFit.scaleDown,child:Row(mainAxisSize:MainAxisSize.min,children:[
             Text(items[i],maxLines:1,style:F.cap.copyWith(fontSize:13,color:i==index?p.ink:p.ink2,decoration:struck.contains(i)?TextDecoration.lineThrough:null)),
             if(badges[i] case final b?)...[const SizedBox(width:6),b],
-          ]))))))))]));}
+          ])))))))]));}
 }

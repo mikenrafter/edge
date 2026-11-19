@@ -304,7 +304,7 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
               Text(showTime?formatClock(((value%1440)+1440)%1440~/60,((value%60)+60)%60):'—',maxLines:1,style:F.body.copyWith(color:timeColor??(showTime?p.ink:p.ink3),fontFeatures:const [FontFeature.tabularFigures()])),
               Text(sub??'',maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.right,style:F.cap.copyWith(color:p.ink3,fontSize:11)),
             ])),
-          ])))));}));
+          ]))));}));
 
   Widget _resetChip(VoidCallback tap)=>PilotRowChip(l.pilotReset,onTap:tap);
   Widget feelRow({bool chaos=false})=>Row(children:[TextButton.icon(onPressed:playing?null:()=>_feel(chaos:chaos),icon:const Icon(LucideIcons.vibrate,size:16),label:Text(l.pilotFeelIt)),const Spacer(),TextButton(onPressed:()=>Navigator.of(context).push(MaterialPageRoute(builder:(_)=>const HapticsSettings())),child:Text(l.pilotHaptics))]);
