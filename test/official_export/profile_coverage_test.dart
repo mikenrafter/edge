@@ -45,6 +45,7 @@ const _spec = <String, String>{
   'derived_day': 'R',
   'device': 'M',
   'device_coverage': 'K',
+  'ecg_gesture_session': 'D',
   'ecg_raw_packet': 'K',
   'ecg_reading': 'M',
   'ecg_reading_packet': 'K',
