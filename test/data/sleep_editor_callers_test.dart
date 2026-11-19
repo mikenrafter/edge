@@ -718,6 +718,30 @@ void main() {
       expect((await db.query('sleep_block',where:'id = ?',whereArgs:['survivor'])).single['state'],'live');
     }
   });
+  // WHY CB1: Keep snapshots the refined proposal, while detection_* retains
+  // every earlier envelope. That ordinary refinement must not lock Discard.
+  // CLAIM(sleep-editor-callers).
+  test('CB1 Discard accepts a kept nap after detection refinement',() async {
+    final store=ActivityStore(db);
+    final first=(await store.reconcile(ActivityKind.nap,[
+      {'start':_a0,'end':_a0+2700,'duration_min':45}])).single;
+    final refined=(await store.reconcile(ActivityKind.nap,[
+      {'start':_a0,'end':_a0+2400,'duration_min':40}])).single;
+    expect(refined.id,first.id);
+    await store.confirm(refined,startTs:refined.startTs,endTs:refined.endTs);
+    final kept=(await store.get(first.id))!;
+    // A later decided re-detection also widens only the evidence envelope.
+    await store.reconcile(ActivityKind.nap,[
+      {'start':_a0,'end':_a0+3000,'duration_min':50}]);
+    final suggestion=(await db.query('activity_suggestions',where:'id = ?',whereArgs:[first.id])).single;
+    final saved=(await db.query('sleep_block')).single;
+    expect([suggestion['end_ts'],suggestion['detection_end'],saved['detected_end']],
+      [_a0+2400,_a0+3000,_a0+2400]);
+    await expectLater(store.discard(kept),completes);
+    expect((await store.get(first.id))!.status,ActivityReviewStatus.discarded);
+    expect((await db.query('sleep_block')).single['state'],'removed');
+  });
+
 }
 
 /// A range writer whose nap write refuses for spacing, as the real one does.
