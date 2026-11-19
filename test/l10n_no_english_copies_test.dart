@@ -19,6 +19,8 @@ final _sameOnPurpose = <String>{
   for (final code in ['de', 'es', 'fr', 'hi', 'ru', 'th', 'zh'])
     '$code:logFoodPillOpenFoodFacts', // a product name
   // Placeholder-only patterns: no words of their own.
+  for (final code in ['de', 'es', 'fr', 'hi', 'ru', 'th', 'zh'])
+    '$code:updatesReleaseLabel',
   for (final code in ['de', 'es', 'fr', 'hi', 'ru'])
     '$code:metricDetailSlotWithValue',
   for (final code in ['de', 'es', 'fr', 'hi', 'ru']) '$code:sleepDetailScrubAt',
