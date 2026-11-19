@@ -83,6 +83,15 @@ const _spec = <String, String>{
   'notifications': 'R',
   'observation': 'K',
   'pulse_alert': 'D',
+  'pulse_ep_admission': 'D',
+  'pulse_ep_checkpoint': 'D',
+  'pulse_ep_complete': 'D',
+  'pulse_ep_episode': 'D',
+  'pulse_ep_evidence': 'D',
+  'pulse_ep_outbox': 'D',
+  'pulse_ep_revision': 'D',
+  'pulse_ep_upgrade': 'D',
+  'pulse_ep_upgrade_record': 'D',
   'raw_archive': 'M',
   'raw_archive_frames': 'M',
   'raw_archive_legacy': 'M',
@@ -205,6 +214,31 @@ void main() {
           {'day_id', 'onset_ts', 'offset_ts', 'source', 'created_at'});
     });
 
+    // WHY: the official receiver cannot interpret fork Pulse storage or replay
+    // its delivery debt. Every column remains inventoried as a table omission.
+    // catches: carrying any Pulse table or failing to inventory its columns.
+    test('fork Pulse tables are omitted with every column accounted for', () {
+      final fork = loadCapture('fork_schema_95.json');
+      final target = loadCapture('target_schema_62.json');
+      const tables = {
+        'pulse_ep_episode', 'pulse_ep_revision', 'pulse_ep_evidence',
+        'pulse_ep_outbox', 'pulse_ep_admission', 'pulse_ep_checkpoint',
+        'pulse_ep_complete', 'pulse_ep_upgrade', 'pulse_ep_upgrade_record',
+      };
+      expect(fork.tables.keys.where((t) => t.startsWith('pulse_ep_')).toSet(), tables);
+      for (final table in tables) {
+        final policy = officialProfile.tables[table]!;
+        expect(policy.policy, TablePolicy.dropped, reason: table);
+        expect(policy.dest, isNull, reason: table);
+        expect(policy.createsEmptyDest, isFalse, reason: table);
+        expect(policy.columns, {
+          for (final column in fork.tables[table]!.columnNames)
+            column: ColumnDisposition.tableDropped,
+        }, reason: table);
+        expect(target.tables, isNot(contains(table)), reason: table);
+      }
+    });
+
     test('every table carries meaning and evidence', () {
       for (final e in officialProfile.tables.entries) {
         expect(e.value.meaning.trim(), isNotEmpty, reason: e.key);
@@ -230,7 +264,7 @@ void main() {
         Map<String, Object> tuples(SchemaCatalog c) => c.tables.map((n, t) => MapEntry(n, [
           for (final c in t.columns) (c.name, c.type, c.notNull, c.defaultValue, c.pk),
         ]));
-        expect(tuples(await SchemaCatalog.read(db)), tuples(loadCapture('fork_schema_94.json')));
+        expect(tuples(await SchemaCatalog.read(db)), tuples(loadCapture('fork_schema_95.json')));
       });
     });
 
@@ -243,14 +277,14 @@ void main() {
     });
 
     test('the frozen capture of that schema is covered', () {
-      final catalog = loadCapture('fork_schema_94.json');
-      expect(catalog.tables, hasLength(109));
+      final catalog = loadCapture('fork_schema_95.json');
+      expect(catalog.tables, hasLength(118));
       expect(officialProfile.coverage(catalog), isEmpty);
     });
 
     test('creating on open and reopening change no table or column', () {
       final both = ['opened', 'reopened'].map(
-        (k) => loadCapture('fork_schema_94.json', key: k),
+        (k) => loadCapture('fork_schema_95.json', key: k),
       );
       expect(
         both.first.tables.map((n, t) => MapEntry(n, t.columnNames)),
@@ -259,7 +293,7 @@ void main() {
     });
 
     test('every carried table has a usable rowid in the real schema', () {
-      final catalog = loadCapture('fork_schema_94.json');
+      final catalog = loadCapture('fork_schema_95.json');
       for (final e in officialProfile.tables.entries) {
         final shape = catalog.tables[e.key];
         if (shape == null || !e.value.policy.carriesRows) continue;
@@ -268,7 +302,7 @@ void main() {
     });
 
     test('the only WITHOUT ROWID table is row_rev, policy D', () {
-      final catalog = loadCapture('fork_schema_94.json');
+      final catalog = loadCapture('fork_schema_95.json');
       final without = [
         for (final t in catalog.tables.values)
           if (t.withoutRowid) t.name,

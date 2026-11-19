@@ -73,6 +73,28 @@ void main() {
     expect(await pulseRows(db, 'pulse_ep_upgrade'), hasLength(1));
   });
 
+  // WHY: a same-version merged build can lack the tables and marker. Repair
+  // must capture the stored membership before exposing the connection to sync.
+  // catches: removing the onOpen capture while retaining table-only repair.
+  test('same-version repair recreates Pulse storage and captures membership once', () async {
+    final first = await LocalDb.instance;
+    await seedRr(first, 'repair-source', 1234, 2);
+    LocalDb.lastRebuild = null;
+    final db = await reopenAt(95);
+    expect(await db.getVersion(), 95);
+    expect(LocalDb.lastRebuild, isNull);
+    expect(await pulseEpTablesPresent(db), kPulseEpTables.toSet());
+    final keys = await pulseRows(db, 'pulse_ep_upgrade_record');
+    expect([for (final key in keys) '${key['source']}|${key['ts_ms']}'],
+        ['repair-source|1234000']);
+    final marker = (await pulseRows(db, 'pulse_ep_upgrade')).single;
+    await commitRecords([pulseRecord(1235, [800, 810])]);
+    await LocalDb.close();
+    final again = await LocalDb.instance;
+    expect(await pulseRows(again, 'pulse_ep_upgrade'), [marker]);
+    expect(await pulseRows(again, 'pulse_ep_upgrade_record'), keys);
+  });
+
   // WHY: an older record that arrives after the upgrade is NEW even though its
   // timestamp precedes the newest pre-upgrade record; a cutoff would swallow it.
   test('an older missing record committed after the upgrade is novel; a stored one is not', () async {
