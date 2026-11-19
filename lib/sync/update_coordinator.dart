@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:clock/clock.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
@@ -359,25 +360,39 @@ class UpdateCoordinator extends ChangeNotifier {
       if (knownTags.isNotEmpty) {
         inspectedPage = ReleasePage.forRelease(source, knownTags.first);
       }
-      final manifests = <int, Map<String, dynamic>>{};
-      if (source == ReleaseSource.fork) {
-        final rate = await _collectManifests(
-          source,
-          releases,
-          lease,
-          wire,
-          manifests,
-          previous,
-        );
-        if (rate != null) return rate;
+      final catalogKey = sha256.convert(utf8.encode(jsonEncode([
+        releases, installed.version, installed.build, installed.mode,
+        installed.abis, snapshot.officialPrereleases,
+      ]))).toString();
+      var summary = ReleaseSelection(source, installed,
+          officialPrereleases: snapshot.officialPrereleases);
+      var offset = 0;
+      final saved = await store.progress(source);
+      if (saved?['catalogKey'] == catalogKey) {
+        try {
+          offset = saved!['offset'] as int;
+          if (offset < 0 || offset > releases.length) throw const FormatException();
+          summary = ReleaseSelection.fromJson(source, installed,
+              Map<String, dynamic>.from(saved['selection'] as Map),
+              officialPrereleases: snapshot.officialPrereleases);
+        } catch (_) {
+          offset = 0;
+        }
       }
-      final selected = selectRelease(
-        source,
-        releases,
-        installed,
-        manifests: manifests,
-        officialPrereleases: snapshot.officialPrereleases,
-      );
+      final budget = _ManifestBudget();
+      try {
+        for (; offset < releases.length; offset++) {
+          final release = releases[offset];
+          final manifest = source == ReleaseSource.fork
+              ? await _manifest(release, lease, wire, budget) : null;
+          summary.add(release, manifest: manifest);
+        }
+      } finally {
+        if (!await store.saveProgress(lease, source, {
+          'catalogKey': catalogKey, 'offset': offset, 'selection': summary.toJson(),
+        })) throw const UpdateFailure(UpdateError.network);
+      }
+      final selected = summary.selected;
       if (selected != null) {
         return SourceUpdate(
           candidate: selected,
@@ -396,6 +411,8 @@ class UpdateCoordinator extends ChangeNotifier {
         etag: paginated ? null : etag,
         error: releases.isEmpty ? UpdateError.noRelease : UpdateError.noAsset,
       );
+    } on _ManifestRateLimit catch (e) {
+      return _rateLimited(e.response, previous);
     } on UpdateFailure catch (e) {
       return failure(e.error);
     } on http.ClientException {
@@ -435,95 +452,60 @@ class UpdateCoordinator extends ChangeNotifier {
     );
   }
 
-  /// Fetch (at most [maxNewManifests] new) and validate the fork manifests of
-  /// the newest relevant releases, newest tag first. Positive AND negative
-  /// results are cached by release, asset id and modification time, so a broken
-  /// historical manifest costs one request, and a large cold catalog makes
-  /// progress across checks. Returns a rate-limit result, or null.
-  Future<SourceUpdate?> _collectManifests(
-    ReleaseSource source,
-    List<Map<String, dynamic>> releases,
+  /// Return only checked fields; an unusable historical manifest is a fact too.
+  Future<Map<String, dynamic>?> _manifest(
+    Map<String, dynamic> release,
     UpdateLease lease,
     MetadataClient wire,
-    Map<int, Map<String, dynamic>> manifests,
-    SourceUpdate? previous,
+    _ManifestBudget budget,
   ) async {
-    final relevant = [
-      for (final r in releases)
-        if (r['draft'] == false &&
-            r['tag_name'] is String &&
-            supportedTag(source, r['tag_name'] as String))
-          r,
-    ]..sort((a, b) => (b['tag_name'] as String).compareTo(a['tag_name'] as String));
-    var fetched = 0;
-    for (final release in relevant) {
+    if (release['draft'] != false || release['tag_name'] is! String ||
+        !supportedTag(ReleaseSource.fork, release['tag_name'] as String)) return null;
+    final assets = release['assets'];
+    if (assets is! List) return null;
+    final declared = [for (final a in assets)
+      if (a is Map && a['name'] == 'edge-release.json') a];
+    if (declared.length != 1) return null;
+    final asset = declared.single;
+    final id = asset['id'], releaseId = release['id'];
+    if (id is! int || id <= 0 || releaseId is! int || releaseId <= 0) return null;
+    final updatedAt = asset['updated_at'];
+    final stamp = updatedAt == null ? null : DateTime.tryParse('$updatedAt');
+    if (updatedAt != null && stamp == null) return null;
+    final tag = release['tag_name'] as String;
+    final key = jsonEncode([ReleaseSource.fork.name, releaseId, tag, id,
+      stamp?.toUtc().toIso8601String()]);
+    final cached = await store.manifest(key);
+    if (cached != null) {
+      if (cached['unusable'] == true) return null;
       try {
-        final assets = release['assets'];
-        if (assets is! List) continue;
-        final declared = [
-          for (final a in assets)
-            if (a is Map && a['name'] == 'edge-release.json') a,
-        ];
-        if (declared.length != 1) continue;
-        final asset = declared.single;
-        final id = asset['id'];
-        final releaseId = release['id'];
-        if (id is! int || id <= 0 || releaseId is! int || releaseId <= 0) {
-          continue;
-        }
-        final updatedAt = asset['updated_at'];
-        final stamp = updatedAt == null ? null : DateTime.tryParse('$updatedAt');
-        if (updatedAt != null && stamp == null) continue;
-        final tag = release['tag_name'] as String;
-        final key = jsonEncode([
-          source.name,
-          releaseId,
-          tag,
-          id,
-          stamp?.toUtc().toIso8601String(),
-        ]);
-        final cached = await store.manifest(key);
-        if (cached != null) {
-          if (cached['unusable'] == true) continue;
-          try {
-            final checked = checkedManifest(cached);
-            if (checked['tag'] == tag) {
-              manifests[releaseId] = checked;
-              continue;
-            }
-          } on FormatException {
-            /* a stale or damaged entry is refetched below */
-          }
-        }
-        if (fetched >= maxNewManifests) {
-          throw const UpdateFailure(UpdateError.incomplete);
-        }
-        fetched++;
-        final response = await wire.get(manifestUri(source, id), manifest: true);
-        if (isRateLimit(response)) return _rateLimited(response, previous);
-        Map<String, dynamic>? checked;
-        if (response.status == 200) {
-          try {
-            checked = checkedManifest(await wire.parse(response.body));
-            if (checked['tag'] != tag) checked = null;
-          } on FormatException {
-            checked = null;
-          }
-        } else if (response.status != 404) {
-          throw const UpdateFailure(UpdateError.network);
-        }
-        final saved = await store.saveManifest(
-          lease,
-          key,
-          checked ?? const {'unusable': true},
-        );
-        if (!saved) throw const UpdateFailure(UpdateError.network);
-        if (checked != null) manifests[releaseId] = checked;
-      } on TypeError {
-        continue; // one malformed historical release is not the catalog
+        final checked = checkedManifest(cached);
+        if (checked['tag'] == tag) return checked;
+      } on FormatException {
+        // A damaged entry must be validated again.
       }
     }
-    return null;
+    if (budget.fetched >= maxNewManifests) {
+      throw const UpdateFailure(UpdateError.incomplete);
+    }
+    budget.fetched++;
+    final response = await wire.get(manifestUri(ReleaseSource.fork, id), manifest: true);
+    if (isRateLimit(response)) throw _ManifestRateLimit(response);
+    Map<String, dynamic>? checked;
+    if (response.status == 200) {
+      try {
+        checked = checkedManifest(await wire.parse(response.body));
+        if (checked['tag'] != tag) checked = null;
+      } on FormatException {
+        checked = null;
+      }
+    } else if (response.status != 404) {
+      throw const UpdateFailure(UpdateError.network);
+    }
+    if (!await store.saveManifest(lease, key, checked ?? const {'unusable': true})) {
+      throw const UpdateFailure(UpdateError.network);
+    }
+    return checked;
   }
 
   // A rate limit keeps the server's own deadline beside the due slot.
@@ -544,4 +526,13 @@ class UpdateCoordinator extends ChangeNotifier {
       return false;
     }
   }
+}
+
+class _ManifestBudget {
+  int fetched = 0;
+}
+
+class _ManifestRateLimit implements Exception {
+  const _ManifestRateLimit(this.response);
+  final MetadataResponse response;
 }

@@ -171,14 +171,6 @@ List<String> _assetNames(Map<String, dynamic> release) {
   return names;
 }
 
-// One release's verdict. A candidate; an unmatched build (real release, but
-// none for this mode/ABI); or unrecognized (malformed, or no checked manifest).
-class _Unmatched {
-  const _Unmatched(this.tag, this.build);
-  final String tag;
-  final int? build;
-}
-
 /// The newest matching release for [source], or null when none is
 /// established: no release, or a newer release exists that this install
 /// cannot match or validate (so an older one is never called the newest).
@@ -193,30 +185,73 @@ ReleaseCandidate? selectRelease(
   Map<int, Map<String, dynamic>> manifests = const {},
   bool officialPrereleases = false,
 }) {
-  final candidates = <ReleaseCandidate>[];
-  final blockers = <_Unmatched>[];
+  final summary = ReleaseSelection(source, installed,
+      officialPrereleases: officialPrereleases);
+  for (final release in releases) {
+    summary.add(release, manifest: manifests[release['id']]);
+  }
+  return summary.selected;
+}
+
+/// Bounded selection facts: one maximum, two blocker maxima and duplicate sets.
+/// No manifest bodies or catalog pages survive here. A catalog beyond the
+/// duplicate-set bound is refused rather than silently losing ambiguity checks.
+class ReleaseSelection {
+  ReleaseSelection(this.source, this.installed, {this.officialPrereleases = false});
+  static const maxReleases = 1024;
+  final ReleaseSource source;
+  final InstalledRelease installed;
+  final bool officialPrereleases;
   final forkCodes = <int>{};
   final tags = <String>{};
   final ids = <int>{};
-  for (final release in releases) {
+  ReleaseCandidate? _best;
+  String? _unknownTag;
+  String? latestTag;
+  int? _blockerBuild;
+  bool hasReleases = false;
+  bool ambiguous = false;
+
+  int _compare(ReleaseCandidate a, ReleaseCandidate b) =>
+      source == ReleaseSource.official
+          ? compareSemver(a.tag.substring(1), b.tag.substring(1))
+          : a.build!.compareTo(b.build!);
+
+  int _compareTag(String a, String b) => source == ReleaseSource.official
+      ? compareSemver(a.substring(1), b.substring(1)) : a.compareTo(b);
+
+  void _block(String tag, int? build) {
+    if (build == null) {
+      if (_unknownTag == null || _compareTag(tag, _unknownTag!) > 0) _unknownTag = tag;
+    } else if (_blockerBuild == null || build > _blockerBuild!) {
+      _blockerBuild = build;
+    }
+  }
+
+  void add(Map<String, dynamic> release, {Map<String, dynamic>? manifest}) {
+    hasReleases = true;
+    if (ids.length >= maxReleases) throw const FormatException('Catalog too large');
+
     final tag = release['tag_name'];
     if (release['draft'] != false ||
         tag is! String ||
         !supportedTag(source, tag)) {
-      continue;
+      return;
     }
     final id = release['id'];
     final prerelease = release['prerelease'];
     if (source == ReleaseSource.official &&
         !officialPrereleases &&
         (prerelease == true || tag.contains('-'))) {
-      continue;
+      return;
     }
+    if (latestTag == null || _compareTag(tag, latestTag!) > 0) latestTag = tag;
     if (id is! int || id <= 0 || prerelease is! bool) {
-      blockers.add(_Unmatched(tag, null));
-      continue;
+      _block(tag, null);
+      return;
     }
     if (!tags.add(tag) || !ids.add(id)) {
+      ambiguous = true;
       throw const FormatException('Ambiguous release');
     }
     try {
@@ -230,10 +265,9 @@ ReleaseCandidate? selectRelease(
       );
       int? build;
       if (source == ReleaseSource.fork) {
-        final manifest = manifests[id];
         if (manifest == null) {
-          blockers.add(_Unmatched(tag, null));
-          continue;
+          _block(tag, null);
+          return;
         }
         final checked = checkedManifest(manifest);
         if (checked['tag'] != tag) throw const FormatException('Tag mismatch');
@@ -253,8 +287,8 @@ ReleaseCandidate? selectRelease(
           }
         }
         if (asset == null) {
-          blockers.add(_Unmatched(tag, build));
-          continue;
+          _block(tag, build);
+          return;
         }
         final match = (checked['artifacts'] as List)
             .cast<Map>()
@@ -265,13 +299,13 @@ ReleaseCandidate? selectRelease(
         }
         if (installed.abis.isNotEmpty &&
             !(match.single['abis'] as List).any(installed.abis.contains)) {
-          blockers.add(_Unmatched(tag, build));
-          continue;
+          _block(tag, build);
+          return;
         }
       }
       if (asset == null) {
-        blockers.add(_Unmatched(tag, null));
-        continue;
+        _block(tag, null);
+        return;
       }
       final candidate = ReleaseCandidate(
         source: source,
@@ -282,30 +316,53 @@ ReleaseCandidate? selectRelease(
             prerelease || (source == ReleaseSource.official && tag.contains('-')),
         build: build,
       );
-      candidates.add(candidate.withRelation(relationFor(candidate, installed)));
+      if (_best == null || _compare(candidate, _best!) > 0) {
+        _best = candidate;
+      }
     } on FormatException catch (e) {
       // An ambiguous catalog is not a bad release: it cannot be ordered.
-      if (e.message == 'Ambiguous fork sequence') rethrow;
-      blockers.add(_Unmatched(tag, null));
+      if (e.message == 'Ambiguous fork sequence') {
+        ambiguous = true;
+        rethrow;
+      }
+      _block(tag, null);
     } on TypeError {
-      blockers.add(_Unmatched(tag, null));
+      _block(tag, null);
     }
   }
-  if (candidates.isEmpty) return null;
-  candidates.sort(
-    (a, b) => source == ReleaseSource.official
-        ? compareSemver(b.tag.substring(1), a.tag.substring(1))
-        : b.build!.compareTo(a.build!),
-  );
-  final best = candidates.first;
-  for (final blocker in blockers) {
-    // Newer than the best candidate: the newest release is unknown to us.
-    final newer = source == ReleaseSource.official
-        ? compareSemver(blocker.tag.substring(1), best.tag.substring(1)) > 0
-        : blocker.build != null
-        ? blocker.build! >= best.build!
-        : blocker.tag.compareTo(best.tag) > 0;
-    if (newer) return null;
+
+  ReleaseCandidate? get selected {
+    if (ambiguous) throw const FormatException('Ambiguous release');
+    final best = _best;
+    if (best == null) return null;
+    if (_unknownTag != null && _compareTag(_unknownTag!, best.tag) > 0) return null;
+    if (source == ReleaseSource.fork && _blockerBuild != null &&
+        _blockerBuild! >= best.build!) return null;
+    return best.withRelation(relationFor(best, installed));
   }
-  return best;
+
+  Map<String, Object?> toJson() => {
+    'best': _best?.toJson(), 'unknownTag': _unknownTag, 'blockerBuild': _blockerBuild,
+    'latestTag': latestTag, 'hasReleases': hasReleases, 'ambiguous': ambiguous,
+    'codes': forkCodes.toList(), 'tags': tags.toList(), 'ids': ids.toList(),
+  };
+
+  factory ReleaseSelection.fromJson(ReleaseSource source, InstalledRelease installed,
+      Map<String, dynamic> json, {bool officialPrereleases = false}) {
+    final summary = ReleaseSelection(source, installed, officialPrereleases: officialPrereleases);
+    summary.forkCodes.addAll((json['codes'] as List).cast<int>());
+    summary.tags.addAll((json['tags'] as List).cast<String>());
+    summary.ids.addAll((json['ids'] as List).cast<int>());
+    if (summary.ids.length > maxReleases || summary.tags.length > maxReleases ||
+        summary.forkCodes.length > maxReleases) throw const FormatException('Catalog too large');
+    final best = json['best'];
+    summary._best = best == null ? null : ReleaseCandidate.fromJson(Map<String, dynamic>.from(best as Map));
+    if (summary._best != null && summary._best!.source != source) throw const FormatException();
+    summary._unknownTag = json['unknownTag'] as String?;
+    summary._blockerBuild = json['blockerBuild'] as int?;
+    summary.latestTag = json['latestTag'] as String?;
+    summary.hasReleases = json['hasReleases'] as bool;
+    summary.ambiguous = json['ambiguous'] as bool;
+    return summary;
+  }
 }

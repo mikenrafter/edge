@@ -165,6 +165,9 @@ class UpdateStore {
       'CREATE TABLE IF NOT EXISTS update_sources (source TEXT PRIMARY KEY, json TEXT NOT NULL)',
     );
     await db.execute(
+      'CREATE TABLE IF NOT EXISTS update_progress (source TEXT PRIMARY KEY, json TEXT NOT NULL)',
+    );
+    await db.execute(
       'CREATE TABLE IF NOT EXISTS update_manifests (key TEXT PRIMARY KEY, json TEXT NOT NULL)',
     );
     // seq is AUTOINCREMENT so an OS id is never reused, even for a freed claim.
@@ -225,6 +228,7 @@ class UpdateStore {
       await txn.delete('update_state');
       await txn.delete('update_sources');
       await txn.delete('update_manifests');
+      await txn.delete('update_progress');
       await txn.insert('update_state', {
         'id': 1,
         'generation': (previous is int ? previous : 0) + 1,
@@ -270,6 +274,7 @@ class UpdateStore {
     if (!enabled) {
       await txn.delete('update_sources');
       await txn.delete('update_manifests');
+      await txn.delete('update_progress');
       await _discardHeld(txn);
     }
   });
@@ -287,6 +292,8 @@ class UpdateStore {
       where: 'source=?',
       whereArgs: [ReleaseSource.official.name],
     );
+    await txn.delete('update_progress', where: 'source=?',
+        whereArgs: [ReleaseSource.official.name]);
   });
 
   /// One cross-isolate batch. Automatic claims need consent and the daily slot
@@ -402,6 +409,34 @@ class UpdateStore {
       '(SELECT rowid FROM update_manifests ORDER BY rowid DESC LIMIT ?)',
       [manifestRetention],
     );
+    return true;
+  });
+
+  /// At most one bounded progress summary per source, fenced by the batch lease.
+  static const maxProgressBytes = 128 * 1024;
+
+  Future<Map<String, dynamic>?> progress(ReleaseSource source) async {
+    final rows = await db.query('update_progress', where: 'source=?',
+        whereArgs: [source.name]);
+    if (rows.isEmpty) return null;
+    final raw = rows.single['json'] as String;
+    if (raw.length > maxProgressBytes) return null;
+    try {
+      return Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> saveProgress(UpdateLease lease, ReleaseSource source,
+      Map<String, dynamic> progress) => _tx((txn) async {
+    if (!await _holds(txn, lease)) return false;
+    final json = jsonEncode(progress);
+    if (utf8.encode(json).length > maxProgressBytes) {
+      throw const FormatException('Discovery progress too large');
+    }
+    await txn.insert('update_progress', {'source': source.name, 'json': json},
+        conflictAlgorithm: ConflictAlgorithm.replace);
     return true;
   });
 
