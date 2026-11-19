@@ -7,7 +7,8 @@ import '../ui2/chart_annotations.dart';
 import '../ui2/day_timeline/day_graph.dart';
 import '../ui2/day_timeline/timeline_controller.dart';
 import '../ui2/theme.dart';
-import '../ui2/grammar.dart' show SubTabs;
+import '../ui2/grammar.dart' show SubTabs,Pressable,NavBar;
+import '../ui2/day_navigation.dart' show DayStepBar;
 import '../ui2/charts.dart' show SleepStage;
 import 'pilot_readout.dart';
 import 'timeline_chart.dart';
@@ -38,7 +39,8 @@ class PilotDayLayout extends StatelessWidget {
     final readout=PilotReadout(controller:controller,graph:graph,compact:true,controls:PilotZoomControls(controller:controller,onZoom:(){interaction.zoom();controller.clearScrub();},trailing:TextButton.icon(
           key:const ValueKey('pilot-pin'),onPressed:interaction.togglePin,icon:Icon(interaction.userPinned?LucideIcons.pinOff:LucideIcons.pin,size:16),label:Text(interaction.userPinned?l.pilotUnpin:l.pilotPinShort,maxLines:1))));
     return PilotTheme(child:ListenableBuilder(listenable:interaction,builder:(context,_)=>Scaffold(backgroundColor:p.bg,body:SafeArea(child:Column(children:[
-      SizedBox(height:52,child:Row(children:[IconButton(onPressed:()=>Navigator.maybePop(context),icon:const Icon(LucideIcons.chevronLeft)),Expanded(child:Text(title,textAlign:TextAlign.center,maxLines:1,overflow:TextOverflow.ellipsis,style:F.head.copyWith(color:p.ink))),const SizedBox(width:48)])),
+      // The app's standard header (m261): the same NavBar on every pilot screen.
+      NavBar(title),
       Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:Column(children:[
         dayRow,
         PilotTimelineChart(controller:controller,graph:graph,interaction:interaction,annotations:annotations,stages:stages,onScrub:onScrub,onPan:onPan,onSelect:onAnnotation,backdrop:backdrop,focusId:focusId),
@@ -74,13 +76,22 @@ class PilotDayRow extends StatelessWidget {
   final String day;final bool dirty,busy;final VoidCallback? onPrevious,onNext,onCancel,onSave;
   @override Widget build(BuildContext context){
     final l=AppLocalizations.of(context)??lookupAppLocalizations(const Locale('en'));
-    // Mock-ups' .dayrow: a card2 strip, the date centred on the full width.
-    return Container(height:48,margin:const EdgeInsets.only(bottom:8),decoration:BoxDecoration(color:P.of(context).card2,borderRadius:BorderRadius.circular(12)),child:Stack(alignment:Alignment.center,children:[
-      Padding(padding:const EdgeInsets.symmetric(horizontal:80),child:Text(day,maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.center,style:F.body.copyWith(fontWeight:FontWeight.w600))),
-      Align(alignment:Alignment.centerLeft,child:SizedBox(width:80,child:dirty?TextButton(onPressed:busy?null:onCancel,child:Text(l.pilotCancel,maxLines:1)):IconButton(onPressed:onPrevious,icon:const Icon(LucideIcons.chevronLeft)))),
-      Align(alignment:Alignment.centerRight,child:SizedBox(width:80,child:dirty?TextButton(onPressed:busy?null:onSave,child:Text(l.pilotSave,maxLines:1)):IconButton(onPressed:onNext,icon:const Icon(LucideIcons.chevronRight)))),
-    ]));
+    // Owner m261: the app's one day switcher (DayStepBar, as DayNav draws it).
+    // A draft swaps the arrows for Cancel and Save in the same slots.
+    return Padding(padding:const EdgeInsets.only(bottom:8),child:DayStepBar(label:day,previousLabel:l.metricDetailPreviousDay,nextLabel:l.metricDetailNextDay,onPrevious:onPrevious,onNext:onNext,
+      leading:dirty?PilotBarAction(l.pilotCancel,key:const ValueKey('pilot-day-cancel'),onTap:busy?null:onCancel):null,
+      trailing:dirty?PilotBarAction(l.pilotSave,key:const ValueKey('pilot-day-save'),onTap:busy?null:onSave,strong:true):null));
   }
+}
+
+/// A text action in a [DayStepBar] arrow slot (a draft's Cancel / Save): the
+/// arrow's 44 pt height, so the bar keeps its footprint.
+class PilotBarAction extends StatelessWidget {
+  const PilotBarAction(this.label,{super.key,required this.onTap,this.strong=false});
+  final String label;final VoidCallback? onTap;final bool strong;
+  @override Widget build(BuildContext context){final p=P.of(context);
+    return Opacity(opacity:onTap==null ? .35 : 1,child:Pressable(onTap:onTap,semanticLabel:label,child:Padding(padding:const EdgeInsets.symmetric(horizontal:12),
+      child:Text(label,maxLines:1,style:F.body.copyWith(color:strong?p.on(C.blue):p.ink2,fontWeight:FontWeight.w600)))));}
 }
 
 class _Count extends StatelessWidget {

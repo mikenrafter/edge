@@ -68,9 +68,12 @@ void main(){
     await t.ensureVisible(row);await t.pumpAndSettle();
     expect(find.descendant(of:row,matching:find.byType(Switch)),findsNothing);
     expect(find.text('Not the primary alarm'),findsOneWidget);
+    // m261: the subtitle says what a tap does.
+    expect(find.textContaining('Tap to make this the primary alarm.'),findsOneWidget);
     expect(t.getSemantics(row).flagsCollection.isToggled,Tristate.isFalse);
     await t.tap(row);await t.pumpAndSettle();
     expect(find.text('Primary alarm for these days'),findsOneWidget);
+    expect(find.textContaining('Tap to stop this being the primary alarm.'),findsOneWidget);
     expect(t.getSemantics(row).flagsCollection.isToggled,Tristate.isTrue);
     handle.dispose();
   });

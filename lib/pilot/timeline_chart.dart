@@ -190,7 +190,8 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
         ChartAnnotation? nearest;
         for(final a in visible){if(nearest==null||(a.at-(c.scrub??c.view.center)).abs()<(nearest.at-(c.scrub??c.view.center)).abs())nearest=a;}
         if(widget.selectedAnnotationId!=null&&c.scrub==null){nearest=widget.annotations.where((a)=>a.id==widget.selectedAnnotationId).firstOrNull??nearest;}
-        final annotationStep=math.max(18.0,MediaQuery.textScalerOf(context).scale(13.0)+2);
+        // v22 .slot: 15 px icons with 1 px gaps.
+        final annotationStep=math.max(16.0,MediaQuery.textScalerOf(context).scale(10.0)+4);
         final overviewGroups=<({double at,List<ChartAnnotation> items,double left,int lane})>[];
         if(widget.overview){
           final groups=<double,List<ChartAnnotation>>{};
@@ -228,9 +229,9 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
                       child:IgnorePointer(child:Center(child:Container(width:h.active?6:2,height:widget.height-28,decoration:BoxDecoration(color:h.color.withValues(alpha:h.active?1:.35),borderRadius:BorderRadius.circular(3))))),),
                   if(!widget.overview)for(final mark in marks)Positioned(left:mark.x-11,top:4+mark.lane*22.0,child:Tooltip(message:mark.annotation.label,
                     child:chip(mark.annotation.icon??annotationIcon(mark.annotation.kind),p.on(_pilotAnnotationColor(mark.annotation)),on:c.scrub==null&&mark.annotation.id==widget.selectedAnnotationId,lane:mark.lane))),
-                  for(final group in overviewGroups)Positioned(left:group.left,top:group.lane*annotationStep,child:DecoratedBox(decoration:BoxDecoration(color:p.card.withValues(alpha:.9),borderRadius:BorderRadius.circular(4)),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                  for(final group in overviewGroups)Positioned(left:group.left,top:group.lane*annotationStep,child:DecoratedBox(decoration:BoxDecoration(color:const Color(0xCC121824),borderRadius:BorderRadius.circular(5)),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
                     Column(children:[for(final a in group.items)Padding(padding:const EdgeInsets.only(bottom:1),child:Tooltip(message:a.label,child:chip(a.icon??annotationIcon(a.kind),p.on(_pilotAnnotationColor(a)),small:true)))]),
-                    Text(pilotClock(group.at),key:ValueKey('pilot-overview-time:${group.at.round()}'),style:F.cap.copyWith(color:p.ink,fontSize:11)),
+                    Padding(padding:const EdgeInsets.symmetric(horizontal:3),child:Text(pilotClock(group.at),key:ValueKey('pilot-overview-time:${group.at.round()}'),style:F.cap.copyWith(color:const Color(0xFFE8ECF3),fontSize:10,fontWeight:FontWeight.w600,height:1.5))),
                   ]))),
                   if(widget.selectedAnnotationId!=null&&!widget.overview)Builder(builder:(context){final at=(c.scrub??widget.handles.firstOrNull?.at??c.view.center),x=widget.cut?.x(at,c.view,_width)??c.view.fraction(at)*_width;
                     // Mock-up tlab beside the selected icon (x+14, or x-58 at the right
