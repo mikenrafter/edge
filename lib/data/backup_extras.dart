@@ -1,4 +1,5 @@
 export '../settings/settings_repository.dart' show settingsRestoredSignal;
+import 'sleep_import_rules.dart';
 import 'dart:convert';
 import '../notify/notification_prefs.dart';
 import 'dart:io';
@@ -49,6 +50,8 @@ const String kBackupFilesTable = 'backup_files';
 const Map<String, String> kPrefsNotBackedUp = {
   'device_alerts.charge_pending_ts': 'Local pending hardware notice; re-evaluate live band state after restore.',
   'notif_critical_override': 'Retired quiet-hours override; accepted from old storage but ignored.',
+
+  'moment_review.queue': 'resume an interrupted Save',
   'developer.load_timings.v1': 'local performance diagnostics for this install',
   'developer.load_timings_enabled.v1': 'switch for those diagnostics on this install',
   'install_device_id': 'identifies THIS install; a restore must not clone it',
@@ -481,6 +484,8 @@ class ImportSummary with MapMixin<String, int> {
     this.filesRestored = 0,
     this.interruptedAndResumed = 0,
     this.needsReentry = const [],
+    this.sleepRefused = const [],
+    this.sleepCloseReview = const [],
   });
 
   @override
@@ -493,6 +498,10 @@ class ImportSummary with MapMixin<String, int> {
   int? remove(Object? key) => throw UnsupportedError('import summary is read-only');
   @override
   void clear() => throw UnsupportedError('import summary is read-only');
+
+  /// Imported sleep entries kept OUT because this install already had a
+  /// different one (local wins), and historical close pairs worth a look.
+  final List<SleepImportEntry> sleepRefused, sleepCloseReview;
 
   /// Secrets the owner must enter again ([kNeedsReentryCoachKey]); empty when
   /// nothing was lost. Band pairing keys are not listed: the paired band is
@@ -607,6 +616,7 @@ Future<ImportSummary?> lastImportSummary() async {
     final v = [for (final x in text.substring(3).split(',')) int.parse(x)];
     if (v.length < 6 || v.length > 8) return null;
     int n(int i) => v[i];
+    final sleep = await SleepImportReport.load();
     final derived = Sqflite.firstIntValue(await db.rawQuery(
             'SELECT COUNT(DISTINCT day_id) FROM day_result '
             'WHERE algo_version <= ?',
@@ -622,6 +632,8 @@ Future<ImportSummary?> lastImportSummary() async {
       filesRestored: n(5),
       interruptedAndResumed: v.length > 6 ? n(6) : 0,
       needsReentry: [if (v.length > 7 && n(7) & 1 != 0) kNeedsReentryCoachKey],
+      sleepRefused: [for (final e in sleep) if (e.refused) e],
+      sleepCloseReview: [for (final e in sleep) if (e.closeReview) e],
     );
   } on FormatException {
     return null;
@@ -744,7 +756,6 @@ const Map<String, String> kPrefTypes = {
   'gesture_repeat_window_ms': 'int',
   'tasker_moment_export': 'bool',
   'gesture_time_buzz_mode': 'string',
-  'moment_review.queue': 'string',
   'typical_large_meals_v1': 'string',
   'ui.home_ring_details.v1': 'string',
 };

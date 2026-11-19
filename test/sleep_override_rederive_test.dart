@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // A sleep correction has to reach the derived day: it must not be dropped
 // because another derive pass holds the latch, and the morning readiness pin
 // must not keep showing the uncorrected night.
@@ -54,7 +55,14 @@ void main() {
     await databaseFactory.deleteDatabase(p.join(dir, LocalDb.dbName));
   });
 
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    // Independent cases must not inherit a previous case's stable assertion;
+    // an identical second Save is correctly a no-op in the new owner.
+    await LocalDb.close();
+    final dir=await databaseFactory.getDatabasesPath();
+    await databaseFactory.deleteDatabase(p.join(dir,LocalDb.dbName));
+  });
 
   test('an edit made during derive acknowledges its durable receipt', () async {
     final app = AppState.forTesting();
@@ -145,25 +153,25 @@ void main() {
       windowJson: '{}',
     );
     await LocalDb.setFrozenHeadline('2026-09-30', 45);
-    await LocalDb.putSleepOverride(
+    await TestSleepWrites.putSleepOverride(
       dayId: '2026-09-29',
-      onsetTs: 1000,
-      offsetTs: 2000,
+      onsetTs: DateTime(2026,9,29,1).millisecondsSinceEpoch~/1000,
+      offsetTs: DateTime(2026,9,29,2).millisecondsSinceEpoch~/1000,
       source: 'manual',
     );
     expect((await LocalDb.frozenHeadline())?.value, 45,
         reason: 'another day\'s edit leaves today\'s pin alone');
 
-    await LocalDb.putSleepOverride(
+    await TestSleepWrites.putSleepOverride(
       dayId: '2026-09-30',
-      onsetTs: 1000,
-      offsetTs: 2000,
+      onsetTs: DateTime(2026,9,30,1).millisecondsSinceEpoch~/1000,
+      offsetTs: DateTime(2026,9,30,2).millisecondsSinceEpoch~/1000,
       source: 'manual',
     );
     expect(await LocalDb.frozenHeadline(), isNull);
 
     await LocalDb.setFrozenHeadline('2026-09-30', 62);
-    await LocalDb.deleteSleepOverride('2026-09-30');
+    await TestSleepWrites.deleteSleepOverride('2026-09-30');
     expect(await LocalDb.frozenHeadline(), isNull);
   });
 

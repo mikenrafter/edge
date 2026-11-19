@@ -11,6 +11,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/state/sleep_edit_runner.dart';
+import 'package:openstrap_edge/data/sleep_edit_store.dart';
 import 'package:openstrap_edge/sync/paired_device.dart';
 
 import 'support/app_state_derive_harness.dart';
@@ -30,6 +32,17 @@ class _ConnectedEngine extends BleEngine {
 /// Seconds between a failed attempt and the retry it schedules: 2, 4, 8, 16,
 /// then 30 for the rest of the ten.
 const _backoffSeconds = [2, 4, 8, 16, 30, 30, 30, 30, 30, 30];
+
+class _NapQueue implements SleepEditQueue {
+  _NapQueue([this.gate]);
+  final Future<void>? gate;
+  int reads=0;
+  @override
+  Future<List<SleepEditJob>> pending({bool retryFailed=false}) async {
+    reads++;if(reads==1 && gate!=null) await gate;
+    return [];
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -82,26 +95,25 @@ void main() {
       });
     });
 
-    test('a nap edit is the same call as a non-retry refresh', () {
+    // WHY: nap refresh joins the durable sleep worker, never the retired
+    // activity-review retry chain. Q14 separately runs real queued DB work.
+    test('a nap edit wakes the sleep queue without the activity-review hook', () {
       fakeAsync((fa) {
-        final m = make(fa, fallback: true);
-        final log = SignalLog(m.app);
-        unawaited(m.app.reanalyzeForNapEdit());
-        fa.flushMicrotasks();
-        expect(m.at, hasLength(1));
-        expect(log.events, ['r', 'r']);
-        m.app.dispose();
+        final m=make(fa,fallback:true);final queue=_NapQueue();
+        m.app.debugSleepEditQueue=queue;
+        unawaited(m.app.reanalyzeForNapEdit());fa.flushMicrotasks();
+        expect(queue.reads,2);expect(m.at,isEmpty);
+        expect(fa.pendingTimers,isEmpty);m.app.dispose();
       });
     });
-
-    test('a nap edit that cannot roll up yet schedules the same backoff', () {
+    test('a nap edit awaits its running worker without a second retry timer', () {
       fakeAsync((fa) {
-        final m = make(fa);
-        unawaited(m.app.reanalyzeForNapEdit());
-        fa.flushMicrotasks();
-        expect(fa.pendingTimers, hasLength(1));
-        fa.elapse(const Duration(seconds: 2));
-        expect(m.at, hasLength(2));
+        final m=make(fa);final gate=Completer<void>();final queue=_NapQueue(gate.future);
+        m.app.debugSleepEditQueue=queue;var done=false;
+        unawaited(m.app.reanalyzeForNapEdit().then((_)=>done=true));fa.flushMicrotasks();
+        expect(queue.reads,1);expect(done,false);expect(m.at,isEmpty);
+        gate.complete();fa.flushMicrotasks();
+        expect(queue.reads,2);expect(done,true);expect(fa.pendingTimers,isEmpty);
         m.app.dispose();
       });
     });

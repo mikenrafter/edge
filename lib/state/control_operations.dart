@@ -1,3 +1,4 @@
+import '../data/sleep_editor.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 
@@ -875,11 +876,16 @@ class SleepOperationResult {
   final bool success, metricsAvailable;
   final bool recalculating;
   final String? error;
+
+  /// Set when the write was refused because it would bring two sleep blocks
+  /// within 30 minutes: the route offers Merge or Cancel. Nothing was written.
+  final SleepMergeProposal? mergeProposal;
   const SleepOperationResult({
     required this.success,
     this.metricsAvailable = false,
     this.recalculating = false,
     this.error,
+    this.mergeProposal,
   });
 }
 
@@ -973,6 +979,10 @@ class SleepCoordinator extends ChangeNotifier {
           // timeout. A late DB write must never overwrite a subsequent edit.
           finish(await work());
         }
+      } on SleepMergeRequiredException catch (e) {
+        // A prompt for the route (Merge or Cancel), not an app-level failure.
+        finish(SleepOperationResult(
+            success: false, error: '$e', mergeProposal: e.proposal));
       } catch (e) {
         finish(SleepOperationResult(success: false, error: '$e'), retainFailure: true);
       } finally {

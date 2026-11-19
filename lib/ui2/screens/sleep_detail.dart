@@ -1623,9 +1623,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   /// anywhere in the app, so the derive engine's user-window restage path could
   /// never run and a mis-staged night was uncorrectable.
   ///
-  /// Naps have their own screen and their own table (`sleep_nap`, with a real
-  /// writer — `LocalDb.putNapEdit`/`deleteNapEdit`), reached from the Health
-  /// screen's nap row. They are not folded into this card: a night's window
+  /// Naps have their own screen, reached from the Health screen's nap row.
+  /// Corrections use the repository's sleep-block commands. They are not folded into this card: a night's window
   /// is one thing you either confirm or move, naps are a list you add to and
   /// remove from, and `_editWindow` below only ever asks two time pickers for
   /// one pair of times — the wrong shape for "how many, which ones".

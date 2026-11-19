@@ -19,6 +19,8 @@
 // more than the default 30 s.
 @Timeout(Duration(minutes: 2))
 library;
+import 'support/sleep_writes.dart';
+
 
 import 'dart:convert';
 
@@ -27,7 +29,6 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/profile.dart';
-import 'package:openstrap_edge/data/db.dart';
 
 import 'support/frozen_day_result_fixtures.dart';
 
@@ -81,7 +82,7 @@ Future<void> _sentinel(
 );
 
 Future<void> _override(String day, int onset, int offset, String source) =>
-    LocalDb.putSleepOverride(
+    TestSleepWrites.putSleepOverride(
       dayId: day,
       onsetTs: onset,
       offsetTs: offset,

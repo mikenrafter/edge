@@ -1,5 +1,13 @@
 part of '../derivation_engine.dart';
 
+class _DayReviewWork {
+  const _DayReviewWork(this.day,this.naps,this.workouts,this.meals,this.dataNowSec,this.forceFinalize,this.batchReference);
+  final String day;
+  final List<Map<String,dynamic>> naps,workouts,meals;
+  final int dataNowSec;
+  final bool forceFinalize,batchReference;
+}
+
 extension _EngineDayCompute on DerivationEngine {
   /// The coverage verdict for [dayId]: null when no coverage was recorded for
   /// its stored result (the cursor rule applies); otherwise the recorded
@@ -25,6 +33,24 @@ extension _EngineDayCompute on DerivationEngine {
   /// the day. [DayDerive.declined] when the day deliberately kept its existing
   /// result: not a derive, so the caller must not count it as done, and settles
   /// it instead (see engine/settled.dart).
+  Future<DayDerive> _deriveReviewedDay(
+    PreparedDerivationDay day,Profile profile,int dataNowSec,_BaselineHistoryCache history,{
+    bool forceFinalize=false,bool suppliedSubstrate=false,
+    ana.CalculationMode calculationMode=ana.CalculationMode.forced,
+    DayResultWrite reason=DayResultWrite.derive,bool batchReference=false,Set<String>? onStaleTonight,
+  }) async {
+    _DayReviewWork? review;
+    final result=await _derivePreparedDay(day,profile,dataNowSec,history,
+      forceFinalize:forceFinalize,suppliedSubstrate:suppliedSubstrate,calculationMode:calculationMode,
+      reason:reason,batchReference:batchReference,onStaleTonight:onStaleTonight,
+      deferReview:(work)=>review=work);
+    if(result==DayDerive.committed && review!=null) {
+      try { await _publishDayReview(review!); }
+      catch(e) { _log('day review failed for ${day.date}: $e'); }
+    }
+    return result;
+  }
+
   Future<DayDerive> _derivePreparedDay(
     PreparedDerivationDay day,
     Profile profile,
@@ -42,6 +68,7 @@ extension _EngineDayCompute on DerivationEngine {
     // stored window) changed since it was prepared; the day is then written
     // provisional and the caller re-derives it. Null: finalize as decided.
     Set<String>? onStaleTonight,
+    required void Function(_DayReviewWork) deferReview,
   }) async {
     _declineReasons.remove(day.date);
     // No state from an earlier pass in this process (a headless wake, a cold
@@ -683,11 +710,6 @@ extension _EngineDayCompute on DerivationEngine {
       // sendable object (never `this`, `day`, or `bundle`).
       // Read HERE, on the main isolate — the worker has no database.
       final reviewDb = await LocalDb.instance;
-      final previousDay = await LocalDb.dayResult(day.date);
-      if (previousDay != null) {
-        await reviewDb.transaction((tx) => ActivityStore.preserveLegacyNaps(tx, day.date,
-          Map<String, dynamic>.from(jsonDecode(previousDay['payload_json'] as String) as Map)));
-      }
       // WHOOP 4 ambient check: how closely the night's skin temp moves with
       // the band's ambient channel. Read here (the isolate has no DB) and
       // stored, so the illness watch can leave ambient-driven nights out.
@@ -897,50 +919,9 @@ extension _EngineDayCompute on DerivationEngine {
           ],
         );
       }
-      final activityStore = ActivityStore(await LocalDb.instance);
-      // The audit's batch reference pass writes nothing and prompts nothing.
-      final newSuggestions = [
-        if (!batchReference)
-          ...await activityStore.reconcile(
-              ActivityKind.workout, blocks.suggestionsToPersist),
-        if (!batchReference)
-          ...await activityStore.reconcile(ActivityKind.nap, blocks.napSuggestions),
-        if (!batchReference)
-          ...await activityStore.reconcile(ActivityKind.meal, blocks.mealSuggestions),
-      ];
-      if (!forceFinalize && !batchReference) {
-        try {
-          final since = (await SharedPreferences.getInstance()).getInt(Prefs.napAutoLogSinceSec);
-          DerivationEngine._autoLoggedNaps += await activityStore.autoLogNaps(
-            sinceSec: (since ?? 0) > 0 ? since : null,
-            dataEdgeSec: dataNowSec, settleSec: ana.napBridgeSec,
-            current: blocks.napSuggestions,
-          );
-        } catch (e) {
-          _log('nap auto-log failed for ${day.date}: $e');
-        }
-      }
-      for (final suggestion in newSuggestions) {
-        // The rows are already banked; a failed prompt must not mark the day partial.
-        try {
-          // Meal candidates belong in review. The existing alert preferences
-          // opt into nap/workout prompts and do not authorize meal alerts.
-          if (suggestion.kind == ActivityKind.meal || forceFinalize ||
-              !await activityStore.mayNotifyNew(suggestion)) {
-            continue;
-          }
-          final nap = suggestion.kind == ActivityKind.nap;
-          await NotificationCenter.instance.emit(NotificationEvent(
-            dedupeKey: '${day.date}:activity:${suggestion.id}',
-            category: NotifCategory.reminders, priority: NotifPriority.normal,
-            title: nap ? 'Did you nap?' : 'Did you work out?',
-            body: 'A possible ${nap ? 'nap' : 'workout'} is ready to review.',
-            date: day.date, route: activitySuggestionRoute(suggestion.id, suggestion.kind.name),
-          ), allowPermissionPrompt: false);
-        } catch (e) {
-          _log('activity prompt failed for ${suggestion.id}: $e');
-        }
-      }
+      if(!batchReference) { deferReview(_DayReviewWork(day.date,
+        blocks.napSuggestions,blocks.suggestionsToPersist,blocks.mealSuggestions,
+        dataNowSec,forceFinalize,batchReference)); }
 
       if (!batchReference) {
         await _persistWakeDayFeatures(dayId: day.date, wake: blocks.wake);
@@ -1361,6 +1342,59 @@ extension _EngineDayCompute on DerivationEngine {
     }
     if (!secondHalfOk || day.tonightPending) _incompleteFingerprints.add(day.date);
     return DayDerive.committed;
+  }
+
+  /// Per-day review runs after the compute pass and its result transaction.
+  Future<void> _publishDayReview(_DayReviewWork work,{Call1<ActivitySuggestion,Future<void>>? onPrompt,int? nowTs}) async {
+    if(work.batchReference) return;
+    final activityStore=ActivityStore(await LocalDb.instance);
+    final batchReference=work.batchReference, forceFinalize=work.forceFinalize;
+    final dataNowSec=work.dataNowSec;
+      // The audit's batch reference pass writes nothing and prompts nothing.
+      final newSuggestions = [
+        if (!batchReference)
+          ...await activityStore.reconcile(
+              ActivityKind.workout, work.workouts),
+        if (!batchReference)
+          ...await activityStore.reconcile(ActivityKind.nap, work.naps),
+        if (!batchReference)
+          ...await activityStore.reconcile(ActivityKind.meal, work.meals),
+      ];
+      if (!forceFinalize && !batchReference) {
+        try {
+          final since = (await SharedPreferences.getInstance()).getInt(Prefs.napAutoLogSinceSec);
+          DerivationEngine._autoLoggedNaps += await activityStore.autoLogNaps(
+            sinceSec: (since ?? 0) > 0 ? since : null,
+            dataEdgeSec: dataNowSec, settleSec: ana.napBridgeSec,
+            current: work.naps,
+          );
+        } catch (e) {
+          _log('nap auto-log failed for ${work.day}: $e');
+        }
+      }
+      for (final suggestion in newSuggestions) {
+        // The rows are already banked; a failed prompt must not mark the day partial.
+        try {
+          // Meal candidates belong in review. The existing alert preferences
+          // opt into nap/workout prompts and do not authorize meal alerts.
+          if (suggestion.kind == ActivityKind.meal || forceFinalize ||
+              !await activityStore.mayNotifyNew(suggestion,nowTs:nowTs)) {
+            continue;
+          }
+          final nap = suggestion.kind == ActivityKind.nap;
+          if(onPrompt!=null) { await onPrompt.call(suggestion);continue; }
+          await NotificationCenter.instance.emit(NotificationEvent(
+            dedupeKey: '${work.day}:activity:${suggestion.id}',
+            category: NotifCategory.reminders, priority: NotifPriority.normal,
+            title: nap ? 'Did you nap?' : 'Did you work out?',
+            body: 'A possible ${nap ? 'nap' : 'workout'} is ready to review.',
+            date: work.day, route: activitySuggestionRoute(suggestion.id, suggestion.kind.name),
+          ), allowPermissionPrompt: false);
+        } catch (e) {
+          _log('activity prompt failed for ${suggestion.id}: $e');
+        }
+      }
+
   }
 
   /// After a day's result committed: advances its checkpoint to the newest

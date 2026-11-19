@@ -57,7 +57,7 @@ void main() {
   test('the wake and ledger tables are in the restore list', () {
     for (final t in const [
       'wake_confirmation', 'wake_meta', 'wake_evidence', 'sync_ledger',
-      'band_backlog', 'notif_slots', 'sleep_session_candidates',
+      'band_backlog', 'notif_slots', 'sleep_session_candidates', 'sleep_block',
     ]) {
       expect(LocalDb.restoreTablesForTest, contains(t), reason: t);
     }

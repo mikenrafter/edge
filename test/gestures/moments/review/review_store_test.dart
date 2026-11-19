@@ -1,7 +1,8 @@
-// The queue PERSISTS (a Prefs JSON blob, key `moment_review.queue`): written on
-// every change, so leaving the screen, a rebuild or an app kill loses nothing;
-// a corrupt blob reads as empty; an empty queue leaves no draft behind.
-// RED: the store is a throwing stub.
+// The queue's STORE (a Prefs JSON blob, key `moment_review.queue`) keeps ONLY a
+// Save that already started (owner, 2026-11-17: choices and unstarted ranges
+// are session-only). Written on every change so an interrupted Save resumes
+// after a kill; a corrupt blob reads as empty; an empty queue leaves no draft
+// behind; an older build's blob is filtered when loaded.
 
 import 'dart:convert';
 
@@ -30,43 +31,55 @@ void main() {
     expect(store.load().isEmpty, isTrue);
   });
 
-  test('save then load (a brand new store object = a new screen) round-trips',
-      () async {
+  ReviewRange started({bool windowWritten = true}) => MomentReviewQueue.empty
+      .withRange(mB, mC, MomentChoice.nap)
+      .ranges
+      .single
+      .copyWith(attempting: true, windowWritten: windowWritten);
+
+  test('save keeps only the started range; choices and unstarted ranges stay '
+      'in the session', () async {
     final q = MomentReviewQueue.empty
         .withDecision(
             kA, const ReviewDecision.label(MomentChoice.caffeine, value: 80))
-        .withRange(mB, mC, MomentChoice.nap);
+        .withRange(mA, mB, MomentChoice.workout)
+        .withRangeProgress(started());
     await store.save(q);
     final back = const MomentReviewStore().load();
-    expect(back.decisionFor(kA)!.value, 80);
+    expect(back.decisions, isEmpty);
     expect(back.ranges.single.startKey, mB.key);
-    expect(back.length, 2);
+    expect(back.ranges.single.windowWritten, isTrue);
   });
 
   test('what is stored is plain JSON under the documented key (restart-proof)',
       () async {
-    await store.save(MomentReviewQueue.empty
-        .withDecision(kA, const ReviewDecision.skip()));
+    await store.save(
+        MomentReviewQueue.empty.withRangeProgress(started()));
     final raw = Prefs.getString(MomentReviewStore.prefKey, '');
     expect(MomentReviewStore.prefKey, 'moment_review.queue');
     expect(raw, isNotEmpty);
     // A process that starts later reads exactly this text.
     final fresh = MomentReviewQueue.fromJson(jsonDecode(raw));
-    expect(fresh.decisionFor(kA)!.kind, ReviewDecisionKind.skip);
+    expect(fresh.ranges.single.windowWritten, isTrue);
   });
 
   test('a later save replaces the earlier one', () async {
+    await store.save(MomentReviewQueue.empty.withRangeProgress(started()));
     await store.save(MomentReviewQueue.empty
-        .withDecision(kA, const ReviewDecision.skip()));
-    await store.save(MomentReviewQueue.empty.withDecision(
-        kA, const ReviewDecision.label(MomentChoice.meal)));
-    expect(store.load().decisionFor(kA)!.choice, MomentChoice.meal);
+        .withRangeProgress(started().copyWith(startLabelled: true)));
+    expect(store.load().ranges.single.startLabelled, isTrue);
     expect(store.load().length, 1);
   });
 
-  test('saving an empty queue leaves no draft behind', () async {
+  test('a queue with nothing started stores nothing', () async {
     await store.save(MomentReviewQueue.empty
         .withDecision(kA, const ReviewDecision.skip()));
+    expect(Prefs.getString(MomentReviewStore.prefKey, ''), '');
+    expect(store.load().isEmpty, isTrue);
+  });
+
+  test('saving an empty queue leaves no draft behind', () async {
+    await store.save(MomentReviewQueue.empty.withRangeProgress(started()));
     await store.save(MomentReviewQueue.empty);
     expect(store.load().isEmpty, isTrue);
     final raw = Prefs.getString(MomentReviewStore.prefKey, '');

@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // A rejected main sleep stored under tomorrow's label has to reach today's nap
 // filter even when today's data stops hours before midnight.
 
@@ -28,7 +29,7 @@ void main() {
   test('a reject stored under the next calendar day is read', () async {
     final on = DateTime(2026, 3, 4, 22).millisecondsSinceEpoch ~/ 1000;
     final off = DateTime(2026, 3, 5, 6).millisecondsSinceEpoch ~/ 1000;
-    await LocalDb.putSleepOverride(
+    await TestSleepWrites.seedLegacyMain(
       dayId: '2026-03-05',
       onsetTs: on,
       offsetTs: off,

@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // "Not sleep" and a user-set window that the band cannot back must BLANK the
 // night, and the blank must hold.
 //
@@ -99,7 +100,7 @@ Future<void> _derive(String day) =>
     DerivationEngine().runDays(const Profile(), {day}, force: true);
 
 Future<void> _override(String day, int onset, int offset, String source) =>
-    LocalDb.putSleepOverride(
+    TestSleepWrites.putSleepOverride(
       dayId: day,
       onsetTs: onset,
       offsetTs: offset,

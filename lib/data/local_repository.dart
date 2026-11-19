@@ -17,12 +17,12 @@ import '../models/activity_suggestion.dart';
 import '../compute/pulse_alert_record.dart';
 import '../wake/wake_timeline.dart';
 import '../gestures/moment_review_queue.dart';
+import 'sleep_editor.dart';
 import '../compute/manual_session.dart' show SessionSpan;
 import '../gps/route_models.dart';
 import 'journal_fields.dart';
 import 'day_review.dart';
 import 'assumed_water.dart';
-import 'nap_resolution.dart';
 
 /// The single source of truth for "no step goal configured yet" (8k/day is
 /// the commonly-cited optimal benefit/cost ratio for step count). Both the
@@ -120,12 +120,12 @@ abstract class LocalRepository {
   Future<List<ActivitySuggestion>> pendingActivities() =>
       throw UnimplementedError('pendingActivities');
   Future<void> confirmActivity(ActivitySuggestion suggestion, {
-    int? startTs, int? endTs, String? workoutType, NapResolution? expected,
+    int? startTs, int? endTs, String? workoutType, SleepMergeAuthorization? merge,
   }) => throw UnimplementedError('confirmActivity');
-  /// What keeping a nap at [startTs]..[endTs] would do: the union with every
-  /// sleep block it overlaps (see nap_resolution.dart).
-  Future<NapResolution> resolveNapKeep(int startTs, int endTs) =>
-      throw UnimplementedError('resolveNapKeep');
+  /// The merge keeping a nap at [startTs]..[endTs] would need (null when it is
+  /// clear): the same proposal a refusing writer would carry.
+  Future<SleepMergeProposal?> proposeNapKeep(int startTs, int endTs) =>
+      throw UnimplementedError('proposeNapKeep');
   Future<void> discardActivity(ActivitySuggestion suggestion) =>
       throw UnimplementedError('discardActivity');
   // ── profile ────────────────────────────────────────────────────────────────
@@ -265,6 +265,32 @@ abstract class LocalRepository {
   /// the same as a day with no naps, and reads differently).
   Future<Map<String, dynamic>> getDayNaps(String date) =>
       throw UnimplementedError('re-layer: getDayNaps');
+
+  /// The editor's checked read of [dayId]: every main and nap entry it may act
+  /// on, with their history state and the day revision plans are built on.
+  Future<SleepEditorRead> readSleepEditor(String dayId) =>
+      throw UnimplementedError('readSleepEditor');
+
+  /// Writes (or, with `source: 'rejected'`, suppresses) one nap window through
+  /// the shared spacing guard. Pass [merge] to approve a proposal a refusal
+  /// returned. Never throws for spacing: the outcome says Saved or Refused.
+  Future<SleepEditorOutcome> putNap({
+    required String dayId,
+    required int startTs,
+    required int endTs,
+    required String source,
+    SleepMergeAuthorization? merge,
+  }) => throw UnimplementedError('putNap');
+
+  /// Deletes a nap row, or restores a removed one (a restore is a new block, so
+  /// the spacing guard applies).
+  Future<SleepEditorOutcome> deleteNap(String dayId, int startTs,
+          {SleepMergeAuthorization? merge}) =>
+      throw UnimplementedError('deleteNap');
+
+  /// Commits [plan] in one transaction; a typed outcome, never a bool.
+  Future<SleepEditorOutcome> saveSleepEditor(SleepEditorPlan plan) =>
+      throw UnimplementedError('saveSleepEditor');
   Future<Map<String, dynamic>> getDayHrv(String date) =>
       throw UnimplementedError('re-layer: getDayHrv');
 

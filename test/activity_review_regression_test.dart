@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,6 +6,8 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/activity_store.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/sleep_block_store.dart';
+import 'package:openstrap_edge/data/sleep_edit_store.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
@@ -68,7 +71,7 @@ void main() {
     await LocalDb.putDayResult(
       dayId: day,
       algoVersion: kAlgoVersion,
-      windowJson: '{}',
+      windowJson:jsonEncode({'onset_ms':(start-8*3600)*1000,'offset_ms':(start+900)*1000}),
       finalized: true,
       payloadJson: jsonEncode({
         'scalars': {'nap_min': 0},
@@ -83,9 +86,9 @@ void main() {
         },
       }),
     );
-    expect(await LocalDb.napOverlapsMainSleep(start, start + 1800), isTrue);
+    expect(await TestSleepWrites.napOverlapsMainSleep(start, start + 1800), isTrue);
     await expectLater(
-      LocalDb.putNapEdit(
+      TestSleepWrites.putNapEdit(
         dayId: day,
         startTs: start,
         endTs: start + 1800,
@@ -94,13 +97,13 @@ void main() {
       throwsA(isA<ActivityReviewException>()),
     );
     expect(await LocalDb.napEdits(day), isEmpty);
-    // The part after getting up is still a nap.
-    expect(await LocalDb.napOverlapsMainSleep(start + 900, start + 1800),
+    // The separate part at least 30 minutes after getting up is still a nap.
+    expect(await TestSleepWrites.napOverlapsMainSleep(start + 900, start + 1800),
         isFalse);
-    await LocalDb.putNapEdit(
+    await TestSleepWrites.putNapEdit(
       dayId: day,
-      startTs: start + 900,
-      endTs: start + 1800,
+      startTs: start + 2700,
+      endTs: start + 4500,
       source: 'manual',
     );
     expect(await LocalDb.napEdits(day), hasLength(1));
@@ -152,7 +155,7 @@ void main() {
           await store.discard(suggestion);
         }
         for (var retry = 0; retry < 2; retry++) {
-          await LocalDb.applyPendingActivityReviews();
+          await TestSleepWrites.applyNapWork();
           final row = (await LocalDb.dayResult(day))!;
           expect(row['algo_version'], kAlgoVersion - 2);
           expect(row['rhr'], 51);
@@ -182,7 +185,7 @@ void main() {
     await store.confirm(suggestion, startTs: start, endTs: start + 1800);
     for (var retry = 0; retry < 3; retry++) {
       // Leave the job pending, as when cross-day refresh is interrupted.
-      await LocalDb.applyPendingActivityReviews();
+      await TestSleepWrites.applyNapWork();
       final row = (await LocalDb.dayResult(day))!;
       final bundle = jsonDecode(row['payload_json'] as String);
       expect(bundle['scalars']['nap_min'], 24);
@@ -212,14 +215,14 @@ void main() {
             },
           }),
         });
-        await LocalDb.putNapEdit(
+        await TestSleepWrites.putNapEdit(
           dayId: day,
           startTs: start,
           endTs: start + 1800,
           source: 'manual',
         );
         for (var retry = 0; retry < 2; retry++) {
-          await LocalDb.applyPendingActivityReviews();
+          await TestSleepWrites.applyNapWork();
           final bundle = jsonDecode(
             (await LocalDb.dayResult(day))!['payload_json'] as String,
           );
@@ -261,7 +264,7 @@ void main() {
         edited: true,
       );
       expect(
-        await DerivationEngine().refreshActivityReviews(const Profile()),
+        await TestSleepWrites.refreshNapReviews(DerivationEngine(),const Profile()),
         isTrue,
       );
       final row = (await LocalDb.dayResult(targetDay))!;
@@ -297,7 +300,7 @@ void main() {
       dates.add(label);
       await result(label);
       final ts = date.millisecondsSinceEpoch ~/ 1000;
-      await LocalDb.putNapEdit(
+      await TestSleepWrites.putNapEdit(
         dayId: label,
         startTs: ts,
         endTs: ts + 1800,
@@ -305,8 +308,8 @@ void main() {
       );
     }
     final engine = DerivationEngine();
-    expect(await engine.refreshActivityReviews(const Profile()), isFalse);
-    expect(await engine.refreshActivityReviews(const Profile()), isTrue);
+    expect(await TestSleepWrites.refreshNapReviews(engine,const Profile()), isTrue);
+    expect(await TestSleepWrites.refreshNapReviews(engine,const Profile()), isTrue);
     expect(await db.query('activity_review_days'), isEmpty);
     final input =
         jsonDecode(
@@ -338,14 +341,14 @@ void main() {
     'applying a batch rejects summaries started before its day writes',
     () async {
       await result(day);
-      await LocalDb.putNapEdit(
+      await TestSleepWrites.putNapEdit(
         dayId: day,
         startTs: start,
         endTs: start + 1800,
         source: 'manual',
       );
       final revision = await LocalDb.activityReviewRevision();
-      final jobs = await LocalDb.applyPendingActivityReviews();
+      final jobs = await TestSleepWrites.applyNapWork();
       expect(jobs, isNotEmpty);
       expect(
         await LocalDb.putReviewedBaseline('crossday_input', '{}', revision),
@@ -355,7 +358,7 @@ void main() {
         await LocalDb.putReviewedBaseline('crossday', '{}', revision),
         isFalse,
       );
-      await LocalDb.finishActivityReviews(jobs);
+      await TestSleepWrites.finishNapWork(jobs);
       expect(await db.query('activity_review_days'), isEmpty);
     },
   );
@@ -393,7 +396,7 @@ void main() {
         hasLength(1),
         reason: 'Only the locally kept decision should create an accepted nap',
       );
-      await LocalDb.applyPendingActivityReviews();
+      await TestSleepWrites.applyNapWork();
       final bundle = jsonDecode(
         (await LocalDb.dayResult(day))!['payload_json'] as String,
       );
@@ -421,7 +424,7 @@ void main() {
       await LocalDb.wipeAll();
       await LocalDb.importFromDbFile(pendingPath);
       await store.discard(suggestion);
-      await DerivationEngine().refreshActivityReviews(const Profile());
+      await TestSleepWrites.refreshNapReviews(DerivationEngine(),const Profile());
       expect(await db.query('activity_review_days'), isEmpty);
       await LocalDb.importFromDbFile(acceptedPath);
       expect(
@@ -430,7 +433,7 @@ void main() {
       );
       expect(await db.query('sleep_nap'), isEmpty);
       expect(await db.query('activity_review_days'), isNotEmpty);
-      await LocalDb.applyPendingActivityReviews();
+      await TestSleepWrites.applyNapWork();
       final bundle = jsonDecode(
         (await LocalDb.dayResult(day))!['payload_json'] as String,
       );
@@ -442,7 +445,7 @@ void main() {
   test(
     'a backup without the suggestion ledger still restores manual naps',
     () async {
-      await LocalDb.putNapEdit(
+      await TestSleepWrites.putNapEdit(
         dayId: day,
         startTs: start,
         endTs: start + 1800,
@@ -484,21 +487,22 @@ void main() {
           }),
           'computed_at': 1,
         });
-        await ActivityStore.markDayChanged(db, day);
+        await SleepBlockStore.backfill(db);
+        await db.transaction((tx)=>SleepEditStore.enqueue(tx,day,main:false));
       }
       if (source != 'unmigrated') {
-        final jobs = await LocalDb.applyPendingActivityReviews();
-        await LocalDb.finishActivityReviews(jobs);
+        final jobs = await TestSleepWrites.applyNapWork();
+        await TestSleepWrites.finishNapWork(jobs);
       }
       // These are the same writes used by NapsScreen's remove/restore actions.
-      await LocalDb.putNapEdit(
+      await TestSleepWrites.putNapEdit(
         dayId: day,
         startTs: start,
         endTs: start + 1800,
         source: 'rejected',
       );
-      var jobs = await LocalDb.applyPendingActivityReviews();
-      await LocalDb.finishActivityReviews(jobs);
+      var jobs = await TestSleepWrites.applyNapWork();
+      await TestSleepWrites.finishNapWork(jobs);
       var bundle = jsonDecode(
         (await LocalDb.dayResult(day))!['payload_json'] as String,
       );
@@ -516,9 +520,9 @@ void main() {
       await LocalDb.close();
       db = await LocalDb.instance;
       store = ActivityStore(db);
-      await LocalDb.deleteNapEdit(day, start);
-      jobs = await LocalDb.applyPendingActivityReviews();
-      await LocalDb.finishActivityReviews(jobs);
+      await TestSleepWrites.deleteNapEdit(day, start);
+      jobs = await TestSleepWrites.applyNapWork();
+      await TestSleepWrites.finishNapWork(jobs);
       bundle = jsonDecode(
         (await LocalDb.dayResult(day))!['payload_json'] as String,
       );
@@ -547,9 +551,9 @@ void main() {
       'created_at': 1,
     });
     await db.update('activity_review_meta', {'activated_at': start + 3600});
-    await LocalDb.deleteNapEdit(day, start);
-    final jobs = await LocalDb.applyPendingActivityReviews();
-    await LocalDb.finishActivityReviews(jobs);
+    await TestSleepWrites.deleteNapEdit(day, start);
+    final jobs = await TestSleepWrites.applyNapWork();
+    await TestSleepWrites.finishNapWork(jobs);
     // The old detection is never offered for review again, so the restore
     // itself has to credit it.
     expect(await store.reconcile(ActivityKind.nap, [candidate()]), isEmpty);
@@ -557,23 +561,24 @@ void main() {
       (await LocalDb.dayResult(day))!['payload_json'] as String,
     );
     final restored = (bundle['naps']['value'] as List).single as Map;
-    expect(restored['source'], 'confirmed');
+    expect(restored['source'], 'manual',reason:'the restored interval is a report; no measurement snapshot survived');
     expect(restored['start'], start);
     expect(bundle['scalars']['nap_min'], 30);
   });
 
-  test('deleting a manually logged nap still removes it permanently', () async {
+  test('removing a manually logged nap retains its recoverable block', () async {
     await result(day);
-    await LocalDb.putNapEdit(
+    await TestSleepWrites.putNapEdit(
       dayId: day,
       startTs: start,
       endTs: start + 1800,
       source: 'manual',
     );
-    await LocalDb.applyPendingActivityReviews();
-    await LocalDb.deleteNapEdit(day, start);
-    await LocalDb.applyPendingActivityReviews();
-    expect(await LocalDb.napEdits(day), isEmpty);
+    await TestSleepWrites.applyNapWork();
+    await TestSleepWrites.deleteNapEdit(day, start);
+    await TestSleepWrites.applyNapWork();
+    expect((await LocalDb.napEdits(day)).single['source'],'rejected');
+    expect(await db.query('sleep_block',where:"state = 'live'"),isEmpty);
     final bundle = jsonDecode(
       (await LocalDb.dayResult(day))!['payload_json'] as String,
     );
@@ -600,19 +605,19 @@ void main() {
         },
       }),
     );
-    await LocalDb.putNapEdit(
+    await TestSleepWrites.putNapEdit(
       dayId: day,
       startTs: start,
       endTs: start + 1800,
       source: 'manual',
     );
-    await LocalDb.applyPendingActivityReviews();
+    await TestSleepWrites.applyNapWork();
     var bundle = jsonDecode(
       (await LocalDb.dayResult(day))!['payload_json'] as String,
     );
     expect(bundle['naps']['value'], hasLength(1));
-    await LocalDb.deleteNapEdit(day, start);
-    await LocalDb.applyPendingActivityReviews();
+    await TestSleepWrites.deleteNapEdit(day, start);
+    await TestSleepWrites.applyNapWork();
     bundle = jsonDecode(
       (await LocalDb.dayResult(day))!['payload_json'] as String,
     );

@@ -178,7 +178,8 @@ void main() {
       await run;
       expect(w.answers.single.value, 80);
       expect(s.queue.decisionFor(kA)!.value, 160);
-      expect(const MomentReviewStore().load().decisionFor(kA)!.value, 160);
+      expect(const MomentReviewStore().load().decisionFor(kA), isNull,
+          reason: 'a queued choice is session-only, never stored');
     });
 
     test('an unchanged draft still leaves when it lands', () async {

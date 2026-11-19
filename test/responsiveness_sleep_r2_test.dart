@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 import 'support/test_callable.dart';
 import 'support/sleep_edit_effects.dart';
 // WHY: durable sleep edits must survive failed calculations and unrelated edits.
@@ -17,7 +18,7 @@ import 'backup/backup_support.dart';
 const a = '2026-11-10', b = '2026-11-13';
 Future<void> edit(String d, {String source = 'manual'}) {
   final wake = DateTime.parse('${d}T07:00:00').millisecondsSinceEpoch ~/ 1000;
-  return LocalDb.putSleepOverride(
+  return TestSleepWrites.putSleepOverride(
     dayId: d,
     onsetTs: wake - 8 * 3600,
     offsetTs: wake,
@@ -322,7 +323,7 @@ void main() {
         ['{"value":{"onset_ms":$start,"offset_ms":$end}}', a],
       );
       final staleFence = await SleepEditStore.generation(upTo: a);
-      await edit(a, source: 'confirmed');
+      await SleepEditStore.recalculate(a); // same bounds, genuinely new work
       expect(
         await SleepEditStore.reuseMeasuredNightIfCurrent(
           a,

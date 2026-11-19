@@ -273,8 +273,13 @@ void main() {
         'day_id': '2026-08-01',
         'onset_ts': 1000,
         'offset_ts': 2000,
-        'source': 'user',
+        'source': 'manual',
         'created_at': 1,
+      });
+      await db.insert('sleep_block', {
+        'id': 'saved-main', 'kind': 'main', 'owner_day': '2026-08-01', 'owner_rule': 0,
+        'start_ts': 1000, 'end_ts': 2000, 'source': 'manual', 'state': 'live',
+        'history': 'unavailable', 'revision': 0, 'created_at': 1, 'updated_at': 1,
       });
       await db.insert('sessions', {
         'id': 's1',
@@ -342,6 +347,7 @@ void main() {
       'med_dose',
       'cycle_log',
       'sleep_override',
+      'sleep_block',
       'sessions',
       'day_result',
       'metric_series',
@@ -395,6 +401,11 @@ void main() {
             reason: '$t did not come back');
         expect(r.salvaged[t], 1, reason: '$t was not reported as recovered');
       }
+      // WHY: a stable block id and unknown detection history must survive salvage
+      // [CLAIM(sleep-block-owner), slice-A G3].
+      final block = (await db.query('sleep_block')).single;
+      expect((block['id'], block['start_ts'], block['end_ts'], block['history']),
+          ('saved-main', 1000, 2000, 'unavailable'));
       // Values, not just counts — a merge that dropped columns would pass a
       // row count and still hand the user a blank entry.
       expect((await db.query('journal')).first['note'],

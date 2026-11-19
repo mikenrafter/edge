@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // WHY: settled edits and pruned raw must never erase measured history or
 // leave a successful edit retrying forever (review R3-1/R3-2).
 // CLAIM(sleep-edit-r3): only unapplied assertions can invalidate a night;
@@ -17,7 +18,7 @@ import 'backup/backup_support.dart';
 const a = '2026-11-10', b = '2026-11-13', old = '2026-10-01';
 Future<void> edit(String d, {String source = 'manual'}) {
   final wake = DateTime.parse('${d}T07:00:00').millisecondsSinceEpoch ~/ 1000;
-  return LocalDb.putSleepOverride(
+  return TestSleepWrites.putSleepOverride(
     dayId: d,
     onsetTs: wake - 8 * 3600,
     offsetTs: wake,

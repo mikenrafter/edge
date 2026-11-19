@@ -55,7 +55,7 @@ void main() {
   });
 
   group('editing', () {
-    test('edit changes the current queue, bumps the revision, notifies, stores',
+    test('edit changes the current queue, bumps the revision, notifies; a choice is not stored',
         () async {
       final s = MomentReviewService();
       var notified = 0;
@@ -66,18 +66,25 @@ void main() {
       expect(s.revision, greaterThan(r0));
       expect(notified, greaterThan(0));
       expect(s.queue.decisionFor(kA), isNotNull);
-      expect(const MomentReviewStore().load().decisionFor(kA), isNotNull);
+      expect(const MomentReviewStore().load().decisionFor(kA), isNull,
+          reason: 'choices are session-only (owner, 2026-11-17)');
     });
 
-    test('a second service (a new screen\'s) reloads what the first stored', () async {
+    test('a second service reloads a Save that already started, not a choice',
+        () async {
       final a = MomentReviewService();
-      await a.edit((q) => q.withDecision(kA, const ReviewDecision.skip()));
+      await a.edit((q) => q
+          .withDecision(kA, const ReviewDecision.skip())
+          .withRange(mB, mC, MomentChoice.nap));
+      final started = a.queue.ranges.single.copyWith(attempting: true);
+      await a.edit((q) => q.withRangeProgress(started));
       final b = MomentReviewService();
       b.reload();
-      expect(b.queue.decisionFor(kA), isNotNull);
+      expect(b.queue.decisionFor(kA), isNull);
+      expect(b.queue.ranges.single.attempting, isTrue);
     });
 
-    test('adopt drops drafts for items no longer pending, and stores that',
+    test('adopt drops drafts for items no longer pending',
         () async {
       final s = MomentReviewService();
       await s.edit((q) => q
@@ -85,7 +92,6 @@ void main() {
           .withDecision(kC, const ReviewDecision.skip()));
       await s.adopt({kA});
       expect(s.queue.decisions.keys, [kA]);
-      expect(const MomentReviewStore().load().decisions.keys, [kA]);
     });
   });
 
@@ -162,12 +168,12 @@ void main() {
       expect(s.queue.decisionFor(kC), isNotNull,
           reason: 'the old Save must not erase the newer draft');
       expect(s.queue.ranges, isEmpty, reason: 'the range itself is done');
-      expect(const MomentReviewStore().load().decisionFor(kC), isNotNull,
-          reason: 'and the stored blob agrees');
+      expect(const MomentReviewStore().load().decisionFor(kC), isNull,
+          reason: 'the newer choice is session-only: never stored');
     });
 
-    test('a second service reading the blob mid-Save sees the newer draft '
-        'after the Save ends', () async {
+    test('a second service reading the blob mid-Save does not see a session '
+        'draft after the Save ends', () async {
       final s = MomentReviewService();
       final slow = _SlowFinish();
       await s.edit((q) => q.withRange(mA, mB, MomentChoice.nap));
@@ -178,7 +184,8 @@ void main() {
       slow.gate.complete();
       await run;
       final fresh = MomentReviewService()..reload();
-      expect(fresh.queue.decisionFor(kC), isNotNull);
+      expect(fresh.queue.decisionFor(kC), isNull);
+      expect(s.queue.decisionFor(kC), isNotNull);
     });
 
     test('a failed item the user undid meanwhile is not resurrected', () async {

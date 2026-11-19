@@ -236,6 +236,32 @@ class MomentReviewQueue {
 
   ReviewDecision? decisionFor(String reviewKey) => decisions[reviewKey];
 
+  /// What survives a restart: only a Save that already started (its window may
+  /// be written) keeps its progress. Choices and unstarted ranges are
+  /// session-only (owner, 2026-11-17).
+  MomentReviewQueue get recoveryOnly => MomentReviewQueue(
+      ranges: [for (final r in ranges) if (r.inProgress) r]);
+
+  /// The local day label a review key's moment or glass belongs to.
+  static String _dayOfKey(String plain) => plain.split(' ').first;
+
+  /// This queue without the choices and unstarted ranges of [days] (a Save that
+  /// has started stays: its window is written and it can only be finished).
+  MomentReviewQueue withoutDays(Set<String> days) => MomentReviewQueue(
+        decisions: {
+          for (final e in decisions.entries)
+            if (!days.contains(_dayOfKey(e.key.substring(e.key.indexOf(':') + 1))))
+              e.key: e.value,
+        },
+        ranges: [
+          for (final r in ranges)
+            if (r.inProgress ||
+                !(days.contains(_dayOfKey(r.startKey)) ||
+                    days.contains(_dayOfKey(r.endKey))))
+              r,
+        ],
+      );
+
   /// The range the moment with this PLAIN key is an end of, or null.
   ReviewRange? rangeOf(String momentKey) {
     for (final r in ranges) {

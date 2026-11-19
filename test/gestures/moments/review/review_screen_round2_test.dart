@@ -169,7 +169,8 @@ void main() {
           reason: 'the old Save must not erase the new draft');
       expect(service.queue.decisionFor(ReviewKey.moment(mC)), isNotNull);
       expect(const MomentReviewStore().load().decisionFor(ReviewKey.moment(mC)),
-          isNotNull);
+          isNull,
+          reason: 'the new choice is session-only, never stored');
     });
   });
 

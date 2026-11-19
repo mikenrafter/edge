@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // Resuming a day from its stored checkpoint. Two layers:
 //
 //  * the state codec and the folds behind it, pure: a day folded in random
@@ -751,7 +752,7 @@ void main() {
       });
 
       test('a sleep window edit rebuilds instead of resuming', () async {
-        final lines = await scenario(() => LocalDb.putSleepOverride(
+        final lines = await scenario(() => TestSleepWrites.putSleepOverride(
               dayId: day,
               onsetTs: start - 7 * 3600,
               offsetTs: start - 600,

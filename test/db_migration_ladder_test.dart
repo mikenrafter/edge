@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // END-TO-END migration-ladder regressions, run against the REAL LocalDb over
 // sqflite_ffi. Each test hand-builds a database at an OLD schema version, then
 // opens it through LocalDb so sqflite runs the whole onUpgrade ladder.
@@ -534,10 +535,13 @@ void main() {
         pattern: 'resonance',
         seconds: 120,
       );
-      await LocalDb.putNapEdit(
+      // Nap ownership follows its local start, so exercise this day's table
+      // with bounds on that day instead of an unrelated instant in 1970.
+      final napStart = DateTime(2026, 6, 1, 13).millisecondsSinceEpoch ~/ 1000;
+      await TestSleepWrites.putNapEdit(
         dayId: '2026-06-01',
-        startTs: 1000,
-        endTs: 4600,
+        startTs: napStart,
+        endTs: napStart + 3600,
         source: 'manual',
       );
 

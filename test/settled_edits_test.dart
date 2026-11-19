@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // A day with a sleep edit must be able to settle. The settled record keeps the
 // day's edit revision (design 06 1c: sleep_override and sleep_nap are
 // day-scoped catalogued inputs), so only a CHANGED edit reopens the day. An
@@ -117,7 +118,7 @@ void main() {
     await (await LocalDb.instance).delete('sleep_nap');
     await _insertDay(_day);
     await _oldRow(_day);
-    await LocalDb.putNapEdit(
+    await TestSleepWrites.putNapEdit(
       dayId: _day,
       startTs: _localSec(_day, 14),
       endTs: _localSec(_day, 15),
@@ -132,7 +133,7 @@ void main() {
   test('editing the nap afterwards reopens the day', () async {
     expect(await DerivationEngine().debugSettledDays(), contains(_day),
         reason: 'precondition: settled by the previous test');
-    await LocalDb.putNapEdit(
+    await TestSleepWrites.putNapEdit(
       dayId: _day,
       startTs: _localSec(_day, 16),
       endTs: _localSec(_day, 17),

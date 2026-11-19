@@ -1,3 +1,4 @@
+import '../../data/sleep_ownership.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -11,38 +12,16 @@ import '../../models/metric.dart' show whyFromNote;
 import '../../state/app_state.dart';
 import '../ui2.dart';
 import 'home_screen.dart' show clockOfTs, hm, repoOf;
+import '../../data/sleep_editor.dart';
 import 'metric_detail.dart';
 import 'detected_activities.dart' show NapAutoLogRow;
 import '../../health/health_nap_export.dart';
 
 
-// NAPS — the day's naps, and the last word on them.
-//
-// `nap_min` has been populated on every judged day (232 minutes on one of
-// them), the `naps` block has carried the windows behind it, and neither had a
-// reader. Underneath, `sleep_nap` has had `putNapEdit` and `deleteNapEdit`
-// since the detector became a PROPOSAL rather than a verdict — and no caller,
-// anywhere, so `applyNapEdits` replayed a table that could never have a row in
-// it. sleep_detail.dart says so in as many words: "a control that appeared to
-// edit naps while the edits went nowhere would be worse than the absence. It
-// needs a writer first."
-//
-// This is that writer, and it ships with the display for one reason: showing a
-// nap and letting someone correct it are the same feature. A list you cannot
-// argue with is the detector asserting it was there; the person who was
-// actually there gets the last word.
-//
-// AN EDIT IS A RECOMPUTE, NOT A REDRAW. Nap minutes are subtracted from sleep
-// need and sleep debt, so every write here forces the day to derive again —
-// the same machinery a sleep-window correction uses, and the engine
-// force-includes nap-edit days even when they are finalized.
-//
-// WHAT IS DELIBERATELY NOT HERE: no stages. A 30-minute nap holds no complete
-// cycle, the stager says nothing about one, and a logged nap is a REPORT, not
-// an estimate — it gets no confidence, because dressing it in the detector's
-// scale would imply it was inferred.
-
-
+// Nap corrections go through the repository and SleepBlockStore. The shared
+// sleep worker recomposes nap totals and cross-day results; a nap-only edit
+// leaves the measured night and its fence intact. Manual naps are reports and
+// carry no inferred confidence or stages.
 
 class NapsData {
   const NapsData({
@@ -144,9 +123,26 @@ class _NapsScreenState extends State<NapsScreen>
   @override
   void focusStarted() => _load();
 
+  /// The repository the last read used: every write goes through it, never
+  /// through LocalDb directly, so the shared spacing rule applies.
+  LocalRepository? _repoSeen;
+  LocalRepository get _repo =>
+      _repoSeen ?? (throw StateError('no repository to write a nap with'));
+
+  /// A refused write surfaces its reason through the same path as any failed
+  /// edit (the screen's failure line).
+  void _must(SleepEditorOutcome out) {
+    if (out is SleepRefused && out.proposal != null) {
+      throw SleepMergeRequiredException(out.proposal!);
+    }
+    if (out is SleepRefused) throw StateError('That change was refused.');
+    if (out is SleepFailed) throw out.error;
+  }
+
   Future<bool> _load() async {
     final repo = repoOf(context);
     if (repo == null) return false;
+    _repoSeen = repo;
     final token = ++_loadToken;
     try {
       final d = await NapsData.load(repo, want: _day);
@@ -180,7 +176,7 @@ class _NapsScreenState extends State<NapsScreen>
   /// own throw and returns early when another one is already running, so an
   /// edit that changed nothing on disk is indistinguishable from one that
   /// worked unless the screen checks, which is what the comparison below is.
-  Future<void> _edit(Future<void> Function() write) async {
+  Future<void> _edit(Future<void> Function() write,{bool expectVisibleChange=true}) async {
     if (_busy) return;
     // Read BEFORE the first await: the re-derive is the second half of every
     // edit, and reaching back through `context` for it after the write has
@@ -207,7 +203,7 @@ class _NapsScreenState extends State<NapsScreen>
     final after = _d?.naps.map((n) => n['start']).toList();
     // A reload that threw left `_d` as the pre-edit list, so before == after
     // says nothing about the edit; the read-failed card covers that case.
-    if (failed != null || (reloaded && '$before' == '$after')) {
+    if (failed != null || (reloaded && expectVisibleChange && '$before' == '$after')) {
       final l = AppLocalizations.of(context);
       setState(() => _failed = failed ??
           l?.napsNotReanalysed ??
@@ -226,10 +222,10 @@ class _NapsScreenState extends State<NapsScreen>
         // over the same afternoon, and re-logging it later would land on a
         // window that is still being suppressed.
         if (nap['source'] == 'manual') {
-          await LocalDb.deleteNapEdit(day, start);
+          _must(await _repo.deleteNap(day, start));
         } else {
-          await LocalDb.putNapEdit(
-              dayId: day, startTs: start, endTs: end, source: 'rejected');
+          _must(await _repo.putNap(
+              dayId: day, startTs: start, endTs: end, source: 'rejected'));
         }
         // The window is no longer a confirmed nap, so its Apple Health
         // samples go too. A failed native delete is queued by the exporter
@@ -242,9 +238,11 @@ class _NapsScreenState extends State<NapsScreen>
 
   Future<void> _restore(String day, int start) => _edit(() async {
         await HealthNapExporter.shared.synchronized(() async {
-          await LocalDb.deleteNapEdit(day, start);
+          _must(await _repo.deleteNap(day, start));
           // "Put it back" restores the row as 'confirmed' — re-export it.
-          await HealthNapExporter.exportNapRow(dayId: day, startTs: start);
+          final read=await _repo.readSleepEditor(day);
+          final block=read.entries.where((e)=>e.startTs==start && !e.removed).firstOrNull;
+          if(block?.id case final String id) await HealthNapExporter.exportNapRow(blockId:id);
         });
       });
 
@@ -295,22 +293,16 @@ class _NapsScreenState extends State<NapsScreen>
           'That overlaps an existing nap.');
       return;
     }
-    if (await LocalDb.napOverlapsMainSleep(s, e)) {
-      if (!mounted) return;
-      setState(() => _failed = l?.napsOverlapsSleep ??
-          'That overlaps your main sleep, which already counts that time. '
-              'Log only the part after you got up, or correct the night instead.');
-      return;
-    }
     if (!mounted) return;
+    final ownerDay=SleepOwnership.dayOf(SleepBlockKind.nap,s,e);
     await _edit(() async {
       await HealthNapExporter.shared.synchronized(() async {
-        await LocalDb.putNapEdit(
-            dayId: day, startTs: s, endTs: e, source: 'manual');
+        _must(await _repo.putNap(
+            dayId: day, startTs: s, endTs: e, source: 'manual'));
         await HealthNapExporter.exportConfirmedNap(
-            dayId: day, startTs: s, endTs: e);
+            dayId: ownerDay, startTs: s, endTs: e);
       });
-    });
+    },expectVisibleChange:ownerDay==day);
   }
 
   @override

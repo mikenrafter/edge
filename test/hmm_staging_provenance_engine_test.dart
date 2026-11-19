@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // HMM staging fix (analytics d876c427), edge side: the stored night keeps the
 // provenance of what actually produced its stages, recalculation clears it when
 // it no longer applies, and cardio output carries none of it (spec §7 items 1,
@@ -58,7 +59,7 @@ Future<void> _seed(int seconds, int Function(int) hr, int Function(int) rr) asyn
     });
   }
   await batch.commit(noResult: true);
-  await LocalDb.putSleepOverride(
+  await TestSleepWrites.putSleepOverride(
     dayId: _day,
     onsetTs: _start,
     offsetTs: _start + seconds,

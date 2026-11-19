@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // WHY: daytime raw cannot stand in for the missing input of a measured night.
 // CLAIM(sleep-edit-r4): settled assertions preserve measurements when night
 // input is gone; recalculation reuses only an unchanged, fenced assertion.
@@ -134,7 +135,7 @@ void main() {
       () async {
         await seed(daytime: daytime, manual: true);
         final assertion = (await LocalDb.getSleepOverride(p.old))!;
-        await LocalDb.putSleepOverride(
+        await TestSleepWrites.putSleepOverride(
           dayId: p.old,
           onsetTs: (assertion['onset_ts'] as int) + 3600,
           offsetTs: (assertion['offset_ts'] as int) + 3600,

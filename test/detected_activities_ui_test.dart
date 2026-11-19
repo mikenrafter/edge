@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/sleep_editor.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
@@ -9,7 +10,6 @@ import 'package:openstrap_edge/data/assumed_water.dart';
 import 'package:openstrap_edge/gestures/moment_review_queue.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'package:openstrap_edge/ui2/screens/moment_follow_up.dart';
-import 'package:openstrap_edge/data/nap_resolution.dart';
 import 'package:openstrap_edge/compute/manual_session.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
 import 'package:openstrap_edge/state/app_state.dart';
@@ -85,7 +85,7 @@ class _Repo extends LocalRepository {
     int? startTs,
     int? endTs,
     String? workoutType,
-    NapResolution? expected,
+    SleepMergeAuthorization? merge,
   }) async {
     if (confirmError case final e?) throw e;
     if (items.singleWhere((i) => i.id == s.id).revision != s.revision) {

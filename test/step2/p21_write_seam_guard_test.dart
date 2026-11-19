@@ -16,6 +16,9 @@
 // would fail here instead of letting the real scan pass vacuously.
 
 import 'dart:io';
+import 'package:analyzer/dart/analysis/utilities.dart';
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -26,6 +29,9 @@ import '../guards/support/db_source.dart';
 /// may use. The migration ladder's one-time `derived_day` copy runs inside
 /// `_open`, before schema 71 and its triggers exist, and is allowed for that
 /// reason only.
+// The existing derived-row exceptions remain the same two-table ledger for
+// the debt ratchet. Mandatory sleep owners are the new architecture contract,
+// not legacy exceptions [phase2_5-spec §6.2 item 3; CLAIM(sleep-block-guard)].
 const _allowed = <String, Map<String, Set<String>>>{
   'day_result': {
     'LocalDb.putDayResult': {'insert'},
@@ -44,7 +50,7 @@ const _allowed = <String, Map<String, Set<String>>>{
     //   finalized flag in one transaction with the review queue).
     'LocalDb._scrubImportedSkinTempZ': {'update'},
     'LocalDb.rewriteDayPayload': {'update'},
-    'LocalDb.applyPendingActivityReviews': {'insert'},
+    'LocalDb.recomposeNaps': {'insert'},
   },
   'baselines': {
     'LocalDb.putBaselines': {'insert'},
@@ -53,6 +59,33 @@ const _allowed = <String, Map<String, Set<String>>>{
     // Upstream's activity review (log D19): a baselines write refused when a
     // review landed since the calculation started.
     'LocalDb.putReviewedBaseline': {'insert'},
+   },
+};
+
+final _allowedByFile = <String, Map<String, Map<String, Set<String>>>>{
+  for(final table in _allowed.entries) table.key:{'lib/data/db.dart':table.value},
+  'sleep_block': {
+    'lib/data/db.dart': {'LocalDb.deleteDays': {'delete'}},
+    'lib/data/sleep_block_store.dart': {
+      'SleepBlockStore.apply': {'insert','update'},
+      'SleepBlockStore.absorb': {'insert'},
+      'SleepBlockStore._clearMain': {'delete'},
+    },
+  },
+  'sleep_nap': {
+    'lib/data/sleep_block_store.dart': {'SleepBlockStore._project': {'insert','delete'},'SleepBlockStore.absorb': {'insert'}},
+    'lib/data/db.dart': {'LocalDb.deleteDays': {'delete'}},
+  },
+  'sleep_override': {
+    'lib/data/sleep_block_store.dart': {'SleepBlockStore._project': {'insert','delete'}},
+    'lib/data/db.dart': {'LocalDb.deleteDays': {'delete'}},
+  },
+  'sleep_edit_job': {
+    'lib/data/sleep_edit_store.dart': {
+      'SleepEditStore.enqueue': {'insert','update'},'SleepEditStore.cancel': {'update'},
+      'SleepEditStore.advance': {'update'},'SleepEditStore.markAppliedIfCurrent': {'update'},
+    },
+    'lib/data/db.dart': {'LocalDb.putDayResult': {'update'},'LocalDb.recomposeNaps': {'update'}},
   },
 };
 
@@ -75,7 +108,7 @@ const _pinnedDynamicWriters = <String, String>{
   'lib/data/db.dart LocalDb._mergeFromDbFileBody':
       'DATA: restore and salvage walk _restoreTables / _salvageTables; reaches day_result and baselines by design',
   'lib/data/db.dart LocalDb.deleteDays':
-      'DATA: deleteByIn(txn, <literal table>, ...) helper (day_result is allow-listed by the literal scan) and the fixed session child-table loop',
+      'DATA: sleep_block and projections through deleteByIn(txn, <literal table>, ...) helper (day_result is allow-listed by the literal scan) and the fixed session child-table loop',
   'lib/data/db.dart LocalDb.exportDaysDb':
       'DATA: writes the EXPORT file, not the store; fixed table list',
   'lib/data/db.dart LocalDb.pruneSupersededIntermediates':
@@ -244,9 +277,56 @@ bool _isTargetCatalog(String path, WriteSite s) =>
 
 bool _isAllowed(String path, WriteSite s) =>
     _isTargetCatalog(path, s) ||
-    (path == _dbFile && (_allowed[s.table]?[s.member]?.contains(s.verb) ?? false));
+    (_allowedByFile[s.table]?[path]?[s.member]?.contains(s.verb) ?? false);
+
+class _ReviewCalls extends RecursiveAstVisitor<void> {
+  final methods=<String,Set<String>>{};
+  String? current;
+  @override
+  void visitMethodDeclaration(MethodDeclaration node) {
+    final previous=current;current=node.name.lexeme;
+    methods.putIfAbsent(current!,()=>{});super.visitMethodDeclaration(node);current=previous;
+  }
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    if(current!=null) methods[current!]!.add(node.methodName.name);
+    super.visitMethodInvocation(node);
+  }
+}
+Map<String,Set<String>> reviewCalls(String source) {
+  final calls=_ReviewCalls();parseString(content:source).unit.accept(calls);return calls.methods;
+}
 
 void main() {
+  // WHY Q7: the runtime transaction spy exercises this post-day publisher.
+  // The AST backstop pins its production caller and keeps it out of compute.
+  test('Q7 compute returns review work; the per-day caller alone publishes it',() {
+    final positive=reviewCalls("extension X on Object { void _derivePreparedDay() { store.autoLogNaps(); } }");
+    expect(positive['_derivePreparedDay'],contains('autoLogNaps'));
+    final calls=reviewCalls(File('lib/compute/engine/day_compute.dart').readAsStringSync());
+    expect(calls['_derivePreparedDay'],isNotNull);
+    expect(calls['_derivePreparedDay']!.intersection({'autoLogNaps','confirm','apply','preserveLegacyNaps'}),isEmpty);
+    expect(calls['_deriveReviewedDay'],containsAll(['_derivePreparedDay','_publishDayReview']));
+    expect(calls['_publishDayReview'],containsAll(['reconcile','autoLogNaps','mayNotifyNew']));
+  });
+  test('G1 real sleep writes are confined to the block and queue owners',() {
+    final offenders=<String>[];
+    _scanLib().forEach((path,sites) {
+      for(final site in sites.where((s)=>s.table.startsWith('sleep_'))) {
+        if(!_isAllowed(path,site)) offenders.add('$path: $site');
+      }
+    });
+    expect(offenders,isEmpty);
+  });
+  // WHY G1: a new direct nap writer must fail even inside ActivityStore.
+  test('G1 sleep table writers require the exact owner member and file', () {
+    final sites=scanWriters("class ActivityStore { void planted(db) { db.insert('sleep_nap', {}); db.rawUpdate('UPDATE sleep_block SET revision=2'); } }");
+    expect(sites.map((s)=>s.table),['sleep_nap','sleep_block']);
+    expect(sites.every((s)=>!_isAllowed('lib/data/activity_store.dart',s)),true);
+    final owner=scanWriters("class SleepBlockStore { void apply(db) { db.insert('sleep_block', {}); } }").single;
+    expect(_isAllowed('lib/data/sleep_block_store.dart',owner),true);
+    expect(_isAllowed('lib/data/activity_store.dart',owner),false);
+  });
   group('the scanner sees what it guards', () {
     test('API writes, raw SQL writes and the deleteByIn helper', () {
       const src = '''
@@ -731,16 +811,17 @@ class Queue {
 
     test('every allow-listed writer actually writes (the list is not stale)',
         () {
-      final found = <String>{};
-      for (final s in _scanLib()[_dbFile] ?? const <WriteSite>[]) {
-        found.add('${s.table} ${s.member} ${s.verb}');
-      }
+      final found = <String>{
+        for(final path in _scanLib().entries)
+          for(final s in path.value) '${path.key} ${s.table} ${s.member} ${s.verb}',
+      };
       final missing = <String>[
-        for (final t in _allowed.entries)
-          for (final m in t.value.entries)
-            for (final v in m.value)
-              if (!found.contains('${t.key} ${m.key} $v'))
-                '${t.key} ${m.key} $v',
+        for(final t in _allowedByFile.entries)
+          for(final file in t.value.entries)
+            for(final m in file.value.entries)
+              for(final v in m.value)
+                if(!found.contains('${file.key} ${t.key} ${m.key} $v'))
+                  '${file.key} ${t.key} ${m.key} $v',
       ];
       expect(missing, isEmpty);
     });

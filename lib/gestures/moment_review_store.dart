@@ -1,7 +1,9 @@
 // moment_review_store.dart — where the queued review decisions live between
 // visits.
 //
-// Decision: a `Prefs` JSON blob (`moment_review.queue`), not a table. The queue
+// Decision: a `Prefs` JSON blob (`moment_review.queue`), not a table. Only an
+// in-progress Save is kept (see [save]); the rest of the queue is session-only.
+// The queue
 // is a handful of small drafts that are thrown away on Save, with no history to
 // query, so a table would cost a schema bump and a migration for nothing. The
 // blob is written on every queue change (not on dispose), so it survives a kill.
@@ -21,7 +23,9 @@ class MomentReviewStore {
     try {
       final raw = Prefs.getString(prefKey, '');
       if (raw.isEmpty) return MomentReviewQueue.empty;
-      return MomentReviewQueue.fromJson(jsonDecode(raw));
+      // Upgrade filter (idempotent): a queue written by an older build also
+      // holds decisions and unstarted ranges; only in-progress Saves resume.
+      return MomentReviewQueue.fromJson(jsonDecode(raw)).recoveryOnly;
     } catch (_) {
       return MomentReviewQueue.empty;
     }
@@ -31,6 +35,12 @@ class MomentReviewStore {
   /// storage, the write was refused, or it threw. An empty queue leaves no draft
   /// behind. The write reaches the preference cache before the first await, so
   /// a read right after sees it even before the platform confirms.
-  Future<bool> save(MomentReviewQueue q) =>
-      Prefs.setStringAcked(prefKey, q.isEmpty ? '' : jsonEncode(q.toJson()));
+  Future<bool> save(MomentReviewQueue q) {
+    // Session-only choices never reach storage: an in-progress Save is the one
+    // thing a restart must be able to finish (kPrefsNotBackedUp, "resume an
+    // interrupted Save").
+    final durable = q.recoveryOnly;
+    return Prefs.setStringAcked(
+        prefKey, durable.isEmpty ? '' : jsonEncode(durable.toJson()));
+  }
 }

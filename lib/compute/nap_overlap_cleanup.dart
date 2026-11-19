@@ -70,9 +70,6 @@ Future<int> cleanNextNightNapsOnce() async {
       skipped[day] = 'no_next_night_window';
       continue;
     }
-    // Main462b53251: a rewritten bundle may have copied this old detection
-    // aside as a legacy edit. Remove it there too, never a logged/confirmed nap.
-    await LocalDb.deleteLegacyNapsOverlapping(day, on ~/ 1000, off ~/ 1000);
     final naps = _at(payload, ['naps', 'value']);
     if (payload == null || naps is! List || naps.isEmpty) continue;
     final kept = napsWithoutNextNight(

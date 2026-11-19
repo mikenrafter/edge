@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // Reordering is current/future only; the explicit historical
 // rebuild uses the new order and is idempotent (contracts 4 and 5).
 //
@@ -25,7 +26,7 @@ Future<void> _seedNight() async {
     await insertCoverage(kRing, sig, _t(2, 1, 30), _t(2, 7));
     await LocalDb.setSignalPriority(sig, [kRing, kPrimary]);
   }
-  await LocalDb.putSleepOverride(
+  await TestSleepWrites.putSleepOverride(
     dayId: _day,
     onsetTs: _t(1, 22),
     offsetTs: _t(2, 7),

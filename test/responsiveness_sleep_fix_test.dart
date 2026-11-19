@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 import 'support/test_callable.dart';
 import 'support/sleep_edit_effects.dart';
 // WHY: review round 1 of responsiveness stages 1-2. The recalculation intent
@@ -6,11 +7,13 @@ import 'support/sleep_edit_effects.dart';
 // later days. Drives the production AppState runner and the real engine.
 // CLAIM(sleep-edit-fence), CLAIM(sleep-edit-masking) [F1 F2 F3 F15].
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/sleep_block_store.dart';
+import 'package:openstrap_edge/data/sleep_editor.dart';
+
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/derive_prepare.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/compute/substrate.dart';
-import 'package:openstrap_edge/data/activity_store.dart';
 import 'package:openstrap_edge/data/day_label.dart' show todayLabel;
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
@@ -28,11 +31,11 @@ int noon(String d) {
 }
 
 /// A window inside the night that ends on [d]: 23:00 the evening before to 07:00.
-Future<void> editDay(String d, {String source = 'manual'}) {
+Future<void> editDay(String d, {String source = 'manual',int endDelta=0}) {
   final p = d.split('-').map(int.parse).toList();
   final wake = DateTime(p[0], p[1], p[2], 7).millisecondsSinceEpoch ~/ 1000;
-  return LocalDb.putSleepOverride(
-      dayId: d, onsetTs: wake - 8 * 3600, offsetTs: wake, source: source);
+  return TestSleepWrites.putSleepOverride(
+      dayId: d, onsetTs: wake - 8 * 3600, offsetTs: wake+endDelta, source: source);
 }
 
 Future<void> seedRaw(String d) async {
@@ -185,7 +188,7 @@ void main() {
     final app = AppState.forTesting();
     try {
       await app.sleepEditRunner.start().timeout(const Duration(seconds: 60));
-      expect(await phases(), ['$old:done:1/1']);
+      expect(await phases(), ['$old:done:2/2']);
       expect(await SleepEditStore.dirty(old), false);
       expect((await repo.getDayStrain(old))['strain'], isNotNull);
     } finally {
@@ -286,7 +289,7 @@ void main() {
       DerivationEngine.debugRunning = true; // a pass is running: the worker waits
       final run = app.sleepEditRunner.start();
       await Future<void>.delayed(const Duration(milliseconds: 400));
-      await editDay(x); // revision 2 arrives while revision 1 waits
+      await editDay(x,endDelta:60); // revision 2 arrives while revision 1 waits
       DerivationEngine.debugRunning = false;
       await run.timeout(const Duration(seconds: 90));
       expect(derived.where((d) => d == x).length, 1,
@@ -319,7 +322,15 @@ void main() {
   Future<void> extendMain() async {
     final db = await LocalDb.instance;
     final wake = (await LocalDb.getSleepOverride(x))!['offset_ts'] as int;
-    await db.transaction((tx) => ActivityStore.applyNapExtension(tx, wake - 1800, wake + 1800));
+    // The approved merge of a nap reaching the main sleep: one transaction with
+    // the override and its job (the owner's explicit-merge rule).
+    await db.transaction((tx) async {
+      final plan=await SleepBlockStore.plan(tx,x,[AddNap(wake-1800,wake+1800)]);
+      final proposal=await SleepBlockStore.preflight(tx,plan);
+      expect(proposal,isA<SleepProposalMergeRequired>());
+      requireSleepSaved(await SleepBlockStore.apply(plan,tx:tx,
+        merge:(proposal as SleepProposalMergeRequired).proposal.authorization));
+    });
   }
 
   test('activity review window change commits its sleep edit job in the same transaction', () async {

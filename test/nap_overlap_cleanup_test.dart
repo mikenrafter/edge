@@ -12,6 +12,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart' show kAlgoVersion;
 import 'package:openstrap_edge/compute/nap_overlap_cleanup.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/sleep_block_store.dart';
 
 void main() {
   setUpAll(() async {
@@ -152,7 +153,7 @@ void main() {
           },
         },
       }),
-      windowJson: '{}',
+      windowJson: jsonEncode({'onset_ms':onset*1000,'offset_ms':offset*1000}),
       finalized: true,
     );
     final db = await LocalDb.instance;
@@ -167,6 +168,8 @@ void main() {
       });
     }
 
+    // The real ladder absorbs these release rows before the one-shot cleanup.
+    await SleepBlockStore.backfill(db);
     expect(await cleanNextNightNapsOnce(), 1);
     final out = jsonDecode(
         (await LocalDb.dayResult('2026-09-02'))!['payload_json'] as String) as Map;
@@ -178,18 +181,24 @@ void main() {
 
   test('importing nap edits alone re-arms the cleanup', () async {
     final db = await LocalDb.instance;
+    // A genuine nap, clear of the following night's window. The source block
+    // must exist: C intentionally ignores projections in a modern backup.
+    const start=1788388200+10*3600;
     await db.insert('sleep_nap', {
       'day_id': '2026-09-02',
-      'start_ts': 1788388200,
-      'end_ts': 1788388200 + 2400,
+      'start_ts': start,
+      'end_ts': start + 2400,
       'source': 'legacy',
       'created_at': 0,
       'payload_json': jsonEncode({'duration_min': 40, 'source': 'legacy'}),
     });
+    await SleepBlockStore.backfill(db);
     final dir = Directory.systemTemp.createTempSync('nap-cleanup-import-');
     addTearDown(() => dir.deleteSync(recursive: true));
     final path = p.join(dir.path, 'backup.db');
     await db.execute('VACUUM INTO ?', [path]);
+    await db.delete('sleep_block',where:'owner_day = ? AND start_ts = ?',
+      whereArgs:['2026-09-02',start]);
     await db.delete('sleep_nap',
         where: 'day_id = ? AND source = ?', whereArgs: ['2026-09-02', 'legacy']);
     await LocalDb.putComputeFreshness(kNapNextNightCleanupKey, '{}');

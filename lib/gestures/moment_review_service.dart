@@ -12,6 +12,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../data/assumed_water.dart';
+import '../data/sleep_draft_fence.dart';
+import '../data/sleep_editor.dart';
 import 'moment_follow_ups.dart';
 import 'moment_review_apply.dart';
 import 'moment_review_queue.dart';
@@ -51,11 +53,73 @@ class MomentReviewService extends ChangeNotifier {
   /// kept for this session but may be lost if the app closes.
   bool get persistFailed => _persistFailed;
 
+  // ── Session-only sleep editor drafts ──────────────────────────────────────
+  //
+  // Per-day plans staged by the editor. They live only for this app session
+  // (S3): Back keeps them, Cancel clears one, a kill loses them, and exports
+  // never carry them. CLAIM(timeline-draft-lifetime).
+
+  final Map<String, SleepEditorPlan> _sleepDrafts = {};
+
+  /// The staged editor plan for [dayId], if any, with the generation it must
+  /// still match; a plan built under an older generation stays readable so the
+  /// route can say why it cannot Save.
+  SleepEditorDraftRead readSleepEditorDraft(String dayId) => SleepEditorDraftRead(
+      _sleepDrafts[dayId], SleepDraftFence.shared.generationOf(dayId));
+
+  void stageSleepEditorDraft(String dayId, SleepEditorPlan plan) {
+    _sleepDrafts[dayId] = plan;
+    _revision++;
+    notifyListeners();
+  }
+
+  void cancelSleepEditorDraft(String dayId) {
+    if (_sleepDrafts.remove(dayId) != null) {
+      _revision++;
+      notifyListeners();
+    }
+  }
+
+  /// Delete day: drops the days' editor drafts and queued choices, and advances
+  /// their generation so a plan an open route still holds is refused at commit.
+  void clearDayDrafts(Set<String> dayIds) {
+    SleepDraftFence.shared.advanceDays(dayIds);
+    for (final d in dayIds) {
+      _sleepDrafts.remove(d);
+    }
+    _set(_queue.withoutDays(dayIds));
+    unawaited(_persist());
+  }
+
+  /// Delete everything: every draft and choice goes, the dataset generation
+  /// advances.
+  void clearAllDrafts() {
+    SleepDraftFence.shared.advanceDataset();
+    _sleepDrafts.clear();
+    _set(_queue.recoveryOnly);
+    unawaited(_persist());
+  }
+
+  /// After an import replaced data: drafts stay (stale ones say why and cannot
+  /// Save), the dataset generation advances and any imported queue is ignored.
+  void datasetImported() {
+    SleepDraftFence.shared.advanceDataset();
+    reload();
+    notifyListeners();
+  }
+
   /// Re-reads the stored queue (unless a Save is running, whose in-memory
   /// queue is the newer truth). Quiet: it does not notify.
   void reload() {
     if (saving) return;
-    _queue = store.load();
+    // Choices live only in this session's memory; storage holds only Saves that
+    // already started. Adopt a stored in-progress range this session does not
+    // know (a restart, or another service's progress), keep everything else.
+    var q = _queue;
+    for (final r in store.load().ranges) {
+      if (!q.ranges.any((x) => x.sameDecision(r))) q = q.withRangeProgress(r);
+    }
+    _queue = q;
     _revision++;
   }
 
@@ -247,4 +311,11 @@ class MomentReviewService extends ChangeNotifier {
     }
     return q;
   }
+}
+
+/// A staged editor plan with the generation it was read under.
+class SleepEditorDraftRead {
+  const SleepEditorDraftRead(this.plan, this.generation);
+  final SleepEditorPlan? plan;
+  final int generation;
 }

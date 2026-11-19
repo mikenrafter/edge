@@ -1,3 +1,4 @@
+import '../../../support/sleep_writes.dart';
 // The REAL range writer against a real (ffi) database and a stub repository:
 // where a nap that spans local midnight is filed, how an existing nap is read,
 // and the workout call with its type.
@@ -9,9 +10,11 @@
 // on that day. So a 23:40 to 00:20 nap is a `sleep_nap` row of the START's day.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/sleep_editor.dart';
 import 'package:openstrap_edge/compute/manual_session.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/gestures/moment_follow_ups.dart';
 import 'package:openstrap_edge/gestures/moment_review_apply.dart';
 import 'package:openstrap_edge/gestures/moment_review_queue.dart';
@@ -30,6 +33,12 @@ class _Repo extends LocalRepository {
   @override
   Future<Map<String, dynamic>> getDayNaps(String date) async =>
       {if (naps[date] != null) 'naps': naps[date]};
+
+  @override
+  Future<SleepEditorOutcome> putNap({required String dayId,required int startTs,
+    required int endTs,required String source,SleepMergeAuthorization? merge}) =>
+      LocalRepositoryImpl(getProfileMap:()=>{}).putNap(dayId:dayId,startTs:startTs,
+        endTs:endTs,source:source,merge:merge);
 
   @override
   Future<List<SessionSpan>> savedSessionSpans() async => const [];
@@ -118,7 +127,7 @@ void main() {
   test('re-applying a range that was NOT recorded as attempted finds its own '
       'stored row as the union: no error, still one row', () async {
     final q = MomentReviewQueue.empty.withRange(mA, mB, MomentChoice.nap);
-    await LocalDb.putNapEdit(
+    await TestSleepWrites.putNapEdit(
         dayId: '2026-10-06',
         startTs: sec(2026, 10, 6, 9, 15),
         endTs: sec(2026, 10, 6, 10, 5),
@@ -131,12 +140,17 @@ void main() {
 
   test('existingNaps: the day\'s merged naps plus stored manual edits',
       () async {
-    await LocalDb.putNapEdit(
+    await TestSleepWrites.putNapEdit(
         dayId: '2026-10-06',
         startTs: sec(2026, 10, 6, 15, 0),
         endTs: sec(2026, 10, 6, 15, 30),
         source: 'manual');
-    await LocalDb.putNapEdit(
+    await TestSleepWrites.putNapEdit(
+        dayId: '2026-10-06',
+        startTs: sec(2026, 10, 6, 16, 0),
+        endTs: sec(2026, 10, 6, 16, 30),
+        source: 'manual');
+    await TestSleepWrites.putNapEdit(
         dayId: '2026-10-06',
         startTs: sec(2026, 10, 6, 16, 0),
         endTs: sec(2026, 10, 6, 16, 30),
@@ -153,9 +167,9 @@ void main() {
         reason: 'a rejection is not a nap');
   });
 
-  test('a nap overlapping a stored manual edit extends it (one row, the '
-      'union)', () async {
-    await LocalDb.putNapEdit(
+  test('a nap overlapping a stored manual edit is refused for spacing: no '
+      'window written, the range is not left in progress', () async {
+    await TestSleepWrites.putNapEdit(
         dayId: '2026-10-06',
         startTs: sec(2026, 10, 6, 9, 30),
         endTs: sec(2026, 10, 6, 9, 50),
@@ -165,11 +179,11 @@ void main() {
         moments: [mA, mB],
         glasses: const [],
         now: reviewNow);
-    expect(rep.failed, isEmpty);
+    expect(rep.failed.values.single, isA<SleepMergeRequiredException>());
     final rows = await LocalDb.napEdits('2026-10-06');
-    expect(rows, hasLength(1));
-    expect(rows.single['start_ts'], sec(2026, 10, 6, 9, 15));
-    expect(rows.single['end_ts'], sec(2026, 10, 6, 10, 5));
+    expect(rows, hasLength(1), reason: 'nothing was written or unioned');
+    expect(rows.single['start_ts'], sec(2026, 10, 6, 9, 30));
+    expect(rep.remaining.ranges.single.inProgress, isFalse);
   });
 
   test('the workout goes to logManualWorkout with the chosen type, "other" by '

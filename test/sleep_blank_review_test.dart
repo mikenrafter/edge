@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // Review follow-ups to "Not sleep" blanking the night.
 // "I'd rather absence than wrong data": a blanked night shows nothing and is in
 // no score or baseline afterwards.
@@ -85,7 +86,7 @@ Future<void> _derive(String day) =>
     DerivationEngine().runDays(const Profile(), {day}, force: true);
 
 Future<void> _override(String day, int onset, int offset, String source) =>
-    LocalDb.putSleepOverride(
+    TestSleepWrites.putSleepOverride(
       dayId: day,
       onsetTs: onset,
       offsetTs: offset,
@@ -425,8 +426,14 @@ void main() {
         await seedDay();
         // Review began before this fixed 2025 day, so its bouts are proposed.
         await _db.update('activity_review_meta', {'activated_at': 1});
-        await _override(
-            _d2, _sec(2025, 9, 4, 23, 0), _sec(2025, 9, 5, 5, 30), source);
+        if(source=='rejected') {
+          // This case tests a real-bounds historical rejection; an empty-night
+          // Reject command has placeholder bounds and is covered by W16.
+          await TestSleepWrites.seedLegacyMain(dayId:_d2,onsetTs:_sec(2025,9,4,23,0),
+            offsetTs:_sec(2025,9,5,5,30),source:source);
+        } else {
+          await _override(_d2,_sec(2025,9,4,23,0),_sec(2025,9,5,5,30),source);
+        }
         await _derive(_d2);
         final bundle = await _bundle(_d2);
         final starts = await napStarts(bundle);

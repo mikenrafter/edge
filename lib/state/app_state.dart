@@ -1,3 +1,4 @@
+import '../data/sleep_block_store.dart';
 import '../util/callable.dart';
 import 'coalescing_runner.dart';
 import 'package:flutter/foundation.dart' show debugPrintSynchronously;
@@ -108,6 +109,8 @@ import '../data/db/input_revision_store.dart' show bumpInputRev;
 import '../data/db.dart';
 import '../data/finalized_day_index_maintenance.dart';
 import '../data/sleep_edit_store.dart';
+import '../data/sleep_editor.dart';
+import '../gestures/moment_review_service.dart';
 import '../data/activity_store.dart';
 import 'sleep_edit_runner.dart';
 import '../ecg/ble_ecg_transport.dart';
@@ -124,8 +127,6 @@ import '../gps/gps_source.dart';
 import '../gps/route_tracker.dart';
 import '../gps/screen_wake.dart';
 import '../data/local_repository_impl.dart';
-import '../data/nap_resolution.dart'
-    show ActivitiesChangedListener, MainSleepExtendedListener;
 import '../data/bundle_store.dart';
 import '../notify/battery_forecast.dart';
 import '../notify/buzz_sequence.dart';
@@ -220,6 +221,7 @@ import '../data/export_retention.dart' show purgeSharedHealthCopies;
 export 'derive_coordinator.dart' show DeriveRunHook;
 
 part 'app_state/pairing.dart';
+part 'app_state/sleep_edits.dart';
 
 // AppState — the single ChangeNotifier the UI listens to. Orchestrates the BLE
 // engine, local DB writes (raw-first), live telemetry, and the screen data SEAM.
@@ -502,7 +504,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     // rollup, applied activity reviews, a forced re-derive) publishes through
     // the same gate: freshness, then the bump, debounced.
     ..onSettled = () async {
-      if (!_disposed) _deriveCoordinator.publishGate.request();
+      if (!_disposed) {
+        _deriveCoordinator.publishGate.request();
+        unawaited(sleepEditRunner.start(restart:true).catchError((Object e)=>_log('[sleep edit] $e')));
+      }
     };
   /// The derive orchestration: scheduler wiring, the pass itself,
   /// recalc state, per-day publish, warmer hand-off. Everything it needs from
@@ -1719,6 +1724,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
         if (isConnected) await _armNextAlarmOccurrence();
       }
       await _reloadProfile();
+      // Session drafts were built against the data before this import: their
+      // generation advances (stale plans say why and cannot Save) and any
+      // queue the backup carried is ignored.
+      MomentReviewService.shared.datasetImported();
       // Imported day bundles carry quiet levels the seed has not priced from;
       // a marker left from before the import would keep it from ever running.
       if ((counts['day_result'] ?? 0) > 0) {
@@ -2582,6 +2591,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       // hand-written table list, and for the sync_cursor decision). The reset
       // holds the derive latch from before the gate went up, so no pass that
       // read the substrate before the wipe can write its days back after it.
+      MomentReviewService.shared.clearAllDrafts();
       await LocalDb.wipeAll();
       // The rows are gone; the cached fit is not. Without this a walk banked
       // after a data reset would still be corrected by the pre-reset gain.
@@ -4134,8 +4144,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// (local YYYY-MM-DD). Stored as the source of truth, then a force re-derive
   /// restages that day FROM the window — even if it was finalized/locked.
   late final SleepCoordinator sleepOperations = SleepCoordinator(
-    persist: (day, start, end) => LocalDb.putSleepOverride(
-      dayId: day, onsetTs: start, offsetTs: end, source: 'manual'),
+    persist: (day,start,end) => _writeMain(day,start,end),
     derive: (day) async {
       unawaited(sleepEditRunner.start().catchError((Object e) => _log('[sleep edit] $e')));
       return {'recalculating': true};
@@ -4168,36 +4177,13 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     notifyListeners();
   }
 
+  @visibleForTesting
+  SleepEditQueue? debugSleepEditQueue;
+
   late final SleepEditRunner sleepEditRunner = SleepEditRunner(
+    queue:debugSleepEditQueue??const LocalSleepEditQueue(),
     effects: _AppSleepEditEffects(this),
   );
-
-  Future<void> _runSleepEdit(SleepEditJob job) async {
-    final day = job.day;
-    if ((await SleepEditStore.status(day))?['revision'] != job.revision) return;
-    try {
-      await _deriveSleepDay(job);
-    } on SyncFailureError catch (e) {
-      // Waiting out a long pass is not a fault of the edit.
-      if (e.code == SyncFailure.calculationStuck) {
-        throw const SleepEditRequeue(
-            'another calculation is still running', counts: false);
-      }
-      rethrow;
-    }
-    final status = await SleepEditStore.status(day);
-    if (status?['revision'] != job.revision) return; // a newer edit owns it
-    if (status?['applied_revision'] != job.revision) {
-      final fence = _sleepEditPassFence;
-      if (fence != null && await SleepEditStore.generation(upTo: day) != fence) {
-        throw const SleepEditRequeue('an earlier night was edited meanwhile');
-      }
-      throw StateError('Sleep calculation is incomplete. Your times are saved. Retry.');
-    }
-    if (await SleepEditStore.advance(job, SleepEditPhase.done) == SleepEditAdvance.applied) {
-      await _deriveCoordinator.publishNow();
-    }
-  }
 
   /// The edit fence of the night being calculated, taken as its pass starts.
   /// If it has moved when the pass ends, an earlier night was edited meanwhile.
@@ -4207,48 +4193,6 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// requeues (not fails).
   @visibleForTesting
   Duration sleepEditWaitLimit = const Duration(minutes: 10);
-
-  Future<Map<String, Object?>> _deriveSleepDay(SleepEditJob job) async {
-    final day = job.day;
-    // A pass that was already running prepared the edited day from the old
-    // window and re-pins that night's readiness when it lands, after the
-    // edit's own release. Release again once it is done, right before this
-    // derive takes over (no await between the last check and the latch).
-    do {
-      await _waitForDerivation(limit: sleepEditWaitLimit);
-      if (_disposed) throw StateError('Sleep worker closed');
-      if ((await SleepEditStore.status(day))?['revision'] != job.revision) return {};
-      await LocalDb.releaseFrozenHeadline(day);
-    } while (_derive.running || reanalyzing);
-    _sleepEditPassFence = await SleepEditStore.generation(upTo: day);
-    reanalyzing = true;
-    final recalcOwner = _deriveCoordinator.beginSleepEdit(day);
-    notifyListeners();
-    try {
-      // The edited night, then the later nights scored against it.
-      final outcome = await _derive.rederiveAfterSleepEdit(_profile, day, publication: _AppSleepEditPublication(this, job));
-      if (outcome == SleepEditCalculation.superseded) return {};
-      if (outcome == SleepEditCalculation.incomplete) {
-        final fence = _sleepEditPassFence;
-        if (fence != null && await SleepEditStore.generation(upTo: day) != fence) {
-          throw const SleepEditRequeue('an earlier night was edited meanwhile');
-        }
-        throw StateError('Sleep calculation is incomplete. Your times are saved. Retry.');
-      }
-      final error = _derive.snapshot()['last_error'];
-      if (error != null) throw StateError('$error');
-      // A finalized day behind the export cursor is never re-written, so the
-      // corrected (or rejected) night would never reach the health store. Not
-      // awaited: the rewind waits out any export already running.
-      unawaited(HealthExporter.reexportFrom(day).then((_) {
-        if (healthSyncEnabled) unawaited(_runHealthExport());
-      }).catchError((Object e) {
-        _log('[health] re-export after a sleep edit failed: $e');
-      }));
-      await _deriveCoordinator.publishNow();
-      return await repo?.getDaySleep(day) ?? <String, Object?>{};
-    } finally { _deriveCoordinator.endSleepEdit(recalcOwner); reanalyzing = false; notifyListeners(); }
-  }
 
   /// The Sources read seam over the sources that exist right now. Reads only:
   /// `device`, `device_coverage`, `signal_priority` and retained 1 Hz rows.
@@ -4292,6 +4236,19 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     }
   }
 
+  /// Commits an editor plan, then wakes the durable runner for what it queued.
+  Future<SleepEditorOutcome> saveSleepEditor(SleepEditorPlan plan) async {
+    if (repo == null) {
+      return const SleepRefused(SleepRefusalReason.unsupportedSource);
+    }
+    final outcome = await repo!.saveSleepEditor(plan);
+    if (outcome is SleepSaved) {
+      unawaited(sleepEditRunner.start().catchError((Object e) => _log('[sleep edit] $e')));
+      notifyListeners();
+    }
+    return outcome;
+  }
+
   Future<SleepOperationResult> recalculateSleep(String day) =>
       sleepOperations.mutate(day, () => SleepEditStore.recalculate(day));
 
@@ -4309,10 +4266,18 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   Future<SleepOperationResult> _setConfirmedSleep(String date, DateTime onset,
       DateTime offset, String source) => sleepOperations.mutate(date, () async {
     if (!offset.isAfter(onset)) throw ArgumentError('Wake time must follow sleep onset');
-    await LocalDb.putSleepOverride(dayId: date,
-      onsetTs: onset.millisecondsSinceEpoch ~/ 1000,
-      offsetTs: offset.millisecondsSinceEpoch ~/ 1000, source: source);
+    await _writeMain(date,onset.millisecondsSinceEpoch~/1000,offset.millisecondsSinceEpoch~/1000,confirm:true);
   });
+
+  Future<void> _writeMain(String day,int start,int end,{bool confirm=false}) async {
+    final db=await LocalDb.instance;
+    await db.transaction((tx) async {
+      final read=await SleepBlockStore.read(tx,day);
+      final main=read.entries.where((e)=>e.kind==SleepBlockKind.main).firstOrNull;
+      final command=confirm?ConfirmMain(day,start,end):main==null?AddMain(day,start,end):SetIntervals(main.ref,start,end);
+      requireSleepSaved(await SleepBlockStore.apply(await SleepBlockStore.plan(tx,day,[command]),tx:tx));
+    });
+  }
 
   @visibleForTesting
   SleepCoordinator debugSleepCoordinator({
@@ -4345,25 +4310,23 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// the same way as any other override: [clearSleepOverride].
   Future<SleepOperationResult> rejectSleep(String date) async {
     if (repo == null) return const SleepOperationResult(success: false, error: 'Sleep data is unavailable.');
-    final sleep = await repo!.getDaySleep(date);
-    final onset = (sleep['onset_ts'] as num?)?.toInt();
-    final offset = (sleep['wake_ts'] as num?)?.toInt();
-    // The rejected window is stored for the record, same as a rejected nap —
-    // it is never read back once source is 'rejected' (staging is skipped
-    // outright), so an absent detected window falls back to a harmless
-    // same-day placeholder rather than blocking the rejection.
-    final fallback = DateTime.parse(date).millisecondsSinceEpoch ~/ 1000;
-    return sleepOperations.mutate(date, () => LocalDb.putSleepOverride(
-      dayId: date,
-      onsetTs: onset ?? fallback,
-      offsetTs: offset ?? (fallback + 1),
-      source: 'rejected',
-    ));
+    return sleepOperations.mutate(date,() async {
+      final db=await LocalDb.instance;
+      await db.transaction((tx) async {
+        final read=await SleepBlockStore.read(tx,date);
+        final main=read.entries.where((e)=>e.kind==SleepBlockKind.main).firstOrNull;
+        requireSleepSaved(await SleepBlockStore.apply(await SleepBlockStore.plan(tx,date,
+          [RemoveBlock(main?.ref??NoDetectionMainRef(date))]),tx:tx));
+      });
+    });
   }
 
-  /// Remove a manual/confirmed override for [date] — revert to auto/fallback.
-  Future<SleepOperationResult> clearSleepOverride(String date) =>
-    sleepOperations.mutate(date, () => LocalDb.deleteSleepOverride(date));
+  Future<SleepOperationResult> clearSleepOverride(String date) => sleepOperations.mutate(date,() async {
+    final db=await LocalDb.instance;
+    await db.transaction((tx) async {
+      requireSleepSaved(await SleepBlockStore.apply(await SleepBlockStore.plan(tx,date,[ClearMain(date)]),tx:tx));
+    });
+  });
 
   /// Force-derive after a sleep-override change so the affected day restages from
   /// the user's window (the engine force-includes override days even if locked).
@@ -4428,7 +4391,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     }
   }
 
-  Future<void> reanalyzeForNapEdit() => refreshActivityReviews();
+  Future<void> reanalyzeForNapEdit() => sleepEditRunner.start(restart:true);
 
   Future<List<Map<String, dynamic>>> dataHistoryDays() =>
       LocalDb.dataHistoryDays();
@@ -4439,6 +4402,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       LocalDb.exportDaysDb(dayIds);
 
   Future<int> deleteDays(Set<String> dayIds) async {
+    // Drafts and queued choices for these days go FIRST (and their generation
+    // advances), so a plan an open route still holds is refused even if its
+    // days are recreated: deletion cannot be undone by a stale Save.
+    MomentReviewService.shared.clearDayDrafts(dayIds);
     // A pass holding pre-delete input must finish before its days are removed.
     final deleted = await DerivationEngine.whileIdle(
       () => LocalDb.deleteDays(dayIds),
@@ -9513,7 +9480,10 @@ class _ActivitiesRefresh implements ActivitiesChangedListener {
   _ActivitiesRefresh(this.app);
   final AppState app;
   @override
-  Future<void> activitiesChanged() => app.refreshActivityReviews();
+  Future<void> activitiesChanged() async {
+    unawaited(app.sleepEditRunner.start(restart:true).catchError((Object e)=>app._log('[sleep edit] $e')));
+    await app.refreshActivityReviews();
+  }
 }
 
 class _NapExtendsSleep implements MainSleepExtendedListener {
@@ -9524,27 +9494,6 @@ class _NapExtendsSleep implements MainSleepExtendedListener {
     await app.recalculateSleep(day);
   }
 }
-
-final class _AppSleepEditEffects implements SleepEditEffects {
-  const _AppSleepEditEffects(this.app);
-  final AppState app;
-  @override Future<void> run(SleepEditJob job) => app._runSleepEdit(job);
-  @override Future<void> publish() => app._deriveCoordinator.publishNow();
-  @override void hold(bool held) => app._deriveScheduler.setSleepEditHeld(held);
-  @override void report(Object error) => app._log('[sleep edit] $error');
-}
-
-final class _AppSleepEditPublication implements SleepEditPublication {
-  const _AppSleepEditPublication(this.app, this.job);
-  final AppState app;
-  final SleepEditJob job;
-  @override Future<bool> publish() async {
-    if (await SleepEditStore.advance(job, SleepEditPhase.dependents) != SleepEditAdvance.applied) return false;
-    await app._deriveCoordinator.publishNow();
-    return true;
-  }
-}
-
 
 /// What "Re-analyze data" did: days derived, days the pass could not derive,
 /// and the error when the pass itself failed.

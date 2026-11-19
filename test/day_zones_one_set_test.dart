@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // edge#333: the day's zone BARS and the zone timeline/footnote beside them
 // must come off ONE zone set. The second derivation half used to recompute
 // `zones` off the age estimate alone and overwrite the pipeline's, so a user
@@ -72,7 +73,7 @@ void main() {
         'end_ts': wake.$2,
       });
     }
-    await LocalDb.putSleepOverride(
+    await TestSleepWrites.putSleepOverride(
       dayId: _dayId,
       onsetTs: night.$1,
       offsetTs: night.$2,

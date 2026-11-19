@@ -1,5 +1,7 @@
 import '../util/callable.dart';
 import 'json_payload_lane.dart';
+import 'sleep_block_store.dart';
+import 'sleep_import_rules.dart';
 import 'attach_copy.dart';
 // Local raw-first storage (SQLite via sqflite).
 //
@@ -72,7 +74,6 @@ import 'day_label.dart';
 import 'activity_store.dart';
 import 'load_timings.dart';
 import 'sleep_edit_store.dart';
-import 'nap_resolution.dart';
 import '../models/activity_suggestion.dart';
 import '../compute/accepted_naps.dart';
 import '../compute/nap_edits.dart' show NapEditKind;
@@ -445,6 +446,7 @@ class LocalDb {
     'cycle_log',
     'cycle_symptom',
     'sleep_override',
+    'sleep_block',
     'sleep_edit_job',
     'sleep_nap',
     // Typed or answered by hand; notif_fired keeps old alerts from firing again.
@@ -664,7 +666,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 92;
+  static const int schemaVersion = 94;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -983,7 +985,7 @@ class LocalDb {
   /// way out. Check first; swallow a lost race (SQLite does statement-level
   /// rollback, so a caught failure never poisons the surrounding transaction).
   static Future<void> _addColumnIfMissing(
-    Database db,
+    DatabaseExecutor db,
     String table,
     String column,
     String ddlType,
@@ -1796,6 +1798,8 @@ class LocalDb {
   /// even after the detector's bounds shift by a minute).
   static Future<void> _createSleepNap(Database db) => _ldbPrivCreateSleepNap(db);
 
+  static Future<void> _createSleepBlock(DatabaseExecutor db) => _ldbPrivCreateSleepBlock(db);
+
   /// A band's own hypnogram, one row per epoch, stages already in our
   /// `stages4` words. `night_onset_ts` chains an epoch onto the night of the
   /// same device's epoch that ended at most [_kVendorNightChainSec] before it.
@@ -1838,20 +1842,20 @@ class LocalDb {
         onset_ts INTEGER NOT NULL,
         offset_ts INTEGER NOT NULL,
         source TEXT NOT NULL,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        payload_json TEXT
       )
     ''');
+    // Keep rung 93's nullable legacy column on upgrades and same-version repair.
+    // Block projections leave it NULL; detection history lives in sleep_block.
+    final cols = await db.rawQuery('PRAGMA table_info(sleep_override)');
+    if (!cols.any((c) => c['name'] == 'payload_json')) {
+      await db.execute('ALTER TABLE sleep_override ADD COLUMN payload_json TEXT');
+    }
   }
 
   /// Upsert the user's sleep window for [dayId] (local date label). [source] is
   /// 'manual' or 'confirmed'. Replaces any prior override for that day.
-  static Future<void> putSleepOverride({
-    required String dayId,
-    required int onsetTs,
-    required int offsetTs,
-    required String source,
-  }) => _ldbPutSleepOverride(dayId: dayId, onsetTs: onsetTs, offsetTs: offsetTs, source: source);
-
   /// A sleep correction to the pinned day is the user's word, not drift: drop
   /// the morning pin so the re-derive pins the corrected readiness instead of
   /// holding the old night's value until midnight.
@@ -2313,15 +2317,6 @@ class LocalDb {
   }
 
   /// Remove the override for [dayId] (revert to auto detection).
-  static Future<void> deleteSleepOverride(String dayId) async {
-    final db = await instance;
-    await timedTransaction(db, 'sleep edit receipt',InlineTransactionWork( (tx) async {
-      await tx.delete('sleep_override', where: 'day_id = ?', whereArgs: [dayId]);
-      await tx.delete('wake_confirmation', where: 'day_id = ?', whereArgs: [dayId]);
-      await SleepEditStore.enqueue(tx, dayId);
-    }));
-  }
-
   /// Every day that currently has a user override — these must be force-derived
   /// even when finalized, so an edit to a locked day actually takes effect.
   static Future<Set<String>> sleepOverrideDays() async {
@@ -5160,6 +5155,9 @@ class LocalDb {
   /// be on all of them or it is on none of them.
   static const String _servedDayJoin = 'JOIN ($_servedVersions) m $_servedOn';
 
+  /// Shared SQL for the sleep owner; keep version selection identical to screens.
+  static const String servedDayJoinSql = _servedDayJoin;
+
   /// The result row for one day_id at the highest version this build serves
   /// (see [_servedAlgoCeiling]), with a normalized `date` alias for callers.
   /// Null if absent.
@@ -5486,6 +5484,19 @@ class LocalDb {
     }
     return executor == null ? readerRun(read) : read(executor);
   }
+
+  /// The detected main-sleep windows of the days [first]..[last] (inclusive
+  /// day labels), as `{day_id, on_ms, off_ms}`, read the way the screens read
+  /// them: the SERVED version of each day ([_servedDayJoin]), skipped days
+  /// excluded. `window_json` comes in two shapes: the derivation engine stores
+  /// `SleepWindow.toJson()` UNWRAPPED (`{onset_ms, offset_ms, spt_sec}`), older
+  /// fixtures and importers a `{value: {...}}` envelope; both are read. A night
+  /// with no sleep has no onset and yields null columns.
+  static Future<List<Map<String, Object?>>> servedMainWindows(
+    DatabaseExecutor executor,
+    String first,
+    String last,
+  ) => SleepBlockStore.detectedMainWindows(executor, first, last);
 
   /// Small SQL projections of detected naps for reminder eligibility. Nap
   /// starts/ends are absolute epoch seconds; no guessed schedule or duration.
@@ -5974,6 +5985,7 @@ class LocalDb {
       // skipped these would silently reinstate every nap the user had deleted
       // and lose every one they logged.
       'sleep_override',
+      'sleep_block',
       'sleep_edit_job',
       'sleep_nap',
       // A night the wearer confirmed awake (it makes that night final), the
@@ -7313,6 +7325,8 @@ class LocalDb {
   /// throw is the race/programmatic-caller backstop.
   static Future<void> putJournalFieldDef(JournalFieldSpec spec) => _ldbPutJournalFieldDef(spec);
 
+  static Future<void> recomposeNaps(String day, int napRevision) => _ldbRecomposeNaps(day,napRevision);
+
   static Future<Map<String, int>> applyPendingActivityReviews() => _ldbApplyPendingActivityReviews();
 
   static Future<void> finishActivityReviews(Map<String, int> revisions) async {
@@ -7327,17 +7341,6 @@ class LocalDb {
   // ── nap edits ─────────────────────────────────────────────────────────────
 
   /// Log a nap the detector missed, or suppress one it invented.
-  static Future<NapResolution?> putNapEdit({
-    required String dayId,
-    required int startTs,
-    required int endTs,
-    required String source,
-    NapResolution? expected,
-    Transaction? transaction,
-  }) => _ldbPutNapEdit(dayId: dayId, startTs: startTs, endTs: endTs, source: source, expected: expected, transaction: transaction);
-
-  static Future<void> deleteNapEdit(String dayId, int startTs) => _ldbDeleteNapEdit(dayId, startTs);
-
   static Future<List<Map<String, dynamic>>> napEdits(String dayId) async {
     final db = await instance;
     return db.query(
@@ -9884,7 +9887,10 @@ class LocalDb {
     'journal_metric': (['date'], 'updated_at'),
     'lab_result': (['marker', 'taken_on'], 'updated_at'),
     'cycle_symptom': (['date'], 'updated_at'),
-    'sleep_override': (['day_id'], 'created_at'),
+    // Local wins (owner 2026-11-17): no edit stamp decides this table now;
+    // SleepBlockStore.absorb reports a refused entry instead.
+    'sleep_override': (['day_id'], null),
+    'sleep_block': (['id'], null),
     // A dose slot is re-marked in place (taken, skipped, cleared), so an older
     // backup would flip a dose logged since back to what it said then.
     'med_dose': (['med_key', 'date', 'slot_min'], 'updated_at'),
@@ -9986,22 +9992,6 @@ class LocalDb {
       'decoded_onehz': oneHz,
       'decoded_rr': rr,
     };
-  }
-
-  /// Whether [startTs, endTs) overlaps a main sleep already derived — the
-  /// check [putNapEdit] enforces for a logged nap, readable ahead of the write
-  /// so the entry screen can say why in the user's language.
-  static Future<bool> napOverlapsMainSleep(int startTs, int endTs) async =>
-      ActivityStore.overlapsMainSleep(await instance, startTs, endTs);
-
-  /// Drops [dayId]'s `legacy` nap edits overlapping [startSec, endSec). Logged,
-  /// confirmed and rejected edits are left alone.
-  static Future<int> deleteLegacyNapsOverlapping(
-      String dayId, int startSec, int endSec) async {
-    final db = await instance;
-    return db.delete('sleep_nap',
-        where: "day_id = ? AND source = 'legacy' AND start_ts < ? AND end_ts > ?",
-        whereArgs: [dayId, endSec, startSec]);
   }
 
   /// Move a session's window. Not `putSession`: the row's type correction,

@@ -9,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/sleep_block_store.dart';
+import 'package:openstrap_edge/data/sleep_import_rules.dart';
 
 const _day = '2026-10-12';
 const _other = '2026-10-13';
@@ -28,6 +30,9 @@ Future<void> _clear() async {
     'journal_metric',
     'lab_result',
     'sleep_override',
+    'sleep_block',
+    'sleep_nap',
+    'sleep_edit_job',
     'cycle_symptom',
     'cycle_log',
     'sessions',
@@ -126,6 +131,7 @@ void main() {
     await db.update('sessions', {'status': 'done', 'end_ts': 900});
     await db.delete('strength_set', where: 'seq = 2');
 
+    await SleepBlockStore.backfill(db);
     await LocalDb.importFromDbFile(backup);
 
     final journal = await db.query('journal', orderBy: 'date');
@@ -134,6 +140,10 @@ void main() {
     expect([for (final r in fields) r['field']], ['alcohol']);
     expect((await db.query('lab_result')).single['value'], 90.0);
     expect((await db.query('sleep_override')).single['onset_ts'], 300);
+    expect(
+        (await SleepImportReport.load()).where((e) => e.refused),
+        hasLength(1),
+        reason: 'the differing backup entry is reported, not silently dropped');
     expect((await db.query('cycle_symptom')).single['symptoms_json'],
         '["headache"]');
     expect((await db.query('cycle_log')).single['kind'], 'end');
@@ -160,11 +170,17 @@ void main() {
     await db.update('sleep_override',
         {'onset_ts': 100, 'offset_ts': 200, 'created_at': 1000});
 
+    await SleepBlockStore.backfill(db);
     await LocalDb.importFromDbFile(backup);
 
     final fields = await db.query('journal_metric');
     expect([for (final r in fields) r['field']], ['alcohol']);
-    expect((await db.query('sleep_override')).single['onset_ts'], 500);
+    // Sleep assertions are local-wins (owner S7): the newer backup does not
+    // replace the local window, and the refused entry is reported.
+    expect((await db.query('sleep_override')).single['onset_ts'], 100);
+    final report = await SleepImportReport.load();
+    expect(report.where((e) => e.refused && e.table == 'sleep_override'),
+        hasLength(1));
   });
 
   test('an older backup does not undo a dose marked after it', () async {
@@ -186,6 +202,7 @@ void main() {
         'med_dose', {'taken_ts': 50, 'skipped': 0, 'updated_at': 2000},
         where: 'slot_min = 480');
 
+    await SleepBlockStore.backfill(db);
     await LocalDb.importFromDbFile(backup);
 
     final rows = await db.query('med_dose', orderBy: 'slot_min');
@@ -212,6 +229,7 @@ void main() {
     await db.update('med_def', {'schedule_json': '[540]'});
     await db.update('food_entry', {'kcal': 450.0, 'updated_at': 2000});
 
+    await SleepBlockStore.backfill(db);
     await LocalDb.importFromDbFile(backup);
 
     expect((await db.query('med_def')).single['schedule_json'], '[540]');
@@ -233,6 +251,7 @@ void main() {
     await db.insert('step_calibration', profile(0.97, 24, 2000),
         conflictAlgorithm: ConflictAlgorithm.replace);
 
+    await SleepBlockStore.backfill(db);
     await LocalDb.importFromDbFile(backup);
 
     final row = (await db.query('step_calibration')).single;
@@ -253,6 +272,7 @@ void main() {
     await db.insert('step_calibration', profile(1.12, 10, 1000),
         conflictAlgorithm: ConflictAlgorithm.replace);
 
+    await SleepBlockStore.backfill(db);
     await LocalDb.importFromDbFile(backup);
 
     final row = (await db.query('step_calibration')).single;

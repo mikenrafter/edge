@@ -1,3 +1,4 @@
+import 'support/sleep_writes.dart';
 // What keeps a settled day settled (engine/settled.dart).
 //
 //  F. A re-pass that DECLINES a day settles it on the raw fingerprint taken
@@ -67,7 +68,7 @@ Future<void> _oldRow(String day) => LocalDb.putDayResult(
       payloadJson: jsonEncode({
         'scalars': {'rhr': 52.0, 'rmssd': 61.0, 'readiness': 74.0},
       }),
-      windowJson: '{"onset_ms": 1, "offset_ms": 2}',
+      windowJson: jsonEncode({'onset_ms':_localSec(day,1)*1000,'offset_ms':_localSec(day,7)*1000}),
       finalized: true,
       rhr: 52,
       rmssd: 61,
@@ -85,6 +86,8 @@ Future<void> _clear() async {
     'metric_series_version',
     'compute_freshness',
     'sleep_override',
+    'sleep_block',
+    'sleep_edit_job',
   ]) {
     await db.delete(t);
   }
@@ -162,7 +165,7 @@ void main() {
     expect(await e.debugSettledDays(), contains(_day),
         reason: 'precondition: declined and settled');
 
-    await LocalDb.putSleepOverride(
+    await TestSleepWrites.putSleepOverride(
       dayId: _day,
       onsetTs: _localSec(_day, 1),
       offsetTs: _localSec(_day, 7),
