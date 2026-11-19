@@ -4,6 +4,7 @@
 // corrupt file. Proves CLAIM(release-check-local-store), CLAIM(release-check-once),
 // CLAIM(release-check-consent).
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/notify/event_claim_ledger.dart';
@@ -37,6 +38,38 @@ class _FailInitializationDatabase implements Database {
       Future.error(StateError('transient initialization I/O failure'));
   @override
   Future<void> close() => db.close();
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _RecoveryRaceFactory implements DatabaseFactory {
+  _RecoveryRaceFactory(this.primaryPath);
+  final String primaryPath;
+  int primaryOpens = 0;
+  int recoveryOpens = 0;
+  final secondReady = Completer<bool>();
+  int deletes = 0;
+  final firstDelete = Completer<void>();
+  final releaseFirst = Completer<void>();
+  @override
+  Future<Database> openDatabase(String path, {OpenDatabaseOptions? options}) {
+    if (path == primaryPath) {
+      if (++primaryOpens == 4) secondReady.complete(true);
+    } else if (++recoveryOpens == 2) {
+      secondReady.complete(false);
+    }
+    return databaseFactoryFfi.openDatabase(path,
+        options: OpenDatabaseOptions(singleInstance: false));
+  }
+  @override
+  Future<void> deleteDatabase(String path) async {
+    deletes++;
+    if (deletes == 1) {
+      firstDelete.complete();
+      await releaseFirst.future;
+    }
+    await databaseFactoryFfi.deleteDatabase(path);
+  }
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -146,6 +179,53 @@ void main() {
       store = await openStore();
       expect((await store.read()).enabled, isTrue);
       expect(await store.beginRelease('release:fork:71', t0), isNull);
+    });
+
+    // WHY: Dart file locks are process-wide on Android/Linux; two engines in
+    // one process must not both replace a corrupt store and erase its recovery.
+    // catches: File.lock used as cross-isolate ownership of destructive recovery.
+    test('concurrent corruption recovery replaces the file only once', () async {
+      await store.db.close();
+      await File(path).writeAsString('not a database');
+      final factory = _RecoveryRaceFactory(path);
+      final first = UpdateStore.openFile(path, factory: factory);
+      await factory.firstDelete.future;
+      final second = UpdateStore.openFile(path, factory: factory);
+      UpdateStore? earlySecond;
+      var raced = false;
+      try {
+        // The second engine either enters primary recovery concurrently, or
+        // opens the independent recovery store and waits on its transaction.
+        raced = await factory.secondReady.future;
+        if (raced) {
+          // The second engine recovered first. Its new claims must not be
+          // erased when the older recovery owner resumes.
+          earlySecond = await second;
+          await earlySecond.setEnabled(true);
+          final ticket = (await earlySecond.beginRelease('release:fork:72', t0))!;
+          await earlySecond.settleRelease(ticket, ClaimOutcome.sent);
+          await earlySecond.db.close();
+        }
+      } finally {
+        factory.releaseFirst.complete();
+      }
+      final recovered = await first;
+      final other = earlySecond ?? await second;
+      try {
+        if (!raced) {
+          await other.setEnabled(true);
+          final ticket = (await other.beginRelease('release:fork:72', t0))!;
+          await other.settleRelease(ticket, ClaimOutcome.sent);
+        }
+        expect((await recovered.read()).enabled, isTrue);
+        expect(await recovered.beginRelease('release:fork:72', t0), isNull);
+        expect(factory.deletes, 1);
+        expect((await recovered.read()).authorizationReset, isTrue);
+      } finally {
+        await recovered.db.close();
+        await other.db.close();
+        store = await openStore();
+      }
     });
 
     test('a damaged file is replaced by an off store and reported', () async {
