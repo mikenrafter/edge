@@ -81,6 +81,27 @@ void main(){
     handle.dispose();
   });
 
+  // why: m268/m269 — on the list card graph a same-minute column holds its first icon and a "…"
+  // standing for the rest; icons pushed down by a nearby different minute stay as they are.
+  // catches: a same-minute column of three icons, a "…" without the hidden items' times, or
+  // nearby different-minute icons being dropped.
+  testWidgets('overview caps a same-minute column at an icon and an ellipsis',(t)async{
+    final handle=t.ensureSemantics();
+    final c=TimelineController(homeStartSec:base,homeEndSec:base+86400);final i=TimelineInteraction(retention:PilotScrub.temporary);
+    addTearDown(c.dispose);addTearDown(i.dispose);c.selectRange(base+5*3600,base+8*3600);
+    ChartAnnotation a(String id,int minute)=>ChartAnnotation(id:id,kind:AnnotationKind.wake,at:base+minute*60.0,label:id);
+    await pump(t,Scaffold(body:Padding(padding:const EdgeInsets.all(16),child:PilotTimelineChart(controller:c,interaction:i,overview:true,height:72,showHeartRate:false,
+      graph:DayGraph(dayStart:base,hr:List.filled(1440,62),movement:List.filled(1440,.1)),
+      annotations:[a('Sound',390),a('Vibration',390),a('Flash',390),a('Sunrise',420),a('Gradual',422)]))));
+    expect(find.byTooltip('Sound'),findsOneWidget);
+    expect(find.byTooltip('Vibration'),findsNothing);expect(find.byTooltip('Flash'),findsNothing);
+    expect(find.byKey(const ValueKey('pilot-overview-more')),findsOneWidget);
+    expect(find.bySemanticsLabel('Vibration 06:30, Flash 06:30'),findsOneWidget);
+    // Nearby different minutes: both drawn, as before.
+    expect(find.byTooltip('Sunrise'),findsOneWidget);expect(find.byTooltip('Gradual'),findsOneWidget);
+    handle.dispose();
+  });
+
   // catches: bare ListTile timing rows, Material SwitchListTiles, text-only Cancel/Save, or a heart-rate alarm chart.
   testWidgets('alarm editor uses the app rows, tabs and buttons',(t)async{
     await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'A',earlyMinutes:20,phoneSound:true),now:day,reference:(_)async=>sample(),onSave:(_)async{}));
