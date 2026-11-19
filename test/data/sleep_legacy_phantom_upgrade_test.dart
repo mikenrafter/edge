@@ -48,6 +48,8 @@ void main() {
       // The import path has not copied the source's day_result yet when its
       // sleep stage runs. It must use the source bounds read before the TX.
       await LocalDb.wipeAll();
+      // T-B4: actually enter bundle capture on import, independently of C2.
+      await db.insert('activity_review_meta',{'id':1,'activated_at':20000});
       await LocalDb.importFromDbFile(backup);
       expect(await db.query('sleep_block'),isEmpty,
         reason:'import must not capture the same pre-94 phantom either');
