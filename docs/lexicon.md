@@ -7,3 +7,5 @@
 - Layout sibling: the previous or next unit in the target's enclosing vertical layout. Transforms and viewport clipping preserve this relation.
 - Placeholder: replacement text bars, an empty ring track or a muted plot sine, painted over the existing surface. Icons, images and card titles keep their source paint.
 - Unscoped guide content: a page-wide selector, such as every pressable row. It does not identify a particular control on a neighbouring step.
+
+- **Pending content**: the layout reserved for a read that has not returned. It paints bars and neutral plots, excludes values from accessibility and disables actions. It becomes explicit absence or a retry state when the read settles without data.
