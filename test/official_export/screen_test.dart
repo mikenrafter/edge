@@ -135,12 +135,12 @@ void main() {
 Future<void> capture(WidgetTester tester,GlobalKey key,String name) async {
   final path=Platform.environment['P3_CAPTURE_DIR'];if(path==null)return;
   final boundary=key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
-  final image=await boundary.toImage();
-  try {
-    final png=await image.toByteData(format:ui.ImageByteFormat.png);
-    await tester.runAsync(()async {
+  await tester.runAsync(()async {
+    final image=await boundary.toImage();
+    try {
+      final png=await image.toByteData(format:ui.ImageByteFormat.png);
       await Directory(path).create(recursive:true);
       await File('$path/$name.png').writeAsBytes(png!.buffer.asUint8List());
-    });
-  }finally{image.dispose();}
+    }finally{image.dispose();}
+  });
 }
