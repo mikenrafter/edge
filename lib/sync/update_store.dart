@@ -107,11 +107,38 @@ class UpdateStore {
 
     try {
       return await attempt(reset: false);
-    } on UpdateStoreException {
-      rethrow;
-    } catch (_) {
-      await f.deleteDatabase(path);
-      return attempt(reset: true);
+    } catch (error) {
+      if (!await _notDatabase(error, path)) rethrow;
+      // Another engine may have repaired the file while this one was opening.
+      // Serialize recovery and retry under the lock before replacing anything.
+      final lock = await File('$path.recovery-lock').open(mode: FileMode.append);
+      try {
+        await lock.lock(FileLock.blockingExclusive);
+        try {
+          return await attempt(reset: false);
+        } catch (retryError) {
+          if (!await _notDatabase(retryError, path)) rethrow;
+          await f.deleteDatabase(path);
+          return await attempt(reset: true);
+        }
+      } finally {
+        await lock.close();
+      }
+    }
+  }
+
+  /// Only SQLITE_NOTADB plus an invalid SQLite header permits file replacement.
+  /// Busy, full-disk, I/O and corrupt-page errors retain all permanent claims.
+  static Future<bool> _notDatabase(Object error, String path) async {
+    if (error is! DatabaseException ||
+        ((error.getResultCode() ?? -1) & 0xff) != 26 &&
+            !error.toString().contains('file is not a database')) return false;
+    final file = await File(path).open();
+    try {
+      final header = await file.read(16);
+      return ascii.decode(header, allowInvalid: true) != 'SQLite format 3\x00';
+    } finally {
+      await file.close();
     }
   }
 
