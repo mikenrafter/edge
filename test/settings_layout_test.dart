@@ -219,7 +219,7 @@ void main() {
       expect(rows.where(_barcode.contains), hasLength(1),
           reason: 'exactly one barcode row, inside Connections: $rows');
       final others = rows.where((r) => !_barcode.contains(r)).toList();
-      expect(others, ['AI coach', 'Tasker and Shortcuts', 'Check for updates']);
+      expect(others, ['AI coach', 'Tasker and Shortcuts', 'App updates']);
       expect(find.text(_barcode.first), findsOneWidget,
           reason: 'one door only');
     });

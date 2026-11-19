@@ -20,7 +20,7 @@
 //    "Storage", "Export, backup, import", "Calculations", "Write to Apple
 //    Health", "Contribute my health data", "Crash reports", "Report an
 //    issue" (Data & privacy);
-//    "AI coach", "Tasker and Shortcuts", "Check for updates", "Look barcodes up online"
+//    "AI coach", "Tasker and Shortcuts", "App updates", "Look barcodes up online"
 //    (Connections, moved from Data & privacy);
 //    "Version", "Notices and licences" (About); "Component gallery", "Live
 //    devices", "Device lab", "Developer mode" (Developer).
@@ -133,7 +133,7 @@ const Map<String, List<List<String>>> _rows = {
   'Connections': [
     ['AI coach'],
     ['Tasker and Shortcuts', 'Automation'],
-    ['Check for updates'],
+    ['App updates'],
     ['Look barcodes up online'],
   ],
   'About': [
@@ -300,7 +300,7 @@ void main() {
           const MoreSettingsView(
               version: '1', showHealthShare: false, showUpdateChecks: false));
       expect(find.text('Contribute my health data'), findsNothing);
-      expect(find.text('Check for updates'), findsNothing);
+      expect(find.text('App updates'), findsNothing);
     });
   });
 
