@@ -55,7 +55,9 @@ class UpdateCatalog {
       // Unsupported and draft rows carry no selection fact. Retain their
       // presence separately so an unmatched catalog is never reported empty.
       if (row['draft'] != false || row['tag_name'] is! String ||
-          !supportedTag(source, row['tag_name'] as String)) continue;
+          !supportedTag(source, row['tag_name'] as String)) {
+        continue;
+      }
       final assets = row['assets'];
       normalized.add({
         'id': row['id'], 'tag_name': row['tag_name'],
@@ -90,7 +92,9 @@ class UpdateCatalog {
         sawAny = saved['sawAny'] as bool;
         if (hashes.isEmpty || hashes.length > maxPages || rows.length > maxRows ||
             (next != 0 && next != hashes.length + 1) || verify < 2 ||
-            verify > hashes.length + 1) throw const FormatException();
+            verify > hashes.length + 1) {
+          throw const FormatException();
+        }
       } catch (_) {
         rows.clear(); hashes.clear(); next = 1; verify = 2; sawAny = false;
       }

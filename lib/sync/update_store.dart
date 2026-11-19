@@ -132,7 +132,9 @@ class UpdateStore {
   static Future<bool> _notDatabase(Object error, String path) async {
     if (error is! DatabaseException ||
         ((error.getResultCode() ?? -1) & 0xff) != 26 &&
-            !error.toString().contains('file is not a database')) return false;
+            !error.toString().contains('file is not a database')) {
+      return false;
+    }
     final file = await File(path).open();
     try {
       final header = await file.read(16);

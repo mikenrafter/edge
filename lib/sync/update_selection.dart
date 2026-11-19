@@ -337,7 +337,9 @@ class ReleaseSelection {
     if (best == null) return null;
     if (_unknownTag != null && _compareTag(_unknownTag!, best.tag) > 0) return null;
     if (source == ReleaseSource.fork && _blockerBuild != null &&
-        _blockerBuild! >= best.build!) return null;
+        _blockerBuild! >= best.build!) {
+      return null;
+    }
     return best.withRelation(relationFor(best, installed));
   }
 
@@ -354,7 +356,9 @@ class ReleaseSelection {
     summary.tags.addAll((json['tags'] as List).cast<String>());
     summary.ids.addAll((json['ids'] as List).cast<int>());
     if (summary.ids.length > maxReleases || summary.tags.length > maxReleases ||
-        summary.forkCodes.length > maxReleases) throw const FormatException('Catalog too large');
+        summary.forkCodes.length > maxReleases) {
+      throw const FormatException('Catalog too large');
+    }
     final best = json['best'];
     summary._best = best == null ? null : ReleaseCandidate.fromJson(Map<String, dynamic>.from(best as Map));
     if (summary._best != null && summary._best!.source != source) throw const FormatException();

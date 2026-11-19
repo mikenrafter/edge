@@ -447,7 +447,9 @@ class UpdateCoordinator extends ChangeNotifier {
     _ManifestBudget budget,
   ) async {
     if (release['draft'] != false || release['tag_name'] is! String ||
-        !supportedTag(ReleaseSource.fork, release['tag_name'] as String)) return null;
+        !supportedTag(ReleaseSource.fork, release['tag_name'] as String)) {
+      return null;
+    }
     final assets = release['assets'];
     if (assets is! List) return null;
     final declared = [for (final a in assets)
