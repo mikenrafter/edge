@@ -139,7 +139,7 @@ class _AlarmChartState extends State<_AlarmChart>{
       Row(children:a.type==PilotAlarmType.sleep?[
         stat(l.pilotWakeShort,_wakeText(a)),
         stat(l.pilotExpectedShort,expected==null?'—':formatClock(expected!~/60,expected!%60)),
-        stat(l.pilotUsualSleep,usualSleepMinutes==null?'—':pilotForecastText(l,usualSleepMinutes!)),
+        if(bed!=null)stat(l.pilotUsualSleep,usualSleepMinutes==null?'—':pilotForecastText(l,usualSleepMinutes!)),
       ]:[
         stat(l.pilotWindow,'${formatClock(a.workoutStartMinute~/60,a.workoutStartMinute%60)}–${formatClock(a.wakeMinute~/60,a.wakeMinute%60)}'),
         stat(l.pilotZone,l.pilotZoneAtLeast(a.zone)),
@@ -294,12 +294,12 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
       final glow=_glowingTimings.contains(id)&&_rowGlow.isAnimating?p.on(C.blue).withValues(alpha:.3*math.sin(math.pi*_rowGlow.value)):null;
       return Container(margin:const EdgeInsets.symmetric(vertical:1),padding:const EdgeInsets.symmetric(horizontal:10),
         decoration:BoxDecoration(color:glow??(selected?p.card2:null),borderRadius:BorderRadius.circular(12),border:Border.all(color:selected?p.on(C.blue).withValues(alpha:.45):Colors.transparent)),
-        child:SetRow(look.$1,look.$2,title,chevron:false,onTap:()=>select(id,start+value*60.0),
+        // The subtitle sits under the title (SetRow's own slot), so the only
+        // flexible part is the title and a long subtitle never squeezes it.
+        child:SetRow(look.$1,look.$2,title,sub:sub??'',chevron:false,onTap:()=>select(id,start+value*60.0),
           trailing:Row(mainAxisSize:MainAxisSize.min,children:[if(trailing!=null)...[trailing,const SizedBox(width:8)],
-            Column(crossAxisAlignment:CrossAxisAlignment.end,children:[
-              Text(showTime?formatClock(((value%1440)+1440)%1440~/60,((value%60)+60)%60):'—',style:F.body.copyWith(color:timeColor??(showTime?p.ink:p.ink3),fontFeatures:const [FontFeature.tabularFigures()])),
-              if(sub!=null)Text(sub,maxLines:1,style:F.cap.copyWith(color:p.ink3,fontSize:11)),
-            ])])));}));
+            Text(showTime?formatClock(((value%1440)+1440)%1440~/60,((value%60)+60)%60):'—',style:F.body.copyWith(color:timeColor??(showTime?p.ink:p.ink3),fontFeatures:const [FontFeature.tabularFigures()])),
+          ])));}));
 
   Widget _resetChip(VoidCallback tap)=>SizedBox(width:72,child:BigButton(l.pilotReset,dense:true,soft:true,color:C.n500,onTap:tap));
   Widget feelRow({bool chaos=false})=>Row(children:[TextButton.icon(onPressed:playing?null:()=>_feel(chaos:chaos),icon:const Icon(LucideIcons.vibrate,size:16),label:Text(l.pilotFeelIt)),const Spacer(),TextButton(onPressed:()=>Navigator.of(context).push(MaterialPageRoute(builder:(_)=>const HapticsSettings())),child:Text(l.pilotHaptics))]);

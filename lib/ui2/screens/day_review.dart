@@ -704,7 +704,8 @@ class DayReviewActions extends StatelessWidget {
                 : null;
     // Three across need a word's width each; at large text a word like
     // "Discard" no longer fits a third of the row, so the buttons stack.
-    final stacked = MediaQuery.textScalerOf(c).scale(1) > 1.25;
+    // m192: pilot list buttons never wrap or stack.
+    final stacked = !PilotFlag.timelines.enabled && MediaQuery.textScalerOf(c).scale(1) > 1.25;
     return Padding(padding: const EdgeInsets.only(bottom: S.x2),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (stacked) ...[

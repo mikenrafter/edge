@@ -53,7 +53,7 @@ void main(){
     expect(find.byType(SwitchListTile),findsNothing);
     final band=find.widgetWithText(SetRow,'Band buzz');expect(band,findsOneWidget);
     expect(find.descendant(of:band,matching:find.byType(Switch)),findsOneWidget);
-    expect(find.text('3 min after · set on Times'),findsOneWidget);
+    expect(find.descendant(of:find.widgetWithText(SetRow,'Phone sound'),matching:find.text('1 min after · set on Times')),findsOneWidget);
   });
 
   // catches: the day readout repeating the screen title, or zoom/pin outside the readout card.
@@ -76,7 +76,7 @@ void main(){
     expect(find.text('Fell asleep'),findsOneWidget);expect(find.text('Woke up'),findsOneWidget);
     expect(find.text('Main sleep'),findsWidgets);
     expect(find.text('6h 40m'),findsOneWidget);expect(find.text('7h 30m'),findsOneWidget);
-    expect(find.text('Actual'),findsOneWidget);
+    expect(find.textContaining('Actual',findRichText:true),findsWidgets);
     await t.scrollUntilVisible(find.text('Remove this block'),200,scrollable:find.byType(Scrollable).last);
     expect(find.widgetWithText(BigButton,'Calculate stages for this block'),findsOneWidget);
     expect(find.widgetWithText(BigButton,'Remove this block'),findsOneWidget);

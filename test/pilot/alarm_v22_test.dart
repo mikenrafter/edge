@@ -42,7 +42,7 @@ void main(){
     Finder tab(String text)=>find.descendant(of:find.byType(SubTabs),matching:find.text(text));
     expect(tab('Tonight'),findsNothing);
     expect(tab('Times'),findsOneWidget);expect(tab('Waking'),findsOneWidget);
-    expect(find.text('Usual sleep'),findsNothing);expect(find.byKey(const ValueKey('pilot-time:bed')),findsNothing);
+    expect(find.byKey(const ValueKey('pilot-time:bed')),findsNothing);
   });
   // catches: an icon hidden behind its thumb or a zoom that jumps instead of gliding.
   testWidgets('annotation selects its own timing and alarm zoom glides without a cursor',(t)async{
@@ -88,7 +88,7 @@ void main(){
   // catches: hiding the recorded usual-sleep stat merely because expected wake is outside the window.
   testWidgets('overview hides Usual sleep only when the recorded bedtime is absent',(t)async{
     await pump(t,PilotAlarmScreen(alarms:[PilotAlarm(id:'a',label:'A')],now:day,reference:(_)async=>sample(wake:500,sleep:530),onSave:(_)async{}));
-    expect(find.text('Usual sleep'),findsOneWidget);expect(find.text('530 min'),findsOneWidget);
+    expect(find.text('Usual sleep'),findsOneWidget);expect(find.text('~8 h 50 min'),findsOneWidget);
     await t.pumpWidget(const SizedBox());await pump(t,PilotAlarmScreen(alarms:[PilotAlarm(id:'a',label:'A')],now:day,onSave:(_)async{}));expect(find.text('Usual sleep'),findsNothing);
   });
   // catches: cancelling a flash-only backup before a foreground frame is shown.

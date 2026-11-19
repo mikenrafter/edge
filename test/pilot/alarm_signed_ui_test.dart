@@ -90,6 +90,8 @@ void main(){
     await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'Work'),now:day,
       reference:(_)async=>PilotAlarmReference(graph:DayGraph(dayStart:base),wakeMinute:420),onSave:(_)async{}));
     final detail=find.byKey(const ValueKey('pilot-alarm-readout'));
+    // Asleep for is a scrub value; at rest Usual sleep stays absent too.
+    t.widget<PilotTimelineChart>(find.byType(PilotTimelineChart)).controller.setScrub(base+400*60.0);await t.pump();
     final label=find.descendant(of:detail,matching:find.text('Asleep for'));expect(label,findsOneWidget);
     final cell=find.ancestor(of:label,matching:find.byType(Column)).first;
     expect(find.descendant(of:cell,matching:find.text('—')),findsOneWidget);
