@@ -151,7 +151,13 @@ Future<Database> _ldbPrivOpen() async {
     final opened = await openDatabase(
       path,
       onConfigure: (db) async {
-        // First, before any pragma: a file stamped newer than this build is
+        // Bound waits for other SQLite connections. Index maintenance instead
+        // shares this writer queue so UI/live writes wait without contention.
+        // Set before the stamp read below, so a briefly locked file waits
+        // instead of failing into quarantine.
+        // CLAIM(index-derive-exclusion) [finalized_day_ids_index_test].
+        await db.rawQuery('PRAGMA busy_timeout=30000');
+        // Before any other pragma: a file stamped newer than this build is
         // refused untouched. sqflite would otherwise run no callback for a
         // downgrade and then stamp `user_version` back to ours, so the next
         // newer build skipped rungs it had already run (stale sleep_block).
@@ -159,10 +165,6 @@ Future<Database> _ldbPrivOpen() async {
         if (stamped > LocalDb.schemaVersion) {
           throw DbNewerThanBuild(found: stamped, supported: LocalDb.schemaVersion);
         }
-        // Bound waits for other SQLite connections. Index maintenance instead
-        // shares this writer queue so UI/live writes wait without contention.
-        // CLAIM(index-derive-exclusion) [finalized_day_ids_index_test].
-        await db.rawQuery('PRAGMA busy_timeout=30000');
         // WRITE PERFORMANCE. The default rollback journal (journal_mode=delete)
         // with synchronous=FULL fsyncs the whole DB on every commit — brutal for
         // the high-volume sync-ingest and the raw re-decode migration on a large
