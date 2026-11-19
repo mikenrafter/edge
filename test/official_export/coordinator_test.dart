@@ -332,6 +332,12 @@ void main() {
       final record=jsonDecode(await File('${private.path}/interruption.json').readAsString()) as Map;
       expect((record['leftovers'] as List).single['name'],'openstrap-official-x.db.osbk.incomplete');
       expect(restarted.notices.map((n)=>n.file),['openstrap-official-x.db.osbk.incomplete']);
+      await restarted.dismissNotices();
+      final afterDismiss=OfficialExportCoordinator();
+      try {
+        await afterDismiss.loadInterruption(private);
+        expect(afterDismiss.notices,isEmpty,reason:'an embedded cleanup receipt must also honor Dismiss');
+      }finally{afterDismiss.dispose();}
     }finally{await coordinator.finish();await restarted.finish();coordinator.dispose();restarted.dispose();await root.delete(recursive:true);await fx.dispose();}
   });
   test('an unreadable journal is set aside and does not block a new export',()async {

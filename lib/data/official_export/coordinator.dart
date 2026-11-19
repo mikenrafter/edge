@@ -105,6 +105,19 @@ class OfficialExportCoordinator extends ChangeNotifier {
     ];
   }
   Future<void> dismissNotices() async {
+    try {
+      final journal=File('${_root.path}/interruption.json');
+      if(await journal.exists()) {
+        final record=await JsonPayloadLane.shared.decodeUncached(await journal.readAsString());
+        if(record is Map && record.containsKey('leftovers')) {
+          record.remove('leftovers');
+          final text=(await runMappingWorker(MappingInput('json','',const [],json:record))).text!;
+          final pending=File('${_root.path}/interruption.pending');
+          await pending.writeAsString(text,flush:true);await pending.rename(journal.path);
+          _interruption?.remove('leftovers');
+        }
+      }
+    } catch(_) {return;}
     _journalAside=false;_leftovers=[];
     await _saveLeftovers();_refreshNotices();notifyListeners();
   }
