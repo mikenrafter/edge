@@ -21339,5 +21339,10 @@
   "officialExportRows": "Datensätze",
   "officialExportBytes": "Bytes",
   "officialExportBeats": "Herzschläge",
-  "officialExportNoNewer": "Bei der letzten Prüfung wurde keine neuere offizielle Version gemeldet."
+  "officialExportNoNewer": "Bei der letzten Prüfung wurde keine neuere offizielle Version gemeldet.",
+  "officialExportSkippedHeader": "Weder in der offiziellen Datei noch in der Wiederherstellungsdatei. Nach der Behebung der Ursache erneut exportieren.",
+  "officialExportSkippedSpace": "Übersprungen, um Platz für neue Aufzeichnungen zu lassen",
+  "officialExportSkippedUnfinished": "Aufzeichnung nicht abgeschlossen",
+  "officialExportSkippedUnreadable": "Konnte nicht gelesen werden",
+  "officialExportSkippedValue": "Werttyp konnte nicht gespeichert werden"
 }

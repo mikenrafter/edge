@@ -21339,5 +21339,10 @@
   "officialExportRows": "रिकॉर्ड",
   "officialExportBytes": "बाइट",
   "officialExportBeats": "धड़कन",
-  "officialExportNoNewer": "पिछली जाँच में कोई नया आधिकारिक संस्करण नहीं मिला।"
+  "officialExportNoNewer": "पिछली जाँच में कोई नया आधिकारिक संस्करण नहीं मिला।",
+  "officialExportSkippedHeader": "न आधिकारिक फ़ाइल में, न रिकवरी फ़ाइल में। कारण ठीक होने के बाद फिर निर्यात करें।",
+  "officialExportSkippedSpace": "नई रिकॉर्डिंग के लिए जगह रखने हेतु छोड़ा गया",
+  "officialExportSkippedUnfinished": "रिकॉर्डिंग पूरी नहीं हुई",
+  "officialExportSkippedUnreadable": "पढ़ा नहीं जा सका",
+  "officialExportSkippedValue": "इस प्रकार का मान सहेजा नहीं जा सका"
 }

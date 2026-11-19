@@ -21339,5 +21339,10 @@
   "officialExportRows": "registros",
   "officialExportBytes": "bytes",
   "officialExportBeats": "Latidos",
-  "officialExportNoNewer": "La última comprobación no encontró una versión oficial más reciente."
+  "officialExportNoNewer": "La última comprobación no encontró una versión oficial más reciente.",
+  "officialExportSkippedHeader": "No está en el archivo oficial ni en el de recuperación. Exporta de nuevo cuando se resuelva la causa.",
+  "officialExportSkippedSpace": "Omitido para dejar espacio a nuevas grabaciones",
+  "officialExportSkippedUnfinished": "Grabación sin terminar",
+  "officialExportSkippedUnreadable": "No se pudo leer",
+  "officialExportSkippedValue": "No se pudo guardar este tipo de valor"
 }

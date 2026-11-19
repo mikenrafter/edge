@@ -21339,5 +21339,10 @@
   "officialExportRows": "条记录",
   "officialExportBytes": "字节",
   "officialExportBeats": "心搏",
-  "officialExportNoNewer": "上次检查未发现更新的官方版本。"
+  "officialExportNoNewer": "上次检查未发现更新的官方版本。",
+  "officialExportSkippedHeader": "官方文件和恢复文件中都没有。排除原因后请重新导出。",
+  "officialExportSkippedSpace": "为给新录制内容留出空间而跳过",
+  "officialExportSkippedUnfinished": "录制尚未完成",
+  "officialExportSkippedUnreadable": "无法读取",
+  "officialExportSkippedValue": "无法保存此类值"
 }

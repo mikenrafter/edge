@@ -21387,5 +21387,10 @@
   "officialExportRows": "รายการ",
   "officialExportBytes": "ไบต์",
   "officialExportBeats": "จังหวะหัวใจ",
-  "officialExportNoNewer": "การตรวจสอบครั้งล่าสุดไม่พบรุ่นทางการที่ใหม่กว่า"
+  "officialExportNoNewer": "การตรวจสอบครั้งล่าสุดไม่พบรุ่นทางการที่ใหม่กว่า",
+  "officialExportSkippedHeader": "ไม่อยู่ทั้งในไฟล์ทางการและไฟล์กู้คืน ส่งออกอีกครั้งหลังแก้สาเหตุแล้ว",
+  "officialExportSkippedSpace": "ข้ามไว้เพื่อเหลือที่ว่างสำหรับการบันทึกใหม่",
+  "officialExportSkippedUnfinished": "การบันทึกยังไม่เสร็จ",
+  "officialExportSkippedUnreadable": "อ่านไม่ได้",
+  "officialExportSkippedValue": "บันทึกค่าประเภทนี้ไม่ได้"
 }

@@ -17,6 +17,7 @@ import '../raw_archive_row.dart';
 import '../substrate_archive_codec.dart';
 import 'profile_tables.dart';
 import 'profile.dart';
+import 'omission_reasons.dart';
 
 const mappingWorkerInputs = WorkerInputs(nowEpochMs: 0, zoneId: 'explicit-caller-calendar', localeTag: 'en');
 
@@ -88,7 +89,8 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
     }
     for(final extra in payload['extras'] as List) {
       final family=switch(extra['family']){'saved files'=>'recordings','settings'=>'settings',_=>'other'};
-      groups[(family,'unsupported')]=(groups[(family,'unsupported')]??0)+1;
+      final reason=extrasOmissionGroup(extra['reason'] as String?);
+      groups[(family,reason)]=(groups[(family,reason)]??0)+1;
     }
     return MappingOutput([for(final entry in groups.entries) {'family':entry.key.$1,'reason':entry.key.$2,'count':entry.value}],const []);
   }

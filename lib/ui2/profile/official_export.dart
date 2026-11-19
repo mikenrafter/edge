@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../data/backup_storage.dart';
 import '../../data/official_export/coordinator.dart';
 import '../../data/official_export/mapping_worker.dart' show exportRecordFamily;
+import '../../data/official_export/omission_reasons.dart' show kSkippedOmissionGroups;
 import '../../data/official_export/session.dart';
 import '../../data/official_export/snapshot.dart';
 import '../../data/official_export/space_budget.dart';
@@ -254,18 +255,24 @@ class _OmissionsState extends State<_Omissions> {
         if(snapshot.hasError)return Center(child:Text(l.officialExportFailed));
         final groups=snapshot.data;
         if(groups==null)return Padding(padding:const EdgeInsets.all(16),child:Text(l.officialExportPreparing));
-        return ListView.builder(itemCount:groups.length+1,itemBuilder:(c,i){
-          if(i==0) {
-            final outcome=widget.coordinator.outcome;
-            final label=widget.coordinator.progress.stage==ExportStage.recoveryChoice?l.officialExportRecoveryQuestion
-              :outcome is OfficialExportSaved && outcome.recoveryStatus==RecoveryStatus.saved?l.officialExportSaved
-              :outcome is OfficialExportSaved && outcome.recoveryError!=null?l.officialExportRecoveryFailed:l.officialExportNotSaved;
-            return Padding(padding:const EdgeInsets.all(16),child:Text(label));
-          }
-          final group=groups[i-1];
-          final family=switch(group['family']){'recordings'=>l.officialExportRecordings,'entries'=>l.officialExportEntries,'settings'=>l.officialExportSettings,_=>l.officialExportOther};
-          return ListTile(title:Text('$family · ${group['count']}'),subtitle:Text(group['reason']=='rebuilt'?l.officialExportRebuilt:l.officialExportUnsupported));
-        });
+        final kept=[for(final g in groups)if(!kSkippedOmissionGroups.contains(g['reason']))g];
+        final skipped=[for(final g in groups)if(kSkippedOmissionGroups.contains(g['reason']))g];
+        String family(Map<String,Object?> group)=>switch(group['family']){'recordings'=>l.officialExportRecordings,'entries'=>l.officialExportEntries,'settings'=>l.officialExportSettings,_=>l.officialExportOther};
+        String reason(Object? code)=>switch(code){
+          'rebuilt'=>l.officialExportRebuilt,'space'=>l.officialExportSkippedSpace,'unfinished'=>l.officialExportSkippedUnfinished,
+          'unreadable'=>l.officialExportSkippedUnreadable,'value'=>l.officialExportSkippedValue,_=>l.officialExportUnsupported};
+        final outcome=widget.coordinator.outcome;
+        // The saved-file header sits only above items the saved files cover.
+        final head=widget.coordinator.progress.stage==ExportStage.recoveryChoice?l.officialExportRecoveryQuestion
+          :outcome is OfficialExportSaved && outcome.recoveryStatus==RecoveryStatus.saved?l.officialExportSaved
+          :outcome is OfficialExportSaved && outcome.recoveryError!=null?l.officialExportRecoveryFailed:l.officialExportNotSaved;
+        Widget note(String text)=>Padding(padding:const EdgeInsets.all(16),child:Text(text));
+        return ListView(children:[
+          if(kept.isNotEmpty || skipped.isEmpty)note(head),
+          for(final g in kept)ListTile(title:Text('${family(g)} · ${g['count']}'),subtitle:Text(reason(g['reason']))),
+          if(skipped.isNotEmpty)note(l.officialExportSkippedHeader),
+          for(final g in skipped)ListTile(title:Text('${family(g)} · ${g['count']}'),subtitle:Text(reason(g['reason']))),
+        ]);
       }));
   }
 }

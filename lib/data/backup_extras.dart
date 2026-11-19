@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import '../compute/derivation_engine.dart' show kAlgoVersion;
 import 'db.dart' show LocalDb;
+import 'official_export/omission_reasons.dart';
 import 'import_reentry_store.dart';
 import 'dart:collection';
 import '../coach/coach_config.dart' show CoachConfig;
@@ -270,7 +271,7 @@ Future<void> writeBackupExtras(
         if (!prefsKeyBackedUp(key) && !kPrefsSignalOnly.contains(key)) continue;
         final row = _encodePref(capturedPrefs.get(key));
         if (row == null) {
-          audit?.omit('settings',key,'unsupported preference type');continue;
+          audit?.omit('settings',key,kOmitUnsupportedPref);continue;
         }
         await txn.insert(
             'backup_prefs', {'key': key, 'type': row.$1, 'value': row.$2},
@@ -281,7 +282,7 @@ Future<void> writeBackupExtras(
       await copy.execute('CREATE TABLE IF NOT EXISTS backup_files '
           '(rel_path TEXT PRIMARY KEY, bytes BLOB)');
       Future<void> captureFile(File file,String rel) async {
-        if(omitFiles){audit?.omit('saved files',rel,'omitted to preserve space for new recordings');return;}
+        if(omitFiles){audit?.omit('saved files',rel,kOmitSpace);return;}
         try {
           audit?.checkCancelled();
           final before=await file.stat();
@@ -314,7 +315,7 @@ Future<void> writeBackupExtras(
           await for(final entry in dir.list(followLinks:false)) {
             final name=p.basename(entry.path);
             if(entry is File && _safeRecordingName.hasMatch(name)) await captureFile(entry,'$kBackupRecordingsDir/$name');
-            if(entry is File && name.endsWith('.part')) audit?.omit('saved files',name,'recording is unfinished');
+            if(entry is File && name.endsWith('.part')) audit?.omit('saved files',name,kOmitUnfinished);
           }
         }
         await CoachEngine.withFileSnapshot(()async {

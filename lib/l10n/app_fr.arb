@@ -21339,5 +21339,10 @@
   "officialExportRows": "enregistrements",
   "officialExportBytes": "octets",
   "officialExportBeats": "Battements",
-  "officialExportNoNewer": "La dernière vérification n’a signalé aucune version officielle plus récente."
+  "officialExportNoNewer": "La dernière vérification n’a signalé aucune version officielle plus récente.",
+  "officialExportSkippedHeader": "Absent du fichier officiel et du fichier de récupération. Exportez à nouveau une fois la cause corrigée.",
+  "officialExportSkippedSpace": "Ignoré pour garder de la place aux nouveaux enregistrements",
+  "officialExportSkippedUnfinished": "Enregistrement inachevé",
+  "officialExportSkippedUnreadable": "Lecture impossible",
+  "officialExportSkippedValue": "Ce type de valeur n’a pas pu être enregistré"
 }

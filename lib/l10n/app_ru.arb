@@ -20777,5 +20777,10 @@
   "officialExportRows": "записей",
   "officialExportBytes": "байт",
   "officialExportBeats": "Удары",
-  "officialExportNoNewer": "Последняя проверка не сообщила о более новой официальной версии."
+  "officialExportNoNewer": "Последняя проверка не сообщила о более новой официальной версии.",
+  "officialExportSkippedHeader": "Нет ни в официальном файле, ни в файле восстановления. Экспортируйте снова после устранения причины.",
+  "officialExportSkippedSpace": "Пропущено, чтобы оставить место для новых записей",
+  "officialExportSkippedUnfinished": "Запись не завершена",
+  "officialExportSkippedUnreadable": "Не удалось прочитать",
+  "officialExportSkippedValue": "Этот тип значения нельзя сохранить"
 }

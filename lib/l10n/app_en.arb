@@ -21539,5 +21539,15 @@
   "officialExportNoNewer": "No newer official release was reported by the last check.",
   "@officialExportNoNewer": {
     "description": "A successful dated cached check, without starting new network work."
-  }
+  },
+  "officialExportSkippedHeader": "Not in the official file or the recovery file. Export again after the cause is fixed.",
+  "@officialExportSkippedHeader": {"description": "Official-app export flow."},
+  "officialExportSkippedSpace": "Skipped to keep space for new recordings",
+  "@officialExportSkippedSpace": {"description": "Official-app export flow."},
+  "officialExportSkippedUnfinished": "Recording not finished",
+  "@officialExportSkippedUnfinished": {"description": "Official-app export flow."},
+  "officialExportSkippedUnreadable": "Could not be read",
+  "@officialExportSkippedUnreadable": {"description": "Official-app export flow."},
+  "officialExportSkippedValue": "Value type could not be saved",
+  "@officialExportSkippedValue": {"description": "Official-app export flow."}
 }
