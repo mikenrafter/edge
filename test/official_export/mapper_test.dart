@@ -81,6 +81,26 @@ void main() {
     });
   }
 
+  // WHY: the retired column is an omitted schema object even with zero values;
+  // an empty legacy database still needs an explicit omission ledger.
+  test('empty retired ECG objects remain named in the omission ledger',()async {
+    final fx=await RichFixture.build();
+    try {
+      final db=await databaseFactoryFfi.openDatabase(fx.forkPath);
+      try {
+        await db.delete('ecg_gesture_session');await db.delete('ecg_raw_packet');
+      }finally{await db.close();}
+      final path='${File(fx.forkPath).parent.path}/empty-retired.db';
+      final report=await mapOfficialSnapshot(snapshotPath:fx.forkPath,outputPath:path,
+        factory:databaseFactoryFfi,calendar:const FixedOffsetCalendar(0));
+      final table=report.tables['ecg_gesture_session'] as Map;
+      expect(table['source_count'],0);expect(table['omitted_all'],isTrue);
+      final packet=report.tables['ecg_raw_packet'] as Map;
+      expect(packet['source_count'],0);
+      expect(packet['omitted_columns'],['origin']);
+    }finally{await fx.dispose();}
+  });
+
   test('oldest mapped exact input uses positive rec_ts across both tables', () async {
     sqfliteFfiInit();
     final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
