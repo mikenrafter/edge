@@ -28,6 +28,19 @@ void main(){
     }
     expect(find.textContaining('If the torch is unavailable'),findsOneWidget);
   });
+  // catches: Band off leaving every phone method off or omitting the Times cue.
+  testWidgets('Band off enables immediate Phone sound and flashes Times',(t)async{
+    await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'A'),now:day,onSave:(_)async{}));
+    await t.tap(find.text('Waking'));await t.pumpAndSettle();
+    await t.scrollUntilVisible(find.text('Band buzz'),160,scrollable:find.byType(Scrollable).last);
+    await t.tap(find.text('Band buzz'));await t.pump(const Duration(milliseconds:100));
+    final times=t.widget<TextButton>(find.widgetWithText(TextButton,'Times'));
+    expect(times.style?.backgroundColor?.resolve({})?.a??0,greaterThan(0));
+    await t.scrollUntilVisible(find.text('Phone sound'),160,scrollable:find.byType(Scrollable).last);
+    final sound=find.widgetWithText(SwitchListTile,'Phone sound');expect(t.widget<SwitchListTile>(sound).value,true);
+    expect(find.descendant(of:sound,matching:find.text('0 min after · set on Times')),findsOneWidget);
+    await t.tap(find.text('Times'));await t.pump();expect(find.byKey(const ValueKey('pilot-time:sound')),findsOneWidget);
+  });
   // catches: idle two-cell stats becoming Stage/HR/movement, losing title/controls,
   // or using a text Happening value with no accessible icon description.
   testWidgets('alarm readout retains three fixed cells and accessible Happening icons during scrub',(t)async{
@@ -42,7 +55,7 @@ void main(){
     // 06:50 is a quarter through 06:40…07:20; the small move stays at 06:50 after 5-min snapping.
     await g.moveBy(Offset(rect.width*.05,0));await t.pump();
     expect(t.widget<PilotTimelineChart>(find.byType(PilotTimelineChart)).controller.scrub,isNotNull);
-    expect(find.descendant(of:detail,matching:find.bySemanticsLabel('Sunrise alarm')),findsOneWidget);
+    expect(find.descendant(of:detail,matching:find.byWidgetPredicate((w)=>w is Semantics&&w.properties.label=='Sunrise alarm')),findsOneWidget,reason:'cursor ${t.widget<PilotTimelineChart>(find.byType(PilotTimelineChart)).controller.scrub}');
     expect(find.descendant(of:detail,matching:find.text('Light')),findsOneWidget);
     // The forecast readout estimates 50 min since this night’s 06:00 bedtime.
     expect(find.descendant(of:detail,matching:find.text('~50 min')),findsOneWidget);
@@ -50,6 +63,18 @@ void main(){
     await g.up();await t.pump();expect(t.widget<PilotTimelineChart>(find.byType(PilotTimelineChart)).controller.scrub,null);
     for(final label in ['Stage','Asleep for','Happening']){expect(find.descendant(of:detail,matching:find.text(label)),findsOneWidget);}
     expect(t.takeException(),null);
+  });
+  // catches: dropping the forecast tilde, displaying negative elapsed time,
+  // or showing raw minutes instead of the signed preview's hours/minutes format.
+  testWidgets('forecast estimate formats hours and stays absent before bedtime',(t)async{
+    await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'Work'),now:day,
+      reference:(_)async=>PilotAlarmReference(graph:DayGraph(dayStart:base),bedMinute:0,wakeMinute:420),onSave:(_)async{}));
+    final detail=find.byKey(const ValueKey('pilot-alarm-readout')),chart=t.widget<PilotTimelineChart>(find.byType(PilotTimelineChart));
+    expect(find.descendant(of:detail,matching:find.text('~7 h')),findsOneWidget);
+    chart.controller.setScrub(base+370*60.0);await t.pump();expect(find.descendant(of:detail,matching:find.text('~6 h 10 min')),findsOneWidget);
+    chart.controller.setScrub(base-60.0);await t.pump();
+    final label=find.descendant(of:detail,matching:find.text('Asleep for'));expect(label,findsOneWidget);
+    final cell=find.ancestor(of:label,matching:find.byType(Column)).first;expect(find.descendant(of:cell,matching:find.text('—')),findsOneWidget);
   });
   // catches: inventing a bedtime when this weekday has no usual-sleep reference.
   testWidgets('forecast Asleep for stays absent without a usual bedtime',(t)async{
