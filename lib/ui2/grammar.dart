@@ -3869,6 +3869,10 @@ class BigButton extends StatelessWidget {
   /// The row-sized form: one tap target tall, for buttons that sit several to
   /// a row (Keep / Discard / Edit) rather than commit a whole screen.
   final bool dense;
+
+  /// Keeps the label on one line, scaled down to fit, for a row of buttons
+  /// that must never wrap (the pilot day list, owner m192).
+  final bool oneLine;
   final VoidCallback? onTap;
   final VoidCallback? onPressStart;
   final VoidCallback? onPressEnd;
@@ -3882,6 +3886,7 @@ class BigButton extends StatelessWidget {
     this.soft = false,
     this.busy = false,
     this.dense = false,
+    this.oneLine = false,
     this.onTap,
     this.onPressStart,
     this.onPressEnd,
@@ -3924,21 +3929,26 @@ class BigButton extends StatelessWidget {
               const SizedBox(width: S.x2),
             ],
             Flexible(
-              child: PendingStatic(
+              child: _maybeFit(oneLine, PendingStatic(
                 child: Text(
                 label,
                 style: (dense ? F.body.copyWith(fontWeight: FontWeight.w600) : F.head)
                     .copyWith(color: ink),
                 textAlign: TextAlign.center,
-                maxLines: 2,
+                maxLines: oneLine ? 1 : 2,
+                softWrap: !oneLine,
                 ),
-              ),
+              )),
             ),
           ],
         ),
       ),
     );
   }
+
+  static Widget _maybeFit(bool fit, Widget child) => fit
+      ? FittedBox(fit: BoxFit.scaleDown, child: child)
+      : child;
 }
 
 // ══════════════════ CHART FRAME ══════════════════

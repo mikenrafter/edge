@@ -633,6 +633,7 @@ Widget reviewButton(BuildContext c, String key, String label, VoidCallback? tap,
   label: label, onTap: tap, excludeSemantics: true,
   child: Opacity(opacity: tap == null ? .4 : 1, child: BigButton(label,
       dense: true, icon: glyph, color: color,
+      oneLine: PilotFlag.timelines.enabled,
       soft: !primary && !selected, onTap: tap)),
 );
 
