@@ -11,6 +11,8 @@ import 'package:openstrap_edge/pilot/pilot_readout.dart';
 import 'package:openstrap_edge/pilot/pilot_theme.dart';
 import 'package:openstrap_edge/pilot/sleep_editor.dart';
 import 'package:openstrap_edge/pilot/timeline_chart.dart';
+import 'package:openstrap_edge/pilot/timeline_policy.dart';
+import 'package:openstrap_edge/ui2/chart_annotations.dart';
 import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/day_timeline/day_graph.dart';
@@ -85,5 +87,39 @@ void main(){
     await t.scrollUntilVisible(find.text('Remove this block'),200,scrollable:find.byType(Scrollable).last);
     expect(find.widgetWithText(BigButton,'Calculate stages for this block'),findsOneWidget);
     expect(find.widgetWithText(BigButton,'Remove this block'),findsOneWidget);
+  });
+
+  // m241. catches: a tap doing nothing on the day timeline, a pan that scrubs,
+  // a tap near an item moving the cursor, or temporary-scrub charts gaining tap-to-scrub.
+  group('day timeline tap places the scrub cursor',(){
+    late TimelineController c;late TimelineInteraction i;String? focused;
+    Future<Rect> mount(WidgetTester t,PilotScrub retention)async{
+      c=TimelineController(homeStartSec:base,homeEndSec:base+86400);i=TimelineInteraction(retention:retention);focused=null;
+      addTearDown(c.dispose);addTearDown(i.dispose);
+      await pump(t,Scaffold(body:Padding(padding:const EdgeInsets.all(16),child:PilotTimelineChart(controller:c,interaction:i,
+        graph:DayGraph(dayStart:base,hr:List.filled(1440,62),movement:List.filled(1440,.1)),
+        annotations:[ChartAnnotation(id:'meal',kind:AnnotationKind.moment,at:base+18*3600.0,label:'Meal')],onSelect:(id)=>focused=id))));
+      return t.getRect(find.byKey(const ValueKey('pilot-timeline-plot')));
+    }
+    testWidgets('tap on empty graph moves the cursor there',(t)async{
+      final r=await mount(t,PilotScrub.permanent);
+      await t.tapAt(Offset(r.left+r.width*.25,r.center.dy));await t.pump();
+      expect(c.scrub,base+6*3600.0);expect(focused,isNull);expect(i.cursor,base+6*3600.0);
+    });
+    testWidgets('a drag pans and never scrubs',(t)async{
+      final r=await mount(t,PilotScrub.permanent);
+      await t.dragFrom(Offset(r.left+r.width*.5,r.center.dy),const Offset(-80,0));await t.pump();
+      expect(c.scrub,isNull);
+    });
+    testWidgets('tap near an annotation focuses it without moving the cursor',(t)async{
+      final r=await mount(t,PilotScrub.permanent);
+      await t.tapAt(Offset(r.left+r.width*.75,r.center.dy));await t.pump();
+      expect(focused,'meal');expect(c.scrub,isNull);
+    });
+    testWidgets('temporary-scrub charts ignore a tap',(t)async{
+      final r=await mount(t,PilotScrub.temporary);
+      await t.tapAt(Offset(r.left+r.width*.25,r.center.dy));await t.pump();
+      expect(c.scrub,isNull);
+    });
   });
 }

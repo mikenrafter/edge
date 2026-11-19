@@ -142,7 +142,15 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
         final at=_time(e.localPosition.dx);widget.onTapTime?.call(at);
         ChartAnnotation? nearest;
         for(final a in widget.annotations){if(nearest==null||(a.at-at).abs()<(nearest.at-at).abs())nearest=a;}
-        if(nearest!=null&&(nearest.at-at).abs()<c.view.span*.05)widget.onSelect?.call(nearest.id);
+        if(nearest!=null&&(nearest.at-at).abs()<c.view.span*.05){widget.onSelect?.call(nearest.id);}
+        // m241: on a persistent-scrub chart (the day timeline) a tap that
+        // focuses nothing places the cursor, as a hold would. It fires on the
+        // trailing edge (no move past the slop, before the hold timer), so a
+        // pan never scrubs. Temporary-scrub charts keep tap = nothing.
+        else if(interaction.retention==PilotScrub.permanent){
+          final snapped=(at/300).round()*300.0;
+          c.setScrub(snapped);interaction.focus(snapped);widget.onScrub?.call(snapped);
+        }
       }
     }
     interaction.lift();
