@@ -1154,6 +1154,14 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     prep(ImportPrepStep.opening);
     final src = ImportSourceGuard(await openDatabase(path, readOnly: true));
     final db = await LocalDb.instance;
+    // Freeze local ownership before absorb adds foreign blocks. A replaced
+    // bundle must reapply these assertions even when import inserted nothing
+    // [C1; sleep_block_transport_test]. This covering index carries no blobs.
+    final localNapDays = {
+      for(final row in await db.rawQuery(
+        "SELECT DISTINCT owner_day FROM sleep_block INDEXED BY idx_sleep_block_owner WHERE kind = 'nap'"))
+        row['owner_day'] as String,
+    };
     const tables = LocalDb._restoreTables;
     // D38: where a resumed import starts (table index, rowid inside it).
     final order = only ?? tables;
@@ -2692,17 +2700,26 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       await ActivityStore(db).migrateLegacy();
     }
     ImportPerf.phase('migrate_activities', cleanupWatch, run: perfId);
-    // A newly imported bundle can carry accepted sleep behind a local discard.
-    // Absorb itself only enqueues inserted blocks; this is new result input,
-    // and needs composition even when every foreign assertion was refused.
-    for(final day in importedDays ?? <String>{}) {
-      final decisions=await db.query('activity_suggestions',columns:['id'],
-        where:"kind = 'nap' AND status <> 'pending' AND day_id = ?",whereArgs:[day],limit:1);
-      if(decisions.isEmpty) continue;
-      final jobs=await db.query('sleep_edit_job',where:'day_id = ?',whereArgs:[day]);
-      if(jobs.isEmpty || jobs.single['nap_revision']==jobs.single['nap_applied_revision']) {
-        await db.transaction((tx)=>SleepEditStore.enqueue(tx,day,main:false));
-      }
+    // Imported bundles were composed elsewhere. Reapply every pre-import
+    // local nap assertion (any state), as well as local suggestion decisions,
+    // only where day_result was actually replaced. Absorb's pending receipts
+    // already cover newly inserted blocks. No cap may leave later days stale.
+    final napInputDays=(importedDays ?? <String>{}).toList();
+    for(var offset=0;offset<napInputDays.length;offset+=100) {
+      final batch=napInputDays.skip(offset).take(100);
+      await db.transaction((tx) async {
+        for(final day in batch) {
+          if(!localNapDays.contains(day)) {
+            final decisions=await tx.query('activity_suggestions',columns:['id'],
+              where:"kind = 'nap' AND status <> 'pending' AND day_id = ?",whereArgs:[day],limit:1);
+            if(decisions.isEmpty) continue;
+          }
+          final jobs=await tx.query('sleep_edit_job',where:'day_id = ?',whereArgs:[day]);
+          if(jobs.isEmpty || jobs.single['nap_revision']==jobs.single['nap_applied_revision']) {
+            await SleepEditStore.enqueue(tx,day,main:false);
+          }
+        }
+      });
     }
     ImportPerf.phase('review_days', cleanupWatch, run: perfId);
     final wornOn = restoredWornOn;
