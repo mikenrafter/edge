@@ -7,6 +7,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../data/day_label.dart';
+import '../data/local_repository.dart' show SleepPrimaryRead;
+import '../wake/wake_timeline.dart' show WakeNightEvent;
 import '../data/sleep_editor.dart';
 import '../models/activity_suggestion.dart';
 import '../l10n/app_localizations.dart';
@@ -81,9 +83,11 @@ class _SleepEditorState extends State<PilotSleepEditor>{
       final hrs=List<double?>.filled((hi-lo)~/60,null),motion=List<double?>.filled((hi-lo)~/60,null);
       final rest=<(int,int,Color)>[];
       for(final p in valid){final offset=(p.dayStart!-lo)~/60;for(var i=0;i<p.hr.length;i++)hrs[offset+i]=p.hr[i];for(var i=0;i<p.movement.length;i++)motion[offset+i]=p.movement[i];for(final s in p.rest)rest.add((s.$1+offset,s.$2+offset,s.$3));}
-      final primary=await repo.getSleepDetailPrimary(day);final night=primary?.bundle.night;
+      final SleepPrimaryRead? primary=await repo.getSleepDetailPrimary(day);final night=primary?.bundle.night;
       final stage=recordedStages(night??{},origin:lo,slots:hrs.length);
-      final events=[for(final e in primary?.wake.events??[])ChartAnnotation(id:'wake:${e.kind.name}:${e.at.millisecondsSinceEpoch}',kind:AnnotationKind.wake,at:e.at.millisecondsSinceEpoch/1000,label:e.kind.name,icon:wakeEventIcon(e.kind))];
+      final List<WakeNightEvent> observed=primary?.wake.collapsedEvents??const <WakeNightEvent>[];
+      if(!mounted)return;
+      final events=[for(final WakeNightEvent e in observed)ChartAnnotation(id:'wake:${e.kind.name}:${e.at.millisecondsSinceEpoch}',kind:AnnotationKind.wake,at:e.at.millisecondsSinceEpoch/1000,label:wakeEventLabel(e,l),icon:wakeEventIcon(e.kind))];
       if(!mounted)return;setState((){_bind(r,DayGraph(hr:hrs,movement:motion,rest:rest,dayStart:lo),stage);wakeEvents=events;dream=primary?.wake.dream?.answer==DreamAnswer.dream?true:primary?.wake.dream?.answer==DreamAnswer.normal?false:null;originalDream=dream;dreamEpoch=primary?.wake.events.where((e)=>e.wakeEpochSec!=null).firstOrNull?.wakeEpochSec;});
     }catch(e){if(mounted)setState((){error=e.toString();loading=false;});}
   }
