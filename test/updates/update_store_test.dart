@@ -495,6 +495,25 @@ void main() {
       expect(await store.beginRelease(id(1), t0), isNotNull);
     });
 
+    // WHY: recovery keeps its offered identities reserved while releasing
+    // older holds; permanent sent/unknown receipts must stay consumed.
+    // catches: releasing the exception, or touching a permanent claim.
+    test('discarding stale holds preserves exceptions and permanent receipts', () async {
+      for (final (number, outcome) in [
+        (1, ClaimOutcome.held), (2, ClaimOutcome.held),
+        (3, ClaimOutcome.sent), (4, ClaimOutcome.unknown),
+      ]) {
+        final ticket = (await store.beginRelease(id(number), t0))!;
+        await store.settleRelease(ticket, outcome);
+      }
+      await store.discardHeld(except: {id(1), id(999)});
+      final rows = await store.db.query('update_notifications',
+          columns: ['identity', 'state']);
+      expect({for (final row in rows) row['identity']: row['state']}, {
+        id(1): 'held', id(2): 'free', id(3): 'sent', id(4): 'unknown',
+      });
+    });
+
     // WHY: one release claim across every routed destination; the second
     // destination needs its own once-only mark inside the same ledger.
     test('per-destination marks are once-only and returnable', () async {

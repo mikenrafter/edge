@@ -20743,5 +20743,9 @@
         "type": "String"
       }
     }
-  }
+  },
+  "@officialExportLeftover": {"placeholders": {"file": {"type": "String"}, "folder": {"type": "String"}}},
+  "@updatesLastChecked": {"placeholders": {"time": {"type": "String"}}},
+  "@updatesRetryAfter": {"placeholders": {"time": {"type": "String"}}},
+  "@updatesReleaseLabel": {"placeholders": {"source": {"type": "String"}, "version": {"type": "String"}, "channel": {"type": "String"}}}
 }

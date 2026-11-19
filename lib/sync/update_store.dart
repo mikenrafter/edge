@@ -552,12 +552,19 @@ class UpdateStore {
     DatabaseExecutor txn, [
     Set<String> except = const {},
   ]) async {
-    final marks = List.filled(except.length, '?').join(',');
-    await txn.rawUpdate(
-      "UPDATE update_notifications SET state='free' WHERE state='held'"
-      '${except.isEmpty ? '' : ' AND identity NOT IN ($marks)'}',
-      except.toList(),
-    );
+    if (except.isEmpty) {
+      await txn.update('update_notifications', {'state': 'free'},
+          where: "state='held'");
+      return;
+    }
+    final held = await txn.query('update_notifications',
+        columns: ['identity'], where: "state='held'");
+    for (final row in held) {
+      final identity = row['identity'];
+      if (except.contains(identity)) continue;
+      await txn.update('update_notifications', {'state': 'free'},
+          where: "state='held' AND identity=?", whereArgs: [identity]);
+    }
   }
 
   /// Whether a validated manifest for [tag] and [build] is cached: the cache a

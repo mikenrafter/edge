@@ -198,8 +198,6 @@ const _pinnedDynamicWriters = <String, String>{
       'NOT SQL: HTTP DELETE',
   'lib/sync/ios_shortcut_sync.dart IosShortcutSync._sync':
       'NOT SQL: task progress update(...)',
-  'lib/sync/update_store.dart UpdateStore._discardHeld':
-      'DATA: UPDATE update_notifications in the install-local update database; only the bound-placeholder list is interpolated',
   'lib/ui2/screens/log_food.dart _LogFoodSheetState._write':
       'DATA: NutritionDb.update(db, entry); food tables only',
   'lib/ui2/screens/log_food.dart _LogFoodSheetState._remove':
