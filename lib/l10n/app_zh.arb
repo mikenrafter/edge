@@ -21344,5 +21344,8 @@
   "officialExportSkippedSpace": "为给新录制内容留出空间而跳过",
   "officialExportSkippedUnfinished": "录制尚未完成",
   "officialExportSkippedUnreadable": "无法读取",
-  "officialExportSkippedValue": "无法保存此类值"
+  "officialExportSkippedValue": "无法保存此类值",
+  "officialExportLeftover": "上次导出留下了一个无法检查或删除的文件：{folder} 中的 {file}。它可能不完整，请自行删除。",
+  "officialExportJournalUnreadable": "无法检查上次的导出。你仍然可以再次导出。",
+  "officialExportDismiss": "关闭"
 }

@@ -21392,5 +21392,8 @@
   "officialExportSkippedSpace": "ข้ามไว้เพื่อเหลือที่ว่างสำหรับการบันทึกใหม่",
   "officialExportSkippedUnfinished": "การบันทึกยังไม่เสร็จ",
   "officialExportSkippedUnreadable": "อ่านไม่ได้",
-  "officialExportSkippedValue": "บันทึกค่าประเภทนี้ไม่ได้"
+  "officialExportSkippedValue": "บันทึกค่าประเภทนี้ไม่ได้",
+  "officialExportLeftover": "การส่งออกครั้งก่อนทิ้งไฟล์ที่ตรวจสอบหรือลบไม่ได้: {file} ใน {folder} ไฟล์อาจไม่สมบูรณ์ โปรดลบเอง",
+  "officialExportJournalUnreadable": "ตรวจสอบการส่งออกครั้งก่อนไม่ได้ แต่ยังส่งออกอีกครั้งได้",
+  "officialExportDismiss": "ปิด"
 }

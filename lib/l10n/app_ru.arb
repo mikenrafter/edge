@@ -20782,5 +20782,8 @@
   "officialExportSkippedSpace": "Пропущено, чтобы оставить место для новых записей",
   "officialExportSkippedUnfinished": "Запись не завершена",
   "officialExportSkippedUnreadable": "Не удалось прочитать",
-  "officialExportSkippedValue": "Этот тип значения нельзя сохранить"
+  "officialExportSkippedValue": "Этот тип значения нельзя сохранить",
+  "officialExportLeftover": "Предыдущий экспорт оставил файл, который не удалось проверить или удалить: {file} в папке {folder}. Он может быть неполным. Удалите его сами.",
+  "officialExportJournalUnreadable": "Предыдущий экспорт не удалось проверить. Экспортировать снова всё равно можно.",
+  "officialExportDismiss": "Скрыть"
 }

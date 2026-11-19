@@ -21344,5 +21344,8 @@
   "officialExportSkippedSpace": "Übersprungen, um Platz für neue Aufzeichnungen zu lassen",
   "officialExportSkippedUnfinished": "Aufzeichnung nicht abgeschlossen",
   "officialExportSkippedUnreadable": "Konnte nicht gelesen werden",
-  "officialExportSkippedValue": "Werttyp konnte nicht gespeichert werden"
+  "officialExportSkippedValue": "Werttyp konnte nicht gespeichert werden",
+  "officialExportLeftover": "Ein früherer Export hat eine Datei hinterlassen, die nicht geprüft oder entfernt werden konnte: {file} in {folder}. Sie ist möglicherweise unvollständig. Lösche sie selbst.",
+  "officialExportJournalUnreadable": "Ein früherer Export konnte nicht geprüft werden. Du kannst trotzdem erneut exportieren.",
+  "officialExportDismiss": "Schließen"
 }

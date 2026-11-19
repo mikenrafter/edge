@@ -21344,5 +21344,8 @@
   "officialExportSkippedSpace": "Omitido para dejar espacio a nuevas grabaciones",
   "officialExportSkippedUnfinished": "Grabación sin terminar",
   "officialExportSkippedUnreadable": "No se pudo leer",
-  "officialExportSkippedValue": "No se pudo guardar este tipo de valor"
+  "officialExportSkippedValue": "No se pudo guardar este tipo de valor",
+  "officialExportLeftover": "Una exportación anterior dejó un archivo que no se pudo comprobar ni borrar: {file} en {folder}. Puede estar incompleto. Bórralo tú mismo.",
+  "officialExportJournalUnreadable": "No se pudo comprobar una exportación anterior. Aun así puedes exportar de nuevo.",
+  "officialExportDismiss": "Descartar"
 }

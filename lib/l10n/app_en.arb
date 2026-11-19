@@ -21549,5 +21549,11 @@
   "officialExportSkippedUnreadable": "Could not be read",
   "@officialExportSkippedUnreadable": {"description": "Official-app export flow."},
   "officialExportSkippedValue": "Value type could not be saved",
-  "@officialExportSkippedValue": {"description": "Official-app export flow."}
+  "@officialExportSkippedValue": {"description": "Official-app export flow."},
+  "officialExportLeftover": "An earlier export left a file that could not be checked or removed: {file} in {folder}. It may be incomplete. Delete it yourself.",
+  "@officialExportLeftover": {"description": "Official-app export flow.", "placeholders": {"file": {"type": "String"}, "folder": {"type": "String"}}},
+  "officialExportJournalUnreadable": "An earlier export could not be checked. You can still export again.",
+  "@officialExportJournalUnreadable": {"description": "Official-app export flow."},
+  "officialExportDismiss": "Dismiss",
+  "@officialExportDismiss": {"description": "Official-app export flow."}
 }

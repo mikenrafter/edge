@@ -55,8 +55,105 @@ class OfficialExportCoordinator extends ChangeNotifier {
     if(active || official!=null)return;
     _root=root;
     await cleanupAbandoned(root);
-    await _readInterruption();
+    await _loadLeftovers();
+    await _readInterruptionSafe();
+    _refreshNotices();
     if(_interruption!=null){progress=const ExportProgress(ExportStage.interrupted);notifyListeners();}
+  }
+  // Cleanup of an earlier export is best effort and never blocks a new one.
+  // Files that could not be reached are kept in a small private list (folder
+  // label, tree, file name; no passphrase, no health data) and retried later.
+  bool _journalAside=false,_asideThisRun=false;
+  List<Map<String,Object?>> _leftovers=[];
+  File get _leftoversFile=>File('${_root.path}/leftovers.json');
+  Future<void> _loadLeftovers() async {
+    _leftovers=[];
+    try {
+      if(!await _leftoversFile.exists())return;
+      final decoded=await JsonPayloadLane.shared.decodeUncached(await _leftoversFile.readAsString());
+      if(decoded is Map && decoded['version']==1 && decoded['entries'] is List) {
+        _leftovers=[for(final e in decoded['entries'] as List)if(e is Map && e['name'] is String && e['folder'] is String)e.cast<String,Object?>()];
+      }
+    } catch(_) {_leftovers=[];}
+  }
+  Future<void> _saveLeftovers([ExportSpaceBudget? space]) async {
+    try {
+      if(_leftovers.isEmpty) {
+        if(await _leftoversFile.exists())await _leftoversFile.delete();
+        return;
+      }
+      final text=(await runMappingWorker(MappingInput('json','',const [],json:{'version':1,'entries':_leftovers}))).text!;
+      await space?.requireAvailable(8192);
+      final pending=File('${_root.path}/leftovers.pending');
+      await pending.writeAsString(text,flush:true);
+      await pending.rename(_leftoversFile.path);
+    } catch(_) { /* The notice still shows from memory for this session. */ }
+  }
+  void _refreshNotices() {
+    notices=[
+      if(_journalAside)const ExportNotice(ExportNoticeKind.journalUnreadable),
+      for(final e in _leftovers)ExportNotice(ExportNoticeKind.leftover,file:e['name'] as String,folder:e['folder'] as String),
+    ];
+  }
+  Future<void> dismissNotices() async {
+    _journalAside=false;_leftovers=[];
+    await _saveLeftovers();_refreshNotices();notifyListeners();
+  }
+  Future<void> _readInterruptionSafe() async {
+    try {await _readInterruption();} catch(_) {await _setAside();}
+  }
+  Future<void> _settleInterruption(ExportSpaceBudget space) async {
+    final record=_interruption;
+    if(record==null)return;
+    try {await cleanInterrupted();return;} catch(_) { /* Fall through to the leftovers list. */ }
+    final officialName=(record['official'] as Map?)?['name'];
+    final incomplete=record['incomplete'];
+    final names={
+      if(incomplete is Map && incomplete['name'] is String)incomplete['name'] as String,
+      if(record['pending_name'] is String)record['pending_name'] as String,
+    }..remove(officialName);
+    final tree=record['tree'];final localRoot=record['local_root'];
+    final path=incomplete is Map?incomplete['path']:null;
+    final location=tree is String?{'tree':tree}:localRoot is String?{'local_root':localRoot}:path is String?{'local_root':File(path).parent.path}:null;
+    final folder=record['folder'];
+    if(names.isNotEmpty && (location==null || folder is! String)) {
+      await _setAside();
+    } else {
+      for(final name in names) {
+        if(!_leftovers.any((e)=>e['name']==name && e['folder']==folder && e['tree']==location!['tree'] && e['local_root']==location['local_root'])) {
+          _leftovers.add({'folder':folder,'name':name,...location!});
+        }
+      }
+      await _saveLeftovers(space);
+      try {
+        final journal=File('${_root.path}/interruption.json');
+        if(await journal.exists())await journal.delete();
+      } catch(_) { /* A later run reads and settles it again. */ }
+    }
+    _interruption=null;
+  }
+  Future<void> _setAside() async {
+    _interruption=null;_journalAside=_asideThisRun=true;
+    try {
+      final aside=File('${_root.path}/interruption.unreadable');
+      if(await aside.exists())await aside.delete();
+      await File('${_root.path}/interruption.json').rename(aside.path);
+    } catch(_) { /* The generic notice still shows. */ }
+  }
+  Future<void> _retryLeftovers() async {
+    if(_leftovers.isEmpty)return;
+    final kept=<Map<String,Object?>>[];
+    for(final e in _leftovers) {
+      try {
+        final tree=e['tree'];final local=e['local_root'];
+        final CipherBackupStorage storage=tree is String?storageForTree(BackupFolder(uri:tree,name:e['folder'] as String))
+          :LocalCipherBackupStorage(Directory(local as String));
+        for(final file in await storage.listCiphertext()) {
+          if(file.name==e['name'])await storage.deleteCiphertext(file);
+        }
+      } catch(_) {kept.add(e);}
+    }
+    if(kept.length!=_leftovers.length) {_leftovers=kept;await _saveLeftovers();}
   }
   Future<void> _readInterruption() async {
     final journal=File('${_root.path}/interruption.json');
@@ -218,8 +315,10 @@ class OfficialExportCoordinator extends ChangeNotifier {
     try {
       if(await FileSystemEntity.type(root.path,followLinks:false)==FileSystemEntityType.link)throw StateError('Unsafe private directory');
       await root.create(recursive:true);await cleanupAbandoned(root);
-      if(_interruption==null)await _readInterruption();
-      if(_interruption!=null)await cleanInterrupted();
+      _asideThisRun=false;await _loadLeftovers();
+      if(_interruption==null)await _readInterruptionSafe();
+      await _settleInterruption(space);
+      _refreshNotices();notifyListeners();
       _incomplete=null;_publicationName=null;
       _progress(ExportStage.preparing);
       _estimate=await source.estimate();
@@ -244,6 +343,8 @@ class OfficialExportCoordinator extends ChangeNotifier {
       _cancellation.check();_passphrase=await prompts.askPassphrase();
       if(_passphrase==null)throw const ExportCancelled();
       official=await _save(File(report!.path),'openstrap-official-v0.12.2-$_id.db.osbk',ExportArtifact.official);
+      // The set-aside journal stays until a later export succeeds.
+      if(!_asideThisRun) {try {await File('${root.path}/interruption.unreadable').delete();} catch(_) { /* Already gone. */ }}
       await _journal();_progress(ExportStage.recoveryChoice);
       final chosen=await prompts.askRecovery(_saved(RecoveryStatus.awaitingChoice));
       _cancellation.check();
@@ -262,6 +363,8 @@ class OfficialExportCoordinator extends ChangeNotifier {
       await _cleanIncomplete();
       if(_session!=null) {try {await _journal();} catch(_) { /* Keep earlier interruption metadata if storage is unavailable. */ }}
       if(!_retryAvailable)await finish();
+      try {await _retryLeftovers();} catch(_) { /* Quiet by design. */ }
+      _refreshNotices();
       _elapsed.stop();notifyListeners();
     }
   }

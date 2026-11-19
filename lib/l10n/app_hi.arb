@@ -21344,5 +21344,8 @@
   "officialExportSkippedSpace": "नई रिकॉर्डिंग के लिए जगह रखने हेतु छोड़ा गया",
   "officialExportSkippedUnfinished": "रिकॉर्डिंग पूरी नहीं हुई",
   "officialExportSkippedUnreadable": "पढ़ा नहीं जा सका",
-  "officialExportSkippedValue": "इस प्रकार का मान सहेजा नहीं जा सका"
+  "officialExportSkippedValue": "इस प्रकार का मान सहेजा नहीं जा सका",
+  "officialExportLeftover": "पिछले निर्यात ने एक फ़ाइल छोड़ दी जिसे जाँचा या हटाया नहीं जा सका: {folder} में {file}। वह अधूरी हो सकती है। उसे खुद हटा दें।",
+  "officialExportJournalUnreadable": "पिछला निर्यात जाँचा नहीं जा सका। आप फिर भी दोबारा निर्यात कर सकते हैं।",
+  "officialExportDismiss": "हटाएँ"
 }

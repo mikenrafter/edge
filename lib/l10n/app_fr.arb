@@ -21344,5 +21344,8 @@
   "officialExportSkippedSpace": "Ignoré pour garder de la place aux nouveaux enregistrements",
   "officialExportSkippedUnfinished": "Enregistrement inachevé",
   "officialExportSkippedUnreadable": "Lecture impossible",
-  "officialExportSkippedValue": "Ce type de valeur n’a pas pu être enregistré"
+  "officialExportSkippedValue": "Ce type de valeur n’a pas pu être enregistré",
+  "officialExportLeftover": "Un export précédent a laissé un fichier impossible à vérifier ou à supprimer : {file} dans {folder}. Il peut être incomplet. Supprimez-le vous-même.",
+  "officialExportJournalUnreadable": "Un export précédent n’a pas pu être vérifié. Vous pouvez quand même exporter à nouveau.",
+  "officialExportDismiss": "Ignorer"
 }

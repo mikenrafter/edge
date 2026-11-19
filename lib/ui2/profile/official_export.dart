@@ -192,6 +192,11 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
           if(coordinator.interruptedName!=null)Text(coordinator.interruptedName!),
           if(coordinator.interruptedName!=null)button(l.officialExportVerifySaved,()async{try{await coordinator.verifyInterrupted(this);}catch(error){if(mounted)setState((){_error=error;});}}),
         ],
+        for(final notice in coordinator.notices)Padding(padding:const EdgeInsets.symmetric(vertical:4),
+          child:Text(switch(notice.kind){
+            ExportNoticeKind.leftover=>l.officialExportLeftover(notice.file!,notice.folder!),
+            ExportNoticeKind.journalUnreadable=>l.officialExportJournalUnreadable})),
+        if(coordinator.notices.isNotEmpty)button(l.officialExportDismiss,()=>coordinator.dismissNotices()),
         if(!busy && official==null)...[
           button(l.officialExportChooseFolder,_chooseFolder),
           if(_destination!=null)Text(_destination!.label),
