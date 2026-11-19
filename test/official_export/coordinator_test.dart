@@ -59,6 +59,7 @@ void main() {
           expect(result,isA<OfficialExportFailed>());expect(result.official,isNull);
           expect(root.listSync().whereType<File>(),isEmpty);
         } else {
+          expect(result,mode=='cancel'?isA<OfficialExportCancelled>():isA<OfficialExportSaved>());
           expect(result.official,isNotNull);
           expect(File(result.official!.file.path).existsSync(),isTrue);
           if(mode=='recoveryFailure') {

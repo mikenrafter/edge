@@ -11,6 +11,8 @@ import 'package:openstrap_edge/data/official_export/space_budget.dart';
 import 'package:openstrap_edge/data/backup_extras.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'support.dart';
+import 'session_fixture.dart';
+import 'package:openstrap_edge/data/official_export/coordinator.dart';
 class UnreadablePreferences extends Fake implements SharedPreferences {
  @override Future<void> reload()async{throw StateError('unavailable');}
 }
@@ -49,4 +51,22 @@ void main(){
     expect((await db.rawQuery('SELECT length(bytes) n FROM backup_files')).single['n'],file.lengthSync());
   });
  });
+ test('low space omits finalized files by identity and saves the safe SQL remainder',()async {
+  await withFreshForkDb((db,path)async {
+    final root=File(path).parent;
+    final recordings=Directory('${root.path}/device_lab/imu')..createSync(recursive:true);
+    File('${recordings.path}/large.jsonl').writeAsBytesSync(List.filled(3*1024*1024,7));
+    final source=LocalDbExportSnapshot();final estimate=await source.estimate();
+    final free=Space()..available=64*1024*1024+estimate.peakBytes-4*estimate.extrasBytes+1024*1024;
+    final destination=Destination(Directory('${root.path}/saved')..createSync(),free);
+    final coordinator=OfficialExportCoordinator();
+    final result=await coordinator.export(snapshot:source,privateRoot:Directory('${root.path}/private'),destination:destination,
+      space:ExportSpaceBudget(source:free),prompts:Prompts(()async=>'pw',(_)async=>false));
+    expect(result,isA<OfficialExportSavedWithOmissions>(),reason:result is OfficialExportFailed?'${result.reason}':result.toString());
+    expect(coordinator.extrasOmissions,[{'family':'saved files','identity':'device_lab/imu/large.jsonl','reason':'omitted to preserve space for new recordings'}]);
+    expect(destination.creates,1);
+    expect(File('${recordings.path}/large.jsonl').lengthSync(),3*1024*1024);
+  });
+ });
+
 }

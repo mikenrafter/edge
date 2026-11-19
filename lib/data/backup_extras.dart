@@ -12,6 +12,7 @@ import 'db.dart' show LocalDb;
 import 'import_reentry_store.dart';
 import 'dart:collection';
 import '../coach/coach_config.dart' show CoachConfig;
+import '../coach/coach_engine.dart' show CoachEngine;
 import '../settings/settings_repository.dart' show SettingsRepository;
 import '../haptics/pattern_store.dart' show HapticPatternStore;
 import '../notify/notification_prefs.dart' show NotificationPrefs;
@@ -313,13 +314,15 @@ Future<void> writeBackupExtras(
             if(entry is File && name.endsWith('.part')) audit?.omit('saved files',name,'recording is unfinished');
           }
         }
-        final docs=await getApplicationDocumentsDirectory();
-        if(await docs.exists()) {
-          await for(final entry in docs.list(followLinks:false)) {
-            final name=p.basename(entry.path);
-            if(entry is File && _safeCoachName.hasMatch(name)) await captureFile(entry,name);
+        await CoachEngine.withFileSnapshot(()async {
+          final docs=await getApplicationDocumentsDirectory();
+          if(await docs.exists()) {
+            await for(final entry in docs.list(followLinks:false)) {
+              final name=p.basename(entry.path);
+              if(entry is File && _safeCoachName.hasMatch(name)) await captureFile(entry,name);
+            }
           }
-        }
+        });
       } catch(error) {
         if(audit==null)rethrow;
         audit.checkCancelled();await audit.beforeWrite(0);

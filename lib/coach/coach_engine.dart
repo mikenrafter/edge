@@ -1281,6 +1281,10 @@ class CoachEngine {
   static Future<int> deleteAllSavedSessions() =>
       _serialFiles(_deleteAllSavedSessions);
 
+  /// Capture finalized chat files under the same queue as writes and deletion.
+  /// The backup owner releases this queue before mapping or encryption.
+  static Future<T> withFileSnapshot<T>(Future<T> Function() capture) => _serialFiles(capture);
+
   /// One queue for every chat-file write and the reset's sweep. A save that
   /// had already passed its reset check could otherwise still be writing
   /// while the sweep listed the folder, and land after it.
