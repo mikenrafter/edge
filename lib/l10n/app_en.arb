@@ -21593,10 +21593,16 @@
   "pilotWindowStart": "Window start",
   "pilotWindowEnd": "Window end",
   "pilotPrimary": "Primary alarm",
+  "pilotPrimaryOn": "Primary alarm for these days",
+  "pilotPrimaryOff": "Not the primary alarm",
+  "pilotPrimarySub": "The primary alarm sets the wake time your day and bedtime reminders are planned around.",
+  "pilotPrimaryWorkoutSub": "Workout alarms can't be primary. The primary alarm is the wake-up your day and bedtime reminders are planned around.",
   "pilotPrimaryDescription": "The main sleep alarm for its repeat days",
   "pilotWorkoutNoPrimary": "Workout alarms cannot be the primary sleep alarm",
   "pilotDone": "Done",
   "pilotReset": "Reset",
+  "pilotDisable": "Disable",
+  "@pilotDisable": {"description": "Early wake row button: turns the early-wake window off."},
   "pilotUpToEarlier": "Up to {minutes} min earlier",
   "@pilotUpToEarlier": {
     "placeholders": {

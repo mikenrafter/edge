@@ -166,7 +166,7 @@ class _SleepEditorState extends State<PilotSleepEditor>{
       Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:Column(children:[
         PilotDayRow(day:prettyDay(day,l),dirty:dirty,busy:saving,onPrevious:()=>_go(-1),onNext:()=>_go(1),onCancel:(){setState(()=>_bind(read!,graph,stages));},onSave:_save),
         if(adding)SizedBox(height:24,child:Text(addedStart==null?l.pilotTapStart:l.pilotTapEnd)),
-        PilotTimelineChart(controller:controller,graph:graph,interaction:interaction,stages:stages,dimHrInsideSleep:false,showHeader:false,onTapTime:_tap,
+        PilotTimelineChart(controller:controller,graph:graph,interaction:interaction,stages:stages,dimHrInsideSleep:false,focusId:selected,showHeader:false,onTapTime:_tap,
           handles:b==null||b.removed?[]:[PilotHandle('start',b.start.toDouble(),p.on(C.blue),active:!endSelected),PilotHandle('end',b.end.toDouble(),p.on(C.blue),active:endSelected)],onHandle:_move,
           annotations:[...wakeEvents,for(final row in blocks)ChartAnnotation(id:row.id,kind:row.entry?.kind==SleepBlockKind.main?AnnotationKind.mainSleep:AnnotationKind.nap,at:row.start.toDouble(),until:row.end.toDouble(),label:row.entry?.kind==SleepBlockKind.main?l.tabSleep:l.dayTimelineNap)],
           onSelect:(id){if(id=='start'||id=='end'){setState(()=>endSelected=id=='end');return;}final match=blocks.where((b)=>b.id==id).firstOrNull;if(match!=null)_select(match);}),

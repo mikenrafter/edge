@@ -46,8 +46,13 @@ class PilotTimelineChart extends StatefulWidget {
   const PilotTimelineChart({super.key,required this.controller,required this.graph,
     required this.interaction,this.annotations=const [],this.stages=const [],
     this.handles=const [],this.onHandle,this.onSelect,this.onScrub,this.onPan,
-    this.onTapTime,this.height=112,this.dimHrInsideSleep=true,this.overview=false,this.cut,this.selectedAnnotationId,this.showHeartRate=true,this.showHeader=true});
+    this.onTapTime,this.height=112,this.dimHrInsideSleep=true,this.overview=false,this.cut,this.selectedAnnotationId,this.showHeartRate=true,this.showHeader=true,this.backdrop=const [],this.focusId});
   final TimelineController controller;
+  /// Ranged events drawn as shading and edges only, without icons: the day
+  /// timeline's other tabs (v16 draws every event's range).
+  final List<ChartAnnotation> backdrop;
+  /// The focused event (v16: its range at .26 and edges at full strength).
+  final String? focusId;
   final DayGraph graph;
   final TimelineInteraction interaction;
   final List<ChartAnnotation> annotations;
@@ -151,9 +156,11 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
         // focuses nothing places the cursor, as a hold would. It fires on the
         // trailing edge (no move past the slop, before the hold timer), so a
         // pan never scrubs. Temporary-scrub charts keep tap = nothing.
+        // m254: the tap counts as a scrub, so the readout auto-pins as after a
+        // hand scrub (the lift below keeps the cursor on this chart).
         else if(interaction.retention==PilotScrub.permanent){
           final snapped=(at/300).round()*300.0;
-          c.setScrub(snapped);interaction.focus(snapped);widget.onScrub?.call(snapped);
+          c.setScrub(snapped);interaction.startScrub(snapped);widget.onScrub?.call(snapped);
         }
       }
     }
@@ -215,7 +222,7 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
               child:SizedBox(key:const ValueKey('pilot-timeline-plot'),height:plotHeight+24,
                 child:ClipRect(child:Stack(children:[
                   Positioned.fill(child:CustomPaint(painter:_PilotPainter(p:p,view:c.view,graph:widget.graph,stages:widget.stages,
-                    annotations:visible,scrub:c.scrub,selection:c.selection,height:plotHeight,dimHrInsideSleep:widget.dimHrInsideSleep,cut:widget.cut,showHeartRate:widget.showHeartRate,bpmInPlot:!widget.showHeader))),
+                    annotations:visible,scrub:c.scrub,selection:c.selection,height:plotHeight,dimHrInsideSleep:widget.dimHrInsideSleep,cut:widget.cut,showHeartRate:widget.showHeartRate,bpmInPlot:!widget.showHeader,backdrop:widget.backdrop,focusId:widget.focusId))),
                   if(c.selection==null)for(final h in widget.handles)if(h.at>=c.view.start&&h.at<=c.view.end)
                     Positioned(left:c.view.fraction(h.at)*_width-24,top:22,width:48,height:math.max(48,widget.height-24),
                       child:IgnorePointer(child:Center(child:Container(width:h.active?6:2,height:widget.height-28,decoration:BoxDecoration(color:h.color.withValues(alpha:h.active?1:.35),borderRadius:BorderRadius.circular(3))))),),
@@ -234,9 +241,10 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
                     if(!clear(left,lane)){final other=left==x+14?x-58:x+14;if(other>=0&&other<=_width-52&&clear(other,lane)){left=other;}else{while(!clear(left,lane)&&lane<8){lane++;}}}
                     return Positioned(left:left.clamp(0.0,math.max(0.0,_width-52)),top:6+lane*22.0,child:DecoratedBox(decoration:BoxDecoration(color:p.card2,borderRadius:BorderRadius.circular(6)),child:Padding(padding:const EdgeInsets.symmetric(horizontal:6,vertical:1),child:Text(pilotClock(at),style:F.cap.copyWith(color:p.ink,fontSize:11,fontWeight:FontWeight.w600)))));}),
                   if(widget.cut!=null)Positioned(left:widget.cut!.leftWidth(_width)-3,top:plotHeight/2-10,width:34,child:Text('…',key:const ValueKey('pilot-overview-cut'),textAlign:TextAlign.center,style:F.head.copyWith(color:p.ink3))),
-                  // Mock-up .hint: drawn last (over the plot), bottom-left, a faint
-                  // #232c3d99 backing with #e8ecf3cc text, at .6 while idle.
-                  if(!widget.overview)Positioned(left:8,bottom:26,child:IgnorePointer(child:Opacity(opacity:_scrub||_fine?1:.6,child:DecoratedBox(decoration:BoxDecoration(color:const Color(0x99232C3D),borderRadius:BorderRadius.circular(6)),
+                  // Mock-up .hint: drawn last, above the hypnogram and marks,
+                  // bottom-left, #232c3d99 backing with #e8ecf3cc text (m254: never
+                  // faded, so the stages under it can't read as covering it).
+                  if(!widget.overview)Positioned(left:8,bottom:26,child:IgnorePointer(child:Opacity(opacity:1,child:DecoratedBox(decoration:BoxDecoration(color:const Color(0x99232C3D),borderRadius:BorderRadius.circular(6)),
                     child:Padding(padding:const EdgeInsets.symmetric(horizontal:8,vertical:1),child:Text(_fine?l.pilotFineSteps:_scrub?l.pilotScrubbing:l.pilotHoldScrub,style:F.cap.copyWith(color:const Color(0xCCE8ECF3),fontSize:11))))))),
                 ]))))),
         ]);
@@ -246,7 +254,8 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
 
 class _PilotPainter extends CustomPainter {
   _PilotPainter({required this.p,required this.view,required this.graph,required this.stages,
-    required this.annotations,required this.scrub,required this.selection,required this.height,required this.dimHrInsideSleep,this.cut,this.showHeartRate=true,this.bpmInPlot=false});
+    required this.annotations,required this.scrub,required this.selection,required this.height,required this.dimHrInsideSleep,this.cut,this.showHeartRate=true,this.bpmInPlot=false,this.backdrop=const [],this.focusId});
+  final List<ChartAnnotation> backdrop;final String? focusId;
   final P p; final TimelineView view; final DayGraph graph; final List<SleepStage?> stages;
   final List<ChartAnnotation> annotations;final double? scrub;final TimelineView? selection;final double height;
   final bool dimHrInsideSleep;final PilotTimelineCut? cut;final bool showHeartRate,bpmInPlot;
@@ -268,19 +277,36 @@ class _PilotPainter extends CustomPainter {
       for(var a=0.0;a<w;a+=8){canvas.drawLine(Offset(a,y(t)),Offset(math.min(a+3,w),y(t)),Paint()..color=p.on(C.red).withValues(alpha:.18));}
 
     }
-    canvas.save();canvas.clipRect(Rect.fromLTWH(0,20,w,height-20));
-    for(final a in annotations){
-      final color=p.on(_pilotAnnotationColor(a));
-      if(a.until!=null)canvas.drawRect(Rect.fromLTRB(x(a.at),20,x(a.until!),height),Paint()..color=color.withValues(alpha:.09));
-      // Mock-ups: range edges and Fall asleep / Latest are 2 px solid (.sl);
-      // single moments are 1.5 px dashed (.dl); snoozes faded.
-      // The day timeline (v16) dashes both edges of everything at .55.
-      final day=dimHrInsideSleep&&showHeartRate;
-      final solid=!day&&(a.until!=null||a.id=='bed'||a.id=='wake'||a.id=='window');
-      final edge=Paint()..color=color.withValues(alpha:day ? .55 : a.id.startsWith('snooze:') ? .6 : 1)..strokeWidth=day ? 1 : solid ? 2 : 1.5;
-      for(final at in [a.at,if(a.until!=null&&(day||solid))a.until!]){
-        if(solid){canvas.drawLine(Offset(x(at),20),Offset(x(at),height),edge);}
-        else{for(var top=20.0;top<height;top+=7){canvas.drawLine(Offset(x(at),top),Offset(x(at),math.min(top+4,height)),edge);}}
+    canvas.save();canvas.clipRect(Rect.fromLTWH(0,18,w,height-18));
+    void dashed(double at,double top,Paint edge){for(var y=top;y<height;y+=7){canvas.drawLine(Offset(x(at),y),Offset(x(at),math.min(y+4,height)),edge);}}
+    final day=dimHrInsideSleep&&showHeartRate;
+    if(day){
+      // Day timeline, v16 exactly: every range shaded at .12 (.26 focused) over
+      // the plot; start and end lines 1 px, dash 4 3, at .55 (1 focused).
+      for(final a in [...backdrop,...annotations]){
+        final color=p.on(_pilotAnnotationColor(a)),focused=a.id==focusId;
+        if(a.until!=null)canvas.drawRect(Rect.fromLTRB(x(a.at),20,x(a.until!),height),Paint()..color=color.withValues(alpha:focused ? .26 : .12));
+        final edge=Paint()..color=color.withValues(alpha:focused ? 1.0 : .55)..strokeWidth=1;
+        for(final at in [a.at,if(a.until!=null)a.until!])dashed(at,18,edge);
+      }
+    }else{
+      // Alarm and sleep-editor charts. v22 marks(): Early wake, Gradual and
+      // Sunrise are range fills (Sunrise a gradient); solid 2 px edges only for
+      // the early-wake start, Fall asleep, Latest and the workout window start
+      // (.sl). Every other moment is a 1.5 px dashed line (.dl): Expected wake,
+      // phone, backup (2.5 px), snoozes (faded). m255: every other range (a
+      // sleep-editor block) is shaded at .12, .26 focused, with solid edges.
+      for(final a in annotations){
+        final color=p.on(_pilotAnnotationColor(a));
+        if(a.until!=null){
+          final r=Rect.fromLTRB(x(a.at),20,x(a.until!),height);
+          canvas.drawRect(r,a.id=='sunrise'?(Paint()..shader=LinearGradient(colors:[color.withValues(alpha:0),color.withValues(alpha:.3)]).createShader(r))
+            :(Paint()..color=color.withValues(alpha:switch(a.id){'gradual'=>.24,'early'||'window'=>.14,_=>a.id==focusId ? .26 : .12})));
+        }
+        if(a.id=='gradual'||a.id=='sunrise')continue;
+        if({'early','bed','wake','window'}.contains(a.id)){canvas.drawLine(Offset(x(a.at),20),Offset(x(a.at),height),Paint()..color=color..strokeWidth=2);continue;}
+        if(a.until!=null){for(final at in [a.at,a.until!]){canvas.drawLine(Offset(x(at),20),Offset(x(at),height),Paint()..color=color..strokeWidth=2);}continue;}
+        dashed(a.at,20,Paint()..color=color.withValues(alpha:a.id.startsWith('snooze:') ? .6 : 1)..strokeWidth=a.id=='backup' ? 2.5 : 1.5);
       }
     }
     // Stages go through the app's own Hypnogram painter, one call per
@@ -308,6 +334,8 @@ class _PilotPainter extends CustomPainter {
       if(previous!=null)canvas.drawLine(previous,point,Paint()..color=p.on(C.red).withValues(alpha:dimHrInsideSleep ? (asleep ? .75 : 1.0) : .75)..strokeWidth=1.4);
       previous=point;
     }
+    // v16: a 1 px movement baseline at .4 under the bars.
+    if(day)canvas.drawRect(Rect.fromLTRB(0,height-1,w,height),Paint()..color=p.on(C.purple).withValues(alpha:.4));
     if(showHeartRate)for(var i=math.max(0,((view.start-base)/60).floor());i<graph.movement.length&&base+i*60<view.end;i++){
       final v=graph.movement[i];if(v==null||!v.isFinite)continue;
       canvas.drawRect(Rect.fromLTRB(x(base+i*60),height-v.clamp(0,1)*(height-25)*.32,x(base+(i+1)*60),height),Paint()..color=p.on(C.purple).withValues(alpha:.75));

@@ -36,7 +36,7 @@ void main(){
     await pump(t,Scaffold(body:Builder(builder:(c)=>TextButton(onPressed:()=>Navigator.of(c).push(MaterialPageRoute(builder:(_)=>PilotAlarmEditor(alarm:a,now:DateTime(2026,11,23),onSave:(_)async{writes++;}))),child:const Text('Open')))));
     await t.tap(find.text('Open'));await t.pumpAndSettle();
     await t.drag(find.byType(ListView),const Offset(0,-350));await t.pumpAndSettle();
-    await t.tap(find.text('Primary alarm'));await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('pilot-primary')));await t.pumpAndSettle();
     expect(a.primary,false);expect(writes,0);
     await t.tap(find.text('Cancel').first);await t.pumpAndSettle();expect(writes,0);expect(find.text('Open'),findsOneWidget);expect(t.takeException(),null);
   });

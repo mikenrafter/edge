@@ -1,6 +1,7 @@
 // why: owner m233 fidelity fixes against the signed-off mock-ups (alarms v22,
 // day timeline v16, sleep editor v11). Behaviour checks, not pixel goldens.
 import 'package:flutter/material.dart';
+import 'dart:ui' show Tristate;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/data/sleep_editor.dart';
@@ -44,6 +45,34 @@ void main(){
     expect(find.text('17:30–19:00'),findsOneWidget);expect(find.text('Zone 3+'),findsOneWidget);
     // m244.3: the sleep alarm's chart draws no heart rate; the workout alarm's keeps it.
     expect([for(final chart in t.widgetList<PilotTimelineChart>(find.byType(PilotTimelineChart)))chart.showHeartRate],unorderedEquals([false,true]));
+  });
+
+  // why: m255.2 — Early wake's row button reads Disable and turns the window off.
+  // catches: the early row keeping "Reset", or Disable not clearing the window.
+  testWidgets('early wake row offers Disable',(t)async{
+    final alarm=PilotAlarm(id:'a',label:'A',earlyMinutes:20);
+    await pump(t,PilotAlarmEditor(alarm:alarm,now:day,reference:(_)async=>sample(),onSave:(_)async{}));
+    final row=find.byKey(const ValueKey('pilot-time:early'));
+    expect(find.descendant(of:row,matching:find.text('Reset')),findsNothing);
+    await t.tap(find.descendant(of:row,matching:find.text('Disable')));await t.pumpAndSettle();
+    expect(find.descendant(of:row,matching:find.text('Disable')),findsNothing);
+    expect(find.descendant(of:row,matching:find.text('—')),findsOneWidget);
+  });
+
+  // why: m254 — Primary is v22's #primRow: the whole row is a switch with a bare star.
+  // catches: a Material Switch on a tiled SetRow, or copy that doesn't follow the state.
+  testWidgets('primary row is the signed star switch',(t)async{
+    final handle=t.ensureSemantics();
+    await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'A',primary:false),now:day,reference:(_)async=>sample(),onSave:(_)async{}));
+    final row=find.byKey(const ValueKey('pilot-primary'));
+    await t.ensureVisible(row);await t.pumpAndSettle();
+    expect(find.descendant(of:row,matching:find.byType(Switch)),findsNothing);
+    expect(find.text('Not the primary alarm'),findsOneWidget);
+    expect(t.getSemantics(row).flagsCollection.isToggled,Tristate.isFalse);
+    await t.tap(row);await t.pumpAndSettle();
+    expect(find.text('Primary alarm for these days'),findsOneWidget);
+    expect(t.getSemantics(row).flagsCollection.isToggled,Tristate.isTrue);
+    handle.dispose();
   });
 
   // catches: bare ListTile timing rows, Material SwitchListTiles, text-only Cancel/Save, or a heart-rate alarm chart.
@@ -113,6 +142,8 @@ void main(){
       final r=await mount(t,PilotScrub.permanent);
       await t.tapAt(Offset(r.left+r.width*.25,r.center.dy));await t.pump();
       expect(c.scrub,base+6*3600.0);expect(focused,isNull);expect(i.cursor,base+6*3600.0);
+      // m254: the tap counts as scrubbing, so the readout auto-pins.
+      expect(i.autoPinned,true);expect(i.handScrubbing,false);
     });
     testWidgets('a drag pans and never scrubs',(t)async{
       final r=await mount(t,PilotScrub.permanent);
@@ -122,7 +153,7 @@ void main(){
     testWidgets('tap near an annotation focuses it without moving the cursor',(t)async{
       final r=await mount(t,PilotScrub.permanent);
       await t.tapAt(Offset(r.left+r.width*.75,r.center.dy));await t.pump();
-      expect(focused,'meal');expect(c.scrub,isNull);
+      expect(focused,'meal');expect(c.scrub,isNull);expect(i.autoPinned,false);
     });
     testWidgets('temporary-scrub charts ignore a tap',(t)async{
       final r=await mount(t,PilotScrub.temporary);
