@@ -8,8 +8,9 @@ void main() {
 class Alarms { static const key = 'alarms'; void read() { prefs.getString(key); } }
 class Snooze { static const key = 'snooze'; void read() { prefs.getString(key); } }
 enum Flag {
-  first('flag.first'), second('flag.second');
-  const Flag(this.key);
+  first('flag.first'), second('flag.second', byDefault: true);
+  const Flag(this.key, {this.byDefault = false});
+  final bool byDefault;
   final String key;
   bool get enabled => prefs.getBool(key);
 }

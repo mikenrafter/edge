@@ -32,12 +32,12 @@ class PrefKeyScanner {
           scopes.add((node.offset, node.end, name));
           if (node is EnumDeclaration) {
             final source = node.toSource();
-            final field = RegExp('const $name\\(this\\.(\\w+)\\)')
+            final field = RegExp('const $name\\(this\\.(\\w+)(?:,|\\))')
                 .firstMatch(source)?.group(1);
             if (field != null) {
               final values = <String>{};
               final constants = source.substring(0, source.indexOf(';'));
-              for (final m in RegExp(r'''(\w+)\(\s*['"]([^'"$]+)['"]\s*\)''')
+              for (final m in RegExp(r'''(\w+)\(\s*['"]([^'"$]+)['"](?:\s*,[^)]*)?\s*\)''')
                   .allMatches(constants)) {
                 _add(entry.key, '$name.${m.group(1)}.$field', m.group(2)!);
                 values.add(m.group(2)!);
