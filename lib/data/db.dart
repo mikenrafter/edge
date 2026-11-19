@@ -3,6 +3,8 @@ import 'json_payload_lane.dart';
 import 'sleep_block_store.dart';
 import 'sleep_import_rules.dart';
 import 'attach_copy.dart';
+import 'raw_archive_row.dart' as archive_rows;
+import '../util/raw_readers.dart';
 // Local raw-first storage (SQLite via sqflite).
 //
 // Durable storage layers:
@@ -5691,8 +5693,45 @@ class LocalDb {
     Directory? into,
     bool includePrefs = true,
     AttachedCopy? attached,
+    ExportFileWrite? privateWrite,
+    Future<void> Function()? beforeCopyWrite,
   }) => _ldbExportCopy(
-      includeSubstrateArchive: includeSubstrateArchive, extras: includePrefs ? extras : BackupExtras.none, into: into, attached: attached);
+      includeSubstrateArchive: includeSubstrateArchive, extras: includePrefs ? extras : BackupExtras.none,
+      into: into, attached: attached, privateWrite: privateWrite, beforeCopyWrite:beforeCopyWrite);
+
+  /// Bounded identity page from a frozen export snapshot. This never opens the
+  /// live store. Callers choose only an unshadowed SQLite rowid alias.
+  static Future<RowBatch<Map<String,Object?>>> exportParentKeys(
+      DatabaseExecutor snapshot,String rowidAlias,int? after) async {
+    if (!const {'rowid','_rowid_','oid'}.contains(rowidAlias)) {
+      throw ArgumentError.value(rowidAlias,'rowidAlias');
+    }
+    return RowBatch<Map<String,Object?>>.wrap(await snapshot.rawQuery('SELECT "$rowidAlias" AS cursor,device_id,ts_ms FROM decoded_onehz '
+      '${after==null ? '' : 'WHERE "$rowidAlias">?'} ORDER BY "$rowidAlias" LIMIT 256',[?after]));
+  }
+
+  static Future<RowBatch<Map<String,Object?>>> exportMatchingParents(DatabaseExecutor snapshot,
+      List<(String,int)> keys) async {
+    if (keys.length>256) {throw ArgumentError('export identity page exceeds 256');}
+    if (keys.isEmpty) {return RowBatch<Map<String,Object?>>.wrap([]);}
+    final rows=await snapshot.rawQuery('SELECT device_id,ts_ms FROM decoded_onehz WHERE (device_id,ts_ms) IN (${List.filled(keys.length,'(?,?)').join(',')})',
+        [for(final key in keys) ...[key.$1,key.$2]]);
+    return RowBatch<Map<String,Object?>>.wrap(rows);
+  }
+
+  /// UTC bucket endpoints, not local day labels. Calendar conversion stays at
+  /// day_label.dart. Returning aggregates avoids exposing raw rows to readers.
+  static Future<RowBatch<Map<String,Object?>>> exportDayBounds(DatabaseExecutor snapshot) async {
+    final rows=await snapshot.rawQuery("SELECT MIN(rec_ts) AS lo,MAX(rec_ts) AS hi FROM decoded_onehz WHERE typeof(rec_ts)='integer' AND rec_ts>0 GROUP BY rec_ts/86400");
+    return RowBatch<Map<String,Object?>>.wrap(rows);
+  }
+
+  static Future<Map<String,int>> exportInputCounts(DatabaseExecutor snapshot,
+      {required bool beats,required int fromSec,required int toSec}) async {
+    final table=beats ? 'decoded_rr':'decoded_onehz';
+    final rows=await snapshot.rawQuery('SELECT device_id,count(*) AS n FROM $table WHERE rec_ts>=? AND rec_ts<? GROUP BY device_id',[fromSec,toSec]);
+    return {for(final row in rows) row['device_id'] as String:row['n'] as int};
+  }
 
   /// Test seam: fail [exportCopy] after the copy exists, before it is cleaned.
   @visibleForTesting
@@ -9194,56 +9233,13 @@ class LocalDb {
     }
   }
 
-  /// [hex] as bytes when it is canonical lowercase hex (even length, 0-9a-f),
-  /// else null — so `lower(hex(frame))` gives back exactly [hex].
-  static Uint8List? _canonicalHexBytes(String hex) {
-    final n = hex.length;
-    if (n == 0 || n.isOdd) return null;
-    final out = Uint8List(n >> 1);
-    int nibble(int c) {
-      if (c >= 0x30 && c <= 0x39) return c - 0x30;
-      if (c >= 0x61 && c <= 0x66) return c - 0x61 + 10;
-      return -1;
-    }
-
-    for (var i = 0; i < n; i += 2) {
-      final hi = nibble(hex.codeUnitAt(i)), lo = nibble(hex.codeUnitAt(i + 1));
-      if (hi < 0 || lo < 0) return null;
-      out[i >> 1] = (hi << 4) | lo;
-    }
-    return out;
-  }
-
-  /// The [rawArchiveTable] row for one archived frame. Every writer in this
-  /// build goes through here (the drain commit, the fallback path, the
-  /// legacy move, a restore), so the key is always the same function of the
-  /// frame: SHA-1 of the bytes, or of the text when it is kept verbatim.
-  static Map<String, Object?> rawArchiveRow({
-    required String deviceId,
-    required String hex,
-    required int? counter,
-    required int packetType,
-    required int? recTs,
-    required int capturedAt,
+  /// Storage encoder shared with offline export workers. It performs no DB I/O.
+  static Map<String,Object?> rawArchiveRow({
+    required String deviceId, required String hex, required int? counter,
+    required int packetType, required int? recTs, required int capturedAt,
     required String reason,
-  }) {
-    final bytes = _canonicalHexBytes(hex);
-    return {
-      'device_id': deviceId,
-      'hash': Uint8List.fromList(
-        bytes != null
-            ? sha1.convert(bytes).bytes
-            : sha1.convert(utf8.encode('text:$hex')).bytes,
-      ),
-      'counter': counter,
-      'packet_type': packetType,
-      'rec_ts': recTs,
-      'captured_at': capturedAt,
-      'reason': reason,
-      'hex': bytes == null ? hex : null,
-      'frame': bytes,
-    };
-  }
+  }) => archive_rows.encodeRawArchiveRow(deviceId:deviceId,hex:hex,counter:counter,
+      packetType:packetType,recTs:recTs,capturedAt:capturedAt,reason:reason);
 
   /// Move the renamed-aside legacy archive into [rawArchiveTable], 500 rows a
   /// transaction: each page is inserted and deleted from the legacy table in

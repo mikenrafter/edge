@@ -15,6 +15,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--sandbox', required=True)
 parser.add_argument('--logs', required=True)
 parser.add_argument('--name', default='official-export')
+parser.add_argument('--shell')
 parser.add_argument('command', nargs=argparse.REMAINDER)
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[3]
@@ -38,5 +39,6 @@ if not runner.exists():
     runner = root.parent / 'edge.research/bin/boat-run'
 env = dict(os.environ, BOAT_RUN_LOGS=args.logs)
 raise SystemExit(subprocess.call([
-    str(runner), '--sandbox', args.sandbox, '--name', args.name, str(root), '--', remote,
+    str(runner), '--sandbox', args.sandbox, '--name', args.name,
+    *(['--shell',args.shell] if args.shell else []), str(root), '--', remote,
 ], env=env))

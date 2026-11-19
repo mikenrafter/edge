@@ -254,3 +254,8 @@ in the same change that introduces it (AGENTS.md §6).
 - **Range read**: `SleepBlockStore.live`, the sleep blocks that count as sleep and intersect an interval.
 - **Nap work**: the `nap_revision` / `nap_applied_revision` counter pair on the day's single sleep job. It requests nap recomposition without moving the night revision fence or withholding the night.
 - **Nap recomposition**: `LocalDb.recomposeNaps` applies block assertions to retained day output, preserving measured night values and refreshing nap totals and the cross-day input revision.
+
+- **Certified target**: the exact official release tag and peeled source commit whose receiver was exercised by the export proof. Defined by `data/official_export/profile.dart`.
+- **Compatibility profile**: reviewed source-table, column and value dispositions for that certified target. Owned by `data/official_export/profile_tables.dart`.
+- **Snapshot receipt**: capture start/end instants, schema, immutable SQL content hash and independently omitted extras. Owned by `data/official_export/session.dart`.
+- **Recovery file**: an optional OSBK-encrypted copy of the same frozen fork SQL and supported extras, including data the certified target cannot use. Owned by `OfficialExportCoordinator`.

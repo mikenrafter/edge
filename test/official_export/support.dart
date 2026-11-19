@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/official_export/prune_cursor.dart' show LocalCalendar;
 import 'package:openstrap_edge/data/official_export/schema_catalog.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -72,4 +73,26 @@ List<Map<String, Object?>> readCaptureObjects(String name) {
   return ((json['reopened'] as Map)['objects'] as List)
       .map((e) => (e as Map).cast<String, Object?>())
       .toList();
+}
+
+/// A fixed-offset zone for tests: independent of the host process zone.
+/// `FixedOffsetCalendar(0)` is UTC.
+class FixedOffsetCalendar implements LocalCalendar {
+  const FixedOffsetCalendar(this.offsetSec);
+  final int offsetSec;
+  @override
+  int midnightAtOrAfter(int sec) => ((sec + offsetSec + 86399) ~/ 86400) * 86400 - offsetSec;
+  @override
+  String dayLabel(int sec) => _label(DateTime.fromMillisecondsSinceEpoch((sec + offsetSec) * 1000, isUtc: true));
+  @override
+  int? dayStartSec(String label) => _utcMidnight(label, 0);
+  @override
+  int? dayEndSec(String label) => _utcMidnight(label, 1);
+  int? _utcMidnight(String label, int plusDays) {
+    final p = label.split('-').map(int.tryParse).toList();
+    if (p.length != 3 || p.contains(null)) { return null; }
+    return DateTime.utc(p[0]!, p[1]!, p[2]! + plusDays).millisecondsSinceEpoch ~/ 1000 - offsetSec;
+  }
+  static String _label(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }

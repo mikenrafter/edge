@@ -4,7 +4,6 @@
 import 'package:sqflite/sqflite.dart';
 
 import 'profile.dart';
-import 'profile_target.dart';
 import 'schema_catalog.dart';
 
 /// What a candidate file contains, read once.
@@ -107,14 +106,15 @@ List<PayloadViolation> checkPayload(
       out.add(
         PayloadViolation(
           'layout',
-          '${t.name} column definitions differ from the tagged release; name differences: '
-          '${(actual.columnNames.difference(t.columnNames).union(t.columnNames.difference(actual.columnNames)).toList()..sort())}',
+          '${t.name} column definitions differ: '
+          'actual ${[for (final c in actual.columns) (c.name,c.type,c.notNull,c.defaultValue,c.pk)]}; '
+          'expected ${[for (final c in t.columns) (c.name,c.type,c.notNull,c.defaultValue,c.pk)]}',
         ),
       );
     }
   }
   final expectedObjects = {
-    for (final o in officialTargetObjects)
+    for (final o in target.objects)
       if (o.type != 'table') (o.type, o.name): (o.table, o.sql),
   };
   final actualObjects = {

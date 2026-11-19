@@ -15,15 +15,16 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/official_export/profile_tables.dart';
-import 'package:openstrap_edge/data/official_export/prune_cursor.dart';
 import 'package:openstrap_edge/data/official_export/schema_catalog.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart' show Sqflite;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import 'candidate_stub.dart';
+import 'package:openstrap_edge/data/official_export/mapper.dart';
+import 'package:openstrap_edge/data/official_export/payload_requirements.dart';
 import 'support.dart';
+import 'conservation.dart';
 
 Future<String> _sha(String path) async =>
     (await sha256.bind(File(path).openRead()).first).toString();
@@ -40,6 +41,10 @@ Future<Map<String, int>> _counts(Database db) async {
   return out;
 }
 
+void reportZone() {
+  expect(DateTime(2026, 7, 1).timeZoneOffset.inHours, -6, reason: 'owner-shaped Denver process zone');
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test('upgrade a disposable copy of the owner database', () async {
@@ -47,7 +52,7 @@ void main() {
     final work = Directory(Platform.environment['OWNER_WORK']!)..createSync(recursive: true);
     final out = Directory(Platform.environment['OFFICIAL_PROBE_OUT'] ?? 'build/official_probe')
       ..createSync(recursive: true);
-    expect(DateTime.utc(2026, 7, 1).toLocal().timeZoneOffset, Duration.zero, reason: 'harness needs a UTC process zone');
+    reportZone();
     final report = <String, Object?>{
       'fork_head': Platform.environment['OFFICIAL_FORK_HEAD'],
       'fork_status_porcelain': Platform.environment['OFFICIAL_FORK_STATUS'],
@@ -55,6 +60,10 @@ void main() {
     final watch = Stopwatch()..start();
     void lap(String what) {
       report['t:$what'] = watch.elapsedMilliseconds;
+      // Phase timing also makes a long archive expansion observable without
+      // logging source values while the final report is still being built.
+      // ignore: avoid_print
+      print('P2 owner phase $what: ${watch.elapsedMilliseconds} ms');
       watch.reset();
     }
 
@@ -81,6 +90,7 @@ void main() {
       'integrity': (await pre.rawQuery('PRAGMA integrity_check')).single.values.single,
       'tables': preCounts.length,
     };
+    expect((report['before'] as Map)['user_version'],89);
     await pre.close();
     lap('before');
 
@@ -88,6 +98,7 @@ void main() {
     final db = await LocalDb.instance;
     lap('upgrade_open');
     report['rebuild'] = LocalDb.lastRebuild?.toString();
+    expect(LocalDb.lastRebuild,isNull,reason:'the real source must migrate without quarantine/rebuild');
     final postCatalog = await SchemaCatalog.read(db);
     final postCounts = await _counts(db);
     final gaps = officialProfile.coverage(postCatalog);
@@ -98,6 +109,7 @@ void main() {
       'tables': postCounts.length,
       'profile_gaps': [for (final g in gaps) g.text],
     };
+    expect((report['after'] as Map)['user_version'],LocalDb.schemaVersion);
     report['row_counts'] = {
       for (final e in postCounts.entries) e.key: {'before': preCounts[e.key], 'after': e.value},
       for (final e in preCounts.entries)
@@ -105,38 +117,45 @@ void main() {
     };
     lap('after');
 
-    // Capture the fork cursor now; query exact seconds from the mapped file below.
-    final cursorRow = await db.rawQuery("SELECT value FROM sync_cursor WHERE name = 'decoded_pruned_before'");
-    final forkCursor = cursorRow.isEmpty ? null : int.tryParse('${cursorRow.single['value']}');
+
     await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
     await LocalDb.close();
     lap('close');
 
-    await naiveCopyFrom(copy, '${work.path}/naive.db');
-    lap('naive_candidate');
-    final policyPath = await policyFrom(copy, '${work.path}/policy.db', expectedPrunedBefore: null);
-    final mapped = await databaseFactoryFfi.openDatabase(policyPath);
+    final mapperPhases = <String, int>{};
+    final mappedReport = await mapOfficialSnapshot(snapshotPath: copy,
+        onPhase: (phase, ms) {
+          mapperPhases[phase] = ms;
+          // ignore: avoid_print
+          print('Owner mapper $phase: $ms ms');
+        },
+        outputPath: '${work.path}/policy.db', factory: databaseFactoryFfi);
+    final mapped = await databaseFactoryFfi.openDatabase(mappedReport.path,
+        options: OpenDatabaseOptions(readOnly: true));
     try {
-      final oldest = await oldestMappedExactSec(mapped);
-      final choice = chooseDecodedPrunedBefore(forkCursorSec: forkCursor, oldestExactSec: oldest);
-      report['cursor'] = {
-        'fork': forkCursor, 'oldest_exact_sec': oldest,
-        'carried': choice.sec, 'reason': choice.reason.name,
-      };
-      if (choice.sec != null) {
-        await mapped.insert('sync_cursor', {
-          'name': 'decoded_pruned_before', 'value': '${choice.sec}', 'updated_at': 1,
-        });
-      }
-    } finally {
-      await mapped.close();
-    }
-    lap('policy_candidate');
+      final inventory = await PayloadInventory.read(mapped);
+      final violations = checkPayload(inventory, officialProfile,
+          target: loadCapture('target_schema_62.json'),
+          expectedPrunedBefore: mappedReport.cursor.sec);
+      expect(violations, isEmpty);
+      report['payload_violations'] = [for (final v in violations) v.toString()];
+      report['cursor'] = {'oldest_exact_sec': await oldestMappedExactSec(mapped),
+        'carried': mappedReport.cursor.sec, 'reason': mappedReport.cursor.reason.name};
+      report['mapping_counts'] = mappedReport.targetCounts;
+      report['mapping_tables'] = mappedReport.tables;
+      expect(inventory.rowCounts['day_result'], 0);
+      expect(inventory.rowCounts['day_checkpoint'], 0);
+    } finally { await mapped.close(); }
+    lap('production_mapper');
+    report['mapper_phase_ms'] = mapperPhases;
+    await verifyConservation(copy,mappedReport);
+    report['source_value_conservation']='passed';
+    lap('conservation_oracle');
 
     final shaAfter = await _sha(original);
     report['original_unchanged'] = shaAfter == shaBefore;
     report['candidates'] = {
-      for (final n in ['upgraded', 'naive', 'policy']) n: File('${work.path}/$n.db').lengthSync(),
+      for (final n in ['upgraded', 'policy']) n: File('${work.path}/$n.db').lengthSync(),
     };
     File('${out.path}/owner-upgrade.json').writeAsStringSync(const JsonEncoder.withIndent('  ').convert(report));
     expect(shaAfter, shaBefore);

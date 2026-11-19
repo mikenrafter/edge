@@ -8,36 +8,11 @@
 // POSIX rule strings, which need no database: Denver is `MST7MDT,M3.2.0,M11.1.0`
 // (DST from the second Sunday of March to the first Sunday of November, the same
 // rule as the independent literals below for 2026). CLAIM(official-export-prune-edge).
-import 'dart:ffi';
 import 'dart:io';
 
-import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/official_export/prune_cursor.dart';
-
-typedef _SetenvNative = Int32 Function(Pointer<Utf8>, Pointer<Utf8>, Int32);
-typedef _SetenvDart = int Function(Pointer<Utf8>, Pointer<Utf8>, int);
-typedef _UnsetenvNative = Int32 Function(Pointer<Utf8>);
-typedef _UnsetenvDart = int Function(Pointer<Utf8>);
-typedef _TzsetNative = Void Function();
-typedef _TzsetDart = void Function();
-
-void _setProcessZone(String? zone) {
-  final lib = DynamicLibrary.process();
-  final key = 'TZ'.toNativeUtf8();
-  try {
-    if (zone == null) {
-      lib.lookupFunction<_UnsetenvNative, _UnsetenvDart>('unsetenv')(key);
-    } else {
-      final value = zone.toNativeUtf8();
-      lib.lookupFunction<_SetenvNative, _SetenvDart>('setenv')(key, value, 1);
-      calloc.free(value);
-    }
-    lib.lookupFunction<_TzsetNative, _TzsetDart>('tzset')();
-  } finally {
-    calloc.free(key);
-  }
-}
+import 'process_zone.dart';
 
 // zone -> (input instant, next local midnight at or after it), literals from an
 // independent zone database.
@@ -68,10 +43,10 @@ const _cases = <String, List<(int, int)>>{
 
 void main() {
   final originalZone = Platform.environment['TZ'];
-  tearDown(() => _setProcessZone(originalZone));
+  tearDown(() => setProcessZone(originalZone));
   for (final e in _cases.entries) {
     test('${e.key}: DayLabelCalendar matches the independent literals', () {
-      _setProcessZone(_posix[e.key]);
+      setProcessZone(_posix[e.key]);
       if (e.key == 'Asia/Kolkata') {
         expect(DateTime.utc(2026, 7, 1).toLocal().timeZoneOffset, const Duration(hours: 5, minutes: 30));
       }

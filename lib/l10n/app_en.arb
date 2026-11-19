@@ -21247,5 +21247,221 @@
   "pilotLabel": "Pilot",
   "@pilotLabel": {
     "description": "Badge for an experimental feature kept in this build"
-  }
+  },
+  "officialExportTitle": "Export for the official app",
+  "officialExportTarget": "Tested for official v0.12.2",
+  "officialExportOffline": "Latest release status is unknown. Export works offline.",
+  "officialExportIntro": "Your recordings and supported entries can merge with data already in the official app. Fork scores will be recalculated there.",
+  "officialExportChecklist": "Before import:\n• Back up the official app.\n• Enter your profile and check how long it keeps recordings.\n• Mute historical insights and finish onboarding.\n• Import, then run Re-analyze everything to completion before pairing or syncing. Keep automatic recalculation from running in between.\n• Verify records, settings and gaps. Keep this fork until satisfied.",
+  "officialExportPrune": "The official app can delete older recordings after a calculation. If it already deleted history, it will not rebuild imported days before its own cutoff. Days with only estimated recordings cannot be rebuilt.",
+  "officialExportChooseFolder": "Choose folder",
+  "officialExportStart": "Export",
+  "officialExportRecoveryQuestion": "Save a second file with data the official version does not yet support?",
+  "officialExportNotSaved": "Recovery not saved; unsupported data remains in this fork.",
+  "officialExportRecoveryFailed": "The official file is saved. Recovery could not be saved.",
+  "officialExportSaved": "Saved and verified",
+  "officialExportRetry": "Retry",
+  "officialExportRetryRecovery": "Retry recovery",
+  "officialExportOmissions": "Changes and omissions",
+  "officialExportDays": "Recordings by day",
+  "officialExportBoundary": "Retained recordings do not prove a complete night or guarantee a score.",
+  "officialExportExact": "Exact input retained",
+  "officialExportPartial": "Partial input retained",
+  "officialExportNone": "No exact input retained",
+  "officialExportPreparing": "Preparing a consistent copy",
+  "officialExportMapping": "Mapping supported records",
+  "officialExportEncrypting": "Encrypting",
+  "officialExportVerifying": "Reading saved bytes back",
+  "officialExportPublishing": "Publishing the verified file",
+  "officialExportCancelled": "Cancelled",
+  "officialExportFailed": "Could not complete this step",
+  "officialExportSpace": "Free up storage, then retry. Space for new band recordings is reserved.",
+  "officialExportAccess": "Choose the folder again, then retry.",
+  "officialExportLeave": "Leave this export?",
+  "officialExportLeaveBody": "Cancel unfinished work? Verified files will stay saved. Keep this screen open while exporting.",
+  "officialExportStay": "Stay",
+  "officialExportStop": "Stop export",
+  "officialExportShare": "Share encrypted file",
+  "officialExportEntries": "Entries",
+  "officialExportRecordings": "Recordings",
+  "officialExportSettings": "Settings",
+  "officialExportOther": "Other records",
+  "officialExportRebuilt": "Recalculated in the official app",
+  "officialExportUnsupported": "Unsupported values or fields",
+  "officialExportYes": "Yes",
+  "officialExportNo": "No",
+  "@officialExportTitle": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportTarget": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportOffline": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportIntro": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportChecklist": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportPrune": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportChooseFolder": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportStart": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportRecoveryQuestion": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportNotSaved": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportRecoveryFailed": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportSaved": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportRetry": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportRetryRecovery": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportOmissions": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportDays": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportBoundary": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportExact": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportPartial": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportNone": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportPreparing": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportMapping": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportEncrypting": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportVerifying": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportPublishing": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportCancelled": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportFailed": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportSpace": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportAccess": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportLeave": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportLeaveBody": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportStay": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportStop": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportShare": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportEntries": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportRecordings": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportSettings": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportOther": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportRebuilt": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportUnsupported": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportYes": {
+    "description": "Official-app export flow."
+  },
+  "@officialExportNo": {
+    "description": "Official-app export flow."
+  },
+  "officialExportInterrupted": "The previous export was interrupted. Unfinished private copies were removed. Verify any saved file before using it.",
+  "officialExportVerifySaved": "Verify saved file",
+  "@officialExportInterrupted": {
+    "description": "Interrupted official-app export."
+  },
+  "@officialExportVerifySaved": {
+    "description": "Interrupted official-app export."
+  },
+  "officialExportNewer": "A newer official release is available. This file is tested for v0.12.2.",
+  "officialExportChecked": "Last checked:",
+  "@officialExportNewer": {
+    "description": "Cached release status on official-app export. Opening this route does not check online."
+  },
+  "@officialExportChecked": {
+    "description": "Cached release status on official-app export. Opening this route does not check online."
+  },
+  "officialExportRows": "records",
+  "officialExportBytes": "bytes",
+  "officialExportBeats": "Beats",
+  "@officialExportRows": {
+    "description": "Unit for real export progress or per-day observed counts."
+  },
+  "@officialExportBytes": {
+    "description": "Unit for real export progress or per-day observed counts."
+  },
+  "@officialExportBeats": {
+    "description": "Unit for real export progress or per-day observed counts."
+  },
+  "officialExportNoNewer": "No newer official release was reported by the last check.",
+  "@officialExportNoNewer": {
+    "description": "A successful dated cached check, without starting new network work."
+  },
+  "officialExportSkippedHeader": "Not in the official file or the recovery file. Export again after the cause is fixed.",
+  "@officialExportSkippedHeader": {"description": "Official-app export flow."},
+  "officialExportSkippedSpace": "Skipped to keep space for new recordings",
+  "@officialExportSkippedSpace": {"description": "Official-app export flow."},
+  "officialExportSkippedUnfinished": "Recording not finished",
+  "@officialExportSkippedUnfinished": {"description": "Official-app export flow."},
+  "officialExportSkippedUnreadable": "Could not be read",
+  "@officialExportSkippedUnreadable": {"description": "Official-app export flow."},
+  "officialExportSkippedValue": "Value type could not be saved",
+  "@officialExportSkippedValue": {"description": "Official-app export flow."},
+  "officialExportLeftover": "An earlier export left a file that could not be checked or removed: {file} in {folder}. It may be incomplete. Delete it yourself.",
+  "@officialExportLeftover": {"description": "Official-app export flow.", "placeholders": {"file": {"type": "String"}, "folder": {"type": "String"}}},
+  "officialExportJournalUnreadable": "An earlier export could not be checked. You can still export again.",
+  "@officialExportJournalUnreadable": {"description": "Official-app export flow."},
+  "officialExportDismiss": "Dismiss",
+  "@officialExportDismiss": {"description": "Official-app export flow."}
 }

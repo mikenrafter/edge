@@ -3,6 +3,7 @@ import 'sleep_import_rules.dart';
 import 'dart:convert';
 import '../notify/notification_prefs.dart';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -10,9 +11,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import '../compute/derivation_engine.dart' show kAlgoVersion;
 import 'db.dart' show LocalDb;
+import 'official_export/omission_reasons.dart';
 import 'import_reentry_store.dart';
 import 'dart:collection';
 import '../coach/coach_config.dart' show CoachConfig;
+import '../coach/coach_engine.dart' show CoachEngine;
 import '../settings/settings_repository.dart' show SettingsRepository;
 import '../haptics/pattern_store.dart' show HapticPatternStore;
 import '../notify/notification_prefs.dart' show NotificationPrefs;
@@ -161,6 +164,9 @@ const Map<String, String> kFileRootsBackedUp = {
 };
 
 const Map<String, String> kFileRootsNotBackedUp = {
+  'lib/ui2/profile/official_export.dart': 'encrypted export artifacts in '
+      'Documents/official_exports are output files for import/share; backing '
+      'them up recursively would duplicate prior backups, not preserve input',
   'lib/data/disk_space.dart': 'reads the database volume free-space counter; writes no files',
   'lib/data/auto_backup.dart': 'the automatic backups themselves; they are '
       'what an import reads',
@@ -216,22 +222,38 @@ Future<Directory> _recordingsDir() async {
   return Directory(p.joinAll([docs.path, ...kBackupRecordingsDir.split('/')]));
 }
 
+/// Strict export capture records independently unsafe extras instead of silently
+/// dropping them. SQL remains usable when a settings/file family is omitted.
+class BackupExtrasAudit {
+  BackupExtrasAudit({required this.beforeWrite,required this.checkCancelled});
+  final Future<void> Function(int) beforeWrite;
+  final void Function() checkCancelled;
+  final omissions=<Map<String,Object?>>[];
+  void omit(String family,String identity,String reason) {
+    omissions.add({'family':family,'identity':identity,'reason':reason});
+  }
+}
+
 /// Adds [kBackupPrefsTable] (and, for [BackupExtras.all], [kBackupFilesTable])
 /// to the exported copy at [copyPath]. Never touches the live database.
 Future<void> writeBackupExtras(
   String copyPath, {
   SharedPreferences? prefs,
   BackupExtras extras = BackupExtras.all,
+  BackupExtrasAudit? audit,
+  bool omitFiles=false,
 }) async {
   if (extras == BackupExtras.none) return;
-  final SharedPreferences sp;
+  SharedPreferences? sp;
   try {
     sp = prefs ?? await SharedPreferences.getInstance();
-    if (prefs == null) await sp.reload();
+    if (prefs == null || audit != null) await sp.reload();
   } on Object {
+    sp=null;
+    audit?.omit('settings','portable preferences','preference store unavailable');
     // No preference store on this platform (a bare test host): nothing to
     // carry, and the export itself is still whole.
-    return;
+    if(audit==null)return;
   }
   final copy = await openDatabase(copyPath, singleInstance: false);
   try {
@@ -240,18 +262,20 @@ Future<void> writeBackupExtras(
     await copy.execute('CREATE TABLE IF NOT EXISTS backup_secrets (key TEXT PRIMARY KEY)');
     await copy.transaction((txn) async {
       await txn.delete('backup_secrets');
+      if(sp==null)return;
+      final capturedPrefs=sp;
       for (final key in ['coach_api_key', 'coach_chatgpt']) {
-        if (sp.get('${key}_present') == true) {
+        if (capturedPrefs.get('${key}_present') == true) {
           await txn.insert('backup_secrets', {'key': key});
         }
       }
-      final server = sp.get('coach_base_url');
+      final server = capturedPrefs.get('coach_base_url');
       if (server is String && server.isNotEmpty && server != CoachConfig.defaultBaseUrl) {
         await txn.insert('backup_secrets', {'key': 'coach_base_url'});
       }
-      for (final key in sp.getKeys()) {
+      for (final key in capturedPrefs.getKeys()) {
         if (!prefsKeyBackedUp(key) && !kPrefsSignalOnly.contains(key)) continue;
-        var value = sp.get(key);
+        var value = capturedPrefs.get(key);
         if (key == NotificationPrefs.storageKey && value is String) {
           try {
             final decoded = jsonDecode(value);
@@ -262,7 +286,9 @@ Future<void> writeBackupExtras(
           } on FormatException { /* Preserve existing malformed-value policy. */ }
         }
         final row = _encodePref(value);
-        if (row == null) continue;
+        if (row == null) {
+          audit?.omit('settings',key,kOmitUnsupportedPref);continue;
+        }
         await txn.insert(
             'backup_prefs', {'key': key, 'type': row.$1, 'value': row.$2},
             conflictAlgorithm: ConflictAlgorithm.replace);
@@ -271,30 +297,56 @@ Future<void> writeBackupExtras(
     if (extras == BackupExtras.all) {
       await copy.execute('CREATE TABLE IF NOT EXISTS backup_files '
           '(rel_path TEXT PRIMARY KEY, bytes BLOB)');
-      final dir = await _recordingsDir();
-      if (await dir.exists()) {
-        await for (final e in dir.list(followLinks: false)) {
-          if (e is! File) continue;
-          final name = p.basename(e.path);
-          if (!_safeRecordingName.hasMatch(name)) continue; // e.g. *.part
-          // One file per statement: never every recording in memory at once.
-          await copy.insert('backup_files', {
-            'rel_path': '$kBackupRecordingsDir/$name',
-            'bytes': await e.readAsBytes(),
-          }, conflictAlgorithm: ConflictAlgorithm.replace);
+      Future<void> captureFile(File file,String rel) async {
+        if(omitFiles){audit?.omit('saved files',rel,kOmitSpace);return;}
+        try {
+          audit?.checkCancelled();
+          final before=await file.stat();
+          await audit?.beforeWrite(before.size*2+65536);
+          await copy.insert('backup_files',{'rel_path':rel,'bytes':Uint8List(0)},conflictAlgorithm:ConflictAlgorithm.replace);
+          var captured=0;
+          await for(final chunk in file.openRead()) {
+            audit?.checkCancelled();
+            await audit?.beforeWrite((captured+chunk.length)*2+65536);
+            await copy.rawUpdate('UPDATE backup_files SET bytes=CAST(bytes || ? AS BLOB) WHERE rel_path=?',[Uint8List.fromList(chunk),rel]);
+            captured+=chunk.length;
+          }
+          final after=await file.stat();
+          if(captured!=before.size || before.modified!=after.modified || before.size!=after.size) {
+            throw const FileSystemException('File changed during capture');
+          }
+        } catch(error) {
+          await copy.delete('backup_files',where:'rel_path=?',whereArgs:[rel]);
+          if(audit==null)rethrow;
+          audit.omit('saved files',rel,'capture failed: ${error.runtimeType}');
+          // A cancellation or exhausted live reserve stops this artifact; an
+          // unreadable independent attachment may safely become an omission.
+          audit.checkCancelled();
+          await audit.beforeWrite(0);
         }
       }
-      final docs = await getApplicationDocumentsDirectory();
-      if (await docs.exists()) {
-        await for (final e in docs.list(followLinks: false)) {
-          if (e is! File) continue;
-          final name = p.basename(e.path);
-          if (!_safeCoachName.hasMatch(name)) continue;
-          await copy.insert('backup_files', {
-            'rel_path': name,
-            'bytes': await e.readAsBytes(),
-          }, conflictAlgorithm: ConflictAlgorithm.replace);
+      try {
+        final dir=await _recordingsDir();
+        if(await dir.exists()) {
+          await for(final entry in dir.list(followLinks:false)) {
+            final name=p.basename(entry.path);
+            if(entry is File && _safeRecordingName.hasMatch(name)) await captureFile(entry,'$kBackupRecordingsDir/$name');
+            if(entry is File && name.endsWith('.part')) audit?.omit('saved files',name,kOmitUnfinished);
+          }
         }
+        await CoachEngine.withFileSnapshot(()async {
+          final docs=await getApplicationDocumentsDirectory();
+          if(await docs.exists()) {
+            await for(final entry in docs.list(followLinks:false)) {
+              final name=p.basename(entry.path);
+              if(entry is File && _safeCoachName.hasMatch(name)) await captureFile(entry,name);
+            }
+          }
+        });
+      } catch(error) {
+        if(audit==null)rethrow;
+        audit.checkCancelled();await audit.beforeWrite(0);
+        audit.omit('saved files','file inventory','inventory failed: ${error.runtimeType}');
       }
     }
   } finally {
@@ -432,15 +484,19 @@ Future<BackupExtrasResult> restoreBackupExtras(
         if (!p.isWithin(home.path, target.path) || await target.exists()) {
           continue;
         }
-        final row = await src.query(kBackupFilesTable,
-            columns: ['bytes'], where: 'rel_path = ?', whereArgs: [rel]);
-        final bytes = row.isEmpty ? null : row.first['bytes'];
-        if (bytes is! List<int>) continue;
-        await home.create(recursive: true);
-        // Whole or not at all, like the store's own save.
-        final part = File('${target.path}.part');
+        final size=Sqflite.firstIntValue(await src.rawQuery('SELECT length(bytes) FROM backup_files WHERE rel_path=?',[rel]));
+        if(size==null)continue;
+        await home.create(recursive:true);
+        final part=File('${target.path}.part');
         try {
-          await part.writeAsBytes(bytes, flush: true);
+          final sink=part.openWrite();
+          try {
+            for(var offset=0;offset<size;offset+=256*1024) {
+              final chunk=(await src.rawQuery('SELECT substr(bytes,?,?) AS chunk FROM backup_files WHERE rel_path=?',[offset+1,256*1024,rel])).single['chunk'];
+              if(chunk is! List<int> || chunk.isEmpty)throw const FormatException('Unreadable attachment');
+              sink.add(chunk);await sink.flush();
+            }
+          } finally {await sink.close();}
           await part.rename(target.path);
           files++;
         } catch (_) {
@@ -844,4 +900,20 @@ Future<ImportSummary> restoreBackupPrefs(String path, Map<String, int> counts, {
       needsReentry: extras.needsReentry, unreadableSecrets: extras.unreadableSecrets,
       refusedPrefs: extras.refusedPrefs, prefsRestored: extras.prefsRestored,
       prefsKept: extras.prefsKept, filesRestored: extras.filesRestored);
+}
+
+
+/// Size the same finalized-file allowlist used by writeBackupExtras.
+Future<int> estimateBackupFiles() async {
+  var bytes=0;
+  final recordings=await _recordingsDir();
+  final docs=await getApplicationDocumentsDirectory();
+  for(final dir in [recordings,docs]) {
+    if(!await dir.exists())continue;
+    await for(final entry in dir.list(followLinks:false)) {
+      final name=p.basename(entry.path);
+      if(entry is File && (dir.path==recordings.path?_safeRecordingName.hasMatch(name):_safeCoachName.hasMatch(name))) bytes+=(await entry.stat()).size;
+    }
+  }
+  return bytes;
 }

@@ -4,6 +4,7 @@ import 'package:openstrap_edge/compute/pulse_ep_worker.dart';
 import 'package:openstrap_edge/data/pulse_ep/pulse_ep_codec.dart';
 import 'package:openstrap_edge/data/pulse_ep/pulse_ep_types.dart';
 import 'package:openstrap_analytics/onehz.dart' as pulse_ana;
+import 'package:openstrap_edge/data/official_export/mapping_worker.dart';
 import 'package:openstrap_edge/compute/night_day_worker.dart';
 import 'package:openstrap_edge/compute/night_checkpoint.dart';
 import 'package:openstrap_edge/compute/night_rr_state.dart';
@@ -149,6 +150,37 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
       await _sameInWorker(() => decodePulseEvidenceHeavy(input),
           json: (r) => [r.imported!.status.wire, r.imported!.row,
             r.read is PulseEvidenceAvailable ? (r.read as PulseEvidenceAvailable).evidence.beats.length : -1]);
+    },
+  ),
+  'backupStreamHeavy': (
+    roundTrip: () async {
+      final port=ReceivePort();
+      final request=(const WorkerInputs(nowEpochMs:0,zoneId:'UTC',localeTag:'en'),port.sendPort,null as SendPort?,0,'encrypt','path','pw',1000);
+      try {
+        await expectIsolateRoundTrip<(WorkerInputs,SendPort,SendPort?,int,String,String,String,int)>(request,
+          project:(r)=>[r.$1.nowEpochMs,r.$5,r.$6,r.$7,r.$8]);
+        final dir=await Directory.systemTemp.createTemp('backup_sample_');
+        try {
+          final plain=File('${dir.path}/plain')..writeAsBytesSync([97,98,99]);
+          final bytes=<int>[];
+          final digest=await encryptBackupStream(plain,'pw',(chunk)async{bytes.addAll(chunk);},iterations:1000);
+          expect(digest,'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+          expect(await verifyBackupStream(Stream.value(bytes),'pw'),digest);
+        } finally {await dir.delete(recursive:true);}
+      } finally {port.close();}
+    },
+  ),
+  'officialMappingHeavy': (
+    roundTrip: () async {
+      const input=MappingInput('page','journal_field_def',[
+        {'__export_rowid':1,'key':'custom_caffeine','label':'Caffeine','kind':'dose','unit':'g','created_at':1},
+      ]);
+      await expectIsolateRoundTrip<MappingInput>(input,project:(i)=>[i.operation,i.table,i.rows,i.blob,i.codec,i.fingerprint,i.json]);
+      final direct=await officialMappingHeavy(mappingWorkerInputs,input);
+      final result=await Isolate.run(()=>officialMappingHeavy(mappingWorkerInputs,input));
+      expect(result.rows.single['key'],'custom_u1_637573746f6d5f6361666665696e65_67');
+      expect(result.rows,direct.rows);expect(result.notes,direct.notes);
+      await expectIsolateRoundTrip<MappingOutput>(result,project:(r)=>[r.rows,r.notes,r.text]);
     },
   ),
   'typicalCaffeineHeavy': (

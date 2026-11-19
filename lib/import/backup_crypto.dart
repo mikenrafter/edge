@@ -49,7 +49,12 @@
 // cannot be round-tripped in a headless test. Take it only if the measured
 // wait is what people actually complain about.
 
+import 'dart:async';
+import 'dart:isolate';
 import 'dart:convert';
+import 'package:crypto/crypto.dart' as hashes;
+import '../util/worker_init.dart';
+import '../util/worker_entries.dart';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
@@ -220,31 +225,24 @@ Future<void> encryptBackupFile(
   if (passphrase.isEmpty) {
     throw const BackupFormatException('a backup needs a passphrase');
   }
-  final header = BackupHeader(
-    version: kBackupFormatVersion,
-    kdf: kKdfPbkdf2HmacSha256,
-    iterations: iterations,
-    salt: randomBytes(kSaltBytes, rng: rng),
-    nonce: randomBytes(kNonceBytes, rng: rng),
-  );
-  final headerBytes = header.toBytes();
-  final key = deriveKey(passphrase, header.salt, iterations);
-  final cipher = _gcm(
-    forEncryption: true,
-    key: key,
-    nonce: header.nonce,
-    aad: headerBytes,
-  );
-
   final out = dest.openWrite();
   try {
-    out.add(headerBytes);
-    await _pump(src, cipher, out);
-    out.add(_finish(cipher));
-    await out.flush();
-  } finally {
-    await out.close();
-  }
+    await _encryptStream(src.openRead(), passphrase, (bytes) async {
+      out.add(bytes); await out.flush();
+    }, iterations: iterations, rng: rng);
+  } finally { await out.close(); }
+}
+
+Future<void> _encryptStream(Stream<List<int>> source, String passphrase,
+    Future<void> Function(Uint8List) emit, {int iterations = kDefaultIterations, Random? rng}) async {
+  if (passphrase.isEmpty) throw const BackupFormatException('a backup needs a passphrase');
+  final header = BackupHeader(version:kBackupFormatVersion,kdf:kKdfPbkdf2HmacSha256,
+      iterations:iterations,salt:randomBytes(kSaltBytes,rng:rng),nonce:randomBytes(kNonceBytes,rng:rng));
+  final headerBytes=header.toBytes();
+  final cipher=_gcm(forEncryption:true,key:deriveKey(passphrase,header.salt,iterations),nonce:header.nonce,aad:headerBytes);
+  await emit(headerBytes);
+  await _pumpStream(source,cipher,emit);
+  await emit(_finish(cipher));
 }
 
 /// Decrypt [src] to [dest]. Throws [BackupFormatException] on a wrong
@@ -276,7 +274,9 @@ Future<void> decryptBackupFile(File src, File dest, String passphrase) async {
   final out = dest.openWrite();
   var ok = false;
   try {
-    await _pump(src, cipher, out, skip: BackupHeader.byteLength);
+    await _pumpStream(src.openRead(), cipher, (bytes) async {
+      out.add(bytes); await out.flush();
+    }, skip: BackupHeader.byteLength);
     try {
       out.add(_finish(cipher));
     } on InvalidCipherTextException {
@@ -307,24 +307,24 @@ Future<void> decryptBackupFile(File src, File dest, String passphrase) async {
 ///
 /// ponytail: 16-byte alignment as a workaround for an upstream bug; drop the
 /// carry buffer if pointycastle ever fixes `_processCipherBytes`.
-Future<void> _pump(
-  File src,
+Future<void> _pumpStream(
+  Stream<List<int>> source,
   GCMBlockCipher cipher,
-  IOSink out, {
+  Future<void> Function(Uint8List) emit, {
   int skip = 0,
 }) async {
   final bs = cipher.blockSize;
   final carry = BytesBuilder(copy: false);
 
-  void feed(Uint8List part) {
+  Future<void> feed(Uint8List part) async {
     if (part.isEmpty) return;
     final buf = Uint8List(part.length + bs);
     final n = cipher.processBytes(part, 0, part.length, buf, 0);
-    if (n > 0) out.add(Uint8List.sublistView(buf, 0, n));
+    if (n > 0) await emit(Uint8List.sublistView(buf, 0, n));
   }
 
   var dropped = 0;
-  await for (final raw in src.openRead()) {
+  await for (final raw in source) {
     var chunk = raw is Uint8List ? raw : Uint8List.fromList(raw);
     if (dropped < skip) {
       final take = skip - dropped;
@@ -339,17 +339,137 @@ Future<void> _pump(
     if (carry.length < _chunkBytes) continue;
     final pending = carry.takeBytes();
     final aligned = (pending.length ~/ bs) * bs;
-    feed(Uint8List.sublistView(pending, 0, aligned));
+    await feed(Uint8List.sublistView(pending, 0, aligned));
     if (aligned < pending.length) {
       carry.add(Uint8List.sublistView(pending, aligned));
     }
   }
   // The tail, whatever length it is: nothing is fed after this.
-  feed(carry.takeBytes());
+  await feed(carry.takeBytes());
 }
 
 Uint8List _finish(GCMBlockCipher cipher) {
   final tail = Uint8List(cipher.getOutputSize(0) + kTagBytes);
   final n = cipher.doFinal(tail, 0);
   return Uint8List.sublistView(tail, 0, n);
+}
+
+
+/// Bounded request/reply streaming keeps crypto off the UI isolate while the
+/// folder owner retains native I/O, cancellation and free-space decisions.
+/// CLAIM(official-export-saved-bytes) [official_export/stream_test; spec §3.2].
+Future<String> encryptBackupStream(File source, String passphrase,
+    Future<void> Function(List<int>) write, {
+    void Function(int)? onBytes, void Function()? checkCancelled,
+    int iterations = kDefaultIterations,
+}) => _runBackupStream('encrypt', source.path, null, passphrase, write,
+    onBytes, checkCancelled, iterations);
+
+Future<String> verifyBackupStream(Stream<List<int>> source, String passphrase, {
+    void Function(int)? onBytes, void Function()? checkCancelled,
+}) => _runBackupStream('verify', '', source, passphrase, null,
+    onBytes, checkCancelled, kDefaultIterations);
+
+Future<String> _runBackupStream(String mode, String path, Stream<List<int>>? source,
+    String passphrase, Future<void> Function(List<int>)? write,
+    void Function(int)? onBytes, void Function()? checkCancelled, int iterations) async {
+  final port=ReceivePort();
+  final input=source==null ? null : StreamIterator(source);
+  final dispatch=WorkerAudit.dispatched(Dispatcher.spawn,'backupStreamHeavy');
+  final isolate=await Isolate.spawn(backupStreamHeavy,
+      (const WorkerInputs(nowEpochMs:0,zoneId:'UTC',localeTag:'en'),port.sendPort,
+        WorkerAudit.auditPort,dispatch,mode,path,passphrase,iterations),onExit:port.sendPort,onError:port.sendPort);
+  try {
+    await for(final message in port) {
+      checkCancelled?.call();
+      if(message==null)throw const BackupFormatException('Backup worker stopped');
+      final m=message as List;
+      switch(m[0]) {
+        case 'read':
+          final more=await input!.moveNext();
+          (m[1] as SendPort).send(more ? input.current : null);
+        case 'write':
+          await write!(m[1] as Uint8List);
+          (m[2] as SendPort).send(null);
+        case 'progress': onBytes?.call(m[1] as int);
+        case 'done': return m[1] as String;
+        case 'error': throw BackupFormatException(m[1] as String);
+      }
+    }
+    throw const BackupFormatException('Backup worker stopped before verification');
+  } finally {
+    isolate.kill(priority:Isolate.immediate);port.close();await input?.cancel();
+  }
+}
+
+@heavy
+Future<void> backupStreamHeavy((WorkerInputs,SendPort,SendPort?,int,String,String,String,int) request) async {
+  WorkerInit.ensure(request.$1);
+  assertWorker();
+  WorkerAudit.adopt(request.$3,request.$4);
+  WorkerAudit.entered('backupStreamHeavy');
+  final reply=request.$2;
+  Future<void> emit(Uint8List chunk) async {
+    final ack=ReceivePort();
+    try {reply.send(['write',chunk,ack.sendPort]);await ack.first;} finally {ack.close();}
+  }
+  Stream<List<int>> read() async* {
+    while(true) {
+      final response=ReceivePort();
+      try {
+        reply.send(['read',response.sendPort]);
+        final bytes=await response.first;
+        if(bytes==null)break;
+        yield bytes as List<int>;
+      } finally {response.close();}
+    }
+  }
+  final digestOutput=_DigestOutput();
+  final hash=hashes.sha256.startChunkedConversion(digestOutput);
+  var processed=0;
+  try {
+    if(request.$5=='encrypt') {
+      Stream<List<int>> plain() async* {
+        await for(final chunk in File(request.$6).openRead()) {
+          hash.add(chunk);processed+=chunk.length;
+          yield chunk;reply.send(['progress',processed]);
+        }
+      }
+      await _encryptStream(plain(),request.$7,emit,iterations:request.$8);
+    } else {
+      final input=StreamIterator(read());
+      try {
+        final headerBuffer=BytesBuilder(copy:false);
+        while(headerBuffer.length<BackupHeader.byteLength && await input.moveNext()) {
+          headerBuffer.add(input.current);
+        }
+        final initial=headerBuffer.takeBytes();
+        final headerBytes=Uint8List.sublistView(initial,0,
+            initial.length<BackupHeader.byteLength?initial.length:BackupHeader.byteLength);
+        final header=BackupHeader.parse(headerBytes);
+        processed=initial.length;
+        Stream<List<int>> ciphertext() async* {
+          if(initial.length>BackupHeader.byteLength) yield Uint8List.sublistView(initial,BackupHeader.byteLength);
+          reply.send(['progress',processed]);
+          while(await input.moveNext()) {
+            final chunk=input.current;processed+=chunk.length;
+            yield chunk;reply.send(['progress',processed]);
+          }
+        }
+        final cipher=_gcm(forEncryption:false,key:deriveKey(request.$7,header.salt,header.iterations),nonce:header.nonce,aad:headerBytes);
+        await _pumpStream(ciphertext(),cipher,(plain)async {hash.add(plain);});
+        try {hash.add(_finish(cipher));} on InvalidCipherTextException {
+          throw const BackupFormatException('wrong passphrase, or this backup has been modified');
+        }
+      } finally {await input.cancel();}
+    }
+    hash.close();
+    reply.send(['done',digestOutput.digest.toString()]);
+  } catch(error) {reply.send(['error',error.toString()]);}
+}
+
+class _DigestOutput implements Sink<hashes.Digest> {
+  hashes.Digest? digest;
+  @override void add(hashes.Digest data) {digest=data;}
+  @override void close() {}
 }

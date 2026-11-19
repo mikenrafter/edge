@@ -16,6 +16,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/sync/dev_log.dart';
 import 'package:openstrap_edge/data/official_export/payload_requirements.dart';
 import 'package:openstrap_edge/data/official_export/schema_catalog.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -27,6 +28,13 @@ import 'support.dart';
 import 'target/scenario.dart';
 
 int dayStart(int n) => dayStartEpoch(n);
+
+/// Source rows the fixture itself knows must be omitted although no SQL
+/// predicate can say why (the oracle's literal escape hatch, per table):
+/// the generic filler's plan_json is 'x', which is not a parsable race plan.
+const richFixtureLiteralOmissions = <String, Set<int>>{
+  'triathlon_session': {1},
+};
 final int forkCursor = fixtureForkCursor;
 final int oldestExact = fixtureOldestExact;
 final int edgeD4 = fixtureExpectedCursor;
@@ -110,7 +118,10 @@ class RichFixture {
     }
   }
 
-  Future<void> dispose() => _root.delete(recursive: true);
+  Future<void> dispose() async {
+    await DevLog.instance.flush();
+    await _root.delete(recursive: true);
+  }
 }
 
 Map<String, Object?> _filler(TableShape shape) => {
@@ -193,6 +204,15 @@ Map<String, List<Map<String, Object?>>> _specificRows() {
     ],
     // Same label, different unit than the populated official target's mg
     // definition (proof D of the unit-key rule; the target side adds mg).
+    'journal': [
+      {'date':'2026-10-21','tags_json':'[]','note':'Fork journal','updated_at':1},
+    ],
+    'lab_marker_def': [
+      {'key':'custom_iron','label':'Iron','unit':'g','category':'blood','decimals':3,'created_at':1},
+    ],
+    'lab_result': [
+      {'marker':'custom_iron','taken_on':'2026-10-21','value':0.02,'unit':'g','note':'Exact lab note','updated_at':1},
+    ],
     'journal_field_def': [
       {
         'key': 'custom_caffeine', 'label': 'Caffeine', 'kind': 'dose',
@@ -227,10 +247,10 @@ Map<String, List<Map<String, Object?>>> _specificRows() {
       {'reading_id': 'ecg-1', 'ordinal': 0, 'sequence': 1, 'sample_count': 2, 'samples': Uint8List.fromList([1, 0, 2, 0]), 'inner_hex': 'AA'},
     ],
     'hyrox_session': [
-      {'id': 'hy-1', 'kind': 'race', 'preset': 'open', 'status': 'completed', 'plan_json': '{}', 'created_at': dayStart(6), 'updated_at': dayStart(6)},
+      {'id': 'hy-1', 'kind': 'race', 'preset': 'open', 'status': 'finished', 'plan_json': '{"v":1,"preset":"custom","segments":[{"kind":"hyrox_round","station":"rowing","planned_distance_m":1000,"goal_sec":300}]}', 'created_at': dayStart(6), 'updated_at': dayStart(6)},
     ],
     'hyrox_segment': [
-      {'session_id': 'hy-1', 'idx': 0, 'kind': 'run'},
+      {'session_id': 'hy-1', 'idx': 0, 'kind': 'hyrox_round', 'station':'rowing','planned_distance_m':1000.0,'distance_m':900.0,'distance_source':'user','hr_source':'band','workout_id':'w${dayStart(6) * 1000}'},
     ],
     'sleep_override': [
       {'day_id': '2026-10-24', 'onset_ts': dayStart(4) + 23 * 3600, 'offset_ts': dayStart(5) + 6 * 3600, 'source': 'manual', 'created_at': dayStart(5)},

@@ -201,6 +201,9 @@ List<WriteSite> scanWriters(String src) {
     return const [];
   }
   final code = codeOnly(src);
+  final unit = parseString(content: src, throwIfDiagnostics: false).unit;
+  final catalogs = _ConstCatalogMembers();
+  unit.accept(catalogs);
   final hits = <({int at, String verb, String table, String text})>[];
   final literalEnds = _literalEnds(text);
   for (final m in _sqlWrite.allMatches(text)) {
@@ -217,9 +220,6 @@ List<WriteSite> scanWriters(String src) {
   // API writes are decided on the parsed AST, from the DECODED value of the
   // table argument: parentheses, raw strings, triple quotes and adjacent
   // literals all spell the same table.
-  final unit = parseString(content: src, throwIfDiagnostics: false).unit;
-  final catalogs = _ConstCatalogMembers();
-  unit.accept(catalogs);
   final apiCalls = <MethodInvocation>[];
   unit.accept(_LiteralApiWrites(apiCalls));
   final apiMembers = <int, String>{};

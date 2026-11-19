@@ -63,6 +63,16 @@ import CoreMotion
 
   private func registerEngine(_ registry: FlutterPluginRegistry) {
     GeneratedPluginRegistrant.register(with: registry)
+    if let registrar = registry.registrar(forPlugin: "ExportFreeSpace") {
+      FlutterMethodChannel(name: "openstrap/backup_folder", binaryMessenger: registrar.messenger())
+        .setMethodCallHandler { call, result in
+          guard call.method == "freeSpace" else { result(FlutterMethodNotImplemented); return }
+          do {
+            let attributes = try FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory())
+            result(attributes[.systemFreeSize] as? NSNumber)
+          } catch { result(FlutterError(code: "storage_unavailable", message: "Cannot check available storage", details: nil)) }
+        }
+    }
     // Live Activity MethodChannel (start/update/end the workout activity).
     // LiveActivityBridge lives in LiveActivityBridge.swift (Runner target).
     if let registrar = registry.registrar(forPlugin: "LiveActivityBridge") {

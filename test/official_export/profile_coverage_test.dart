@@ -172,6 +172,23 @@ const _specialReceiverPaths = {
 };
 
 void main() {
+  // WHY: trimmed builds stop creating these objects, while SQLite upgrades
+  // retain them. Both histories must remain covered. CLAIM(official-export-accounted-identities).
+  test('retired ECG objects are known on legacy databases and optional on fresh ones', () {
+    final legacy=loadCapture('fork_schema_92.json');
+    expect(officialProfile.coverage(legacy),isEmpty);
+    final packet=legacy.tables['ecg_raw_packet']!;
+    final fresh=SchemaCatalog({...legacy.tables}..remove('ecg_gesture_session'));
+    fresh.tables['ecg_raw_packet']=TableShape(name:packet.name,
+      columns:packet.columns.where((c)=>c.name!='origin').toList(),sql:packet.sql,indexes:packet.indexes);
+    expect(officialProfile.coverage(fresh),isEmpty);
+    // Only the retired column may disappear; missing packet bytes stay a gap.
+    final missingBytes=SchemaCatalog({...fresh.tables});
+    missingBytes.tables['ecg_raw_packet']=TableShape(name:packet.name,
+      columns:packet.columns.where((c)=>c.name!='origin' && c.name!='hex').toList(),sql:packet.sql,indexes:packet.indexes);
+    expect(officialProfile.coverage(missingBytes).map((g)=>g.text),contains('profile column ecg_raw_packet.hex is not in the schema'));
+  });
+
   group('the frozen policy itself', () {
     test('is internally consistent', () {
       expect(officialProfile.problems(), isEmpty);

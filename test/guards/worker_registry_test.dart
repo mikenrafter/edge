@@ -13,6 +13,7 @@ import 'package:openstrap_edge/util/worker_entries.dart';
 
 /// Substring of `Symbol.toString()` -> expected dispatcher.
 const kExpected = <String, Dispatcher>{
+  'officialMappingHeavy': Dispatcher.run,
   'segmentCalendarDaysHeavy': Dispatcher.run,
   'buildCrossDayArtifactHeavy': Dispatcher.cancellable,
   'trackLearningHeavy': Dispatcher.run,
@@ -40,6 +41,7 @@ const kExpected = <String, Dispatcher>{
   'ecgFormatPageHeavy': Dispatcher.run,
   '_writeZipHeavy': Dispatcher.run,
   'observeNaturalSync': Dispatcher.run,
+  'backupStreamHeavy': Dispatcher.spawn,
   'encryptBackupFile': Dispatcher.run,
   'decryptBackupFile': Dispatcher.run,
   // The sample archive (lib/data/sample_heavy.dart): encode / carve / reconstruct

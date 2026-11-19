@@ -48,6 +48,7 @@ import '../screens/home_screen.dart' show dbRebuiltCard;
 import '../ui2.dart';
 import '../../data/import_progress.dart';
 import 'import_progress_view.dart';
+import 'official_export.dart';
 import 'phone_import.dart';
 import 'profile.dart';
 import 'settings.dart' show backToRoot;
@@ -405,6 +406,7 @@ class _DataScreenState extends State<DataScreen> {
       reanalyzeProgress: app.reanalyzeProgress,
       reanalyzing: app.reanalyzing,
       importRollupError: app.importRollupError,
+      onExportOfficial: () => openOfficialExport(c),
       onExportCsv: () => _run(
           l?.loadingExportCsv ?? 'Exporting your data as CSV', _exportCsv),
       onExportHeartRate: () => _run(
@@ -557,6 +559,7 @@ class DataScreenView extends StatelessWidget {
     this.reanalyzeProgress = '',
     this.reanalyzing = false,
     this.importRollupError,
+    this.onExportOfficial,
     this.onExportCsv,
     this.onExportHeartRate,
     this.onExportDb,
@@ -609,7 +612,8 @@ class DataScreenView extends StatelessWidget {
 
   /// Why the last automatic backup failed, if it did.
   final String? backupError;
-  final VoidCallback? onExportCsv,
+  final VoidCallback? onExportOfficial,
+      onExportCsv,
       onExportHeartRate,
       onExportDb,
       onExportEncrypted,
@@ -665,6 +669,8 @@ class DataScreenView extends StatelessWidget {
                 SettingsAccordion(l?.dataExportGroup ?? 'Export',
                     id: 'data_export',
                     children: [
+                  ConstrainedBox(constraints:const BoxConstraints(minHeight:48),child:SetRow(LucideIcons.fileLock2,C.green,
+                    l?.officialExportTitle ?? 'Export for the official app',onTap:busy?null:onExportOfficial)),
                   SetRow(LucideIcons.fileSpreadsheet, C.green,
                       l?.dataExportSpreadsheets ?? 'Export as spreadsheets',
                       // export-provenance: the daily file now carries `source`
