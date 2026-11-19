@@ -1,5 +1,6 @@
 // WHY: backups must preserve wearer decisions and stable identities without
 // resurrecting removed sleep. CLAIM(sleep-editor-transport), spec §2.2/§6.1.
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -7,6 +8,8 @@ import 'package:path_provider_platform_interface/path_provider_platform_interfac
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/day_label.dart';
+import 'package:openstrap_edge/data/sleep_edit_store.dart';
 import 'package:openstrap_edge/data/import_journal.dart';
 import 'package:openstrap_edge/data/recent_slice.dart';
 import 'package:openstrap_edge/data/sleep_block_store.dart';
@@ -31,6 +34,23 @@ class _Paths extends PathProviderPlatform {
   Future<String?> getTemporaryPath() async => root;
   @override Future<String?> getApplicationSupportPath() async => root;
   @override Future<String?> getApplicationDocumentsPath() async => root;
+}
+
+// A real nap compose between the sleep stage and bundle copy pins the
+// pre-import boundary: this imported block was never a local assertion.
+class _NapBeforeResultCopy implements ImportTableProbe {
+  _NapBeforeResultCopy(this.day);
+  final String day;
+  bool ran=false;
+  @override
+  Future<void> beforeTable(String table) async {
+    if(table!='day_result') return;
+    final db=await LocalDb.instance;
+    final jobs=await db.query('sleep_edit_job',where:'day_id = ?',whereArgs:[day]);
+    if(jobs.isEmpty) return;
+    await LocalDb.recomposeNaps(day,jobs.single['nap_revision'] as int);
+    ran=true;
+  }
 }
 
 void main() {
@@ -283,5 +303,88 @@ void main() {
       expect((await rows()).map((r)=>r['id']),['local']);
       expect((await notes()).single.other,'main_exists');
     }
+  });
+  // WHY C1: replacing a bundle does not replace local block truth, including
+  // edits without activity suggestions. Raw presence excludes the no-raw edge.
+  // CLAIM(sleep-editor-transport).
+  for(final removed in [true,false]) {
+    test('C1 import recomposes a local ${removed ? 'removed' : 'typed'} nap with raw still present',() async {
+      final path=await backup([block('foreign')]);
+      final src=await databaseFactory.openDatabase(path);
+      await seedDay(src,day,naps:[{'start':start,'end':start+2400,'duration_min':40}]);
+      await src.update('day_result',{'payload_json':jsonEncode({'date':day,
+        'naps':{'value':[{'start':start,'end':start+2400,'duration_min':40}]},
+        'scalars':{'nap_min':40}})},where:'day_id = ?',whereArgs:[day]);
+      await src.close();
+      await db.insert('sleep_block',block('local',s:start+600,e:start+1800,
+        state:removed?'removed':'live'));
+      await SleepBlockStore.projectForTest(db,{day});
+      await seedDay(db,day,naps:removed?[]:[{'start':start+600,'end':start+1800,'duration_min':20}]);
+      await db.update('day_result',{'finalized':0},where:'day_id = ?',whereArgs:[day]);
+      await db.insert('decoded_onehz',{'device_id':'','ts_ms':start*1000,
+        'rec_ts':start,'counter':1,'hr':60});
+      expect(await db.query('activity_suggestions'),isEmpty);
+      await restoreBackup(path);
+      expect(await db.query('decoded_onehz',where:'rec_ts = ?',whereArgs:[start]),hasLength(1));
+      final jobs=await db.query('sleep_edit_job',where:'day_id = ?',whereArgs:[day]);
+      expect(jobs,hasLength(1),reason:'a replaced bundle needs local nap work even when absorb inserted nothing');
+      expect(jobs.single['revision'],0,reason:'this is nap-only work');
+      expect(jobs.single['nap_revision'],greaterThan(jobs.single['nap_applied_revision'] as int));
+      final app=AppState.forTesting();
+      try { await app.sleepEditRunner.start(); } finally { app.dispose(); }
+      final value=jsonDecode((await LocalDb.dayResult(day))!['payload_json'] as String);
+      expect(value['naps']['value'],hasLength(removed?0:1));
+      expect(value['scalars']['nap_min'],removed?0:20);
+      if(!removed) { expect(value['naps']['value'].single['start'],start+600); }
+      expect((await db.query('sleep_edit_job')).single['phase'],'done');
+    });
+  }
+  test('C1 fresh restore queues only the absorb receipt',() async {
+    final path=await backup([block('fresh')]);
+    final src=await databaseFactory.openDatabase(path);
+    await seedDay(src,day,naps:[{'start':start,'end':start+2400,'duration_min':40}]);
+      await src.update('day_result',{'payload_json':jsonEncode({'date':day,
+        'naps':{'value':[{'start':start,'end':start+2400,'duration_min':40}]},
+        'scalars':{'nap_min':40}})},where:'day_id = ?',whereArgs:[day]);
+    await src.close();
+    expect(await rows(),isEmpty);
+    final probe=_NapBeforeResultCopy(day);
+    ImportHooks.table=probe;
+    await restoreBackup(path);
+    expect(probe.ran,isTrue,reason:'the absorb receipt was acknowledged before the bundle copy');
+    final jobs=await db.query('sleep_edit_job');
+    expect(jobs,hasLength(1));
+    expect([jobs.single['revision'],jobs.single['nap_revision'],jobs.single['nap_applied_revision']],[0,1,1],
+      reason:'blocks from this import do not need a second nap receipt, even after the first was applied');
+  });
+  test('C1 import queues beyond one hundred local nap days without a cap',() async {
+    final dates=[for(var i=0;i<101;i++) DateTime(2026,1,1+i,14)];
+    final days=dates.map(dayLabelOf).toList();
+    final starts=[for(final date in dates) date.millisecondsSinceEpoch~/1000];
+    final foreign=[for(var i=0;i<days.length;i++) block('foreign-$i',owner:days[i],
+      s:starts[i],e:starts[i]+2400)];
+    final protectedStart=DateTime(2025,12,30,14).millisecondsSinceEpoch~/1000;
+    final path=await backup([...foreign,block('protected-foreign',owner:'2025-12-30',
+      s:protectedStart,e:protectedStart+2400)]);
+    final src=await databaseFactory.openDatabase(path);
+    for(final d in days) { await seedDay(src,d); }
+    await seedDay(src,'2025-12-30');
+    await src.close();
+    for(var i=0;i<days.length;i++) {
+      await db.insert('sleep_block',block('local-$i',owner:days[i],state:'removed',
+        s:starts[i],e:starts[i]+2400));
+      await seedDay(db,days[i]);
+    }
+    await db.update('day_result',{'finalized':0});
+    for(final d in ['2025-12-30','2025-12-31']) {
+      final s=DateTime.parse(d).add(const Duration(hours:14)).millisecondsSinceEpoch~/1000;
+      await db.insert('sleep_block',block('untouched-$d',owner:d,state:'removed',s:s,e:s+2400));
+      await seedDay(db,d);
+    }
+    await restoreBackup(path);
+    final jobs=await db.query('sleep_edit_job');
+    expect(jobs,hasLength(101),reason:'the hundred-day transaction boundary is not a work limit');
+    expect(jobs.map((r)=>r['day_id']).toSet(),days.toSet());
+    expect(jobs.every((r)=>r['revision']==0 && (r['nap_revision'] as int)>(r['nap_applied_revision'] as int)),isTrue);
   });
 }
