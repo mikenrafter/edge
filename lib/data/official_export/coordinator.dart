@@ -31,6 +31,9 @@ abstract interface class ExportPrompts {
 
 class OfficialExportCoordinator extends ChangeNotifier {
   static OfficialExportCoordinator? _owner;
+  // CLAIM(official-export-cleanup-owner): journal edits settle before export
+  // or recovery may replace the receipt [coordinator_test ownership barriers].
+  static Future<void> _noticeChanges=Future<void>.value();
   ExportProgress progress=const ExportProgress(ExportStage.ready);
   OfficialExportOutcome? outcome;
   OfficialMapReport? report;
@@ -104,7 +107,18 @@ class OfficialExportCoordinator extends ChangeNotifier {
       for(final e in _leftovers)ExportNotice(ExportNoticeKind.leftover,file:e['name'] as String,folder:e['folder'] as String),
     ];
   }
-  Future<void> dismissNotices() async {
+  Future<void> dismissNotices() {
+    if(_owner?._running!=null)return Future<void>.value();
+    final previous=_noticeChanges;
+    final settled=Completer<void>();
+    _noticeChanges=settled.future;
+    Future<void> change() async {
+      await previous;
+      try {await _dismissNotices();} finally {settled.complete();}
+    }
+    return change();
+  }
+  Future<void> _dismissNotices() async {
     try {
       final journal=File('${_root.path}/interruption.json');
       if(await journal.exists()) {
@@ -266,6 +280,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
     final running=_owner?._running;
     if(running!=null)return running;
     _owner=this;
+    _cancellation=ExportCancellation();
     return _running??=_run(snapshot,privateRoot,destination,space,prompts)
       .whenComplete((){_running=null;notifyListeners();});
   }
@@ -349,9 +364,10 @@ class OfficialExportCoordinator extends ChangeNotifier {
   }
   Future<OfficialExportOutcome> _run(OfficialSnapshotSource source,Directory root,
       CipherBackupStorage destination,ExportSpaceBudget space,ExportPrompts prompts) async {
+    await _noticeChanges; // ↳ CLAIM(official-export-cleanup-owner)
     await finish();
     _root=root;_destination=destination;_space=space;
-    _cancellation=ExportCancellation();_recoveryChoice=null;_omissionGroups=null;official=null;report=null;outcome=null;extrasOmissions=const [];
+    _recoveryChoice=null;_omissionGroups=null;official=null;report=null;outcome=null;extrasOmissions=const [];
     _elapsed..reset()..start();
     try {
       if(await FileSystemEntity.type(root.path,followLinks:false)==FileSystemEntityType.link)throw StateError('Unsafe private directory');
@@ -435,10 +451,11 @@ class OfficialExportCoordinator extends ChangeNotifier {
     final running=_owner?._running;
     if(running!=null)return running;
     _owner=this;
+    _cancellation=ExportCancellation();
     return _running??=_retryRecovery().whenComplete((){_running=null;notifyListeners();});
   }
   Future<OfficialExportOutcome> _retryRecovery() async {
-    _cancellation=ExportCancellation();
+    await _noticeChanges; // ↳ CLAIM(official-export-cleanup-owner)
     final result=await _recover();outcome=result;
     if(!_retryAvailable)await finish();
     progress=const ExportProgress(ExportStage.complete);notifyListeners();return result;

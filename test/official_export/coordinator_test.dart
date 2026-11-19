@@ -300,6 +300,7 @@ void main() {
   // WHY: Dismiss and export share interruption.json. A stale Dismiss must
   // never replace a live export receipt, or its incomplete file is forgotten.
   // catches: allowing Dismiss to rewrite a journal while export owns it.
+  // proves: CLAIM(official-export-cleanup-owner).
   test('cleanup journal ownership Dismiss cannot rewrite an active export receipt',()async {
     final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('cleanup_active_');
     final coordinator=OfficialExportCoordinator()..trees=Trees(RevokedTree.new);
@@ -326,6 +327,7 @@ void main() {
   // WHY: an export started during Dismiss must wait before even cleaning an
   // earlier session. The JSON barrier holds real Dismiss work in flight.
   // catches: starting _run/finish before the prior journal edit has settled.
+  // proves: CLAIM(official-export-cleanup-owner).
   test('cleanup journal ownership export waits for an in-flight Dismiss',()async {
     final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('cleanup_wait_');
     final coordinator=FinishSpyCoordinator()..trees=Trees(RevokedTree.new);
@@ -353,6 +355,7 @@ void main() {
   // WHY: retry recovery also replaces interruption.json, using the same
   // receipt owner. A queued retry must retain cancellation and the official file.
   // catches: starting recovery before Dismiss settles, or resetting queued cancellation.
+  // proves: CLAIM(official-export-cleanup-owner).
   test('cleanup journal ownership recovery retry waits for Dismiss and keeps cancellation',()async {
     final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('cleanup_retry_');
     final coordinator=OfficialExportCoordinator();final lane=PausedJournalDecode();
