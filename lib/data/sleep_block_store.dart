@@ -473,7 +473,8 @@ abstract final class SleepBlockStore {
     final report = <SleepImportEntry>[];
     final legacyPhantomDays=<String>{};
     final servedByDay={for(final r in servedDayResults) r['day_id']:r};
-    // Absorption uses served window_json and requires an unskipped own day.
+    // Absorption uses the served window column (or legacy payload fallback)
+    // and requires an unskipped own day.
     // The later raw-free cleanup can inspect any stored bundle version; these
     // narrow inputs deliberately do not claim to cover those two rare shapes.
     bool overlapsNextNight(String day,int start,int end) {
@@ -660,13 +661,21 @@ abstract final class SleepBlockStore {
   /// Next-night bounds travel with the input so import never reads its source
   /// inside the main transaction [B4; spec §2.2 step 3 / RULES B.8].
   static Future<List<Map<String,Object?>>> legacyNapInputs(DatabaseExecutor db) async {
+    final columns={for(final c in await db.rawQuery('PRAGMA table_info(day_result)')) c['name']};
+    // Sparse old exports predate these metadata columns. Keep their recorded
+    // payload window when there is no window column, and honor old skip flags;
+    // missing metadata must not abort unrelated imports [G1; transport test].
+    final window=columns.contains('window_json') ? 'r.window_json' :
+      "(CASE WHEN json_valid(r.payload_json) THEN json_extract(r.payload_json, '\$.sleep.window.value') END)";
+    final unskipped=columns.contains('skipped') ? 'r.skipped = 0' :
+      "(CASE WHEN json_valid(r.payload_json) THEN COALESCE(json_extract(r.payload_json, '\$.skipped'), 0) ELSE 0 END) = 0";
     final rows=await db.rawQuery("SELECT r.day_id, CASE WHEN json_valid(r.payload_json) "
       "THEN json_extract(r.payload_json, '\$.naps.value') END AS naps_json, "
-      "CASE WHEN json_valid(r.window_json) THEN COALESCE(json_extract(r.window_json, '\$.value.onset_ms'), "
-      "json_extract(r.window_json, '\$.onset_ms')) END AS on_ms, "
-      "CASE WHEN json_valid(r.window_json) THEN COALESCE(json_extract(r.window_json, '\$.value.offset_ms'), "
-      "json_extract(r.window_json, '\$.offset_ms')) END AS off_ms "
-      "FROM day_result r ${LocalDb.servedDayJoinSql} WHERE r.skipped = 0");
+      "CASE WHEN json_valid($window) THEN COALESCE(json_extract($window, '\$.value.onset_ms'), "
+      "json_extract($window, '\$.onset_ms')) END AS on_ms, "
+      "CASE WHEN json_valid($window) THEN COALESCE(json_extract($window, '\$.value.offset_ms'), "
+      "json_extract($window, '\$.offset_ms')) END AS off_ms "
+      "FROM day_result r ${LocalDb.servedDayJoinSql} WHERE $unskipped");
     final byDay={for(final r in rows) r['day_id']:r};
     int? seconds(Object? value) => value is num ? value ~/ 1000 : null;
     return [for(final r in rows) {
