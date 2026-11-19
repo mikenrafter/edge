@@ -163,6 +163,13 @@ class _PendingContentState extends State<PendingContent>
     }
   }
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduced = MediaQuery.disableAnimationsOf(context);
+    _fade.duration = reduced ? Duration.zero : const Duration(milliseconds: 250);
+    if (reduced && (!widget.pending || _visible)) _fade.value = 1;
+  }
+  @override
   void dispose() { _delay?.cancel(); _fade.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) {
@@ -193,7 +200,7 @@ class _PendingContentState extends State<PendingContent>
                         pending: widget.pending,
                         child: widget.child,
                       )),
-                builder: (_, child) => PendingTone(pulse: _PendingPulse.shared.value,
+                builder: (_, child) => PendingTone(pulse: MediaQuery.disableAnimationsOf(context) ? 1 : _PendingPulse.shared.value,
                   fade: _fade.value, child: _PendingPaint(pending: widget.pending,
                     visible: _visible, fade: _fade.value, child: child!))))))));
   }
@@ -213,10 +220,12 @@ class _PendingPaint extends SingleChildRenderObjectWidget {
   final double fade;
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      _RenderPending(context as Element, pending, visible, fade, child);
+      _RenderPending(context as Element, pending, visible, fade, child,
+        MediaQuery.disableAnimationsOf(context));
   @override
   void updateRenderObject(BuildContext context, _RenderPending renderObject) {
-    renderObject..pending = pending..visible = visible..fade = fade;
+    renderObject..pending = pending..visible = visible..fade = fade
+      ..reducedMotion = MediaQuery.disableAnimationsOf(context);
     renderObject.updateChildIdentity(child);
   }
 }
@@ -228,10 +237,12 @@ class _RenderPending extends RenderProxyBox {
     this._visible,
     this._fade,
     this._widgetChild,
+    this._reducedMotion,
   );
   final Element element;
   bool _pending, _visible, _listening = false;
   double _fade;
+  bool _reducedMotion;
   GuidePlaceholderPaint? _plan;
   Widget? _widgetChild;
   void updateChildIdentity(Widget? child) {
@@ -246,8 +257,14 @@ class _RenderPending extends RenderProxyBox {
   set fade(double value) { if (_fade == value) return; _fade = value; markNeedsPaint(); }
   set visible(bool value) { if (_visible == value) return; _visible = value; _listen(); markNeedsPaint(); }
   set pending(bool value) { if (_pending == value) return; _pending = value; _listen(); markNeedsPaint(); }
+  set reducedMotion(bool value) {
+    if (_reducedMotion == value) return;
+    _reducedMotion = value;
+    _listen();
+    markNeedsPaint();
+  }
   void _listen() {
-    final wanted = attached && _pending && _visible;
+    final wanted = attached && _pending && _visible && !_reducedMotion;
     if (wanted == _listening) return;
     _listening = wanted;
     if (wanted) { _PendingPulse.shared.join(markNeedsPaint); }
@@ -277,7 +294,7 @@ class _RenderPending extends RenderProxyBox {
       includeChartReadout: true,
       preserveChrome: true,
     );
-    plan.pulse = _PendingPulse.shared.value;
+    plan.pulse = _reducedMotion ? 1 : _PendingPulse.shared.value;
     // Card chrome and known labels always paint. Only data leaves share the
     // debounced fade; guides retain their separate immediate-ink policy.
     plan.substitute = _pending;
