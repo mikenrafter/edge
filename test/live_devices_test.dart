@@ -162,7 +162,7 @@ void main() {
         child: MaterialApp(
           theme: buildTheme(Brightness.light),
           home: DeviceLabView(
-            ecgSupported: false,
+
             initialTab: LabTab.live,
             live: LiveDevicesView(
                 devices: devices,

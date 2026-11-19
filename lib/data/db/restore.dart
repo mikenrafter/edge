@@ -1101,8 +1101,7 @@ ImportStage _ldbPrivImportStageOf(String table) => switch (table) {
         'substrate_archive' ||
         'ecg_reading' ||
         'ecg_reading_packet' ||
-        'ecg_raw_packet' ||
-        'ecg_gesture_session' =>
+        'ecg_raw_packet' =>
           ImportStage.archive,
         _ => ImportStage.other,
       };
@@ -2604,7 +2603,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
         // source instead, so the follow-up steps below still run for them.
         for (final t in const [
           'workout_suggestions', 'sleep_nap', 'activity_suggestions',
-          'day_result', 'ecg_raw_packet', 'ecg_gesture_session',
+          'day_result', 'ecg_raw_packet',
         ]) {
           try {
             if ((await src.rawQuery('SELECT 1 FROM $t LIMIT 1')).isNotEmpty) {
@@ -2684,12 +2683,6 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     // A resumed nap-edit copy can recompose a kept day without importing it.
     if (had('day_result') || had('sleep_nap')) {
       await LocalDb.deleteComputeFreshness(LocalDb.kNapNextNightCleanupKey);
-    }
-    // A restored ecg_raw_packet row from an older export has no `origin`
-    // and REPLACEs any tagged local copy; re-apply every known gesture
-    // interval so gesture contact is never demoted to an ECG packet.
-    if (had('ecg_raw_packet') || had('ecg_gesture_session')) {
-      await LocalDb._retagAllGesturePackets(db);
     }
     ImportPerf.phase('retag_and_rewind', cleanupWatch, run: perfId);
     // One running experiment per track (review T16): a restored experiment

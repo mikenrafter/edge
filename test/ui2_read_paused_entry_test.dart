@@ -23,7 +23,6 @@ import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
-import 'support/explorer_harness.dart' as ex;
 import 'support/read_paused_fakes.dart';
 
 Future<void> _settle(WidgetTester t, {int n = 40}) async {
@@ -58,33 +57,6 @@ Future<AppState> _pump(WidgetTester t, dynamic repo, Widget home,
   return app;
 }
 
-/// The Explorer's fake, paused the way the real repository pauses a series.
-class _PausedExplorerRepo extends ex.ExplorerRepo {
-  _PausedExplorerRepo({super.counts = const {}})
-      : super(charts: {
-          specOf('resting_hr').chartKey: [
-            for (final d in ex.kWeek) ex.pt(d, 55),
-          ],
-        });
-  final List<String> countCalls = [];
-
-  @override
-  Future<Map<String, int>> getSeriesCounts(List<String> keys) async {
-    countCalls.add(keys.join(','));
-    if (ImportFocus.active.value) throw const ReadPaused('import');
-    return super.getSeriesCounts(keys);
-  }
-
-  @override
-  Future<Map<String, dynamic>> getChart(String metric,
-      {int? from, int? to, Set<String> signals = const {}}) async {
-    if (ImportFocus.active.value) {
-      chartCalls.add(metric);
-      throw const ReadPaused('import');
-    }
-    return super.getChart(metric, from: from, to: to, signals: signals);
-  }
-}
 
 void main() {
   setUp(resetFocus);
@@ -135,94 +107,10 @@ void main() {
           reason: 'the focus-end reload plus at most one trailing');
     });
 
-    testWidgets('Explorer: the plot goes, revisions while paused read '
-        'nothing, one reload after', (t) async {
-      await ex.initPrefs();
-      Prefs.setString(kExploreMetricsPref, 'resting_hr');
-      addTearDown(ex.clearPrefs);
-      final repo = _PausedExplorerRepo();
-      final app = await _pump(
-          t,
-          repo,
-          ExplorerView(
-              today: ex.kToday, annotationLoader: (_, _) async => const []));
-      expect(find.byKey(ExplorerView.plotKey), findsOneWidget);
 
-      startFocus();
-      await _settle(t);
-      expect(find.byKey(ExplorerView.plotKey), findsNothing);
-      expect(find.text(kPausedLine), findsOneWidget);
-      expect(find.byKey(const ValueKey('explore-retry')), findsNothing);
-
-      final calls = repo.chartCalls.length;
-      for (var i = 0; i < 5; i++) {
-        app.bumpInsights();
-        await _settle(t, n: 20);
-      }
-      expect(repo.chartCalls.length, calls, reason: 'no reads while paused');
-
-      endFocus();
-      app.bumpInsights();
-      app.bumpInsights();
-      await _settle(t);
-      expect(repo.chartCalls.length, inInclusiveRange(calls + 1, calls + 2),
-          reason: 'the focus-end reload plus at most one trailing');
-      expect(find.byKey(ExplorerView.plotKey), findsOneWidget);
-    });
   });
 
-  group('Explorer', () {
-    Future<void> prime() async {
-      await ex.initPrefs();
-      Prefs.setString(kExploreMetricsPref, 'resting_hr');
-      addTearDown(ex.clearPrefs);
-    }
 
-    testWidgets('import-only metrics are looked up again after focus ends',
-        (t) async {
-      await prime();
-      startFocus();
-      final repo = _PausedExplorerRepo(counts: {'spo2': 12});
-      await ex.pumpExplorer(t, repo);
-      expect(ex.pick('spo2'), findsNothing);
-
-      endFocus();
-      await ex.settle(t, done: () => false);
-      for (var i = 0; i < 10; i++) {
-        await t.pump(const Duration(milliseconds: 50));
-      }
-      expect(ex.pick('spo2'), findsOneWidget,
-          reason: 'the paused count read is retried once focus is over');
-    });
-
-    testWidgets('the paused chart keeps the chart\'s height: nothing below '
-        'it moves', (t) async {
-      await prime();
-      final loaded = _PausedExplorerRepo();
-      await ex.pumpExplorer(t, loaded);
-      expect(find.byKey(ExplorerView.plotKey), findsOneWidget);
-      // The rows ABOVE the chart (the baseline caption) exist only once a
-      // series has been read, so the slot is measured from the chart's own
-      // header down to the first thing under it.
-      double slot() =>
-          t.getTopLeft(ex.pick('hrv')).dy -
-          t.getTopLeft(find.text('Normalised')).dy;
-      final loadedSlot = slot();
-      final loadedNote = t.getTopLeft(find.byKey(const ValueKey('explore-normalised-note'))).dy -
-          t.getTopLeft(find.text('Normalised')).dy;
-
-      await t.pumpWidget(const SizedBox());
-      startFocus();
-      await ex.pumpExplorer(t, _PausedExplorerRepo());
-      expect(find.text(kPausedLine), findsOneWidget);
-      expect(slot(), loadedSlot,
-          reason: 'the line sits in a slot as tall as the chart');
-      expect(
-          t.getTopLeft(find.byKey(const ValueKey('explore-normalised-note'))).dy -
-              t.getTopLeft(find.text('Normalised')).dy,
-          loadedNote);
-    });
-  });
 
   group('screens outside the main surfaces', () {
     testWidgets('naps (an older day): quiet line, no uncaught ReadPaused',

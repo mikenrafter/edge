@@ -13,9 +13,6 @@
     "copy_jargon_allowed_prefixes": {
       "entries": 3
     },
-    "ecg_gesture_consumer_allow": {
-      "entries": 10
-    },
     "file_size_exceptions": {
       "entries": 0
     },

@@ -11,7 +11,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
-import 'package:openstrap_edge/gestures/ecg_tap_session.dart';
+import 'package:openstrap_edge/state/gesture_controller.dart' show kGestureCueRule;
 import 'package:openstrap_edge/notify/alert_dispatcher.dart';
 import 'package:openstrap_edge/notify/alert_rule.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
@@ -110,10 +110,10 @@ void main() {
       expect(l.opcodes, hasLength(2));
     });
 
-    test('the ECG two-pulse count buzz is delivered', () async {
+    test('the gesture two-pulse buzz is delivered', () async {
       final l = _SilentLink();
       final r = await l.dispatcher().dispatch(
-        kEcgTapRule,
+        kGestureCueRule,
         eventId: 'tap:ecg:0',
         sourceTime: DateTime.now(),
         historical: false,

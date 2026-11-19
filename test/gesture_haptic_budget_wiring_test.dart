@@ -101,13 +101,11 @@ class _Host {
       haptics: haptics,
       deviceLab: lab,
       alertDispatcher: () => dispatcher,
-      ecg: () => ecg,
-      ecgSupported: () => supported,
-      clockRef: () => null,
+
       log: (_) {},
       onMarkMoment: (e) async => acted.add('mark'),
       onWorkoutToggle: (e) async => acted.add('workout'),
-      recordEcgSession: (r) async {},
+
       loadPatterns: () async => HapticPatternStore.decodeSeeded(null),
       readCueAssignments: () => '',
       readFailures: () => '',
@@ -170,7 +168,7 @@ void main() {
       h = _Host(supported: supported);
       addTearDown(h.dispose);
       addTearDown(h.controller.dispose); // first: ends a session left running
-      if (supported) await h.settings.setTapMethod(TapCountMethod.ecg);
+
       return h;
     }
 
@@ -200,52 +198,6 @@ void main() {
       expect(h.acted, ['mark']);
     });
 
-    test('rule 4, ECG touch counter: no budget left means no stream, no start '
-        'cue and no action', () async {
-      await host();
-      await h.settings.setActionsForTaps(2, {DeviceAction.markMoment});
-      await h.settings.setActionsForTaps(3, {DeviceAction.workoutToggle});
-      h.spend(left: 0);
-      // Not awaited to the end: a gesture that did start would wait for
-      // packets that never come.
-      List<GestureOutcome>? out;
-      unawaited(h.controller.handle(h.doubleTap()).then((o) => out = o));
-      await settleMs(400);
-      expect(out, isEmpty, reason: 'answered at once, with nothing');
-      expect(h.controller.ecgTapActive, isFalse);
-      expect(h.ecg.begins, isEmpty);
-      expect(h.order, isEmpty, reason: 'no cue and no ECG write');
-      expect(h.acted, isEmpty);
-      expect(h.controller.failures.all, isEmpty);
-    });
-
-    test('rules 1 and 5 through the real route: 2 commands left, a counted '
-        'gesture still plays its start, follow-up and confirm, and the ledger '
-        'counts only 2', () async {
-      await host();
-      await h.settings.setActionsForTaps(3, {DeviceAction.workoutToggle});
-      // 28 written a minute ago: they leave the window a minute from now.
-      h.spend(left: 2, ago: const Duration(seconds: 60));
-      final t0 = clock.now();
-      final done = h.controller.handle(h.doubleTap());
-      await until(() => h.order.contains('ecg:start'));
-      await feedEcgOpening(h.controller.onEcgFrame);
-      final out = await done.timeout(const Duration(seconds: 15));
-      expect(out.single.taps, 3);
-      expect(h.acted, ['workout']);
-      // Start, one follow-up (2 to 3) and the confirm: three commands against
-      // two left. All three are written (the old queue drops the third).
-      await until(() => h.order.where((l) => l == 'cue').length == 3,
-          what: 'the third cue (the confirm) was written');
-      expect(h.haptics.commandsLeft, 0, reason: 'the limit, not more');
-      // The 28 are gone 61 s from the start; the gesture's writes (all made
-      // after it) are still in the window. Counted: 2. An overdraw that
-      // counted all 3 would leave 27.
-      expect(h.haptics.ledger.commandsLeft(t0.add(const Duration(seconds: 61))),
-          28);
-      await until(() => !h.controller.ecgTapActive);
-      await settleMs(50);
-    });
   });
 
   group('AppState', () {

@@ -18253,15 +18253,6 @@
   "@gesturesReplaySub": {
     "description": "Subtitle of the replay switch: what a late tap does for Mark a moment (stamped with when it happened) and what it does not do (other actions never run)"
   },
-  "gestureEcgTapName": "{n, plural, =0{Double tap} one{Double tap + {n} ECG tap} other{Double tap + {n} ECG taps}}",
-  "@gestureEcgTapName": {
-    "description": "Name of an ECG tap count on the Gestures screen: the opening double tap plus {n} touches of the ECG sensor (0 is the plain double tap).",
-    "placeholders": {
-      "n": {
-        "type": "int"
-      }
-    }
-  },
   "taskerTurnOnFirst": "Turn on Tasker first",
   "@taskerTurnOnFirst": {
     "description": "Hint under a Tasker control that is disabled because the Tasker connection is off"
@@ -18372,101 +18363,6 @@
     "description": "Screen-reader text for the As of label. {when} is the time, with a short date in front when it is not today.",
     "placeholders": {
       "when": {
-        "type": "String"
-      }
-    }
-  },
-  "exploreScaleDaily": "Daily",
-  "@exploreScaleDaily": {
-    "description": "Data Explorer scale switch: one reading per day over a range of days"
-  },
-  "exploreScaleDay": "Day",
-  "@exploreScaleDay": {
-    "description": "Data Explorer scale switch: the readings of one day on a clock axis"
-  },
-  "exploreRange7": "7 d",
-  "@exploreRange7": {
-    "description": "Data Explorer range chip: the last 7 days, kept short to fit five chips on a phone"
-  },
-  "exploreRange30": "30 d",
-  "@exploreRange30": {
-    "description": "Data Explorer range chip: the last 30 days"
-  },
-  "exploreRange6m": "6 mo",
-  "@exploreRange6m": {
-    "description": "Data Explorer range chip: the last 6 months"
-  },
-  "exploreRange1y": "1 y",
-  "@exploreRange1y": {
-    "description": "Data Explorer range chip: the last year"
-  },
-  "exploreRangeCustom": "Custom",
-  "@exploreRangeCustom": {
-    "description": "Data Explorer range chip: opens a date range picker"
-  },
-  "exploreToday": "Today",
-  "@exploreToday": {
-    "description": "Data Explorer day stepper: the label of the current day"
-  },
-  "exploreHint": "Pick up to 4 metrics below. They share one time axis, each on its own scale.",
-  "@exploreHint": {
-    "description": "Data Explorer: shown in place of the chart until a metric is picked"
-  },
-  "exploreLimit": "You can compare up to 4 metrics. Remove one to add another.",
-  "@exploreLimit": {
-    "description": "Data Explorer: shown when a fifth metric is refused"
-  },
-  "exploreUnitNormalised": "Normalised",
-  "@exploreUnitNormalised": {
-    "description": "Data Explorer chart header, where a unit would be: the lines are not in the metrics' own units"
-  },
-  "exploreNormalised": "Each line is scaled to its own range, so compare shapes, not values. Touch the chart for real values.",
-  "@exploreNormalised": {
-    "description": "Data Explorer note under the chart while every line is scaled to its own range"
-  },
-  "exploreNormalisedBaseline": "Each line is scaled to fit. Lines in usual-range mode put your normal in the middle and far-off values at the edges. Touch the chart for real values.",
-  "@exploreNormalisedBaseline": {
-    "description": "Data Explorer note under the chart while at least one line is against its baseline"
-  },
-  "exploreNoDataRange": "Nothing recorded for these in this range.",
-  "@exploreNoDataRange": {
-    "description": "Data Explorer: every picked metric is empty over the range"
-  },
-  "exploreNoDataDay": "Nothing recorded for these on this day.",
-  "@exploreNoDataDay": {
-    "description": "Data Explorer: every picked metric is empty on the chosen day"
-  },
-  "exploreNoDataFor": "No data for {metric}",
-  "@exploreNoDataFor": {
-    "description": "Data Explorer: one picked metric has nothing to draw while another does",
-    "placeholders": {
-      "metric": {
-        "type": "String"
-      }
-    }
-  },
-  "exploreFailedTitle": "Could not read these metrics",
-  "@exploreFailedTitle": {
-    "description": "Data Explorer read-failure title"
-  },
-  "exploreBaselineToggle": "Usual",
-  "@exploreBaselineToggle": {
-    "description": "Data Explorer toggle on a picked metric: draw it against your usual level instead of its own range"
-  },
-  "exploreBaselineSemantics": "{metric} against your usual",
-  "@exploreBaselineSemantics": {
-    "description": "Screen-reader label of the baseline toggle",
-    "placeholders": {
-      "metric": {
-        "type": "String"
-      }
-    }
-  },
-  "exploreRemoveSemantics": "Remove {metric}",
-  "@exploreRemoveSemantics": {
-    "description": "Screen-reader label of a picked metric's chip, which removes it",
-    "placeholders": {
-      "metric": {
         "type": "String"
       }
     }
@@ -19933,10 +19829,6 @@
   "@loadingNaps": {
     "description": "Loading status while one day's naps are read."
   },
-  "loadingExplorer": "Reading the metrics you picked",
-  "@loadingExplorer": {
-    "description": "Loading status while the explorer reads the picked metrics."
-  },
   "loadingHomeToday": "Reading today",
   "@loadingHomeToday": {
     "description": "Loading status while Home reads today."
@@ -21351,5 +21243,9 @@
   "timelineNoMatches": "No activities match these filters",
   "timelineMovementShare": "Movement (% of time moving)",
   "timelineMovementNote": "Movement is the share of each 5 minutes in which your wrist turned more than 5° between readings. It is not steps or effort.",
-  "timelineHere": "Here"
+  "timelineHere": "Here",
+  "pilotLabel": "Pilot",
+  "@pilotLabel": {
+    "description": "Badge for an experimental feature kept in this build"
+  }
 }

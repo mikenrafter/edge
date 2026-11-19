@@ -9,7 +9,6 @@ import 'package:flutter/material.dart' show ValueKey;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
-import 'package:openstrap_edge/gestures/ecg_tap_counter.dart';
 import 'package:openstrap_edge/gestures/gesture_settings.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -78,184 +77,15 @@ void main() {
     });
   });
 
-  group('GestureSettings: ECG tap thresholds', () {
-    test('defaults until changed: the values from the owner\'s device log',
-        () async {
-      final s = await _boot({});
-      expect(s.ecgTapThresholds, EcgTapThresholds());
-      expect(s.ecgTapThresholds.startMs, 200);
-      expect(s.ecgTapThresholds.gapMs, 150);
-      expect(s.ecgTapThresholds.confirmMs, 750);
-      expect(s.ecgTapThresholds.extraSensitive, isTrue);
-      expect(s.ecgTapThresholds.tolerantStartup, isTrue);
-      expect(s.ecgTapThresholds.fallbackToDoubleTap, isTrue);
-      expect(s.repeatTapWindowMs, 2500);
-    });
-
-    test('a stored user value still wins over the new defaults', () async {
-      final s = await _boot({
-        'gesture_ecg_start_ms': 300,
-        'gesture_ecg_gap_ms': 250,
-        'gesture_ecg_confirm_ms': 900,
-        'gesture_ecg_extra_sensitive': false,
-        'gesture_repeat_window_ms': 1500,
-      });
-      expect(s.ecgTapThresholds,
-          EcgTapThresholds(
-              startMs: 300,
-              gapMs: 250,
-              confirmMs: 900,
-              extraSensitive: false));
-      expect(s.ecgTapThresholds.extraSensitive, isFalse);
-      expect(s.repeatTapWindowMs, 1500);
-    });
-
-    test('persisted as three ints and restored', () async {
-      final s = await _boot({});
-      var notified = 0;
-      s.addListener(() => notified++);
-      await s.setEcgTapThresholds(
-          EcgTapThresholds(startMs: 500, gapMs: 250, confirmMs: 800));
-      expect(notified, 1);
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getInt('gesture_ecg_start_ms'), 500);
-      expect(prefs.getInt('gesture_ecg_gap_ms'), 250);
-      expect(prefs.getInt('gesture_ecg_confirm_ms'), 800);
-      final again = GestureSettings();
-      await again.bootstrap();
-      expect(again.ecgTapThresholds,
-          EcgTapThresholds(startMs: 500, gapMs: 250, confirmMs: 800));
-    });
-
-    test('extra sensitive detection: on until changed, persisted, restored',
-        () async {
-      final s = await _boot({});
-      expect(s.ecgTapThresholds.extraSensitive, isTrue);
-      await s.setEcgTapThresholds(
-          EcgTapThresholds(startMs: 500, extraSensitive: false));
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('gesture_ecg_extra_sensitive'), isFalse);
-      final again = GestureSettings();
-      await again.bootstrap();
-      expect(again.ecgTapThresholds,
-          EcgTapThresholds(startMs: 500, extraSensitive: false));
-    });
-
-    test('tolerant startup and the double-tap fallback: on until changed, '
-        'persisted under their own keys, restored', () async {
-      final s = await _boot({});
-      expect(s.ecgTapThresholds.tolerantStartup, isTrue);
-      expect(s.ecgTapThresholds.fallbackToDoubleTap, isTrue);
-      var notified = 0;
-      s.addListener(() => notified++);
-      await s.setEcgTapThresholds(EcgTapThresholds(
-          tolerantStartup: false, fallbackToDoubleTap: false));
-      expect(notified, 1);
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('gesture_ecg_tolerant_startup'), isFalse);
-      expect(prefs.getBool('gesture_ecg_fallback'), isFalse);
-      final again = GestureSettings();
-      await again.bootstrap();
-      expect(again.ecgTapThresholds.tolerantStartup, isFalse);
-      expect(again.ecgTapThresholds.fallbackToDoubleTap, isFalse);
-      expect(again.ecgTapThresholds,
-          EcgTapThresholds(tolerantStartup: false, fallbackToDoubleTap: false));
-    });
-
-    test('the two switches are stored independently', () async {
-      final s = await _boot({});
-      await s.setEcgTapThresholds(EcgTapThresholds(tolerantStartup: false));
-      var prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('gesture_ecg_tolerant_startup'), isFalse);
-      expect(prefs.getBool('gesture_ecg_fallback'), isTrue);
-      await s.setEcgTapThresholds(EcgTapThresholds(fallbackToDoubleTap: false));
-      prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('gesture_ecg_tolerant_startup'), isTrue);
-      expect(prefs.getBool('gesture_ecg_fallback'), isFalse);
-    });
-
-    test('a user from before these switches (the keys are missing) gets both on, '
-        'whatever else was stored', () async {
-      final s = await _boot({
-        'gesture_ecg_start_ms': 500,
-        'gesture_ecg_extra_sensitive': true,
-      });
-      expect(s.ecgTapThresholds.tolerantStartup, isTrue);
-      expect(s.ecgTapThresholds.fallbackToDoubleTap, isTrue);
-      expect(s.ecgTapThresholds,
-          EcgTapThresholds(startMs: 500, extraSensitive: true));
-    });
-
-    test('a stored false for one key does not touch the other', () async {
-      final a = await _boot({'gesture_ecg_tolerant_startup': false});
-      expect(a.ecgTapThresholds.tolerantStartup, isFalse);
-      expect(a.ecgTapThresholds.fallbackToDoubleTap, isTrue);
-      final b = await _boot({'gesture_ecg_fallback': false});
-      expect(b.ecgTapThresholds.tolerantStartup, isTrue);
-      expect(b.ecgTapThresholds.fallbackToDoubleTap, isFalse);
-    });
-
-    test('a stored value outside its new range falls back to the new default',
-        () async {
-      final s = await _boot({
-        'gesture_ecg_start_ms': 1100, // above the new start range
-        'gesture_ecg_gap_ms': 1000, // above the new gap range
-        'gesture_ecg_confirm_ms': 200, // below the new confirm range
-      });
-      expect(s.ecgTapThresholds.startMs, 200);
-      expect(s.ecgTapThresholds.gapMs, 150);
-      expect(s.ecgTapThresholds.confirmMs, 750);
-    });
-
-    test('an invalid stored value falls back to that field\'s default',
-        () async {
-      final s = await _boot({
-        'gesture_ecg_start_ms': 5000, // out of range
-        'gesture_ecg_gap_ms': 333, // off step
-        'gesture_ecg_confirm_ms': 850, // valid
-      });
-      expect(s.ecgTapThresholds,
-          EcgTapThresholds(startMs: 200, gapMs: 150, confirmMs: 850));
-    });
-  });
-
   group('BandGesturesView tabs', () {
-    testWidgets('Double tap + 0–3 ECG taps; no 1-tap tab', (t) async {
-      await pumpTall(
-          t,
-          const BandGesturesView(
-            chosen: {},
-            supported: _supported,
-            ecgSupported: true,
-            devMode: true,
-            tapMethod: TapCountMethod.ecg,
-          ));
-      const names = {
-        2: 'Double tap',
-        3: 'Double tap + 1 ECG tap',
-        4: 'Double tap + 2 ECG taps',
-        5: 'Double tap + 3 ECG taps',
-      };
-      for (final e in names.entries) {
-        await openGesturesTab(t, e.key);
-        expect(gesturesTabName(t), e.value);
-        expect(find.textContaining('Draft'), findsNothing, reason: e.value);
-        expect(isDimmed(t, find.byKey(const ValueKey('gestures-tab-name'))),
-            isFalse,
-            reason: 'enabled on a WHOOP MG');
-      }
-      expect(find.text('1 tap'), findsNothing);
-      expect(find.byKey(const ValueKey('gestures-tab:1')), findsNothing);
-    });
 
-    testWidgets('not a WHOOP MG: the tabs count double taps and are enabled; '
-        'only the ECG option is disabled, with the reason', (t) async {
+    testWidgets('the tabs count double taps on every band without an ECG option', (t) async {
       await pumpTall(
           t,
           const BandGesturesView(
               chosen: {},
               supported: _supported,
-              ecgSupported: false,
+
               devMode: true));
       for (final (n, label) in const [
         (3, '2 double taps'),
@@ -268,8 +98,8 @@ void main() {
             isFalse,
             reason: label);
       }
-      expect(isDimmed(t, find.text('ECG sensor touches')), isTrue);
-      expect(find.text('This band has no ECG sensor'), findsWidgets);
+      expect(find.text('ECG sensor touches'), findsNothing);
+      expect(find.text('This band has no ECG sensor'), findsNothing);
     });
   });
 }

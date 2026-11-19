@@ -111,10 +111,6 @@ const List<RatchetList> kRatchets = <RatchetList>[
   RatchetList('p24_from_json_callers', 'test/step2/p24_call_sites_test.dart',
       RatchetKind.dartLiteral,
       symbol: '_fromJsonCallers', sumField: 'count'),
-  // 10
-  RatchetList('ecg_gesture_consumer_allow',
-      'test/ecg_gesture_consumer_guard_test.dart', RatchetKind.dartLiteral,
-      symbol: '_allow'),
   // 1
   RatchetList('observation_isolation_allowed',
       'test/observation_isolation_test.dart', RatchetKind.dartLiteral,

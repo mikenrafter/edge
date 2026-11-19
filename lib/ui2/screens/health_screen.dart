@@ -399,7 +399,7 @@ class LabsData {
 // has — which is the only honest answer to "is there anything in there".
 
 // The list itself is `kMetricCatalogue` (metric_catalogue.dart), shared with
-// the Data Explorer; what is local here is the localised one-line blurb.
+// metric detail; what is local here is the localised one-line blurb.
 
 /// [f]'s rows as this screen lists them: the shared catalogue's, minus any
 /// import-only row no import has written history for (left out entirely
@@ -2196,4 +2196,3 @@ bool _cycleTrackingOn(BuildContext c) {
     return false;
   }
 }
-

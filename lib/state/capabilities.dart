@@ -26,8 +26,6 @@
 //   Prefs.getBool(Prefs.devMode) in _eligible/_hide      ui2/nudges.dart:37,76           developerMode
 //   FeatureFlags.isOn(tapClassifiers) -> extraTaps       ui2/profile/gestures.dart:63    extraTapCounting
 //   FeatureFlags.isOn(tapClassifiers) -> tapTools        ui2/profile/device_lab.dart:85  deviceLabTapTools
-//   pairedIsMaverick -> ecgSupported (method rows)       ui2/profile/gestures.dart:54,56 ecgTouchTaps
-//   pairedIsMaverick -> ecgSupported (lab switch)        ui2/profile/device_lab.dart:69  ecgTouchTaps
 //   pairedIsMaverickOf(c) -> Heart Screener door         ui2/screens/health_screen.dart  ecgEntry
 //                                                        :824
 //   engine.isConnected && engine.isMaverick -> canTake   ui2/screens/ecg.dart:162        ecgTake
@@ -91,10 +89,6 @@ enum Feature {
 
   /// The tap tools inside the Device lab.
   deviceLabTapTools,
-
-  /// ECG sensor touches as a tap counter: the remembered band is an MG.
-  /// Disabled, never hidden, on a band without the sensor.
-  ecgTouchTaps,
 
   /// The Heart Screener door on Health: the paired band identified itself as an
   /// MG once, and stays while it is away.
@@ -284,7 +278,6 @@ class Capabilities {
 
   final CapabilityInputs inputs;
 
-  static const String _noEcg = 'This band has no ECG sensor';
   static const String _needMg = 'Take ECG needs a connected WHOOP MG.';
   static const String _noLink = 'Connect to the band first';
 
@@ -311,9 +304,6 @@ class Capabilities {
                 _on(FeatureFlag.nativeRelay)),
         Feature.extraTapCounting => _flag(FeatureFlag.tapClassifiers),
         Feature.deviceLabTapTools => _flag(FeatureFlag.tapClassifiers),
-        Feature.ecgTouchTaps => inputs.ecgPaired
-            ? Availability.available
-            : Availability.disabled(_noEcg),
         Feature.ecgEntry => _when(inputs.ecgPaired),
         Feature.ecgTake => inputs.connected && inputs.ecgLive
             ? Availability.available

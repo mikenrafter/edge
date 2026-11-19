@@ -40,7 +40,7 @@ import 'package:openstrap_edge/gestures/gesture_log_file.dart';
 final DateTime _at = DateTime.utc(2026, 10, 4, 12, 7, 31);
 
 GestureFailure _failure({
-  GestureFailureKind kind = GestureFailureKind.ecg,
+  GestureFailureKind kind = GestureFailureKind.doubleTap,
   String reason = 'start_failed',
   String log = 'Double tap received. Starting the ECG stream.\n'
       'ECG failed (start_failed): one long buzz.',
@@ -79,7 +79,7 @@ void main() {
       final n = gestureLogFileName(_failure());
       expect(n, endsWith('.txt'));
       expect(n, isNot(contains(RegExp(r'[\s:/\\]'))));
-      expect(n, contains('ecg'));
+      expect(n, contains('double-tap'));
       expect(n, contains('20261004'));
     });
 
@@ -93,7 +93,7 @@ void main() {
       final b = GestureFailure(
         gestureId: 'other',
         at: _at.add(const Duration(seconds: 1)),
-        kind: GestureFailureKind.ecg,
+        kind: GestureFailureKind.doubleTap,
         reason: 'start_failed',
         log: '',
       );
@@ -108,7 +108,7 @@ void main() {
       expect(text, contains('start_failed'));
       expect(text, contains('1791101224:14'));
       expect(text, contains('2026-10-04'));
-      expect(text, contains('ECG'));
+      expect(text, contains('double-tap'));
       expect(text.trimRight(), endsWith(f.log.trimRight()));
       expect(text.indexOf('start_failed'), lessThan(text.indexOf(f.log)),
           reason: 'the header comes first');

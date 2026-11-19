@@ -179,7 +179,7 @@ void main() {
       final app = AppState.forTesting()..repo = repo;
       addTearDown(app.dispose);
       await t.runAsync(() => app.gestureFailures.record(
-          kind: GestureFailureKind.ecg,
+          kind: GestureFailureKind.doubleTap,
           reason: 'start_failed',
           gestureId: 'g1',
           log: 'log'));

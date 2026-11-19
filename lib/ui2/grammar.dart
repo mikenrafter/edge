@@ -3525,6 +3525,10 @@ class SubTabs extends StatefulWidget {
   /// What a screen reader says for each tab instead of its label.
   final List<String>? semanticLabels;
 
+  /// Optional status badges, inside the same tab's tap target.
+  final Map<int, Widget> badges;
+  final double minHeight;
+
   /// Tighter padding and gaps (the 44 pt hit box stays), so a row of short
   /// labels (seven weekdays) fits a 360 pt phone in a real font. It still
   /// scrolls when a label or the text scale is wider.
@@ -3540,6 +3544,8 @@ class SubTabs extends StatefulWidget {
     this.muted = const {},
     this.itemKeys,
     this.semanticLabels,
+    this.badges = const {},
+    this.minHeight = S.tap,
     this.dense = false,
   });
 
@@ -3599,7 +3605,7 @@ class _SubTabsState extends State<SubTabs> {
     final dense = widget.dense;
     final color = widget.color;
     return SizedBox(
-      height: MediaQuery.textScalerOf(c).scale(S.tap),
+      height: MediaQuery.textScalerOf(c).scale(widget.minHeight),
       // The fifth tab is off the edge on every phone we ship to — at 360 pt
       // it is entirely off-screen in both tab sets, and above 1.0x text every
       // set overflows even a 430 pt screen. ScrollHint draws nothing at all
@@ -3657,14 +3663,20 @@ class _SubTabsState extends State<SubTabs> {
                                     : const Color(0x00000000),
                             borderRadius: R.rPill,
                           ),
-                          child: Text(
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Text(
                             items[i],
                             style: F.cap.copyWith(
                               color: on ? p.on(color) : p.ink3,
                               fontWeight:
                                   on ? FontWeight.w600 : FontWeight.w500,
                             ),
-                          ),
+                            ),
+                            if (widget.badges[i] case final badge?) ...[
+                              const SizedBox(width: S.x1),
+                              badge,
+                            ],
+                          ]),
                         ),
                       )),
                     );

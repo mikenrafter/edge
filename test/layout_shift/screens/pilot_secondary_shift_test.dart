@@ -12,7 +12,6 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/profile/wearable_numbers.dart';
 import 'package:openstrap_edge/ui2/screens/detected_activities.dart';
-import 'package:openstrap_edge/ui2/screens/explorer.dart';
 import 'package:openstrap_edge/ui2/screens/moment_follow_up.dart';
 import 'package:openstrap_edge/ui2/screens/wellness_screen.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
@@ -132,13 +131,11 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await Prefs.ensureLoaded();
-    Prefs.setString(kExploreMetricsPref, 'resting_hr');
   });
   tearDownAll(() => env.dispose());
 
   for (final screen in <String, Widget>{
     'review doorway': const DetectedActivitiesCard(),
-    'Explorer': const ExplorerScreen(),
   }.entries) {
     testWidgets('${screen.key} delayed read reserves its content', (t) async {
       phoneSurface(t);
@@ -153,7 +150,7 @@ void main() {
       await run.frames([0, 150, 200, 216, 466, 2500]);
       await takePilotShot(
         t,
-        screen.key == 'Explorer' ? 'explorer' : 'review-doorway',
+        'review-doorway',
       );
       final spinners = find.byType(CircularProgressIndicator).evaluate().length;
       var announcedBreakdown = false;
@@ -183,44 +180,7 @@ void main() {
     });
   }
 
-  testWidgets('Explorer annotation arrival preserves its plot frame', (
-    t,
-  ) async {
-    phoneSurface(t);
-    final repo = _ReadRepo()..gate.complete();
-    final annotations = Completer<List<ChartAnnotation>>();
-    final app = AppState.forTesting()..repo = repo;
-    addTearDown(app.dispose);
-    await t.pumpWidget(
-      pilotShot(
-        perfApp(
-          app,
-          SingleChildScrollView(
-            child: ExplorerView(annotationLoader: (_, _) => annotations.future),
-          ),
-          brightness: Brightness.dark,
-        ),
-      ),
-    );
-    final setup = ShiftRun(t);
-    await landed(setup);
-    final run = ShiftRun(t)..opened();
-    await run.frames([0, 150, 200, 216, 466, 2500]);
-    await takePilotShot(t, 'explorer-annotations');
-    annotations.complete([
-      ChartAnnotation(
-        id: 'late-water',
-        kind: AnnotationKind.water,
-        at: DateTime.now().millisecondsSinceEpoch / 1000,
-        label: 'Drank water',
-      ),
-    ]);
-    await landed(run);
-    expect(find.byType(CircularProgressIndicator), findsNothing);
-    check(run, 'Explorer late annotations');
-    await t.pumpWidget(const SizedBox());
-    await t.pump(const Duration(seconds: 3));
-  });
+
 
   // WHY: the Sleep plan has no journal/medication dependency. A stuck journal
   // read must not keep its already available sleep values pending forever.

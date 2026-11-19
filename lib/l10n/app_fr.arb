@@ -4311,7 +4311,6 @@
   "loadingAiReply": "En attente de la réponse",
   "loadingInvestigateDay": "Lecture des valeurs de ce jour",
   "loadingNaps": "Lecture des siestes de ce jour",
-  "loadingExplorer": "Lecture des mesures choisies",
   "loadingHomeToday": "Lecture d'aujourd'hui",
   "loadingCalculatingToday": "Calcul d'aujourd'hui",
   "loadingWaitingToCalculateToday": "En attente du calcul d'aujourd'hui",
@@ -5592,9 +5591,6 @@
       }
     }
   },
-  "@exploreScaleDay": {
-    "description": "Data Explorer scale switch: the readings of one day on a clock axis"
-  },
   "@supplementBedtimee3cb8b": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
@@ -6096,7 +6092,6 @@
   "@coachPastChats": {
     "description": "Coach screen: all-caps section header above the list of past chat sessions"
   },
-  "exploreNoDataRange": "Nothing recorded for these in this range.",
   "@supplementNightToNightCoefficientOf0cae4a": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
@@ -6176,7 +6171,6 @@
   "@ecgIncompatible": {
     "description": "WHOOP MG ECG: This band is not a WHOOP MG."
   },
-  "exploreFailedTitle": "Could not read these metrics",
   "@logWorkoutDefaultTitle": {
     "description": "Default screen title for the manual workout log form when no title is supplied"
   },
@@ -6360,9 +6354,6 @@
   "@strengthCustomWeight": {
     "description": "Strength set editor copy."
   },
-  "@exploreRange6m": {
-    "description": "Data Explorer range chip: the last 6 months"
-  },
   "@sleepDetailThroughTheNight": {
     "description": "Chart title for the hypnogram and the overnight signals chart."
   },
@@ -6403,14 +6394,6 @@
   },
   "@dataBackupFolderDefault": {
     "description": "Android automatic backup folder setting."
-  },
-  "@exploreBaselineSemantics": {
-    "description": "Screen-reader label of the baseline toggle",
-    "placeholders": {
-      "metric": {
-        "type": "String"
-      }
-    }
   },
   "@pairSensorThatDidNotWork": {
     "description": "Status card title: failure."
@@ -6539,7 +6522,6 @@
       }
     }
   },
-  "exploreHint": "Pick up to 4 metrics below. They share one time axis, each on its own scale.",
   "@settingsAlertMeAtRowTitle": {
     "description": "Notification row title for the low-battery threshold"
   },
@@ -6609,7 +6591,6 @@
   "@momentChoiceSymptom": {
     "description": "Quick answer for a marked moment: a symptom"
   },
-  "exploreBaselineToggle": "Usual",
   "@sleepDetailCorrectionNoRecordings": {
     "description": "Shown instead of the sleep correction buttons on a night with no detailed recordings on the phone that were never pruned (imported or never worn)."
   },
@@ -6639,7 +6620,6 @@
   "@activityShareDrawMap": {
     "description": "Row label for the toggle that fetches real map tiles for the route"
   },
-  "exploreRange6m": "6 mo",
   "@cycleReproContraceptionLabel": {
     "description": "Reproductive-state option: uses hormonal contraception."
   },
@@ -6797,7 +6777,6 @@
   "@nutritionLabelBalanceAtLeast": {
     "description": "Nutrition Today card: all-caps inline metric label for the balance when eaten is only a floor"
   },
-  "exploreNoDataDay": "Nothing recorded for these on this day.",
   "@logFoodEnergyLabel": {
     "description": "Number field label for energy/calories"
   },
@@ -7401,7 +7380,6 @@
   "@supplementStagedFromBeatTimingVariabilityb83d0c": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
-  "exploreScaleDaily": "Daily",
   "@hapticsTaskerSectionSub": {
     "description": "Note at the top of the Tasker group on the Haptics screen"
   },
@@ -7895,7 +7873,6 @@
   "@alarmChangeTheTime": {
     "description": "Button: change the time."
   },
-  "exploreScaleDay": "Day",
   "@supplementTapToLogAGlass879bad": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
@@ -7930,9 +7907,6 @@
   },
   "@wellnessWhatChargedAndDrained": {
     "description": "Section title for readiness drivers"
-  },
-  "@loadingExplorer": {
-    "description": "Loading status while the explorer reads the picked metrics."
   },
   "@nutritionRateBelow": {
     "description": "Nutrition Goals tab: goal-trajectory rate text when the mean is below target",
@@ -8695,9 +8669,6 @@
       }
     }
   },
-  "@exploreFailedTitle": {
-    "description": "Data Explorer read-failure title"
-  },
   "@supplementCaffeineMgf15138": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
@@ -8724,9 +8695,6 @@
   },
   "@pairSensorSearchAnyway": {
     "description": "iOS-gate status card fix."
-  },
-  "@exploreToday": {
-    "description": "Data Explorer day stepper: the label of the current day"
   },
   "@homeRecoveryAfterWake": {
     "description": "Why the recovery ring has no number while the night is still in progress."
@@ -9990,7 +9958,6 @@
   "@reportScreenshotRow": {
     "description": "Issue report: pick a screenshot."
   },
-  "exploreToday": "Today",
   "@profileAiCoach": {
     "description": "Row title."
   },
@@ -10888,9 +10855,6 @@
   "@guideExitLabel": {
     "description": "Screen-reader label of the Exit button on the guide card."
   },
-  "@exploreNormalised": {
-    "description": "Data Explorer note under the chart while every line is scaled to its own range"
-  },
   "@devicePickerNothingNearbyTitle": {
     "description": "Status card title when the live scan has found nothing."
   },
@@ -10939,9 +10903,6 @@
   },
   "@activitySummaryRpeHeadline": {
     "description": "Header of the TS-09 post-session effort rating card"
-  },
-  "@exploreScaleDaily": {
-    "description": "Data Explorer scale switch: one reading per day over a range of days"
   },
   "@dayStepsHonestyPhone": {
     "description": "Footnote explaining phone step-counting coverage when only the phone contributed."
@@ -11067,9 +11028,6 @@
   },
   "@roughNightIllness": {
     "description": "Rough Night card: stated fact when the resting-heart-rate watch also flagged the same night (an accumulated rise, never an illness claim)."
-  },
-  "@exploreRange30": {
-    "description": "Data Explorer range chip: the last 30 days"
   },
   "@logFoodOpensInBrowser": {
     "description": "Accessibility label appended to an external link, e.g. an Open Food Facts credit link",
@@ -12328,7 +12286,6 @@
   "@supplementBloodOxygen8cd845": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
-  "exploreRangeCustom": "Custom",
   "@wellnessRemoveMedBody": {
     "description": "Sheet action subtitle explaining removing a medication keeps marked doses"
   },
@@ -12691,7 +12648,6 @@
   "@circadianDetailPeakSwing": {
     "description": "Row label: cosinor amplitude, peak-to-mean swing"
   },
-  "exploreBaselineSemantics": "{metric} against your usual",
   "@momentReviewProgressNotSaved": {
     "description": "Shown on a paired range that was stopped because its progress could not be stored; it stays queued"
   },
@@ -13750,9 +13706,6 @@
   "@healthReadFailedBody": {
     "description": "Read-failure card body"
   },
-  "@exploreBaselineToggle": {
-    "description": "Data Explorer toggle on a picked metric: draw it against your usual level instead of its own range"
-  },
   "@supplementCoachOversize": {
     "description": "Presentation-only text; interpolated values remain unchanged.",
     "placeholders": {
@@ -13899,14 +13852,6 @@
   },
   "@activitySummaryPace": {
     "description": "Column header for pace in the route splits table"
-  },
-  "@exploreRemoveSemantics": {
-    "description": "Screen-reader label of a picked metric's chip, which removes it",
-    "placeholders": {
-      "metric": {
-        "type": "String"
-      }
-    }
   },
   "@wellnessSeeWhatLastNightCost": {
     "description": "Sleep recommendation call-to-action text"
@@ -14502,7 +14447,6 @@
   "@settingsHealthExceptionsRowSub": {
     "description": "Notification row subtitle for the health-exception alert toggle"
   },
-  "gestureEcgTapName": "{n, plural, =0{Double tap} one{Double tap + {n} ECG tap} other{Double tap + {n} ECG taps}}",
   "@workoutStartSessionLabel": {
     "description": "Hero start card label on For You tab"
   },
@@ -14578,14 +14522,6 @@
   "@homeNothingTodayTitle": {
     "description": "Title shown when there is history but nothing recorded for today."
   },
-  "@gestureEcgTapName": {
-    "description": "Name of an ECG tap count on the Gestures screen: the opening double tap plus {n} touches of the ECG sensor (0 is the plain double tap).",
-    "placeholders": {
-      "n": {
-        "type": "int"
-      }
-    }
-  },
   "tracksExperimentStop": "Stop experiment",
   "@pairingFindMyBand": {
     "description": "Pairing CTA: idle."
@@ -14604,7 +14540,6 @@
   "@coachNoDataBody": {
     "description": "Coach screen: body text explaining there is no derived data on this device yet"
   },
-  "exploreRange1y": "1 y",
   "@momentReviewRangeWorkoutOverlap": {
     "description": "Validation error for a paired workout that overlaps a saved workout"
   },
@@ -14681,9 +14616,6 @@
   },
   "@investigateWhatHappenedTitle": {
     "description": "Link row title to the day timeline screen"
-  },
-  "@exploreUnitNormalised": {
-    "description": "Data Explorer chart header, where a unit would be: the lines are not in the metrics' own units"
   },
   "@workoutWhenYesterday": {
     "description": "History row timestamp for a session started yesterday",
@@ -15020,9 +14952,6 @@
       }
     }
   },
-  "@exploreRange7": {
-    "description": "Data Explorer range chip: the last 7 days, kept short to fit five chips on a phone"
-  },
   "@pairTroubleDiscord": {
     "description": "Link to the project’s Discord."
   },
@@ -15198,9 +15127,6 @@
   "@beatsRhythmChartTitle": {
     "description": "Chart title for the per-day rhythm-screen strip"
   },
-  "@exploreHint": {
-    "description": "Data Explorer: shown in place of the chart until a metric is picked"
-  },
   "@supplementAlcoholUnitsea84fd": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
@@ -15234,7 +15160,6 @@
   "@cycleTurnOnTracking": {
     "description": "Button label to enable cycle tracking."
   },
-  "exploreNormalisedBaseline": "Each line is scaled to fit. Lines in usual-range mode put your normal in the middle and far-off values at the edges. Touch the chart for real values.",
   "@momentFollowUpTitle": {
     "description": "Title of the screen that lists marked moments to answer"
   },
@@ -15455,9 +15380,6 @@
   "@pairingTryAgain": {
     "description": "Pairing CTA: default retry."
   },
-  "@exploreRangeCustom": {
-    "description": "Data Explorer range chip: opens a date range picker"
-  },
   "@logWorkoutLooksLike": {
     "description": "Metric label naming the guessed activity type of a detected bout"
   },
@@ -15500,9 +15422,6 @@
   "@profileEditProfileSub": {
     "description": "Row sub."
   },
-  "@exploreNoDataRange": {
-    "description": "Data Explorer: every picked metric is empty over the range"
-  },
   "@supplementMagnesiume6a692": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
@@ -15523,7 +15442,6 @@
       }
     }
   },
-  "exploreNoDataFor": "No data for {metric}",
   "@journalComposeIncrease": {
     "description": "Accessibility label for the stepper's increase button."
   },
@@ -15830,7 +15748,6 @@
   "@profileTitle": {
     "description": "Profile screen header."
   },
-  "exploreUnitNormalised": "Normalised",
   "@devicePickerScanning": {
     "description": "Row shown while the live scan is running."
   },
@@ -16348,9 +16265,6 @@
   "@bandStatusBluetoothOffFix": {
     "description": "BandStatus fix action: phone Bluetooth radio is off"
   },
-  "@exploreRange1y": {
-    "description": "Data Explorer range chip: the last year"
-  },
   "@dataBackupFolder": {
     "description": "Android automatic backup folder setting."
   },
@@ -16602,7 +16516,6 @@
   "@homeActiveEnergy": {
     "description": "Signal card title: Active energy."
   },
-  "exploreRange30": "30 d",
   "@activityChangeSport": {
     "description": "Action on a detected workout: open the editor to pick the right sport (and times)."
   },
@@ -16672,9 +16585,6 @@
   },
   "@activityLiveKcalEstUnit": {
     "description": "Common stats row: unit label for the estimated-calories figure."
-  },
-  "@exploreNormalisedBaseline": {
-    "description": "Data Explorer note under the chart while at least one line is against its baseline"
   },
   "@symptomAreaUpperBack": {
     "description": "Symptom describer: body area \"upper back\" (lower case; used inside the sentence)"
@@ -16939,7 +16849,6 @@
       }
     }
   },
-  "exploreNormalised": "Each line is scaled to its own range, so compare shapes, not values. Touch the chart for real values.",
   "@activityLivePosePigeon": {
     "description": "Live flow (yoga) screen: name of the Pigeon pose."
   },
@@ -17318,9 +17227,6 @@
   "@workoutWeeklyLoadLabel": {
     "description": "Summary stat tile label, this week's strain load"
   },
-  "@exploreNoDataDay": {
-    "description": "Data Explorer: every picked metric is empty on the chosen day"
-  },
   "@signalSteps": {
     "description": "Human name for an input signal: step counts the device made itself. Used as a section heading and screen-reader label."
   },
@@ -17515,9 +17421,6 @@
         "type": "int"
       }
     }
-  },
-  "@exploreLimit": {
-    "description": "Data Explorer: shown when a fifth metric is refused"
   },
   "@guideLogPastStep2": {
     "description": "Step 2 caption. {log} is the Log a past workout button.",
@@ -17845,14 +17748,6 @@
   },
   "@healthTitle": {
     "description": "Health screen page title"
-  },
-  "@exploreNoDataFor": {
-    "description": "Data Explorer: one picked metric has nothing to draw while another does",
-    "placeholders": {
-      "metric": {
-        "type": "String"
-      }
-    }
   },
   "@profileSponsorTitle": {
     "description": "Title of the Profile row linking to GitHub Sponsors."
@@ -18275,7 +18170,6 @@
   "@guideStartNoBandTitle": {
     "description": "Footer card title of the start-a-workout guide."
   },
-  "exploreRemoveSemantics": "Remove {metric}",
   "@beatsUnitScreenedNotScreened": {
     "description": "Unit label on the rhythm-screen chart (legend describes the two per-day states)"
   },
@@ -18414,7 +18308,6 @@
       }
     }
   },
-  "exploreRange7": "7 d",
   "@settingsEditProfileNavTitle": {
     "description": "Title of the edit-profile screen"
   },
@@ -18917,7 +18810,6 @@
   "@activityZonesAnchorDefault": {
     "description": "Generic fallback explanation of what zone edges are"
   },
-  "exploreLimit": "You can compare up to 4 metrics. Remove one to add another.",
   "@settingsMovementNudgeRowSub": {
     "description": "Notification row subtitle for the sedentary-movement nudge"
   },
@@ -21292,5 +21184,9 @@
   "timelineNoMatches": "Aucune activité ne correspond à ces filtres",
   "timelineMovementShare": "Mouvement (% du temps en mouvement)",
   "timelineMovementNote": "Le mouvement est la part de chaque période de 5 minutes pendant laquelle votre poignet a tourné de plus de 5° entre les mesures. Ce ne sont ni des pas ni un effort.",
-  "timelineHere": "Ici"
+  "timelineHere": "Ici",
+  "pilotLabel": "Pilote",
+  "@pilotLabel": {
+    "description": "Badge for an experimental feature kept in this build"
+  }
 }

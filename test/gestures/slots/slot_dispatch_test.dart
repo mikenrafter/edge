@@ -23,6 +23,8 @@ import 'package:openstrap_edge/gestures/gesture_settings.dart';
 import 'package:openstrap_edge/gestures/time_buzz.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../support/counted_tap_session.dart';
+
 import '../../support/double_tap_repeat_rig.dart' show repTap;
 
 const _channel = MethodChannel('openstrap/device_actions');
@@ -38,7 +40,7 @@ Future<GestureSettings> _boot(
   });
   final s = GestureSettings();
   await s.bootstrap();
-  await s.setTapMethod(TapCountMethod.ecg);
+
   for (final e in actions.entries) {
     await s.setActionsForTaps(e.key, e.value);
   }
@@ -50,8 +52,8 @@ class _Rig {
     dispatcher = GestureDispatcher(
       settings: settings,
       tapClassifiersOn: () => true,
-      ecgSupported: () => true,
-      onCountTaps: (e) async => count,
+      repeatSession: CountedTapSession(() => count),
+
       performNative: (_) async => true,
       claim: (k) async => claims.add(k),
       release: (k) async => claims.remove(k),

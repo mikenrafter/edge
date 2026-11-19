@@ -1,8 +1,6 @@
 // Import focus, UI side, round 3: the Explorer readout and annotation lane,
 // a delayed trailing publish, latched paused flags, an atomic journal save,
 // and two screens that waited forever (Body clock, Beats).
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -10,7 +8,6 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
@@ -23,7 +20,6 @@ import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
-import 'support/explorer_harness.dart' as ex;
 import 'support/read_paused_fakes.dart';
 import 'support/as_of_recalc_fakes.dart' show settle;
 
@@ -55,62 +51,6 @@ Future<AppState> _pump(WidgetTester t, LocalRepository repo, Widget home) async 
   ));
   await _settle(t);
   return app;
-}
-
-class _ExRepo extends ex.ExplorerRepo {
-  _ExRepo()
-      : super(charts: {
-          specOf('resting_hr').chartKey: [
-            for (final d in ex.kWeek) ex.pt(d, 55),
-          ],
-        });
-
-  /// Every point of the week comes from an older calculation.
-  _ExRepo.older()
-      : super(charts: {
-          specOf('resting_hr').chartKey: [
-            for (final d in ex.kWeek)
-              {...ex.pt(d, 55), 'from_older_version': 104},
-          ],
-        });
-
-  @override
-  Future<Map<String, dynamic>> getChart(String metric,
-      {int? from, int? to, Set<String> signals = const {}}) async {
-    if (ImportFocus.active.value) {
-      chartCalls.add(metric);
-      throw const ReadPaused('import');
-    }
-    return super.getChart(metric, from: from, to: to, signals: signals);
-  }
-}
-
-/// A chart read that can be held, then paused by focus when it resumes.
-class _GatedExRepo extends ex.ExplorerRepo {
-  _GatedExRepo(Map<String, int> counts)
-      : super(charts: {
-          specOf('resting_hr').chartKey: [
-            for (final d in ex.kWeek) ex.pt(d, 55),
-          ],
-        }, counts: counts);
-
-  @override
-  Future<Map<String, int>> getSeriesCounts(List<String> keys) async {
-    if (ImportFocus.active.value) throw const ReadPaused('import');
-    return super.getSeriesCounts(keys);
-  }
-
-  @override
-  Future<Map<String, dynamic>> getChart(String metric,
-      {int? from, int? to, Set<String> signals = const {}}) async {
-    final g = gate;
-    if (g != null) await g.future;
-    if (ImportFocus.active.value) {
-      chartCalls.add(metric);
-      throw const ReadPaused('import');
-    }
-    return super.getChart(metric, from: from, to: to, signals: signals);
-  }
 }
 
 class _JournalRepo extends LocalRepository {
@@ -165,133 +105,7 @@ void main() {
   });
   tearDown(resetFocus);
 
-  group('Explorer, paused', () {
-    Future<(_ExRepo, AppState)> warm(WidgetTester t,
-        {List<ChartAnnotation> items = const []}) async {
-      await ex.initPrefs();
-      Prefs.setString(kExploreMetricsPref, 'resting_hr');
-      addTearDown(ex.clearPrefs);
-      final repo = _ExRepo();
-      final app = await _pump(
-          t,
-          repo,
-          ExplorerView(
-              today: ex.kToday, annotationLoader: (_, _) async => items));
-      return (repo, app);
-    }
 
-    testWidgets('the readout shows no numbers and the plot cannot be '
-        'scrubbed', (t) async {
-      await warm(t);
-      await ex.scrubAt(t, .97);
-      expect(ex.readoutText(t, 'Resting heart rate'), contains('55'),
-          reason: 'sanity: scrubbing reads a value');
-
-      startFocus();
-      await _settle(t);
-
-      final cell = ex.readoutValue('Resting heart rate');
-      final text = cell.evaluate().isEmpty ? '' : ex.readoutText(t, 'Resting heart rate');
-      expect(text, isNot(matches(RegExp(r'\d'))),
-          reason: 'cached numbers must not survive the pause: "$text"');
-      final plot = find.text(kPausedLine);
-      await t.tapAt(t.getCenter(plot));
-      await t.pump();
-      final after = ex.readoutValue('Resting heart rate').evaluate().isEmpty
-          ? ''
-          : ex.readoutText(t, 'Resting heart rate');
-      expect(after, isNot(matches(RegExp(r'\d'))));
-    });
-
-    testWidgets("with annotations, the lane's height is kept", (t) async {
-      final noon = localDayStartSec('2026-10-03')! + 12 * 3600;
-      final items = [
-        ChartAnnotation(
-            id: 'w',
-            kind: AnnotationKind.water,
-            at: noon.toDouble(),
-            label: 'Drank water'),
-      ];
-      await warm(t, items: items);
-      expect(find.byKey(ChartAnnotationLane.laneKey), findsOneWidget,
-          reason: 'sanity: the lane is there');
-      double slot() =>
-          t.getTopLeft(ex.pick('hrv')).dy -
-          t.getTopLeft(find.text('Normalised')).dy;
-      final loaded = slot();
-
-      startFocus();
-      await _settle(t);
-      expect(find.text(kPausedLine), findsOneWidget);
-      expect(slot(), loaded,
-          reason: 'the annotation lane keeps its reserved height');
-    });
-
-    testWidgets('a chart whose only lane is older-version ranges keeps it '
-        'when paused', (t) async {
-      await ex.initPrefs();
-      Prefs.setString(kExploreMetricsPref, 'resting_hr');
-      addTearDown(ex.clearPrefs);
-      final repo = _ExRepo.older();
-      await _pump(
-          t,
-          repo,
-          ExplorerView(
-              today: ex.kToday, annotationLoader: (_, _) async => const []));
-      expect(find.byKey(ChartAnnotationLane.laneKey), findsOneWidget,
-          reason: 'sanity: older ranges draw the lane');
-      final lane = find.byKey(ChartAnnotationLane.laneKey);
-      final loaded = t.getRect(lane);
-
-      startFocus();
-      await _settle(t);
-      expect(find.text(kPausedLine), findsOneWidget);
-      expect(lane, findsOneWidget, reason: 'the lane is kept');
-      expect(t.getRect(lane), loaded,
-          reason: 'with its reserved height and position');
-    });
-
-    testWidgets('a revision read in flight across a whole focus cycle still '
-        'ends with the FULL reload (imported-only metrics appear)', (t) async {
-      await ex.initPrefs();
-      Prefs.setString(kExploreMetricsPref, 'resting_hr');
-      addTearDown(ex.clearPrefs);
-      final counts = <String, int>{'spo2': 0};
-      final repo = _GatedExRepo(counts);
-      final app = await _pump(
-          t,
-          repo,
-          ExplorerView(
-              today: ex.kToday, annotationLoader: (_, _) async => const []));
-      expect(ex.pick('spo2'), findsNothing, reason: 'sanity: no history yet');
-
-      repo.gate = Completer<void>();
-      app.bumpInsights(); // a revision-triggered read starts, and waits
-      await _settle(t, n: 5);
-      startFocus();
-      await _settle(t, n: 5);
-      counts['spo2'] = 12; // the import wrote history for it
-      endFocus();
-      await _settle(t, n: 5);
-      repo.gate!.complete();
-      repo.gate = null;
-      await _settle(t, n: 40);
-
-      expect(ex.pick('spo2'), findsOneWidget,
-          reason: 'the trailing reload is the screen\'s full reload, which '
-              'also asks again which imported-only metrics exist');
-    });
-
-    testWidgets('idle revisions reload once each', (t) async {
-      final (repo, app) = await warm(t);
-      final calls = repo.chartCalls.length;
-      for (var i = 1; i <= 3; i++) {
-        app.bumpInsights();
-        await _settle(t);
-        expect(repo.chartCalls.length, calls + i, reason: 'revision $i');
-      }
-    });
-  });
 
   group('Home, around the end of focus', () {
     Future<(FocusRepo, AppState)> pausedOnDay2(WidgetTester t) async {

@@ -707,7 +707,6 @@ void main() {
       expect(has(p21, '_pinnedTableLists'), isTrue);
       expect(has('test/step2/p24_call_sites_test.dart', '_fromJsonCallers'),
           isTrue);
-      expect(has('test/ecg_gesture_consumer_guard_test.dart', '_allow'), isTrue);
       expect(has('test/observation_isolation_test.dart'), isTrue);
       expect(has('test/sample_archive/sample_guard_test.dart'), isTrue);
     });

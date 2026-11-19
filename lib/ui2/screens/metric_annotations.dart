@@ -1,7 +1,7 @@
-// Where the Explorer's annotations come from.
+// Where metric chart annotations come from.
 //
 // The pure half ([rangeAnnotations]) joins already-read rows into annotations
-// through the day timeline's own join ([dayMoments]), so the Explorer and the
+// through the day timeline's own join ([dayMoments]), so the metric chart and the
 // day page can never disagree about what a moment is called or what kind it
 // is. The IO half ([loadAnnotations]) only reads rows.
 //
@@ -35,8 +35,7 @@ typedef AnnotationLoader = Future<List<ChartAnnotation>> Function(
 ///
 /// Workouts come from [sessions] (rows with `start_ts`, `end_ts`, `type`). Naps
 /// are not read here: a detected nap lives inside a derived day, and a range
-/// read of those would cost a day-result decode per day. The intraday Explorer
-/// already shades them.
+/// read of those would cost a day-result decode per day. Metric charts draw daily annotations.
 List<ChartAnnotation> rangeAnnotations({
   required String from,
   required String to,
@@ -155,7 +154,7 @@ Future<List<ChartAnnotation>> loadAnnotations(String from, String to,
       l: l,
     );
   } catch (e) {
-    debugPrint('explorer annotations: $e');
+    debugPrintSynchronously('metric annotations: $e');
     return const [];
   }
 }

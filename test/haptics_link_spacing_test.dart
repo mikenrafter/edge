@@ -14,7 +14,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/gestures/gesture_settings.dart' show TapCountMethod;
 import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart' show SettingsAccordion;
@@ -58,8 +57,7 @@ void main() {
           BandGesturesView(
               chosen: const {},
               supported: _supported,
-              ecgSupported: true,
-              tapMethod: TapCountMethod.ecg,
+
               extraTaps: extra));
       final row = find.byKey(const ValueKey('gestures-open-haptics'));
       expect(row, findsOneWidget);

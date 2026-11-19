@@ -16,7 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
-import 'package:openstrap_edge/ui2/screens/explorer_annotations.dart';
+import 'package:openstrap_edge/ui2/screens/metric_annotations.dart';
 
 typedef _SetenvNative = Int32 Function(Pointer<Utf8>, Pointer<Utf8>, Int32);
 typedef _SetenvDart = int Function(Pointer<Utf8>, Pointer<Utf8>, int);

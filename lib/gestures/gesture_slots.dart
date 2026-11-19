@@ -1,10 +1,8 @@
 // gesture_slots.dart — gesture SLOTS and what is configured per slot.
 //
 // A slot is a gesture identity: the plain double tap and the counted taps
-// (3..5 taps, by either counting method) each have one. The ids are stable and
-// persisted (never rename): 'double', 'triple', 'quad', 'quint'. One mapping
-// store serves both counting methods, so the slot for 3 taps is the slot for 2
-// double taps.
+// (3..5 tap slots) each have one. The ids are stable and
+// persisted (never rename): 'double', 'triple', 'quad', 'quint'. The slot for 3 taps is the slot for 2 double taps.
 //
 import 'time_buzz.dart';
 
@@ -22,9 +20,6 @@ abstract final class GestureSlots {
 
   /// Tap-count order (2..5).
   static const List<String> all = [doubleTap, tripleTap, quadTap, quintTap];
-
-  /// The only slot ECG-on-double-tap can occupy.
-  static const String ecgSlot = doubleTap;
 
   /// The slot for [taps] taps, 2..5; ArgumentError otherwise.
   static String ofTaps(int taps) {
@@ -84,7 +79,7 @@ class GestureSlotOptions {
   }
 }
 
-/// What [GestureSettings.trySetAction] / `trySetEcgOnDoubleTap` answered.
+/// What [GestureSettings.trySetAction] answered.
 sealed class ActionToggleResult {
   const ActionToggleResult();
 
@@ -96,26 +91,9 @@ class ActionToggleOk extends ActionToggleResult {
   const ActionToggleOk();
 }
 
-/// Refused and nothing changed: an active mode (ECG) cannot share a slot with
+/// Refused and nothing changed: an active mode cannot share a slot with
 /// another action. [reason] is the text the UI shows.
 class ActionToggleRefusedExclusive extends ActionToggleResult {
   const ActionToggleRefusedExclusive(this.reason);
   final String reason;
 }
-
-/// Turning ECG on for a slot that already has other actions.
-const String kEcgExclusiveTurnOthersOff =
-    "ECG takes over the band while it records, so it can't share a gesture "
-    'with other actions. Turn the others off first.';
-
-/// Turning another action on for a slot that has ECG.
-const String kEcgExclusiveTurnEcgOff =
-    "ECG takes over the band while it records, so it can't share a gesture "
-    'with other actions. Turn ECG off first.';
-
-/// Shown in the double tap's tab for a user who already has ECG on AND actions
-/// mapped (their stored config is left alone): only ECG runs there.
-const String kEcgOnlyRunsNote =
-    'Only ECG runs on this gesture, so the actions below are paused. ECG takes '
-    "over the band while it records, so it can't share a gesture with other "
-    'actions. Turn the others off first.';

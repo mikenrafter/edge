@@ -67,15 +67,13 @@ void main() {
         #performNative: (String _) async => true,
         #claim: (String k) async => claimOk,
         #release: (String k) async {},
-        #ecgSupported: () => mg,
         #repeatSession: repeat,
-        #onCountTaps: count,
         #onWorkoutToggle: (StrapEvent e) async {
           if (workoutThrows) throw StateError('no workout');
         },
         #onMarkMoment: (StrapEvent e) async => throw StateError('no moment'),
         // The kind is an enum of lib/gestures/gesture_failures.dart; it is
-        // read by its name ("GestureFailureKind.ecg") so this file needs no
+        // read by its name ("GestureFailureKind.doubleTap") so this file needs no
         // import of that library.
         #onFailed: (StrapEvent e, Object k, String reason) =>
             fails.add((e.identity, k.toString().split('.').last, reason)),
@@ -144,26 +142,6 @@ void main() {
       });
     });
 
-    test('an ECG-counted gesture whose action failed: kind ECG', () async {
-      final s = await boot(three: true);
-      await s.setTapMethod(TapCountMethod.ecg);
-      final d = make(s, mg: true, count: (e) async => 3);
-      final out = await d.handle(repTap());
-      expect(out.single.status, GestureStatus.failed);
-      expect(fails, hasLength(1));
-      expect(fails.single.$2, 'ecg');
-      expect(fails.single.$3, contains(DeviceAction.markMoment.id));
-    });
-
-    test('regression guard (passes today): an ECG-counted gesture whose count '
-        'did not start is the session\'s to report, not the dispatcher\'s (no '
-        'double record)', () async {
-      final s = await boot(three: true);
-      await s.setTapMethod(TapCountMethod.ecg);
-      final d = make(s, mg: true, count: (e) async => throw StateError('x'));
-      await d.handle(repTap());
-      expect(fails, isEmpty);
-    });
   });
 
 }

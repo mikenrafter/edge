@@ -37,13 +37,6 @@ enum SliceKeep {
   none,
 }
 
-/// The time expression the slice keeps raw ECG packets on. Gesture contact on
-/// the electrodes is not an ECG reading, so its packets never leave the phone
-/// in a report: NULL fails the cutoff and the row is dropped
-/// (ecg_gesture_consumer_guard_test).
-const String _ecgRawNotGesture =
-    "(CASE WHEN origin = 'gesture' THEN NULL ELSE captured_at END)";
-
 /// Every table in the live schema: what the slice keeps, by which column, and
 /// why. A table missing here falls back to [_fallback]; the test
 /// test/issue_report_test.dart fails when one is missing, so add it here.
@@ -76,9 +69,7 @@ const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   'ecg_reading_packet': (SliceKeep.highRate,
       '(SELECT r.start_ts FROM src.ecg_reading r WHERE r.id = reading_id)',
       'ECG samples, kept for the readings kept'),
-  'ecg_raw_packet': (SliceKeep.highRate, _ecgRawNotGesture,
-      'raw ECG packets, gesture contact left out'),
-  'ecg_gesture_session': (SliceKeep.recent, 'created_at', 'ECG-gesture attempts'),
+  'ecg_raw_packet': (SliceKeep.highRate, 'captured_at', 'raw ECG packets'),
   'wake_trace': (SliceKeep.recent, 'at_ms', 'wake-detection trace events'),
   'wake_evidence': (SliceKeep.recent, 'at_sec', 'noted wake events per sleep block'),
   'input_rev': (SliceKeep.highRate, '(bucket * 900)',

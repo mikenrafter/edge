@@ -2,6 +2,7 @@
 // TracksStore routes linked logs to the source record's owner.
 import 'package:flutter/material.dart';
 import '../../data/day_label.dart';
+import '../../l10n/app_localizations.dart';
 import '../../data/db.dart';
 import '../../data/tracks_store.dart';
 import '../../state/clock_format.dart';
@@ -231,7 +232,12 @@ class TrackQuickLog extends StatelessWidget {
   Widget build(BuildContext context) => TextButton.icon(
     key: const ValueKey('track-quick-log'),
     icon: const Icon(Icons.add_circle_outline),
-    label: Text(tracksText(context, 'QuickLog')),
+    style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
+    label: Row(mainAxisSize: MainAxisSize.min, children: [
+      Flexible(child: Text(tracksText(context, 'QuickLog'))),
+      const SizedBox(width: S.x2),
+      Pill(AppLocalizations.of(context)?.pilotLabel ?? 'Pilot', C.blue),
+    ]),
     onPressed: () async {
       final logged = await Navigator.of(context).push<bool>(
         MaterialPageRoute(builder: (_) => TrackLogScreen(date: date)),

@@ -54,7 +54,6 @@ import '../screens/coach.dart' show CoachSetup, coachSubtitle;
 import '../guides/guide_catalogue.dart' show bandGenerationOf;
 import '../guides/help_screen.dart' show HelpScreen;
 import '../screens/tracks_screen.dart';
-import '../screens/explorer.dart' show ExplorerScreen;
 import '../screens/home_screen.dart' show deviceBatteryOf, go;
 import '../ui2.dart';
 import 'alarm.dart';
@@ -304,7 +303,6 @@ class _MoreSettingsState extends State<MoreSettings> with WidgetsBindingObserver
         c,
         const DevLogsPage(),
       ),
-      onDataExplorer: () => goto(c, const ExplorerScreen()),
       onCoach: () => goto(c, const CoachSetup()),
       onHelp: () => goto(c, HelpScreen(band: bandGenerationOf(c.read<AppState>().paired))),
       relaySupported: caps.has(Feature.relayEntry),
@@ -706,7 +704,6 @@ class MoreSettingsView extends StatelessWidget {
       onLiveDevices,
       onDeviceLab,
       onLogs,
-      onDataExplorer,
       onCoach,
       onHelp,
       onAlarm,
@@ -778,7 +775,6 @@ class MoreSettingsView extends StatelessWidget {
     this.onLiveDevices,
     this.onDeviceLab,
     this.onLogs,
-    this.onDataExplorer,
     this.onCoach,
     this.onHelp,
     this.onAlarm,
@@ -828,6 +824,11 @@ class MoreSettingsView extends StatelessWidget {
                 SetRow(LucideIcons.slidersHorizontal, C.teal,
                     l?.tracksTitle ?? 'Tracks',
                     sub: l?.tracksSubtitle ?? 'Your activities, timing and context',
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Pill(l?.pilotLabel ?? 'Pilot', C.blue),
+                      const SizedBox(width: S.x2),
+                      Icon(LucideIcons.chevronRight, size: 17, color: p.ink3),
+                    ]),
                     onTap: () => go(c, const TracksScreen())),
                 // Step-by-step guides that walk the real screens (live guides).
                 SetRow(LucideIcons.circleHelp, C.blue,
@@ -1159,10 +1160,6 @@ class MoreSettingsView extends StatelessWidget {
                     SetRow(LucideIcons.scrollText, C.blue,
                         l?.settingsLogsRowTitle ?? 'Logs',
                         onTap: onLogs),
-                    // Not a Health tab yet: up to four metrics on one time axis.
-                    SetRow(LucideIcons.chartLine, C.blue, 'Data Explorer',
-                        sub: 'Compare up to four metrics on one time axis',
-                        onTap: onDataExplorer),
                     SetRow(LucideIcons.timer, C.n500, 'Screen load timings',
                         sub: 'Recent reads, transactions and bundle decoding',
                         onTap: () => go(c, const LoadTimingsPage())),

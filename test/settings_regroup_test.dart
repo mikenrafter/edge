@@ -36,15 +36,11 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/gestures/device_action.dart';
-import 'package:openstrap_edge/gestures/gesture_settings.dart'
-    show TapCountMethod;
 import 'package:openstrap_edge/platform/app_icon.dart';
 import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/ui2/profile/band_notifications.dart';
 import 'package:openstrap_edge/ui2/profile/device_lab.dart';
 import 'package:openstrap_edge/ui2/profile/devices.dart';
-import 'package:openstrap_edge/ui2/profile/gestures.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart';
 import 'package:openstrap_edge/ui2/profile/settings.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
@@ -145,7 +141,6 @@ const Map<String, List<List<String>>> _rows = {
     ['Live devices'],
     ['Device lab'],
     ['Logs'],
-    ['Data Explorer'],
     // The read-only timing line for the last derive pass.
     ['Screen load timings'],
     ['Last calculation'],
@@ -392,68 +387,16 @@ void main() {
   });
 
   group('Gestures: the tuning controls of the method in force', () {
-    const supported = {
-      DeviceAction.none,
-      DeviceAction.markMoment,
-      DeviceAction.torch,
-    };
-
-    Widget view(
-            {bool ecg = true,
-            bool dev = false,
-            TapCountMethod? method,
-            bool extraTaps = true}) =>
-        BandGesturesView(
-          chosen: const {},
-          supported: supported,
-          ecgSupported: ecg,
-          devMode: dev,
-          tapMethod: method,
-          repeatWindowMs: 2500,
-          onRepeatWindowMs: (_) {},
-          onThresholds: (_) {},
-          extraTaps: extraTaps,
-        );
-
-    for (final ecg in [true, false]) {
-      testWidgets('ecgSupported=$ecg, no developer mode: the pause only, no '
-          'touch windows', (t) async {
-        await _pump(t, view(ecg: ecg));
-        expect(find.text('Pause between double taps'), findsOneWidget);
-        expect(find.text('Touch windows'), findsNothing);
-        expect(find.byKey(const ValueKey('repeat-window:+')), findsOneWidget);
-        expect(find.byType(EcgThresholdAdjusters), findsNothing);
-      });
-    }
-
-    testWidgets('developer mode on an MG with ECG touches chosen: the touch '
-        'timings only, no pause', (t) async {
-      await _pump(t, view(dev: true, method: TapCountMethod.ecg));
-      expect(find.byType(EcgThresholdAdjusters), findsOneWidget);
-      expect(find.byKey(const ValueKey('ecg-threshold:start:+')),
-          findsOneWidget);
-      expect(find.text('Pause between double taps'), findsNothing);
-      expect(find.byKey(const ValueKey('repeat-window:+')), findsNothing);
-    });
-
-    testWidgets('"Count extra taps with" (developer mode) and the count tabs '
-        'stay', (t) async {
-      await _pump(t, view(dev: true));
-      expect(section('Count extra taps with'), findsOneWidget);
-      expect(find.byKey(const ValueKey('gestures-tab:3')), findsOneWidget);
-      expect(find.text('What needs a WHOOP MG'), findsOneWidget);
-    });
-
     testWidgets('the same controls remain in the Device lab', (t) async {
       await _pump(
           t,
           DeviceLabView(
-              ecgSupported: true,
+
               repeatWindowMs: 2500,
               onRepeatWindowMs: (_) {},
-              onThresholds: (_) {}));
+              ));
       expect(find.text('Pause between double taps'), findsWidgets);
-      expect(find.text('Touch windows'), findsWidgets);
+      expect(find.text('Touch windows'), findsNothing);
     });
   });
 

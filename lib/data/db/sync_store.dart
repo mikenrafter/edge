@@ -492,20 +492,7 @@ Future<void> _ldbPrivCommitSyncBatchLocked(List<RawRecord> raws, List<Sample?> s
         // SAFE-TRIM INVARIANT, same rule: the raw ECG records land in this
         // transaction, before the ACK that lets the band trim them.
         if (ecgRawPackets != null && ecgRawPackets.isNotEmpty) {
-          // A packet inside a known gesture interval is stored as gesture
-          // contact, never linked to a reading. One tiny SELECT per device in
-          // this batch, inside the same transaction; it changes neither the
-          // rows nor the order the commit-before-ACK contract depends on.
-          final bands = <String, List<(int, int)>>{};
           for (final e in ecgRawPackets) {
-            if (!bands.containsKey(e.deviceId)) {
-              bands[e.deviceId] = await LocalDb._gestureBands(txn, e.deviceId);
-            }
-          }
-          for (final e in ecgRawPackets) {
-            final gesture = bands[e.deviceId]!.any(
-              (b) => e.strapSeconds >= b.$1 && e.strapSeconds <= b.$2,
-            );
             batch.insert('ecg_raw_packet', {
               'hex': e.hex,
               'device_id': e.deviceId,
@@ -513,7 +500,6 @@ Future<void> _ldbPrivCommitSyncBatchLocked(List<RawRecord> raws, List<Sample?> s
               'strap_seconds': e.strapSeconds,
               'strap_subsec': e.strapSubsec,
               'captured_at': e.capturedAt,
-              if (gesture) 'origin': 'gesture',
             }, conflictAlgorithm: ConflictAlgorithm.ignore);
             if (++ops >= chunkOps) await flushChunk();
           }

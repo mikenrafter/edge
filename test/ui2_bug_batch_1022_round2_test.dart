@@ -16,7 +16,7 @@ import 'package:openstrap_edge/state/units_controller.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
-import 'support/explorer_harness.dart';
+import 'support/chart_harness.dart';
 import 'support/older_version_fixtures.dart';
 
 final _t0 = DateTime(2026, 5, 19, 23, 7).millisecondsSinceEpoch ~/ 1000;
@@ -65,7 +65,6 @@ void main() {
     await initPrefs();
     await loadType();
   });
-  setUp(clearPrefs);
 
   testWidgets('B2: with no sleep bounds the key row still prints no skin-temp '
       'number', (t) async {

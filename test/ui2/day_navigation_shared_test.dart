@@ -18,7 +18,7 @@ import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/screens/day_review.dart' show DayRowEditListener;
 import 'package:openstrap_edge/ui2/day_navigation.dart' show openPickerOnce;
 import 'package:openstrap_edge/ui2/ui2.dart';
-import '../support/explorer_harness.dart' show ExplorerRepo, initPrefs, loadType;
+import '../support/chart_harness.dart' show initPrefs, loadType;
 
 const past = '2026-05-19';
 const days = ['2026-05-22', '2026-05-20', past];
@@ -79,12 +79,6 @@ void main() {
       'Naps': (const NapsScreen(day: past), HeldRepo.new, null),
       'Investigate': (const Investigate('hrv', day: past), HeldRepo.new, null),
       'What changed': (const WhatChangedScreen(day: past), HeldRepo.new, null),
-      'Data explorer': (ExplorerScreen(annotationLoader: (_, _) async => const []), ExplorerRepo.new, () async {
-        await t.tap(find.byKey(const ValueKey('explore-scale:day')));
-        await t.pump();
-        await t.tap(find.byKey(const ValueKey('explore-day-prev')));
-        await t.pump();
-      }),
     };
     for (final entry in pages.entries) {
       final (page, makeRepo, open) = entry.value;
@@ -436,23 +430,7 @@ void main() {
   });
 
   // WHY (S3): the explorer's own picker must not open twice on a double tap.
-  testWidgets('explorer day picker opens once on a double tap', (t) async {
-    final app = AppState.forTesting()..repo = ExplorerRepo();
-    await frame(t, ExplorerScreen(annotationLoader: (_, _) async => const []),
-      app: app);
-    await t.tap(find.byKey(const ValueKey('explore-scale:day')));
-    await t.pump();
-    final label = find.ancestor(of: find.byKey(const ValueKey('explore-day-label')),
-      matching: find.byType(Pressable)).first;
-    final onTap = t.widget<Pressable>(label).onTap!;
-    onTap();
-    onTap();
-    await t.pump();
-    await t.pump(const Duration(milliseconds: 400));
-    expect(find.byType(DatePickerDialog), findsOneWidget);
-    await t.pumpWidget(const SizedBox());
-    app.dispose();
-  });
+
 
   // WHY (S2): the editor opens at once, reads its own row, and says so when
   // the answer is gone or the read fails.

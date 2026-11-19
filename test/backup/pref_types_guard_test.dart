@@ -17,13 +17,13 @@ import 'package:openstrap_edge/data/backup_extras.dart';
 const _dynamicReads = <String, List<String>>{
   'feature_flags.dart|f.prefsKey|bool': ['ff.alert_dispatcher', 'ff.native_relay',
     'ff.source_resolver_ui', 'ff.tap_classifiers', 'ff.natural_wake'],
-  'acked_bool.dart|key|bool': ['gesture_ecg_on_double_tap'],
+  // The shared wrapper still owns Tasker consent after ECG counting is removed.
+  'acked_bool.dart|key|bool': ['tasker_moment_export'],
   'remembered_expansion.dart|accordionPrefKey(id|bool': ['accordion_example'],
   'profile.dart|accordionPrefKey(id|bool': ['accordion_profile'],
   'sync_control.dart|accordionPrefKey(_detailsId|bool': ['accordion_sync'],
   "gesture_settings.dart|'\$_kReplayPrefix\${a.id}'|bool": ['gesture_replay_mark_moment'],
   "gesture_settings.dart|'\$_kSlotOptionsPrefix\$slot'|string": ['gesture_slot_options_2'],
-  'gesture_settings.dart|key|int': ['gesture_repeat_window_ms'],
   "gesture_settings.dart|'\$_kTapActionsPrefix\$n'|int": ['gesture_tap_actions_3'],
 
   'briefing.dart|_slotKey(period|string': ['ai.briefing.morning'],

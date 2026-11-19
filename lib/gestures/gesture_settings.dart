@@ -14,29 +14,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../platform/device_actions.dart';
 import '../stress/breath_phases.dart' show kBreathPatternsByKey;
 import 'device_action.dart';
-import 'ecg_tap_counter.dart';
 import 'gesture_slots.dart';
 import 'time_buzz.dart';
-
-/// How taps beyond the firmware's double tap are counted. One mapping store
-/// (slot n = n taps, 2..5) serves both; only the way the count is made differs.
-enum TapCountMethod {
-  /// Touches of the ECG sensor after the double tap (WHOOP MG only).
-  ecg('ecg'),
-
-  /// More firmware double taps inside a short window (any band).
-  repeat('repeat');
-
-  const TapCountMethod(this.id);
-  final String id;
-
-  static TapCountMethod? fromId(String? id) {
-    for (final m in values) {
-      if (m.id == id) return m;
-    }
-    return null;
-  }
-}
 
 class GestureSettings extends ChangeNotifier {
   static const _kActions = 'gesture_double_tap_actions';
@@ -50,14 +29,6 @@ class GestureSettings extends ChangeNotifier {
   /// 3–5 taps: one bitmask per count, same layout as [_kActions].
   /// 2 taps stays on [_kActions].
   static const _kTapActionsPrefix = 'gesture_tap_actions_';
-  static const _kEcgOnDoubleTap = 'gesture_ecg_on_double_tap';
-  static const _kEcgStartMs = 'gesture_ecg_start_ms';
-  static const _kEcgGapMs = 'gesture_ecg_gap_ms';
-  static const _kEcgConfirmMs = 'gesture_ecg_confirm_ms';
-  static const _kEcgExtraSensitive = 'gesture_ecg_extra_sensitive';
-  static const _kEcgTolerant = 'gesture_ecg_tolerant_startup';
-  static const _kEcgFallback = 'gesture_ecg_fallback';
-  static const _kTapMethod = 'gesture_tap_method';
 
   /// "Follow up about my marked moments": the switch, and the instant (epoch
   /// ms) it was last turned on — only moments marked since then are followed up.
@@ -98,9 +69,6 @@ class GestureSettings extends ChangeNotifier {
   /// Actions for 3, 4 and 5 taps. Absent key = no actions.
   final Map<int, Set<DeviceAction>> _tapActions = {};
 
-  bool _ecgOnDoubleTap = false;
-  EcgTapThresholds _ecgThresholds = EcgTapThresholds();
-  TapCountMethod? _tapMethod;
   int _repeatWindowMs = defaultRepeatWindowMs;
   bool _repeatLab = false;
   TimeBuzzMode _timeBuzzMode = TimeBuzzMode.count;
@@ -131,40 +99,17 @@ class GestureSettings extends ChangeNotifier {
     return 2;
   }
 
-  /// The highest tap count the counter session waits for. In the Device lab
-  /// (switch on) it is always 5 so the whole sequence can be tested; otherwise
-  /// the highest mapped count, since a count nothing is mapped to is not worth
-  /// waiting for.
-  int get ecgTapMax => _ecgOnDoubleTap ? 5 : maxMappedTaps;
-
-  /// A live double tap starts an ECG capture instead of its actions
-  /// (WHOOP MG only; the Device lab owns the switch). Off by default.
-  bool get ecgOnDoubleTap => _ecgOnDoubleTap;
-
-  /// The user's explicit choice of counting method; null follows the default.
-  TapCountMethod? get tapMethodChoice => _tapMethod;
-
-  /// The method in force for the connected band: repeated double taps unless a
-  /// WHOOP MG user chose ECG touches; double taps on every band without ECG
-  /// (whatever was stored, since that band cannot count touches). A stored
-  /// `gesture_ecg_tap_mode` from the retired Fast setting is never read.
-  TapCountMethod tapMethodFor({required bool ecgSupported}) =>
-      ecgSupported ? (_tapMethod ?? TapCountMethod.repeat) : TapCountMethod.repeat;
-
   /// The pause allowed between repeated double taps.
   int get repeatTapWindowMs => _repeatWindowMs;
   Duration get repeatTapWindow => Duration(milliseconds: _repeatWindowMs);
 
   /// The Device lab is trying the repeated-double-tap method: live double taps
-  /// are counted (up to 5) and NO action runs. Exclusive with [ecgOnDoubleTap].
+  /// are counted (up to 5) and NO action runs.
   bool get repeatTapsLab => _repeatLab;
 
   /// The most taps the repeated-double-tap window waits for: 5 in the lab,
   /// otherwise the highest mapped count.
   int get repeatTapMax => _repeatLab ? 5 : maxMappedTaps;
-
-  /// The three adjustable ECG-touch windows.
-  EcgTapThresholds get ecgTapThresholds => _ecgThresholds;
 
   /// Actions offerable on THIS platform: `none` always, plus whatever native says
   /// it can do. Until bootstrap() runs we only know `none`.
@@ -203,10 +148,7 @@ class GestureSettings extends ChangeNotifier {
     _followUpSince = _followUp && sinceMs != null
         ? DateTime.fromMillisecondsSinceEpoch(sinceMs)
         : null;
-    _ecgOnDoubleTap = prefs.getBool(_kEcgOnDoubleTap) ?? false;
     _repeatLab = prefs.getBool(_kRepeatLab) ?? false;
-    if (_ecgOnDoubleTap && _repeatLab) _repeatLab = false; // exclusive
-    _tapMethod = TapCountMethod.fromId(prefs.getString(_kTapMethod));
     final storedMode = prefs.getString(_kTimeBuzzMode);
     _timeBuzzMode = TimeBuzzMode.values
             .where((m) => m.name == storedMode)
@@ -221,24 +163,6 @@ class GestureSettings extends ChangeNotifier {
     _repeatWindowMs = window != null && isValidRepeatWindow(window)
         ? window
         : defaultRepeatWindowMs;
-    // A stored value that is out of range or off the 50 ms grid falls back to
-    // THAT field's default; the other fields keep what was stored.
-    int field(String key, int dflt, (int, int) range) {
-      final v = prefs.getInt(key);
-      return v != null && EcgTapThresholds.isValid(v, range) ? v : dflt;
-    }
-
-    final d = EcgTapThresholds();
-    _ecgThresholds = EcgTapThresholds(
-      startMs: field(_kEcgStartMs, d.startMs, EcgTapThresholds.startRange),
-      gapMs: field(_kEcgGapMs, d.gapMs, EcgTapThresholds.gapRange),
-      confirmMs:
-          field(_kEcgConfirmMs, d.confirmMs, EcgTapThresholds.confirmRange),
-      extraSensitive: prefs.getBool(_kEcgExtraSensitive) ?? d.extraSensitive,
-      tolerantStartup: prefs.getBool(_kEcgTolerant) ?? d.tolerantStartup,
-      fallbackToDoubleTap: prefs.getBool(_kEcgFallback) ?? d.fallbackToDoubleTap,
-    );
-
     final caps = await DeviceActions.capabilities();
     supported = {
       DeviceAction.none,
@@ -356,15 +280,6 @@ class GestureSettings extends ChangeNotifier {
 
   final Map<String, GestureSlotOptions> _slotOptions = {};
 
-  /// Whether ECG-on-double-tap is in force on this build (it needs a band with
-  /// the sensor and developer mode, like the dispatcher's own check). Null:
-  /// always. Without it a stale lab switch would refuse actions on a double
-  /// tap it no longer suspends, with no way left to turn it off.
-  bool Function()? ecgInForce;
-
-  /// ECG owns the double tap now: the lab switch is on and in force.
-  bool get ecgActive => _ecgOnDoubleTap && (ecgInForce?.call() ?? true);
-
   static String _checkedSlot(String slot) {
     GestureSlots.tapsOf(slot); // ArgumentError for an unknown slot
     return slot;
@@ -458,7 +373,7 @@ class GestureSettings extends ChangeNotifier {
   }
 
   /// action -> the slots (in tap-count order) it is on in, for every action on
-  /// in TWO OR MORE slots. ECG-on-double-tap is not an action and not listed.
+  /// in TWO OR MORE slots.
   Map<DeviceAction, Set<String>> overlaps() {
     final out = <DeviceAction, Set<String>>{};
     for (final slot in GestureSlots.all) {
@@ -471,8 +386,7 @@ class GestureSettings extends ChangeNotifier {
   }
 
   /// Turn [action] on or off for [slot], refusing what an active mode forbids:
-  /// nothing can be added to a slot ECG occupies, and an active-mode action
-  /// can't join a slot that has others. Turning off is always ok.
+  /// an active-mode action can't join a slot that has others. Turning off is always ok.
   Future<ActionToggleResult> trySetAction(
       String slot, DeviceAction action, bool on) async {
     final taps = GestureSlots.tapsOf(slot);
@@ -481,9 +395,6 @@ class GestureSettings extends ChangeNotifier {
       return const ActionToggleOk();
     }
     if (on) {
-      if (slot == GestureSlots.ecgSlot && ecgActive) {
-        return const ActionToggleRefusedExclusive(kEcgExclusiveTurnEcgOff);
-      }
       final mode = action.isActiveMode
           ? action
           : cur.where((a) => a.isActiveMode).firstOrNull;
@@ -500,43 +411,11 @@ class GestureSettings extends ChangeNotifier {
     return const ActionToggleOk();
   }
 
-  /// [setEcgOnDoubleTap] with the exclusivity rule: refused while the double
-  /// tap slot has any other action on. Turning off is always ok.
-  Future<ActionToggleResult> trySetEcgOnDoubleTap(bool on) async {
-    if (on && !_ecgOnDoubleTap && _actions.isNotEmpty) {
-      return const ActionToggleRefusedExclusive(kEcgExclusiveTurnOthersOff);
-    }
-    await setEcgOnDoubleTap(on);
-    return const ActionToggleOk();
-  }
-
-  Future<void> setEcgOnDoubleTap(bool on) async {
-    if (_ecgOnDoubleTap == on) return;
-    _ecgOnDoubleTap = on;
-    final turnedOffLab = on && _repeatLab;
-    if (turnedOffLab) _repeatLab = false;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kEcgOnDoubleTap, on);
-    if (turnedOffLab) await prefs.setBool(_kRepeatLab, false);
-    notifyListeners();
-  }
-
   Future<void> setRepeatTapsLab(bool on) async {
     if (_repeatLab == on) return;
     _repeatLab = on;
-    final turnedOffLab = on && _ecgOnDoubleTap;
-    if (turnedOffLab) _ecgOnDoubleTap = false;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kRepeatLab, on);
-    if (turnedOffLab) await prefs.setBool(_kEcgOnDoubleTap, false);
-    notifyListeners();
-  }
-
-  Future<void> setTapMethod(TapCountMethod m) async {
-    if (_tapMethod == m) return;
-    _tapMethod = m;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kTapMethod, m.id);
     notifyListeners();
   }
 
@@ -553,19 +432,6 @@ class GestureSettings extends ChangeNotifier {
     _repeatWindowMs = ms;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_kRepeatWindowMs, ms);
-    notifyListeners();
-  }
-
-  Future<void> setEcgTapThresholds(EcgTapThresholds t) async {
-    if (t == _ecgThresholds) return;
-    _ecgThresholds = t;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_kEcgStartMs, t.startMs);
-    await prefs.setInt(_kEcgGapMs, t.gapMs);
-    await prefs.setInt(_kEcgConfirmMs, t.confirmMs);
-    await prefs.setBool(_kEcgExtraSensitive, t.extraSensitive);
-    await prefs.setBool(_kEcgTolerant, t.tolerantStartup);
-    await prefs.setBool(_kEcgFallback, t.fallbackToDoubleTap);
     notifyListeners();
   }
 

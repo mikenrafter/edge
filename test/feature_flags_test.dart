@@ -13,7 +13,6 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
-import 'package:openstrap_edge/gestures/double_tap_repeat.dart';
 import 'package:openstrap_edge/gestures/gesture_dispatcher.dart';
 import 'package:openstrap_edge/gestures/gesture_settings.dart';
 import 'package:openstrap_edge/gestures/strap_event.dart';
@@ -38,6 +37,7 @@ import 'package:openstrap_edge/wake/wake_orchestrator.dart';
 import 'package:openstrap_edge/wake/wake_settings.dart';
 
 import 'support/settings_sections.dart';
+import 'support/counted_tap_session.dart';
 
 /// What a screen is handed: process-wide flags as they are now, no band.
 Capabilities _caps() => Capabilities(CapabilityInputs.detached());
@@ -323,75 +323,47 @@ void main() {
       await s.bootstrap();
       await s.setDoubleTapActions({DeviceAction.workoutToggle});
       await s.setActionsForTaps(3, {DeviceAction.markMoment});
-      await s.setEcgOnDoubleTap(true);
       return s;
     }
 
     tearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null));
 
-    test('OFF: a double tap runs its 2-tap actions at once; nothing counts',
-        () async {
-      FeatureFlags.debugSet(FeatureFlag.tapClassifiers, false);
-      final s = await mapped();
-      var counted = 0, ecgStarts = 0, windows = 0;
-      final ran = <String>[];
-      final session = DoubleTapRepeatSession(
-        maxTaps: () => 5,
-        window: () => const Duration(seconds: 3),
-        onStarted: (_, _) => windows++,
-      );
-      final d = GestureDispatcher(
-        settings: s,
-        ecgSupported: () => true,
-        onEcgTap: (_) async => ecgStarts++,
-        onCountTaps: (_) async {
-          counted++;
-          return 3;
-        },
-        repeatSession: session,
-        onWorkoutToggle: (_) async => ran.add('workout'),
-        onMarkMoment: (_) async => ran.add('moment'),
-        claim: (_) async => true,
-        release: (_) async {},
-      );
-      final out = await d.handle(tap());
-      expect(out.single.status, GestureStatus.ran);
-      expect(ran, ['workout']);
-      expect((counted, ecgStarts, windows), (0, 0, 0));
-      expect(session.open, isFalse);
-    });
-
-    test('ON: the same setup starts the ECG lab instead', () async {
-      final s = await mapped();
-      var ecgStarts = 0;
-      final d = GestureDispatcher(
-        settings: s,
-        ecgSupported: () => true,
-        onEcgTap: (_) async => ecgStarts++,
-        onWorkoutToggle: (_) async => fail('actions are suspended in the lab'),
-        claim: (_) async => true,
-        release: (_) async {},
-      );
-      await d.handle(tap());
-      expect(ecgStarts, 1);
-    });
+    // why: the rollout flag still controls repeated taps after ECG removal.
+    for (final enabled in [false, true]) {
+      test('tapClassifiers=$enabled routes the mapped count', () async {
+        FeatureFlags.debugSet(FeatureFlag.tapClassifiers, enabled);
+        final settings = await mapped();
+        var counts = 0;
+        final ran = <String>[];
+        final dispatcher = GestureDispatcher(
+          settings: settings,
+          repeatSession: CountedTapSession(() { counts++; return 3; }),
+          onWorkoutToggle: (_) async => ran.add('workout'),
+          onMarkMoment: (_) async => ran.add('moment'),
+          claim: (_) async => true,
+          release: (_) async {},
+        );
+        final outcomes = await dispatcher.handle(tap());
+        expect(outcomes.single.status, GestureStatus.ran);
+        expect(ran, enabled ? ['moment'] : ['workout']);
+        expect(counts, enabled ? 1 : 0);
+      });
+    }
 
     testWidgets('OFF hides every extra-tap control on the Gestures screen',
         (t) async {
       Widget view(bool counting) => BandGesturesView(
             chosen: const {},
             supported: {DeviceAction.none, DeviceAction.workoutToggle},
-            ecgSupported: true,
+
             devMode: true,
             onRepeatWindowMs: (_) {},
-            onThresholds: (_) {},
+
             extraTaps: counting,
           );
       await pumpTall(t, view(true));
       for (final title in const [
-        'Count extra taps with',
-        'What needs a WHOOP MG',
         'Timing',
         'Pause between double taps',
       ]) {
@@ -403,11 +375,8 @@ void main() {
       expect(find.text('Touch windows'), findsNothing);
       await pumpTall(t, view(false));
       for (final title in const [
-        'Count extra taps with',
         'Timing',
         'Pause between double taps',
-        'Touch windows',
-        'What needs a WHOOP MG',
       ]) {
         expect(find.text(title), findsNothing, reason: 'OFF: $title');
       }
@@ -421,14 +390,12 @@ void main() {
     testWidgets('OFF hides the lab\'s tap tools; the logs and probes stay',
         (t) async {
       Widget lab(bool tools) => DeviceLabView(
-            ecgSupported: true,
+
             onRepeatWindowMs: (_) {},
-            onThresholds: (_) {},
+
             tapTools: tools,
           );
       const tools = [
-        'ECG on double tap',
-        'Touch windows',
         'Repeated double taps',
       ];
       await pumpTall(t, lab(true));

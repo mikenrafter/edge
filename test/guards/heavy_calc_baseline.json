@@ -6107,447 +6107,6 @@
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._afterCount",
-      "element": "_now()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._afterCount",
-      "element": "step?.call( 'After the count, packet $_postPackets: ${r.samples.length} samples, ' '$raw with contact${raw > 0 ? ' (samples $first–$last)' : ''}, strap ' 'time ${r.strapTime.toStringAsFixed(3)}; ${_bandStatus(r)}', )",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._endStreamSafely",
-      "element": "endStream()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._finish",
-      "element": "() async { if (post > Duration.zero) { _postRolling = true; _postPackets = 0; step?.call('Keeping the stream on for ${post.inMilliseconds} ms to ' 'see what the sensor does next (Device lab only).'); final cut = _postRollCut = Completer<void>(); try { await Future.any([_wait(post), cut.future]); } catch (_) {} _postRollCut = null; _postRolling = false; } await _endStreamSafely(); }()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._finish",
-      "element": "_wait(post)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._finish",
-      "element": "onFailed?.call(tap, reason)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._finish",
-      "element": "onFinished(2, 'fallback: $reason')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._finish",
-      "element": "onFinished(count, reason)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._finish",
-      "element": "recordSession?.call(record)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._finish",
-      "element": "step?.call('ECG failed ($reason): one long buzz.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._finish",
-      "element": "step?.call('Keeping the stream on for ${post.inMilliseconds} ms to ' 'see what the sensor does next (Device lab only).')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._finish",
-      "element": "step?.call(fallback ? 'ECG failed ($reason). Fallback: the count is 2 (double-tap ' 'action).' : 'Abandoned: $reason. No action.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._fireCue",
-      "element": "send('${_eventBase(tap)}:ecg:start')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._fireCue",
-      "element": "step?.call('Start buzz failed: $e')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._fireCue",
-      "element": "step?.call(ok ? 'Start buzz written.' : 'Start buzz could not be written.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._handle",
-      "element": "buzz(1, id)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._handle",
-      "element": "step?.call( 'Confirm buzz requested at sample time ${at.inMilliseconds} ms.', )",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._handle",
-      "element": "step?.call( 'Final count $count at sample time ${at.inMilliseconds} ms.', )",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._handle",
-      "element": "step?.call( 'Follow-up buzz requested at sample time ${at.inMilliseconds} ms.', )",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._holdForCue",
-      "element": "() async { try { await sent; await idle().timeout(buzzTimeout); } catch (_) { step?.call('The band did not report idle in time; the touch window ' 'opens anyway.'); } if (!_active || !identical(_counter, c) || c.finished) return; final at = _stallNow() ?? _lastEnd; if (at == null) return; step?.call('Follow-up cue played. Touch window open at sample time ' '${at.inMilliseconds} ms (${c.thresholds.confirmMs} ms for the next ' 'touch to begin, plus ${sensorReacquire.inMilliseconds} ms for the ' 'sensor to show it).'); c.release(at); }()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._holdForCue",
-      "element": "idle()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._holdForCue",
-      "element": "step?.call('Follow-up cue played. Touch window open at sample time ' '${at.inMilliseconds} ms (${c.thresholds.confirmMs} ms for the next ' 'touch to begin, plus ${sensorReacquire.inMilliseconds} ms for the ' 'sensor to show it).')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._holdForCue",
-      "element": "step?.call('The band did not report idle in time; the touch window ' 'opens anyway.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._holdForCue",
-      "element": "step?.call('The next touch window waits for the follow-up cue to finish ' 'playing.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._maybeOpen",
-      "element": "step?.call( 'Touch window open at sample time ${at.inMilliseconds} ms, ' '${(at - first).inMilliseconds} ms after the first sample ' '(${c.thresholds.startMs} ms for the first touch to begin; a finger ' 'already on the sensor counts).', )",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._newAttempt",
-      "element": "maxTaps()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._notePacket",
-      "element": "onPacket?.call(r, wall)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._postRollSafe",
-      "element": "_postRoll()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._retry",
-      "element": "step?.call('ECG failed ($reason); trying the ECG once more.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._sendCue",
-      "element": "_now()",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._sendCue",
-      "element": "send(id)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._sendCue",
-      "element": "step?.call( '$what ${ok ? 'written' : 'could not be written'}, ' '${_now().difference(requested).inMilliseconds} ms after the request.', )",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._sendFailBuzz",
-      "element": "fb(id)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._sendFailBuzz",
-      "element": "step?.call('The failure buzz ${ok ? 'written' : 'could not be written'}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._sinceTap",
-      "element": "_now()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._stallNow",
-      "element": "_now()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._startStream",
-      "element": "_now()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._startStream",
-      "element": "beginStream()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._startStream",
-      "element": "step?.call( 'ECG stream command written, ${_sinceTap()} ms after the tap. ' 'Waiting for packets (up to ${startTimeout.inSeconds} s).', )",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._startStream",
-      "element": "step?.call('Could not start: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession._strapNowSafe",
-      "element": "strapNow?.call()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession.onFrame",
-      "element": "_now()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession.onFrame",
-      "element": "step?.call( 'Packet $_packets: $n samples, $raw with contact' '${raw > 0 ? ' (samples $first–$last)' : ''}, ' 'strap time ${r.strapTime.toStringAsFixed(3)} (newest sample), $gap, ' '$continuity, received ${(behind.inMicroseconds / 1000).round()} ms ' 'behind the freshest packet so far; ${_bandStatus(r)}', )",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession.onFrame",
-      "element": "step?.call( 'Stream is steady, ${_sinceTap()} ms after the tap ' '(two packets continuous on the sample clock, advancing in step with ' 'the wall clock, within ' '${EcgStreamReadiness.pairWindow.inMilliseconds} ms of each other).', )",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession.onFrame",
-      "element": "step?.call('First packet arrived ${_sinceTap()} ms after the tap.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession.onFrame",
-      "element": "step?.call('Presence ${_presenceOn ? 'on' : 'off'}, ${_sinceTap()} ms ' 'after the tap.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession.onFrame",
-      "element": "step?.call('Quick start: no finger in the first sampled packet; the ' 'count is 2.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession.onFrame",
-      "element": "step?.call('Sample contact ${_sampleOn ? 'on' : 'off'}, ${_sinceTap()} ms ' 'after the tap.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession.poll",
-      "element": "_now()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession.poll",
-      "element": "isStreamAlive()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession.poll",
-      "element": "step?.call( 'No steady stream ${startTimeout.inSeconds} s after the stream ' 'command ($_packets packets seen).', )",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession.start",
-      "element": "_now()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession.start",
-      "element": "onStarted?.call(tap, t.summary)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession.start",
-      "element": "step?.call('Double tap received. Starting the ECG stream.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/ecg_tap_session.dart",
-      "symbol": "EcgTapSession.start",
-      "element": "thresholds()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/gesture_dispatcher.dart",
-      "symbol": "GestureDispatcher._countedTap",
-      "element": "log?.call('[gesture] counted ${ecgTapCountName(count)}')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/gesture_dispatcher.dart",
-      "symbol": "GestureDispatcher._countedTap",
-      "element": "log?.call('[gesture] double-tap → counting taps')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/gesture_dispatcher.dart",
-      "symbol": "GestureDispatcher._countedTap",
-      "element": "log?.call('[gesture] tap counting abandoned; no action')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/gesture_dispatcher.dart",
-      "symbol": "GestureDispatcher._countedTap",
-      "element": "log?.call('[gesture] tap counting did not start: $err')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/gesture_dispatcher.dart",
-      "symbol": "GestureDispatcher._countedTap",
-      "element": "onCountTaps!(e)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/gesture_dispatcher.dart",
-      "symbol": "GestureDispatcher._ecgTap",
-      "element": "log?.call('[gesture] double-tap → ecg')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/gesture_dispatcher.dart",
-      "symbol": "GestureDispatcher._ecgTap",
-      "element": "log?.call('[gesture] ecg start failed: $err')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/gesture_dispatcher.dart",
-      "symbol": "GestureDispatcher._ecgTap",
-      "element": "start(e)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
       "file": "gestures/gesture_dispatcher.dart",
       "symbol": "GestureDispatcher._giveBackEcgTap",
       "element": "_release(claimKey)",
@@ -6739,13 +6298,6 @@
       "rule": "unresolvedInvocation",
       "file": "gestures/gesture_dispatcher.dart",
       "symbol": "GestureDispatcher.handle",
-      "element": "ecgSupported?.call()",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/gesture_dispatcher.dart",
-      "symbol": "GestureDispatcher.handle",
       "element": "labHold?.call()",
       "count": 1
     },
@@ -6768,13 +6320,6 @@
       "file": "gestures/gesture_failures.dart",
       "symbol": "GestureFailureStore.record",
       "element": "_now()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "gestures/gesture_settings.dart",
-      "symbol": "GestureSettings.ecgActive",
-      "element": "ecgInForce?.call()",
       "count": 1
     },
     {
@@ -9734,13 +9279,6 @@
     {
       "rule": "unresolvedInvocation",
       "file": "state/gesture_controller.dart",
-      "symbol": "GestureController._beginEcgForTap",
-      "element": "_ecg()",
-      "count": 6
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "state/gesture_controller.dart",
       "symbol": "GestureController._gestureCue",
       "element": "_alertDispatcher()",
       "count": 1
@@ -9750,27 +9288,6 @@
       "file": "state/gesture_controller.dart",
       "symbol": "GestureController._gestureCue",
       "element": "play()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "state/gesture_controller.dart",
-      "symbol": "GestureController._newEcgSession",
-      "element": "_clockRef()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "state/gesture_controller.dart",
-      "symbol": "GestureController._newEcgSession",
-      "element": "_ecg()",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "state/gesture_controller.dart",
-      "symbol": "GestureController._newEcgSession",
-      "element": "_recordEcgSession(r)",
       "count": 1
     },
     {
@@ -12394,48 +11911,6 @@
     {
       "rule": "unresolvedInvocation",
       "file": "ui2/profile/device_lab.dart",
-      "symbol": "EcgThresholdAdjusters.build",
-      "element": "onChanged!(thresholds.copyWith(confirmMs: v))",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ui2/profile/device_lab.dart",
-      "symbol": "EcgThresholdAdjusters.build",
-      "element": "onChanged!(thresholds.copyWith(extraSensitive: v))",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ui2/profile/device_lab.dart",
-      "symbol": "EcgThresholdAdjusters.build",
-      "element": "onChanged!(thresholds.copyWith(fallbackToDoubleTap: v))",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ui2/profile/device_lab.dart",
-      "symbol": "EcgThresholdAdjusters.build",
-      "element": "onChanged!(thresholds.copyWith(gapMs: v))",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ui2/profile/device_lab.dart",
-      "symbol": "EcgThresholdAdjusters.build",
-      "element": "onChanged!(thresholds.copyWith(startMs: v))",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ui2/profile/device_lab.dart",
-      "symbol": "EcgThresholdAdjusters.build",
-      "element": "onChanged!(thresholds.copyWith(tolerantStartup: v))",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ui2/profile/device_lab.dart",
       "symbol": "_Adjuster.build",
       "element": "set(value + step)",
       "count": 1
@@ -12445,13 +11920,6 @@
       "file": "ui2/profile/device_lab.dart",
       "symbol": "_Adjuster.build",
       "element": "set(value - step)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ui2/profile/device_lab.dart",
-      "symbol": "_EcgDoubleTapRowState._change",
-      "element": "widget.onTry!(v)",
       "count": 1
     },
     {
@@ -12550,20 +12018,6 @@
       "file": "ui2/profile/gestures.dart",
       "symbol": "BandGesturesView._tabBody",
       "element": "toggle(a, v)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ui2/profile/gestures.dart",
-      "symbol": "BandGesturesView.build",
-      "element": "onTapMethod?.call(TapCountMethod.ecg)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ui2/profile/gestures.dart",
-      "symbol": "BandGesturesView.build",
-      "element": "onTapMethod?.call(TapCountMethod.repeat)",
       "count": 1
     },
     {
@@ -13173,20 +12627,6 @@
       "file": "ui2/screens/ecg_screener.dart",
       "symbol": "EcgScreenerScreen._open",
       "element": "open(u)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ui2/screens/explorer.dart",
-      "symbol": "_ExplorerViewState._ensureAnnotations",
-      "element": "load(from, to)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ui2/screens/explorer_annotations.dart",
-      "symbol": "loadAnnotations",
-      "element": "debugPrint('explorer annotations: $e')",
       "count": 1
     },
     {

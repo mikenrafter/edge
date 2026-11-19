@@ -63,7 +63,7 @@ class _Rig {
       performNative: (_) async => true,
       claim: (k) async => claims.add(k),
       release: (k) async => claims.remove(k),
-      ecgSupported: () => false,
+
       repeatSession: repeat,
       onWorkoutToggle: (e) async => ran.add('workout'),
       onMarkMoment: (e) async => ran.add('moment'),

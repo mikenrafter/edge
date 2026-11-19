@@ -118,13 +118,11 @@ class _Host {
       haptics: haptics,
       deviceLab: lab,
       alertDispatcher: () => alerts,
-      ecg: () => ecg,
-      ecgSupported: () => false,
-      clockRef: () => null,
+
       log: (_) {},
       onMarkMoment: (e) async {},
       onWorkoutToggle: (e) async {},
-      recordEcgSession: (r) async {},
+
       loadPatterns: () async => HapticPatternStore.decodeSeeded(null),
       readCueAssignments: () => '',
       readFailures: () => '',

@@ -17289,9 +17289,6 @@
   "@findingTitleRhrShift": {
     "description": "Design 04 cardio transparency: Your resting heart-rate trend shifted"
   },
-  "@exploreScaleDay": {
-    "description": "Data Explorer scale switch: the readings of one day on a clock axis"
-  },
   "tracksLock": "Lock value",
   "typicalEnergy": "Energy / alertness",
   "@momentFollowUpAssumedWaterLine": {
@@ -17394,7 +17391,6 @@
   "@symptomAreaUpperAbdomen": {
     "description": "Symptom describer: body area \"upper abdomen\" (lower case; used inside the sentence)"
   },
-  "loadingExplorer": "Reading the metrics you picked",
   "@hapticScoreOneSecond": {
     "description": "Spoken total length of a haptic pattern that lasts exactly one second"
   },
@@ -17482,7 +17478,6 @@
   "tracksActivity": "Activity",
   "snoozeRowMinutes": "Snooze for",
   "momentChoiceCaffeine": "Caffeine",
-  "exploreNoDataRange": "Nothing recorded for these in this range.",
   "@guideAddNapFoundTitle": {
     "description": "Footer card title of the add-a-nap guide: naps the app detected itself."
   },
@@ -17494,7 +17489,6 @@
     }
   },
   "loadingCalculatingToday": "Calculating today",
-  "exploreFailedTitle": "Could not read these metrics",
   "@deriveProgressDayOn": {
     "placeholders": {
       "i": {
@@ -17535,22 +17529,11 @@
   },
   "wakeDreamFromDream": "From a dream",
   "tracksExperimentBegin": "Begin experiment",
-  "@exploreRange6m": {
-    "description": "Data Explorer range chip: the last 6 months"
-  },
   "@strengthCustomWeight": {
     "description": "Strength set editor copy."
   },
   "typicalLatency": "Bedtime caffeine / sleep latency",
   "syncLineWorking": "Working it out…",
-  "@exploreBaselineSemantics": {
-    "description": "Screen-reader label of the baseline toggle",
-    "placeholders": {
-      "metric": {
-        "type": "String"
-      }
-    }
-  },
   "tracksExperimentWeeks": "{count} weeks",
   "@investigateFlagNotScreened": {
     "description": "Design 04 cardio transparency: not screened"
@@ -17577,7 +17560,6 @@
   "@experimentalSleepHmm": {
     "description": "Opt-in experimental offline HMM sleep staging setting."
   },
-  "exploreHint": "Pick up to 4 metrics below. They share one time axis, each on its own scale.",
   "loadingPhoneRhr": "Reading resting heart rate from {store}",
   "@symptomAreaFace": {
     "description": "Symptom describer: body area \"face\" (lower case; used inside the sentence)"
@@ -17601,14 +17583,12 @@
   "@momentChoiceSymptom": {
     "description": "Quick answer for a marked moment: a symptom"
   },
-  "exploreBaselineToggle": "Usual",
   "@sleepDetailCorrectionNoRecordings": {
     "description": "Shown instead of the sleep correction buttons on a night with no detailed recordings on the phone that were never pruned (imported or never worn)."
   },
   "@loadingCircadian": {
     "description": "Loading status for Body clock."
   },
-  "exploreRange6m": "6 mo",
   "syncNoteDonePartial": "Done (partial)",
   "tracksRemove": "Remove",
   "tracksAdjustedFor": "Adjusted for: {tracks}",
@@ -17633,7 +17613,6 @@
   "@ecgCaveatQualityUnchecked": {
     "description": "WHOOP MG ECG: Band-reported. The app has not checked this recording's quality yet."
   },
-  "exploreNoDataDay": "Nothing recorded for these on this day.",
   "@pulseSummaryBody": {
     "description": "Body of that summary. days is the list of recorded local dates; count is how many, so one day reads in the singular.",
     "placeholders": {
@@ -17801,7 +17780,6 @@
     "description": "Install-an-image screen (WHOOP 5): ConfirmTitle"
   },
   "momentFollowUpAmountHint": "Amount in {unit} (optional)",
-  "exploreScaleDaily": "Daily",
   "symptomKindNumbness": "numbness",
   "@hapticsTaskerSectionSub": {
     "description": "Note at the top of the Tasker group on the Haptics screen"
@@ -17936,7 +17914,6 @@
     }
   },
   "snoozeValueSeconds": "{s} s",
-  "exploreScaleDay": "Day",
   "investigateConfidence24h": "ความเพียงพอของข้อมูลใน 24 ชั่วโมง",
   "ecgDetailBandLogic": "The band decides the result, and its logic is proprietary and unknown. This app only shows what the band reports.",
   "@homeSinceTime": {
@@ -17948,9 +17925,6 @@
   },
   "@healthWhyNotEnoughOvernight": {
     "description": "Generic reason on an absent Last night card when no specific reason is known"
-  },
-  "@loadingExplorer": {
-    "description": "Loading status while the explorer reads the picked metrics."
   },
   "@snoozeValueMinutes": {
     "description": "Row value: minutes.",
@@ -18175,18 +18149,12 @@
   "importPrepCounting": "Counting what is in the backup",
   "tracksStress": "Cortisol / stress",
   "ecgDetailFirmware": "Band firmware",
-  "@exploreFailedTitle": {
-    "description": "Data Explorer read-failure title"
-  },
   "settingsLogsRowTitle": "Logs",
   "ecgDetailAvgHr": "Average heart rate",
   "@momentReviewPair": {
     "description": "Button that pairs a nap or workout mark with a second mark as its start and end"
   },
   "momentFollowUpEmptyTitle": "Nothing to follow up on",
-  "@exploreToday": {
-    "description": "Data Explorer day stepper: the label of the current day"
-  },
   "@guideDeleteWhatTitle": {
     "description": "Footer card title: the effect of deleting a workout."
   },
@@ -18446,7 +18414,6 @@
   "tracksDailySince": "Daily since {from}",
   "homeHelpFirstWeekCounting": "Your first week: wear it to sleep. {recoveryStarts}, strain from day {strainDay}.",
   "typicalSleep": "Expected sleep",
-  "exploreToday": "Today",
   "importStageSleep": "sleep",
   "@homeSleepOnTrack": {
     "description": "Sleep ring subtitle before a night is scored: whole sleep cycles the estimate covers, then the estimated time asleep.",
@@ -18704,18 +18671,12 @@
   "@guideExitLabel": {
     "description": "Screen-reader label of the Exit button on the guide card."
   },
-  "@exploreNormalised": {
-    "description": "Data Explorer note under the chart while every line is scaled to its own range"
-  },
   "tracksSections": "Your sections",
   "@capReasonPebble2OnlyEstimated": {
     "description": "Caption under Pebble's recovery row: Pebble 2 only (the 2 SE has no heart-rate sensor), and recovery is an estimate."
   },
   "symptomSideCenter": "center",
   "loadingBeats": "Reading the night's beats",
-  "@exploreScaleDaily": {
-    "description": "Data Explorer scale switch: one reading per day over a range of days"
-  },
   "pulseSummaryDaysMore": "{days} และอีก {more} วัน",
   "@settingsWaterAssumeRowSub": {
     "description": "Settings, water reminder: what the assume toggle does"
@@ -18755,9 +18716,6 @@
   "importResuming": "Resuming {stage}",
   "homeOlderVersion": "Version {version}",
   "reviewReadDays": "Reading the available day list",
-  "@exploreRange30": {
-    "description": "Data Explorer range chip: the last 30 days"
-  },
   "sleepDetailMedicalDisclaimer": "Experimental research algorithm. Not a medical device. Consult a physician for sleep disorders.",
   "typicalMeals": "Typical large meals",
   "@flashConfirmCancel": {
@@ -19043,7 +19001,6 @@
     "description": "Symptom describer: kind \"other\" (lower case; \"Other\" lets the wearer type their own)"
   },
   "syncLineSyncedThrough": "synced through {when}",
-  "exploreRangeCustom": "Custom",
   "@coachChatgptPrivacy": {
     "description": "Coach, ChatGPT sign-in: shown while signing in or out with ChatGPT."
   },
@@ -19127,7 +19084,6 @@
     "description": "Note under the hypnogram when the default estimate replaced the experimental model for a reason this version does not recognise."
   },
   "activityNotAMeal": "Not a meal",
-  "exploreBaselineSemantics": "{metric} against your usual",
   "loadingZones": "Reading your heart-rate zones",
   "@momentReviewProgressNotSaved": {
     "description": "Shown on a paired range that was stopped because its progress could not be stored; it stays queued"
@@ -19351,9 +19307,6 @@
   "syncStatusWaitingCalculation": "Waiting for another calculation…",
   "asOfTime": "As of {time}",
   "investigatePrvWindowsFlagged": "Windows flagged, {scope}",
-  "@exploreBaselineToggle": {
-    "description": "Data Explorer toggle on a picked metric: draw it against your usual level instead of its own range"
-  },
   "sleepDetailUserWindowBody": "The band recorded too little inside your times to score this night.",
   "@flashAcknowledge": {
     "description": "Install-an-image screen: after an unanswered commit, the user confirms they checked the firmware version."
@@ -19376,14 +19329,6 @@
   },
   "@loadingHealthOverview": {
     "description": "Loading status while the Health overview reads today and the trend charts."
-  },
-  "@exploreRemoveSemantics": {
-    "description": "Screen-reader label of a picked metric's chip, which removes it",
-    "placeholders": {
-      "metric": {
-        "type": "String"
-      }
-    }
   },
   "@flashConfirmBody": {
     "description": "Install-an-image screen (WHOOP 5): ConfirmBody",
@@ -19577,7 +19522,6 @@
   "@bandStatusFirmwareLockedTitle": {
     "description": "BandStatus card title: band firmware 50.43 withholds all data until a WHOOP membership token is on it"
   },
-  "gestureEcgTapName": "{n, plural, =0{Double tap} one{Double tap + {n} ECG tap} other{Double tap + {n} ECG taps}}",
   "tracksHrv": "Heart rate variability",
   "@guideAlarmMissingBody": {
     "description": "Footer card body: why the Wake time row can be missing (the day is off, or a section is folded). {wake} is the row, {more} the Sleep tab section that holds the Alarm row.",
@@ -19597,18 +19541,9 @@
   },
   "olderVersionReasonAge": "This metric needs your age, which is not on file.",
   "tracksAddRange": "Add date range",
-  "@gestureEcgTapName": {
-    "description": "Name of an ECG tap count on the Gestures screen: the opening double tap plus {n} touches of the ECG sensor (0 is the plain double tap).",
-    "placeholders": {
-      "n": {
-        "type": "int"
-      }
-    }
-  },
   "syncNoteAlreadyConnected": "Already connected",
   "tracksExperimentPending": "The effect, with its uncertainty, is reported when the experiment ends.",
   "tracksExperimentStop": "Stop experiment",
-  "exploreRange1y": "1 y",
   "@momentReviewRangeWorkoutOverlap": {
     "description": "Validation error for a paired workout that overlaps a saved workout"
   },
@@ -19625,9 +19560,6 @@
         "type": "int"
       }
     }
-  },
-  "@exploreUnitNormalised": {
-    "description": "Data Explorer chart header, where a unit would be: the lines are not in the metrics' own units"
   },
   "ecgNotRecorded": "not recorded",
   "@dayStrainWornAsOf": {
@@ -19703,9 +19635,6 @@
     "description": "Follow-up list: keep an assumed glass"
   },
   "hapticScoreSeconds": "{value} seconds",
-  "@exploreRange7": {
-    "description": "Data Explorer range chip: the last 7 days, kept short to fit five chips on a phone"
-  },
   "@homeSleepEstimateDefaultTight": {
     "description": "Tightest sleep estimate caption: keeps the estimate marker, cycles, duration and the default-target qualifier.",
     "placeholders": {
@@ -19745,9 +19674,6 @@
   },
   "olderVersionMonthGridRow": "Some days are from an older calculation",
   "pulseSummaryTitle": "{count, plural, =1{พบสัญญาณชีพจรไม่สม่ำเสมอใน 1 วัน} other{พบสัญญาณชีพจรไม่สม่ำเสมอใน {count} วัน}}",
-  "@exploreHint": {
-    "description": "Data Explorer: shown in place of the chart until a metric is picked"
-  },
   "devLogsClearConfirmBody": "Every saved day of the dev log, and the old sync log if it is still there, is deleted from this phone. Anything you exported stays where you sent it. There is no undo.",
   "@guideDeleteWhatBody": {
     "description": "Footer card body."
@@ -19765,7 +19691,6 @@
   "symptomDescriberSeverity": "How strong?",
   "syncStatusConnecting": "Connecting to the band…",
   "consentPromptTitle": "Your privacy choices",
-  "exploreNormalisedBaseline": "Each line is scaled to fit. Lines in usual-range mode put your normal in the middle and far-off values at the edges. Touch the chart for real values.",
   "@momentFollowUpTitle": {
     "description": "Title of the screen that lists marked moments to answer"
   },
@@ -19833,9 +19758,6 @@
     }
   },
   "tracksExperimentViewLast": "View last experiment",
-  "@exploreRangeCustom": {
-    "description": "Data Explorer range chip: opens a date range picker"
-  },
   "tracksNever": "Nothing logged yet",
   "gesturesFollowUpTitle": "Follow up about my marked moments",
   "ecgScreenerAfibHighHrMeaning": "The band's screen flagged an irregular rhythm together with a heart rate from 100 to 150 beats per minute. A flag is a prompt for a proper test, not a finding. See a clinician for an ECG, and soon if you feel unwell, short of breath or have chest pain.",
@@ -19843,13 +19765,9 @@
   "pendingSectionLoaded": "Loaded, {name}",
   "devLogsClearConfirmTitle": "Delete the dev log?",
   "syncLineSkipped": "Skipped",
-  "@exploreNoDataRange": {
-    "description": "Data Explorer: every picked metric is empty over the range"
-  },
   "@coachChatgptTermsBody": {
     "description": "Coach, ChatGPT sign-in: shown while signing in or out with ChatGPT."
   },
-  "exploreNoDataFor": "No data for {metric}",
   "@ecgDetailResultCode": {
     "description": "WHOOP MG ECG: Band result code"
   },
@@ -19916,7 +19834,6 @@
   "momentReviewRangeWorkoutLength": "A workout has to last between 1 minute and 24 hours.",
   "symptomAreaHips": "hips",
   "tracksGlobalLearning": "Observing · first 28 days",
-  "exploreUnitNormalised": "Normalised",
   "activityTrackDidYouOn": "Did you have or do “{track}” on {date}?",
   "@investigatePrvOpenUnflagged": {
     "description": "Design 04 PRV diagnostics: {n} beats, not flagged",
@@ -20040,9 +19957,6 @@
   "hapticsSafety": "Safety",
   "tracksMax": "Maximum",
   "settingsWaterAssumeRowTitle": "Assume I drank water",
-  "@exploreRange1y": {
-    "description": "Data Explorer range chip: the last year"
-  },
   "investigatePrvBeatsRaw": "Beats before cleaning, {scope}",
   "@importRecalculatingDay": {
     "placeholders": {
@@ -20092,7 +20006,6 @@
   },
   "supplementStrainWasNotScoredForThisDay": "Strain wasn't scored for this day: there weren't enough earlier days to set your quiet level.",
   "findingDetailRhrShiftRisen": "Your resting heart rate is above your usual.",
-  "exploreRange30": "30 d",
   "@homeGlanceFillsMove": {
     "description": "Caption on an empty At a glance tile that fills from movement (steps, active energy)."
   },
@@ -20120,9 +20033,6 @@
     "description": "Strength set editor copy."
   },
   "gesturesBreatheTitle": "Breathing session",
-  "@exploreNormalisedBaseline": {
-    "description": "Data Explorer note under the chart while at least one line is against its baseline"
-  },
   "investigatePrvWhyArtifact": "Too many beats needed correction or removal to screen this recording. {seen} / {allowed}",
   "@symptomAreaUpperBack": {
     "description": "Symptom describer: body area \"upper back\" (lower case; used inside the sentence)"
@@ -20183,7 +20093,6 @@
   "@ecgScreenerInconclusiveMeaning": {
     "description": "WHOOP MG ECG: The band could not reach a result from this recording; the signal may have been too noisy or too short. It say"
   },
-  "exploreNormalised": "Each line is scaled to its own range, so compare shapes, not values. Touch the chart for real values.",
   "ecgDetailFinalMask": "Band reasons, final second",
   "@momentFollowUpEmptyTitle": {
     "description": "Empty state title when no marked moment is waiting for an answer"
@@ -20266,9 +20175,6 @@
     "description": "Symptom describer: body area \"lower back\" (lower case; used inside the sentence)"
   },
   "pulseAlertOff": "ไม่ได้แจ้งเตือน: ปิดการแจ้งเตือนไว้",
-  "@exploreNoDataDay": {
-    "description": "Data Explorer: every picked metric is empty on the chosen day"
-  },
   "@ecgReasonBandUnreadable": {
     "description": "WHOOP MG ECG: the band could not interpret the recording."
   },
@@ -20323,9 +20229,6 @@
     "description": "Loading status for Wellness."
   },
   "momentReviewRangeFuture": "A range can't end in the future.",
-  "@exploreLimit": {
-    "description": "Data Explorer: shown when a fifth metric is refused"
-  },
   "@guideLogPastStep2": {
     "description": "Step 2 caption. {log} is the Log a past workout button.",
     "placeholders": {
@@ -20443,14 +20346,6 @@
   "momentFollowUpAnswer": "Answer",
   "@flashChooseAnother": {
     "description": "Install-an-image screen (WHOOP 5): ChooseAnother"
-  },
-  "@exploreNoDataFor": {
-    "description": "Data Explorer: one picked metric has nothing to draw while another does",
-    "placeholders": {
-      "metric": {
-        "type": "String"
-      }
-    }
   },
   "@findingNotificationIrregularRhythm": {
     "description": "Daily pulse flag wording. day is the recorded local calendar date, never the processing date.",
@@ -20588,7 +20483,6 @@
   "@guideStartNoBandTitle": {
     "description": "Footer card title of the start-a-workout guide."
   },
-  "exploreRemoveSemantics": "Remove {metric}",
   "hapticsSectionEcg": "ECG",
   "@deviceActionBreatheLabel": {
     "description": "Band double-tap action picker: label for the breathing exercise"
@@ -20621,7 +20515,6 @@
   "deriveDailyProgress": "Calculating sleep, recovery and strain · day {index} of {total}",
   "investigatePrvWhyNoPairs": "No successive usable beats to compare",
   "syncSemFailed": "failed",
-  "exploreRange7": "7 d",
   "investigatePrvArtifactShare": "จังหวะชีพจรที่แก้ไขหรือตัดออกระหว่างการกรองข้อมูล, {scope}",
   "@syncDurationMinutesOnly": {
     "placeholders": {
@@ -20743,7 +20636,6 @@
   "@loadingDaySteps": {
     "description": "Loading status while one day's steps are read."
   },
-  "exploreLimit": "You can compare up to 4 metrics. Remove one to add another.",
   "homeOlderTitle": "* Strain is from an older calculation",
   "@hapticScoreSeconds": {
     "description": "Spoken total length of a haptic pattern; value is a number such as 1.5 or 2",
@@ -21340,5 +21232,9 @@
   "timelineNoMatches": "ไม่มีกิจกรรมที่ตรงกับตัวกรองเหล่านี้",
   "timelineMovementShare": "การเคลื่อนไหว (% ของเวลาที่เคลื่อนไหว)",
   "timelineMovementNote": "การเคลื่อนไหวคือสัดส่วนของแต่ละช่วง 5 นาทีที่ข้อมือหมุนมากกว่า 5° ระหว่างการอ่านค่า ไม่ใช่จำนวนก้าวหรือความหนักของกิจกรรม",
-  "timelineHere": "ที่นี่"
+  "timelineHere": "ที่นี่",
+  "pilotLabel": "ทดลอง",
+  "@pilotLabel": {
+    "description": "Badge for an experimental feature kept in this build"
+  }
 }

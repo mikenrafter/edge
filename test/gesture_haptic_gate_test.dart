@@ -29,7 +29,7 @@ import 'support/double_tap_repeat_rig.dart' show repTap;
 
 const _channel = MethodChannel('openstrap/device_actions');
 
-Future<GestureSettings> _boot({bool three = false, bool ecg = false}) async {
+Future<GestureSettings> _boot({bool three = false}) async {
   SharedPreferences.setMockInitialValues({});
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(_channel, (call) async {
@@ -40,12 +40,12 @@ Future<GestureSettings> _boot({bool three = false, bool ecg = false}) async {
   await s.bootstrap();
   await s.setDoubleTapActions({DeviceAction.workoutToggle});
   if (three) await s.setActionsForTaps(3, {DeviceAction.markMoment});
-  if (ecg) await s.setTapMethod(TapCountMethod.ecg);
+
   return s;
 }
 
 class _Rig {
-  _Rig(this.settings, {this.mg = false, this.open = false}) {
+  _Rig(this.settings, {this.open = false}) {
     repeat = DoubleTapRepeatSession(
       maxTaps: () => settings.repeatTapMax,
       window: () => settings.repeatTapWindow,
@@ -67,11 +67,7 @@ class _Rig {
       performNative: (_) async => true,
       claim: (k) async => claims.add(k),
       release: (k) async => claims.remove(k),
-      ecgSupported: () => mg,
-      onCountTaps: (e) async {
-        counting.add(e);
-        return 3;
-      },
+
       repeatSession: repeat,
       onWorkoutToggle: (e) async => ran.add('workout'),
       onMarkMoment: (e) async => ran.add('moment'),
@@ -84,7 +80,6 @@ class _Rig {
   }
 
   final GestureSettings settings;
-  final bool mg;
 
   /// What the gate answers; change it between taps.
   bool open;
@@ -135,28 +130,6 @@ void main() {
       expect(await r.dispatcher.handle(repTap(sec: 5)), isEmpty,
           reason: 'and a later tap with the budget gone again is not acted on');
       expect(r.ran, ['workout']);
-    });
-  });
-
-  group('a counted gesture on an ECG band', () {
-    test('no haptic budget: the touch counter does not start (so no start '
-        'cue), and no action runs', () async {
-      final r = _Rig(await _boot(three: true, ecg: true), mg: true);
-      final out = await r.dispatcher.handle(repTap());
-      expect(out, isEmpty);
-      expect(r.counting, isEmpty, reason: 'no session, no capture, no cue');
-      expect(r.ran, isEmpty);
-      expect(r.claims, isEmpty);
-      expect(r.failed, isEmpty);
-    });
-
-    test('with budget it counts and runs the final count\'s action (control)',
-        () async {
-      final r = _Rig(await _boot(three: true, ecg: true), mg: true, open: true);
-      final out = await r.dispatcher.handle(repTap());
-      expect(out.single.taps, 3);
-      expect(r.counting, hasLength(1));
-      expect(r.ran, ['moment']);
     });
   });
 

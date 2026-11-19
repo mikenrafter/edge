@@ -1,7 +1,7 @@
 // What the Device lab remembers and how it reads back: every line carries its
 // wall time to the millisecond, the time since the session's tap and the time
 // since the previous line; sessions end with a one-line summary; the whole log
-// copies out as plain text. RAM only.
+// saves as plain text. RAM only.
 
 import 'dart:io';
 
@@ -15,15 +15,15 @@ void main() {
     test('wall time with ms, time since the tap, time since the last line', () {
       final log = DeviceLabLog();
       log.beginSession(
-        method: 'ECG sensor touches',
-        settings: 'start 300 ms, gap 200 ms, confirm 200 ms',
+        method: 'More double taps',
+        settings: 'window 2500 ms',
         tapAt: _at(0),
         at: _at(0),
       );
       log.addStep('Double tap received.', at: _at(10));
-      log.addStep('ECG stream command written.', at: _at(1210));
+      log.addStep('Confirmation cue written.', at: _at(1210));
       expect(log.steps.first,
-          '09:15:04.460 | tap +1210 ms | last +1200 ms | ECG stream command written.');
+          '09:15:04.460 | tap +1210 ms | last +1200 ms | Confirmation cue written.');
       expect(log.steps[1],
           '09:15:03.260 | tap +10 ms | last +10 ms | Double tap received.');
     });
@@ -59,16 +59,15 @@ void main() {
     test('a counted session: method, settings, count and total time', () {
       final log = DeviceLabLog();
       log.beginSession(
-        method: 'ECG sensor touches',
-        settings: 'start 300 ms, gap 200 ms, confirm 200 ms',
+        method: 'More double taps',
+        settings: 'window 2500 ms',
         tapAt: _at(0),
         at: _at(0),
       );
       log.endSession(count: 3, at: _at(6400));
       expect(
         log.sessionSummaries.single,
-        'ECG sensor touches | start 300 ms, gap 200 ms, confirm 200 ms | '
-        'Double tap + 1 ECG tap | 6.4 s in total',
+        'More double taps | window 2500 ms | 3 taps | 6.4 s in total',
       );
     });
 

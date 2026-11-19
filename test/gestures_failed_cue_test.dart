@@ -29,7 +29,6 @@
 // fixed engine call.
 
 import 'support/band_handoff.dart';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,7 +41,6 @@ import 'package:openstrap_edge/haptics/pattern_store.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
 
 import 'support/haptics_screen_support.dart';
-import 'support/dart_source_lexical.dart';
 import 'support/virtual_mg.dart';
 
 const String _key = 'gesture.failed';
@@ -223,16 +221,4 @@ void main() {
     });
   });
 
-  group('the wiring', () {
-    test('the gesture controller plays the failure through cues.failed, not a '
-        'fixed engine buzz', () {
-      final src = File('lib/state/gesture_controller.dart').readAsStringSync();
-      final fn = codeOnly(bodyOf(src, 'Future<bool> _ecgTapFailBuzz'));
-      expect(fn, contains('cues.failed'));
-      expect(fn, isNot(contains('buzzBand')));
-      expect(fn, contains('_gestureCue'),
-          reason: 'one path for every gesture cue: the dispatcher claim, the '
-              'wearer\'s assignment read, the lab work wrapper');
-    });
-  });
 }

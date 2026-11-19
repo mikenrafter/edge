@@ -1,23 +1,8 @@
-// ECG trace replay: run EcgTapSession over recorded packets, off the band.
-//
-// A trace is the Device lab's "ECG packets" export (lib/gestures/lab_log.dart,
-// `labPacketFormat`): one `r17v1` line per live R17 packet with the phone's
-// receipt time, the strap time and the raw samples. A fixture file may add
-// `session tag=... | settings=... | count=...` lines (what the band run
-// decided) and `#` comments.
-//
-// [replayTrace] feeds one session's packets to a real EcgTapSession on a
-// virtual clock (the session's `now` is each packet's receipt time; its waits
-// advance nothing), so a change to the counter or the session can be tried
-// against what the hardware actually sent.
-
+// Parse the Device lab ECG packet export for hardware-probe tests.
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:openstrap_edge/gestures/ecg_tap_counter.dart';
-import 'package:openstrap_edge/gestures/ecg_tap_session.dart';
-import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart';
 
 /// Build a parsed live R17 packet from its parts (through the real parser).
@@ -151,89 +136,4 @@ class Trace {
     }
     return Trace(packets, sessions);
   }
-}
-
-/// Thresholds from a lab settings summary ("start 500 ms, gap 200 ms, confirm
-/// 1000 ms, extra sensitive").
-EcgTapThresholds thresholdsOf(String summary) {
-  int ms(String name) =>
-      int.parse(RegExp('$name (\\d+) ms').firstMatch(summary)!.group(1)!);
-  return EcgTapThresholds(
-    startMs: ms('start'),
-    gapMs: ms('gap'),
-    confirmMs: ms('confirm'),
-    extraSensitive: summary.contains('extra sensitive'),
-  );
-}
-
-class ReplayResult {
-  ReplayResult(this.steps, this.buzzes, this.results);
-  final List<String> steps;
-
-  /// Pulses of every follow-up buzz call, in order (always 1).
-  final List<int> buzzes;
-  final List<(int?, String?)> results;
-
-  /// The count decided, or null when the trace ended first.
-  int? get count => results.isEmpty ? null : results.single.$1;
-
-  /// Taps counted so far, decided or not: the opening 2, plus one per
-  /// follow-up buzz asked for (one per count increment).
-  int get counted {
-    final decided = count;
-    if (decided != null) return decided;
-    return 2 +
-        steps.where((s) => s.startsWith('Follow-up buzz requested')).length;
-  }
-}
-
-/// Replay [packets] through a fresh EcgTapSession. The tap is taken to have
-/// arrived [tapLead] before the first packet. [max] is the session's tap limit.
-Future<ReplayResult> replayTrace(
-  List<TracePacket> packets, {
-  required EcgTapThresholds thresholds,
-  int max = 5,
-  Duration? reacquire,
-  Duration? settle,
-  Duration tapLead = const Duration(seconds: 1),
-}) async {
-  final steps = <String>[];
-  final buzzes = <int>[];
-  final results = <(int?, String?)>[];
-  var now = packets.first.receivedAt.subtract(tapLead);
-  final s = EcgTapSession(
-    beginStream: () async => true,
-    endStream: () async {},
-    isStreamAlive: () => true,
-    buzz: (pulses, _) async {
-      buzzes.add(pulses);
-      return true;
-    },
-    maxTaps: () => max,
-    thresholds: () => thresholds,
-    onFinished: (c, r) => results.add((c, r)),
-    step: steps.add,
-    now: () => now,
-    wait: (_) async {},
-    pollEvery: const Duration(hours: 1),
-    sensorReacquire: reacquire ?? const Duration(milliseconds: 1500),
-    sensorSettle: settle ?? const Duration(milliseconds: 2500),
-  );
-  final tap = StrapEvent(
-    eventId: 14,
-    tsEpoch: now.millisecondsSinceEpoch ~/ 1000,
-    receivedAt: now,
-    hex: '',
-    deviceId: 'band',
-  );
-  await s.start(tap);
-  for (final p in packets) {
-    now = p.receivedAt;
-    s.onFrame(p.r);
-    await Future<void>.delayed(Duration.zero);
-  }
-  for (var i = 0; i < 6; i++) {
-    await Future<void>.delayed(Duration.zero);
-  }
-  return ReplayResult(steps, buzzes, results);
 }

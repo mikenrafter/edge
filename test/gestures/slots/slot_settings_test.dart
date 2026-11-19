@@ -24,14 +24,6 @@ const _channel = MethodChannel('openstrap/device_actions');
 const _globalKey = 'gesture_time_buzz_mode';
 String _slotKey(String slot) => 'gesture_slot_options_$slot';
 
-// The exact texts the UI shows; pinned literally so a reword is a decision.
-const _turnOthersOff =
-    "ECG takes over the band while it records, so it can't share a gesture "
-    'with other actions. Turn the others off first.';
-const _turnEcgOff =
-    "ECG takes over the band while it records, so it can't share a gesture "
-    'with other actions. Turn ECG off first.';
-
 Future<GestureSettings> _boot([Map<String, Object> stored = const {}]) async {
   SharedPreferences.setMockInitialValues({...stored});
   final s = GestureSettings();
@@ -44,10 +36,6 @@ Future<GestureSettings> _restart() async {
   await s.bootstrap();
   return s;
 }
-
-Matcher _refused(String reason) => isA<ActionToggleRefusedExclusive>()
-    .having((r) => r.reason, 'reason', reason)
-    .having((r) => r.ok, 'ok', isFalse);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -62,7 +50,6 @@ void main() {
   group('slot ids', () {
     test('the four slots and their stable ids', () {
       expect(GestureSlots.all, ['double', 'triple', 'quad', 'quint']);
-      expect(GestureSlots.ecgSlot, 'double');
     });
 
     test('ofTaps / tapsOf map 2..5 both ways; anything else is an error', () {
@@ -273,13 +260,6 @@ void main() {
       expect(s.overlaps(), isEmpty);
     });
 
-    test('ECG on the double tap is a mode, not an action: never an overlap',
-        () async {
-      final s = await _boot();
-      await s.setEcgOnDoubleTap(true);
-      await s.setActionsForTaps(3, {DeviceAction.markMoment});
-      expect(s.overlaps(), isEmpty);
-    });
   });
 
   group('trySetAction', () {
@@ -329,68 +309,5 @@ void main() {
       }
     });
 
-    test('ECG on a slot with other actions is refused, with the reason, and '
-        'nothing changes', () async {
-      final s = await _boot();
-      await s.trySetAction('double', DeviceAction.logWater, true);
-      var told = 0;
-      s.addListener(() => told++);
-      final r = await s.trySetEcgOnDoubleTap(true);
-      expect(r, _refused(_turnOthersOff));
-      expect(r, _refused(kEcgExclusiveTurnOthersOff));
-      expect(s.ecgOnDoubleTap, isFalse);
-      expect(s.doubleTapActions, {DeviceAction.logWater});
-      expect((await SharedPreferences.getInstance()).getBool(
-          'gesture_ecg_on_double_tap'), isNull);
-      expect(told, 0);
-    });
-
-    test('another action on a slot that has ECG is refused, with the reason, '
-        'and nothing changes', () async {
-      final s = await _boot();
-      expect(await s.trySetEcgOnDoubleTap(true), isA<ActionToggleOk>());
-      var told = 0;
-      s.addListener(() => told++);
-      final r = await s.trySetAction('double', DeviceAction.logWater, true);
-      expect(r, _refused(_turnEcgOff));
-      expect(r, _refused(kEcgExclusiveTurnEcgOff));
-      expect(s.ecgOnDoubleTap, isTrue);
-      expect(s.doubleTapActions, isEmpty);
-      // bootstrap stores an empty mask (0); a refusal must leave it so.
-      expect((await SharedPreferences.getInstance())
-          .getInt('gesture_double_tap_actions') ?? 0, 0);
-      expect(told, 0);
-    });
-
-    test('ECG on an empty double tap is fine, and survives a restart',
-        () async {
-      final s = await _boot();
-      expect(await s.trySetEcgOnDoubleTap(true), isA<ActionToggleOk>());
-      expect(s.ecgOnDoubleTap, isTrue);
-      expect((await _restart()).ecgOnDoubleTap, isTrue);
-    });
-
-    test('turning ECG off, or an action off, is never refused', () async {
-      final s = await _boot();
-      await s.trySetEcgOnDoubleTap(true);
-      expect(await s.trySetAction('double', DeviceAction.logWater, false),
-          isA<ActionToggleOk>());
-      expect(await s.trySetEcgOnDoubleTap(false), isA<ActionToggleOk>());
-      expect(s.ecgOnDoubleTap, isFalse);
-      expect(await s.trySetAction('double', DeviceAction.logWater, true),
-          isA<ActionToggleOk>(),
-          reason: 'with ECG off the slot takes actions again');
-    });
-
-    test('ECG is the double tap\'s: it does not block another slot, and '
-        'another slot\'s actions do not block it', () async {
-      final s = await _boot();
-      await s.trySetAction('triple', DeviceAction.logWater, true);
-      expect(await s.trySetEcgOnDoubleTap(true), isA<ActionToggleOk>());
-      expect(await s.trySetAction('quad', DeviceAction.markMoment, true),
-          isA<ActionToggleOk>());
-      expect(s.actionsForTaps(3), {DeviceAction.logWater});
-      expect(s.actionsForTaps(4), {DeviceAction.markMoment});
-    });
   });
 }

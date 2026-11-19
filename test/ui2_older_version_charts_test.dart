@@ -12,7 +12,7 @@ import 'package:openstrap_edge/ui2/screens/screens.dart'
     show specOf, WorkoutScreen;
 import 'package:openstrap_edge/ui2/ui2.dart';
 
-import 'support/explorer_harness.dart';
+import 'support/chart_harness.dart';
 import 'support/older_version_fixtures.dart';
 
 void main() {
@@ -21,7 +21,6 @@ void main() {
     await loadType();
   });
 
-  setUp(clearPrefs);
 
   group('month grid', () {
     Future<void> host(WidgetTester t, List<Map<String, dynamic>> strain) async {
@@ -117,122 +116,7 @@ void main() {
     });
   });
 
-  group('Explorer scrub readout', () {
-    List<Map<String, dynamic>> pts() => [
-          pt('2026-09-30', 7),
-          {...pt('2026-10-01', 8), 'from_older_version': 104},
-          pt('2026-10-03', 9),
-        ];
 
-    Future<void> open(WidgetTester t) async {
-      await pumpExplorer(
-          t, ExplorerRepo(charts: {specOf('strain').chartKey: pts()}));
-      await tapKey(t, 'explore-range:d7');
-      await tapKey(t, 'explore-pick:strain');
-    }
-
-    testWidgets('the flagged day: real value, asterisk and note', (t) async {
-      await open(t);
-      await scrubAt(t, 3.5 / 7); // 1 Oct
-      expect(readoutText(t, specOf('strain').title), contains('8'));
-      expect(olderMark('readout'), findsOneWidget);
-      expect(find.textContaining(kNoteV104), findsNothing,
-          reason: 'a scrub never adds a reason row');
-    });
-
-    testWidgets('a current day beside it: no marker', (t) async {
-      await open(t);
-      await scrubAt(t, 5.5 / 7); // 3 Oct
-      expect(readoutText(t, specOf('strain').title), contains('9'));
-      expect(anyOlderMarker(), findsNothing);
-    });
-
-    testWidgets('a day with no row reads — and takes no marker', (t) async {
-      await open(t);
-      await scrubAt(t, 4.5 / 7); // 2 Oct
-      expect(readoutText(t, specOf('strain').title), '—');
-      expect(anyOlderMarker(), findsNothing);
-    });
-
-    testWidgets('every picked metric is flagged on its own, whatever the '
-        'order', (t) async {
-      // Resting HR (current) is picked FIRST, strain (older on 1 Oct) second.
-      await pumpExplorer(
-          t,
-          ExplorerRepo(charts: {
-            specOf('resting_hr').chartKey: [
-              pt('2026-09-30', 50),
-              pt('2026-10-01', 51),
-              pt('2026-10-03', 52),
-            ],
-            specOf('strain').chartKey: pts(),
-          }));
-      await tapKey(t, 'explore-range:d7');
-      await tapKey(t, 'explore-pick:resting_hr');
-      await tapKey(t, 'explore-pick:strain');
-      await scrubAt(t, 3.5 / 7); // 1 Oct: strain older, resting HR current
-      expect(readoutText(t, specOf('strain').title), contains('8'));
-      expect(readoutText(t, specOf('resting_hr').title), contains('51'));
-      expect(olderMark('readout'), findsOneWidget);
-      await scrubAt(t, 2.5 / 7); // 30 Sep: neither is older
-      expect(anyOlderMarker(), findsNothing);
-    });
-
-    testWidgets('two older metrics on one day get two marks', (t) async {
-      await pumpExplorer(
-          t,
-          ExplorerRepo(charts: {
-            specOf('trimp').chartKey: [
-              {...pt('2026-10-01', 40), 'from_older_version': 103},
-            ],
-            specOf('strain').chartKey: pts(),
-          }));
-      await tapKey(t, 'explore-range:d7');
-      await tapKey(t, 'explore-pick:trimp');
-      await tapKey(t, 'explore-pick:strain');
-      await scrubAt(t, 3.5 / 7);
-      expect(
-          find.byWidgetPredicate((w) =>
-              w.key is ValueKey<String> &&
-              (w.key as ValueKey<String>)
-                  .value
-                  .startsWith('older-version-mark:')),
-          findsNWidgets(2));
-      expect(find.textContaining(kNoteV104), findsNothing);
-    });
-
-    testWidgets('value and flag always come from the same day, also at the '
-        'slot boundaries', (t) async {
-      await open(t);
-      // 1 Oct is the only flagged day and the only one that reads 8.
-      for (final f in [
-        0.30, 0.42, 0.427, 0.4285, 0.43, 0.45, 0.50, 0.56, 0.5713, 0.5714,
-        0.572, 0.58, 0.70, 0.85
-      ]) {
-        await scrubAt(t, f);
-        final v = readoutText(t, specOf('strain').title);
-        expect(olderMark('readout').evaluate().isNotEmpty, v.contains('8'),
-            reason: 'at $f the readout says "$v"');
-      }
-    });
-
-    testWidgets('a trailing gap: the latest readout is the last real value, '
-        'and carries its flag', (t) async {
-      await pumpExplorer(
-          t,
-          ExplorerRepo(charts: {
-            specOf('strain').chartKey: [
-              pt('2026-10-02', 6),
-              {...pt('2026-10-03', 8), 'from_older_version': 104},
-            ],
-          }));
-      await tapKey(t, 'explore-range:d7');
-      await tapKey(t, 'explore-pick:strain');
-      // Nothing scrubbed: "Latest" is 3 Oct (today, 4 Oct, has no row).
-      expect(readoutText(t, specOf('strain').title), contains('8'));
-      expect(olderMark('readout'), findsOneWidget);
-    });
-  });
 
   group('Workout 7-day heart effort', () {
     Future<void> open(WidgetTester t, List<Map<String, dynamic>> trimp) async {

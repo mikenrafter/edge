@@ -10,7 +10,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/gestures/gesture_settings.dart' show TapCountMethod;
 import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
 
@@ -31,14 +30,14 @@ void main() {
         BandGesturesView(
           chosen: const {},
           supported: _supported,
-          ecgSupported: true,
+
           devMode: true,
-          tapMethod: TapCountMethod.ecg,
+
           tapActions: const {3: {}, 4: {}, 5: {}},
           onTapToggle: (n, a, on) async => toggled.add('$n:${a.name}:$on'),
         ));
     await openGesturesTab(t, 3);
-    expect(gesturesTabName(t), 'Double tap + 1 ECG tap');
+    expect(gesturesTabName(t), '2 double taps');
     await t.tap(find.byType(Switch).first);
     await t.pumpAndSettle();
     expect(toggled, hasLength(1));

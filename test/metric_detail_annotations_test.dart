@@ -18,7 +18,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
-import 'support/explorer_harness.dart' show providers;
+import 'support/chart_harness.dart' show providers;
 
 /// "Now" for every test: noon on 2026-10-04. A 30-day window is then
 /// 2026-09-05 .. 2026-10-04, slot 0 .. 29.

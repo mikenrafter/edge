@@ -66,7 +66,7 @@ class _Backing {
 }
 
 Future<GestureFailure?> _fail(GestureFailureStore s, String id,
-        {GestureFailureKind kind = GestureFailureKind.ecg,
+        {GestureFailureKind kind = GestureFailureKind.doubleTap,
         String reason = 'start_failed',
         String? log,
         DateTime? at}) =>
@@ -88,7 +88,7 @@ void main() {
     final b = _Backing();
     final s = b.store();
     final f = await s.record(
-      kind: GestureFailureKind.ecg,
+      kind: GestureFailureKind.doubleTap,
       reason: 'start_failed',
       gestureId: '1791101224:14',
       log: 'Double tap received.\nECG failed (start_failed).',
@@ -99,7 +99,7 @@ void main() {
     final g = s.all.single;
     expect(g.gestureId, '1791101224:14');
     expect(g.at, _t0);
-    expect(g.kind, GestureFailureKind.ecg);
+    expect(g.kind, GestureFailureKind.doubleTap);
     expect(g.reason, 'start_failed');
     expect(g.log, contains('ECG failed (start_failed).'));
     expect(g.dismissed, isFalse);

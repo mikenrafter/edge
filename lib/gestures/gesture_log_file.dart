@@ -17,11 +17,11 @@ typedef GestureLogSaver = Future<bool> Function(GestureFailure f);
 
 String _two(int v) => v.toString().padLeft(2, '0');
 
-/// `openstrap-gesture-failure-ecg-20261004-120731.txt`: the kind and the
+/// `openstrap-gesture-failure-double-tap-20261004-120731.txt`: the kind and the
 /// failure's local time, no spaces, colons or separators.
 String gestureLogFileName(GestureFailure f) {
   final t = f.at.toLocal();
-  final kind = f.kind == GestureFailureKind.ecg ? 'ecg' : 'double-tap';
+  final kind = 'double-tap';
   return 'openstrap-gesture-failure-$kind-'
       '${t.year}${_two(t.month)}${_two(t.day)}-'
       '${_two(t.hour)}${_two(t.minute)}${_two(t.second)}.txt';
@@ -29,9 +29,7 @@ String gestureLogFileName(GestureFailure f) {
 
 /// A short header saying what failed, then [GestureFailure.log] verbatim.
 String gestureLogFileText(GestureFailure f) {
-  final what = f.kind == GestureFailureKind.ecg
-      ? 'An ECG gesture failed to activate'
-      : 'A double-tap gesture failed to activate';
+  const what = 'A double-tap gesture failed to activate';
   return [
     'OpenStrap gesture failure',
     what,

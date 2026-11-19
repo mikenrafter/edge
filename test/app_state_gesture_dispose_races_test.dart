@@ -8,7 +8,6 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
-import 'package:openstrap_edge/ecg/ecg_models.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
 
 import 'support/app_state_gesture_harness.dart';
@@ -89,24 +88,4 @@ void main() {
     });
   });
 
-  group('the ECG post-roll', () {
-    test('dispose during the lab post-roll stops the stream at once, once, '
-        'and the lease is free again', () async {
-      final rig = await newRig(mg: true);
-      await rig.app.ecg.guard.setWrist(kSerial, EcgWrist.left);
-      await rig.app.gestureSettings.setEcgOnDoubleTap(true);
-      int stops() => order.where((o) => o == 'band:generation').length;
-      rig.doubleTap();
-      await until(() => order.contains('band:generation'));
-      await playEcgCount(rig, 2);
-      await until(() => labCount(rig, 'Keeping the stream on') > 0,
-          within: const Duration(seconds: 8));
-      expect(stops(), 1, reason: 'only the start so far: the stream is kept on');
-      await rig.dispose();
-      await until(() => stops() == 2, within: const Duration(seconds: 1));
-      await settleMs(300);
-      expect(stops(), 2, reason: 'stopped once, long before the 3 s end');
-      expect(rig.app.ecg.isCapturing, isFalse);
-    });
-  });
 }

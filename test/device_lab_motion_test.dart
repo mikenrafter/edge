@@ -121,7 +121,7 @@ class _Rig {
   }
 
   Widget lab({bool withMotion = true}) => DeviceLabView(
-        ecgSupported: false,
+
         tapTools: false,
         motion: withMotion
             ? MotionLabPanel(
@@ -205,7 +205,7 @@ void main() {
       await _pump(
           t,
           DeviceLabView(
-            ecgSupported: false,
+
             probes: const SizedBox(height: 10),
             live: const SizedBox(height: 10),
             motion: MotionLabPanel(
@@ -687,7 +687,7 @@ void main() {
       await _pump(
           t,
           DeviceLabView(
-            ecgSupported: false,
+
             tapTools: false,
             motion: MotionLabPanel(
                 recorder: rig.recorder, store: broken, share: rig.share),
@@ -704,7 +704,7 @@ void main() {
       await _pump(
           t,
           DeviceLabView(
-            ecgSupported: false,
+
             tapTools: false,
             motion: MotionLabPanel(
                 recorder: rig.recorder, store: _ThrowingListStore(), share: rig.share),
