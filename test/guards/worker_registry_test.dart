@@ -37,6 +37,7 @@ const kExpected = <String, Dispatcher>{
   'ecgFormatPageHeavy': Dispatcher.run,
   '_writeZipHeavy': Dispatcher.run,
   'observeNaturalSync': Dispatcher.run,
+  'backupStreamHeavy': Dispatcher.spawn,
   'encryptBackupFile': Dispatcher.run,
   'decryptBackupFile': Dispatcher.run,
   // The sample archive (lib/data/sample_heavy.dart): encode / carve / reconstruct
