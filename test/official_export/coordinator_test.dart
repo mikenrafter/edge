@@ -3,6 +3,8 @@
 // catches: no preflight; trust staged bytes; recovery failure deletes official;
 // forget finally cleanup; delete official on cancellation.
 import 'dart:io';
+import 'dart:convert';
+import 'package:openstrap_edge/data/backup_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/official_export/coordinator.dart';
 import 'package:openstrap_edge/data/official_export/session.dart';
@@ -18,6 +20,16 @@ class StaleReceiptSnapshot extends Snapshot {
   return SnapshotReceipt(receipt.path,'wrong hash',receipt.schema,1,2);
  }
 }
+class IntentDestination extends Destination {
+  IntentDestination(super.root,super.space,this.journal);
+  final File journal;
+  @override Future<BackupFile> createCiphertext(String name)async {
+    final record=jsonDecode(await journal.readAsString()) as Map;
+    expect(record['pending_name'],name,reason:'creation intent must survive before a provider returns its handle');
+    return super.createCiphertext(name);
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test('literal full peak includes publication overlap and zero verification file',(){
@@ -132,6 +144,38 @@ void main() {
       expect(root.listSync().whereType<File>().length,1);
       expect(root.listSync().whereType<File>().single.path,second.official!.file.path);
     }finally{await coordinator.finish();coordinator.dispose();await root.delete(recursive:true);await fx.dispose();}
+  });
+
+  // WHY: process death after provider creation but before handle persistence
+  // must leave a name that cold cleanup can find, without touching saved files.
+  test('provider creation intent is journaled before either artifact is created',()async {
+    final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('create_intent_');
+    final coordinator=OfficialExportCoordinator();
+    try {
+      final free=Space();final private=Directory('${root.path}/private');
+      final dest=IntentDestination(root,free,File('${private.path}/interruption.json'));
+      final result=await coordinator.export(snapshot:Snapshot(fx.forkPath),privateRoot:private,destination:dest,
+        space:ExportSpaceBudget(source:free),prompts:Prompts(()async=>'pw',(_)async=>true));
+      expect(result,isA<OfficialExportSaved>());
+      expect((result as OfficialExportSaved).recoveryStatus,RecoveryStatus.saved);
+      expect(dest.creates,2);
+    }finally{await coordinator.finish();coordinator.dispose();await root.delete(recursive:true);await fx.dispose();}
+  });
+  test('cold cleanup resolves a creation intent without a returned handle',()async {
+    final root=await Directory.systemTemp.createTemp('cold_intent_');
+    final coordinator=OfficialExportCoordinator();
+    try {
+      final private=await Directory('${root.path}/private').create();
+      final orphan=File('${root.path}/openstrap-official-crash.db.osbk.incomplete');await orphan.writeAsString('unfinished');
+      final saved=File('${root.path}/saved.db.osbk');await saved.writeAsString('keep');
+      await File('${private.path}/interruption.json').writeAsString(jsonEncode({
+        'version':1,'folder':root.path,'local_root':root.path,'pending_name':orphan.uri.pathSegments.last,
+        'official':{'name':'saved.db.osbk'},
+      }));
+      await coordinator.loadInterruption(private);await coordinator.cleanInterrupted();
+      expect(await orphan.exists(),isFalse);
+      expect(await saved.readAsString(),'keep');
+    }finally{await coordinator.finish();coordinator.dispose();await root.delete(recursive:true);}
   });
 
   test('a changed capture receipt is refused before publishing any bytes',()async {
