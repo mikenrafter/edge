@@ -221,12 +221,12 @@ class _PendingPaint extends SingleChildRenderObjectWidget {
   @override
   RenderObject createRenderObject(BuildContext context) =>
       _RenderPending(context as Element, pending, visible, fade, child,
-        MediaQuery.disableAnimationsOf(context), TickerMode.of(context));
+        MediaQuery.disableAnimationsOf(context), TickerMode.valuesOf(context).enabled);
   @override
   void updateRenderObject(BuildContext context, _RenderPending renderObject) {
     renderObject..pending = pending..visible = visible..fade = fade
       ..reducedMotion = MediaQuery.disableAnimationsOf(context)
-      ..tickerEnabled = TickerMode.of(context);
+      ..tickerEnabled = TickerMode.valuesOf(context).enabled;
     renderObject.updateChildIdentity(child);
   }
 }
