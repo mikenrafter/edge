@@ -84,3 +84,11 @@ class OfficialExportCancelled extends OfficialExportOutcome {
 class OfficialExportSavedWithOmissions extends OfficialExportSaved {
   const OfficialExportSavedWithOmissions(super.receipt,super.report,super.recoveryStatus,{super.recovery,super.recoveryError});
 }
+
+/// A short message the screen shows beside the export controls.
+enum ExportNoticeKind { leftover, journalUnreadable }
+class ExportNotice {
+  const ExportNotice(this.kind, {this.file, this.folder});
+  final ExportNoticeKind kind;
+  final String? file, folder;
+}
