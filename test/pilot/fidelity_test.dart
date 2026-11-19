@@ -102,6 +102,27 @@ void main(){
     handle.dispose();
   });
 
+  // why: v22 #addSheet and open(nw) — the + sheet, a new alarm's title, the workout caption.
+  // catches: bare ListTiles in the type picker, a new alarm titled Edit "…", or TIMES on a workout editor.
+  testWidgets('+ opens the v22 sheet and the new alarm is titled as new',(t)async{
+    await pump(t,PilotAlarmScreen(alarms:[PilotAlarm(id:'w',label:'Work',days:{1})],now:DateTime(2026,11,23,5),reference:(_)async=>sample(),onSave:(_)async{}));
+    await t.tap(find.byTooltip('Add alarm'));await t.pumpAndSettle();
+    expect(find.text('New alarm'),findsOneWidget);expect(find.byType(ListTile),findsNothing);
+    expect(t.getSize(find.byKey(const ValueKey('pilot-add:sleep'))).height,greaterThanOrEqualTo(56));
+    await t.tap(find.byKey(const ValueKey('pilot-add:sleep')));await t.pumpAndSettle();
+    expect(find.text('New sleep alarm'),findsOneWidget);expect(find.textContaining('Edit'),findsNothing);
+    expect(find.text('TIMES · TAP ONE, THEN DRAG IT ON THE GRAPH'),findsOneWidget);
+    await t.tap(find.text('Cancel').first);await t.pumpAndSettle();
+    await t.tap(find.byTooltip('Add alarm'));await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('pilot-add:workout')));await t.pumpAndSettle();
+    expect(find.text('New workout alarm'),findsOneWidget);
+    expect(find.text('WINDOW · TAP ONE, THEN DRAG IT ON THE GRAPH'),findsOneWidget);
+    await t.tap(find.text('Cancel').first);await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('pilot-alarm:w')));await t.pumpAndSettle();
+    expect(find.text('Edit "Work"'),findsOneWidget);
+    expect(t.takeException(),null);
+  });
+
   // catches: bare ListTile timing rows, Material SwitchListTiles, text-only Cancel/Save, or a heart-rate alarm chart.
   testWidgets('alarm editor uses the app rows, tabs and buttons',(t)async{
     await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'A',earlyMinutes:20,phoneSound:true),now:day,reference:(_)async=>sample(),onSave:(_)async{}));
