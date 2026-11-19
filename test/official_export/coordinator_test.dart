@@ -114,6 +114,26 @@ void main() {
     }finally{await coordinator.finish();coordinator.dispose();await root.delete(recursive:true);await fx.dispose();}
   });
 
+  // WHY: a picker retry in the same process must consume the persisted cleanup
+  // journal too, after a lost provider grant becomes available again.
+  test('same coordinator retry cleans an incomplete file after grant recovery',()async {
+    final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('grant_retry_');
+    final coordinator=OfficialExportCoordinator();
+    try {
+      final free=Space();final dest=Destination(root,free)..corrupt=true..denyDelete=true;
+      final source=Snapshot(fx.forkPath);final private=Directory('${root.path}/private');
+      final prompts=Prompts(()async=>'pw',(_)async=>false);
+      final first=await coordinator.export(snapshot:source,privateRoot:private,destination:dest,space:ExportSpaceBudget(source:free),prompts:prompts);
+      expect(first,isA<OfficialExportFailed>());
+      expect(root.listSync().whereType<File>().single.path,endsWith('.incomplete'));
+      dest..corrupt=false..denyDelete=false;
+      final second=await coordinator.export(snapshot:source,privateRoot:private,destination:dest,space:ExportSpaceBudget(source:free),prompts:prompts);
+      expect(second,isA<OfficialExportSaved>());
+      expect(root.listSync().whereType<File>().length,1);
+      expect(root.listSync().whereType<File>().single.path,second.official!.file.path);
+    }finally{await coordinator.finish();coordinator.dispose();await root.delete(recursive:true);await fx.dispose();}
+  });
+
   test('a changed capture receipt is refused before publishing any bytes',()async {
     final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('stale_receipt_');
     try{

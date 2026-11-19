@@ -36,7 +36,7 @@ class Snapshot implements OfficialSnapshotSource {
 class Destination implements CipherBackupStorage {
   Destination(this.root,this.space);
   final Directory root; final Space space;
-  bool corrupt=false, corruptRename=false, failRecovery=false, exhaust=false;
+  bool corrupt=false, corruptRename=false, failRecovery=false, exhaust=false, denyDelete=false;
   int creates=0;
   Completer<void>? recoveryStarted,recoveryRelease;
   @override String get label=>'Selected folder';
@@ -61,5 +61,5 @@ class Destination implements CipherBackupStorage {
     if(corruptRename) await moved.writeAsBytes([1]);
     return BackupFile(path:moved.path,name:name);
   }
-  @override Future<void> deleteCiphertext(BackupFile file) async=>File(file.path).delete();
+  @override Future<void> deleteCiphertext(BackupFile file) async {if(denyDelete)throw const FileSystemException('grant revoked');await File(file.path).delete();}
 }
