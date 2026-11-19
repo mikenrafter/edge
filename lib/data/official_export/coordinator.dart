@@ -301,8 +301,9 @@ class OfficialExportCoordinator extends ChangeNotifier {
     :OfficialExportSaved(official!,report!,status,recovery:recovery,recoveryError:recoveryError);
   Future<List<Map<String,Object?>>> omissionSummary() async {
     if(_omissionGroups!=null)return _omissionGroups!;
-    final rows=(await runMappingWorker(MappingInput('omissionSummary','',const [],json:report?.tables??const {}))).rows;
-    return _omissionGroups=[...rows,if(extrasOmissions.isNotEmpty){'family':'settings','reason':'unsupported','count':extrasOmissions.length}];
+    return _omissionGroups=(await runMappingWorker(MappingInput('omissionSummary','',const [],json:{
+      'tables':report?.tables??const {},'extras':extrasOmissions,
+    }))).rows;
   }
   Future<void> finish() async {
     _passphrase=null;_retryAvailable=false;

@@ -66,7 +66,8 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
   WorkerAudit.entered('officialMappingHeavy');
   if (input.operation == 'omissionSummary') {
     final groups=<(String,String),int>{};
-    final tables=(input.json as Map).cast<String,Object?>();
+    final payload=input.json as Map;
+    final tables=(payload['tables'] as Map).cast<String,Object?>();
     for(final entry in tables.entries) {
       final report=entry.value as Map;
       final family=exportRecordFamily(entry.key);
@@ -84,6 +85,10 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
           if(count>0)groups[(family,'unsupported')]=(groups[(family,'unsupported')]??0)+count;
         }
       }
+    }
+    for(final extra in payload['extras'] as List) {
+      final family=switch(extra['family']){'saved files'=>'recordings','settings'=>'settings',_=>'other'};
+      groups[(family,'unsupported')]=(groups[(family,'unsupported')]??0)+1;
     }
     return MappingOutput([for(final entry in groups.entries) {'family':entry.key.$1,'reason':entry.key.$2,'count':entry.value}],const []);
   }
