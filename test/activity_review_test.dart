@@ -590,13 +590,23 @@ void main() {
     expect(saved['scalars']['nap_min'], 24);
   });
 
+  // WHY: two changes to one owner day must retain the newer work fence.
+  // Relative now-2h/now can cross midnight and create two legitimate day jobs.
+  // CLAIM(sleep-block-one-queue).
   test('older refresh cannot clear a newer durable nap job', () async {
-    final s=await detectNap();await store.confirm(s,startTs:start,endTs:start+1800);
+    final jobStart=DateTime(2026,11,1,12).millisecondsSinceEpoch~/1000;
+    final jobDay=dayLabelOf(DateTime.fromMillisecondsSinceEpoch(jobStart*1000));
+    await db.update('activity_review_meta',{'activated_at':jobStart-1});
+    final s=(await store.reconcile(ActivityKind.nap,[
+      {'start':jobStart,'end':jobStart+1800,'duration_min':24}])).single;
+    await store.confirm(s,startTs:jobStart,endTs:jobStart+1800);
     final first=await TestSleepWrites.applyNapWork();
-    await TestSleepWrites.putNapEdit(dayId:day,startTs:start+7200,endTs:start+9000,source:'manual');
+    await TestSleepWrites.putNapEdit(dayId:jobDay,startTs:jobStart+7200,endTs:jobStart+9000,source:'manual');
     await TestSleepWrites.finishNapWork(first);
     final jobs=await SleepEditStore.pending();expect(jobs,hasLength(1));
-    final row=(await db.query('sleep_edit_job')).single;
+    final rows=await db.query('sleep_edit_job');
+    expect(rows,hasLength(1),reason:'both naps belong to the same fixed local day');
+    final row=rows.single;
     expect([row['nap_revision'],row['nap_applied_revision'],row['phase']],[2,1,'queued']);
   });
 
