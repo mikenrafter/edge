@@ -337,8 +337,9 @@ class PilotZoomControls extends StatelessWidget {
     // Pin, Add block) gets the rest of the row at full length.
     final buttonStyle=TextButton.styleFrom(minimumSize:const Size(44,48),padding:const EdgeInsets.symmetric(horizontal:4),textStyle:F.cap.copyWith(fontSize:13),iconSize:15);
     return ListenableBuilder(listenable:controller.zoomChanges,builder:(context,_)=>Row(children:[
-      (TextButton.icon(style:buttonStyle,onPressed:(){controller.clearScrub();onZoom?.call();controller.beginPilotSelection();},icon:const Icon(LucideIcons.zoomIn,size:16),label:Text(l.timelineZoomIn,maxLines:1))),
-      (TextButton.icon(style:buttonStyle,onPressed:controller.zoomed||controller.selection!=null?(){controller.clearScrub();onZoom?.call();controller.resetZoom();}:null,icon:const Icon(LucideIcons.rotateCcw,size:16),label:Text(l.pilotZoomOut,maxLines:1,overflow:TextOverflow.ellipsis))),
+      // Flexible: at large text the buttons shrink and ellipsize instead of overflowing the row.
+      Flexible(child:TextButton.icon(style:buttonStyle,onPressed:(){controller.clearScrub();onZoom?.call();controller.beginPilotSelection();},icon:const Icon(LucideIcons.zoomIn,size:16),label:Text(l.timelineZoomIn,maxLines:1,overflow:TextOverflow.ellipsis))),
+      Flexible(child:TextButton.icon(style:buttonStyle,onPressed:controller.zoomed||controller.selection!=null?(){controller.clearScrub();onZoom?.call();controller.resetZoom();}:null,icon:const Icon(LucideIcons.rotateCcw,size:16),label:Text(l.pilotZoomOut,maxLines:1,overflow:TextOverflow.ellipsis))),
       if(trailing!=null)Expanded(child:Align(alignment:Alignment.centerRight,child:trailing!)),
     ]));
   }

@@ -42,7 +42,8 @@ void main(){
     expect(find.text('06:10–06:30'),findsOneWidget);
     expect(find.text('~6 h 40 min'),findsOneWidget);expect(find.text('400 min'),findsNothing);
     expect(find.text('17:30–19:00'),findsOneWidget);expect(find.text('Zone 3+'),findsOneWidget);
-    for(final chart in t.widgetList<PilotTimelineChart>(find.byType(PilotTimelineChart)))expect(chart.showHeartRate,false);
+    // m244.3: the sleep alarm's chart draws no heart rate; the workout alarm's keeps it.
+    expect([for(final chart in t.widgetList<PilotTimelineChart>(find.byType(PilotTimelineChart)))chart.showHeartRate],unorderedEquals([false,true]));
   });
 
   // catches: bare ListTile timing rows, Material SwitchListTiles, text-only Cancel/Save, or a heart-rate alarm chart.

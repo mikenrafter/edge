@@ -4,7 +4,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -100,6 +102,10 @@ void main() {
   });
 
   testWidgets('dense tabs are narrower than the default ones', (t) async {
+    // `dense` sizes the scrolling pills; the Labs full-width look (on by
+    // default) divides the row equally instead, so this checks the pills.
+    SharedPreferences.setMockInitialValues({'ui.full_width_tabs': false});
+    await Prefs.reload();
     await _pump(t, SubTabs(const ['Mon', 'Tue'], 0, (_) {}));
     final wide = t.getRect(find.text('Tue')).left;
     await _pump(t, SubTabs(const ['Mon', 'Tue'], 0, (_) {}, dense: true));
