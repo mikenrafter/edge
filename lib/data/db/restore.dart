@@ -1237,13 +1237,23 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           if(!tolerant && !e.isNoSuchTableError()) rethrow;
         }
       }
+      var sleepStageChanged=false;
       final notes = await src.mainTransaction(db,(tx) async {
-        await beforePageCommit(tx);
         final notes = await SleepBlockStore.absorb(tx,overrides:overrides,naps:naps,
           blocks:blocks,servedDayResults:served,suggestions:suggestions,mode:AbsorbMode.importFile,
           sourceActivatedAtSec:sourceActivatedAtSec,importStartedAtSec:importStartedAtSec);
-        for(final day in {for(final e in notes) if(e.other=='decided_locally') e.day}) {
+        final decidedDays={for(final e in notes) if(e.other=='decided_locally') e.day};
+        for(final day in decidedDays) {
           await ActivityStore.markDayChanged(tx,day);
+        }
+        // Journal progress alone is not a replacement of input history. Rotate
+        // identity and expire scratch only with actual input/work mutations,
+        // inside this same transaction [G2; transport/checkpoint tests].
+        sleepStageChanged=notes.any((e)=>e.kind=='imported') || decidedDays.isNotEmpty;
+        if(sleepStageChanged) {
+          await beforePageCommit(tx);
+        } else if(ResetGate.changedSince(resetGen)) {
+          throw StateError('import cancelled by reset');
         }
         if(run!=null) {
           await ImportJournal.advance(tx,run,index,order[index],1,
@@ -1253,7 +1263,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
         if(hook!=null) { await Zone.current.runBinary(hook,tx,const ImportChunk('sleep_block',0,0,1)); }
         return notes;
       });
-      pageCommitted();
+      if(sleepStageChanged) pageCommitted();
       sleepNotes.addAll(notes);
       counts['sleep_block']=notes.where((e)=>e.kind=='imported').length;
       counts.addAll(notes.projectionRows);
