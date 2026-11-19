@@ -261,51 +261,90 @@ class DayNav extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     if (days.length < 2 && !alwaysShow) return const SizedBox.shrink();
-    final p = P.of(c);
     final l = AppLocalizations.of(c);
     final i = days.indexOf(day ?? '');
     // days is newest first: the OLDER day is further down the list.
     final older = i < 0 ? days.firstOrNull : (i + 1 < days.length ? days[i + 1] : null);
     final newer = i > 0 ? days[i - 1] : null;
 
-    Widget arrow(IconData icon, String label, String? to) => Opacity(
-          key: ValueKey(icon == LucideIcons.chevronLeft ? 'day-nav-previous' : 'day-nav-next'),
-          opacity: to == null ? .35 : 1,
+    return DayStepBar(
+      label: dayNavLabel(day, l),
+      previousLabel: l?.metricDetailPreviousDay ?? 'Previous day',
+      nextLabel: l?.metricDetailNextDay ?? 'Next day',
+      onPrevious: older == null ? null : () => onDay(older),
+      onNext: newer == null ? null : () => onDay(newer),
+      chooseLabel: l?.metricDetailChooseDayShowing(dayNavLabel(day, l)) ??
+          'Choose a day. Showing ${dayNavLabel(day, l)}',
+      onChoose: () async {
+        final picked = await chooseDay(c, days, day);
+        if (c.mounted && picked != null && picked != day) {
+          PendingUserAction.run(() => onDay(picked));
+        }
+      },
+    );
+  }
+}
+
+/// The bar [DayNav] draws: two arrows and a centred label on a `card2` strip.
+/// Every `‹ day ›` switcher uses it so the arrows keep one size and spacing
+/// (owner m261): [DayNav] over stored days, and the pilot screens over a draft
+/// day or an alarm's nights. [leading] and [trailing] replace the arrows in
+/// the same slots (a draft's Cancel and Save), so the bar keeps its footprint.
+class DayStepBar extends StatelessWidget {
+  const DayStepBar({
+    super.key,
+    required this.label,
+    required this.previousLabel,
+    required this.nextLabel,
+    this.onPrevious,
+    this.onNext,
+    this.onChoose,
+    this.chooseLabel,
+    this.leading,
+    this.trailing,
+    this.previousKey = const ValueKey('day-nav-previous'),
+    this.nextKey = const ValueKey('day-nav-next'),
+  });
+  final String label, previousLabel, nextLabel;
+  final VoidCallback? onPrevious, onNext, onChoose;
+  final String? chooseLabel;
+  final Widget? leading, trailing;
+  final Key previousKey, nextKey;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    Widget arrow(Key key, IconData icon, String label, VoidCallback? onTap) => Opacity(
+          key: key,
+          opacity: onTap == null ? .35 : 1,
           child: Pressable(
-            onTap: to == null ? null : () => onDay(to),
+            onTap: onTap,
             semanticLabel: label,
             child: Icon(icon, size: 20, color: p.ink),
           ),
         );
+    final text = SizedBox(width: double.infinity, child: Text(
+      label,
+      textAlign: TextAlign.center,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600),
+    ));
 
     return PendingStatic(
       child: GuideBox(child: Container(
       decoration: BoxDecoration(color: p.card2, borderRadius: R.rMd),
       child: Row(children: [
-        arrow(LucideIcons.chevronLeft, l?.metricDetailPreviousDay ?? 'Previous day',
-            older),
+        leading ?? arrow(previousKey, LucideIcons.chevronLeft, previousLabel, onPrevious),
         Expanded(
-          child: Pressable(
+          child: onChoose == null ? text : Pressable(
             key: const ValueKey('day-nav-choose'),
-            onTap: () async {
-              final picked = await chooseDay(c, days, day);
-              if (c.mounted && picked != null && picked != day) {
-                PendingUserAction.run(() => onDay(picked));
-              }
-            },
-              semanticLabel:
-                  l?.metricDetailChooseDayShowing(dayNavLabel(day, l)) ??
-                  'Choose a day. Showing ${dayNavLabel(day, l)}',
-              child: SizedBox(width: double.infinity, child: Text(
-                dayNavLabel(day, l),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600),
-              )),
-            ),
+            onTap: onChoose,
+            semanticLabel: chooseLabel,
+            child: text,
           ),
-        arrow(LucideIcons.chevronRight, l?.metricDetailNextDay ?? 'Next day', newer),
+        ),
+        trailing ?? arrow(nextKey, LucideIcons.chevronRight, nextLabel, onNext),
       ],
           ),
         ),

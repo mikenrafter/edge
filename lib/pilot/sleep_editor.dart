@@ -18,7 +18,7 @@ import '../ui2/day_timeline/timeline_controller.dart';
 import '../ui2/screens/day_timeline.dart' show dayGraph;
 import '../ui2/screens/home_screen.dart' show repoOf;
 import '../ui2/theme.dart';
-import '../ui2/grammar.dart' show BigButton,SubTabs;
+import '../ui2/grammar.dart' show BigButton,SubTabs,NavBar;
 import '../ui2/profile/profile.dart' show SetRow;
 import '../ui2/screens/home_screen.dart' show hm;
 import '../l10n/date_text.dart' show prettyDay;
@@ -162,7 +162,7 @@ class _SleepEditorState extends State<PilotSleepEditor>{
     return PilotTheme(child:Builder(builder:(context)=>PopScope(canPop:_allowPop||(!dirty&&!saving),onPopInvokedWithResult:(didPop,result)async{
       if(didPop||saving)return;final leave=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(l.pilotCancel),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(l.pilotCancel)),TextButton(onPressed:()=>Navigator.pop(c,true),child:Text(l.dayReviewDiscard))]));
       if(leave==true&&mounted){setState(()=>_allowPop=true);await WidgetsBinding.instance.endOfFrame;if(mounted)Navigator.pop(this.context);}
-    },child:Scaffold(backgroundColor:p.bg,appBar:AppBar(centerTitle:true,title:Text(l.pilotSleepEditor,style:F.head.copyWith(color:p.ink))),body:SafeArea(child:loading?const Center(child:CircularProgressIndicator()):controller==null?Center(child:Text(error??l.pilotSourceFailed)):Column(children:[
+    },child:Scaffold(backgroundColor:p.bg,appBar:PreferredSize(preferredSize:const Size.fromHeight(52),child:SafeArea(bottom:false,child:NavBar(l.pilotSleepEditor))),body:SafeArea(child:loading?const Center(child:CircularProgressIndicator()):controller==null?Center(child:Text(error??l.pilotSourceFailed)):Column(children:[
       Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:Column(children:[
         PilotDayRow(day:prettyDay(day,l),dirty:dirty,busy:saving,onPrevious:()=>_go(-1),onNext:()=>_go(1),onCancel:(){setState(()=>_bind(read!,graph,stages));},onSave:_save),
         if(adding)SizedBox(height:24,child:Text(addedStart==null?l.pilotTapStart:l.pilotTapEnd)),

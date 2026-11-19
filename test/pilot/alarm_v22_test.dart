@@ -27,10 +27,10 @@ void main(){
     await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'A',days:{1,3},earlyMinutes:60),now:day,
       reference:(d)async{dates.add(d);return sample(bed:d.weekday==1?-30:-20,wake:d.weekday==1?390:400);},onSave:(a)async{saved=a.copy();}));
     expect(dates,[DateTime(2026,11,23)]);expect(find.text('Tonight'),findsOneWidget);
-    expect(t.widget<IconButton>(find.ancestor(of:find.byTooltip('Previous night'),matching:find.byType(IconButton))).onPressed,null);
+    expect(t.widget<Opacity>(find.byKey(const ValueKey('pilot-night-previous'))).opacity,.35);
     final chart=t.widget<PilotTimelineChart>(find.byType(PilotTimelineChart));
     expect(chart.controller.view.start,base+340*60);expect(chart.controller.view.end,base+440*60);expect(chart.handles.single.id,'wake');
-    await t.tap(find.byTooltip('Next night'));await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('pilot-night-next')));await t.pumpAndSettle();
     expect(dates,[DateTime(2026,11,23),DateTime(2026,11,25)]);expect(find.text('Wed, Nov 25'),findsOneWidget);
     expect(find.byKey(const ValueKey('pilot-time:bed')),findsOneWidget);
     await t.tap(find.text('Save'));await t.pump();expect(saved!.days,{1,3});expect(saved!.referenceWakeMinute,390);expect(t.takeException(),null);
@@ -38,7 +38,7 @@ void main(){
   // catches: allowing Once to page into nights that will never ring, or retaining the removed Tonight tab.
   testWidgets('Once has one preview night and only Times and Waking tabs',(t)async{
     await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'A',days:{}),now:day,onSave:(_)async{}));
-    expect(t.widget<IconButton>(find.ancestor(of:find.byTooltip('Next night'),matching:find.byType(IconButton))).onPressed,null);
+    expect(t.widget<Opacity>(find.byKey(const ValueKey('pilot-night-next'))).opacity,.35);
     Finder tab(String text)=>find.descendant(of:find.byType(SubTabs),matching:find.text(text));
     expect(tab('Tonight'),findsNothing);
     expect(tab('Times'),findsOneWidget);expect(tab('Waking'),findsOneWidget);
@@ -71,18 +71,19 @@ void main(){
     final row=find.byKey(const ValueKey('pilot-time:bed'));final before=t.getSize(row).height;
     expect(find.descendant(of:row,matching:find.text('your usual')),findsOneWidget);
     await t.drag(row,const Offset(20,0));await t.pumpAndSettle();
-    expect(find.descendant(of:row,matching:find.text('what-if · not saved')),findsOneWidget);expect(t.getSize(row).height,before);
+    expect(find.descendant(of:row,matching:find.text('preview · not saved')),findsOneWidget);expect(t.getSize(row).height,before);
     final time=t.widget<Text>(find.descendant(of:row,matching:find.text('23:40')));expect(time.style!.color,const Color(0xFFF5A36B));
     await t.tap(find.descendant(of:row,matching:find.text('Reset')));await t.pumpAndSettle();expect(find.descendant(of:row,matching:find.text('your usual')),findsOneWidget);expect(find.descendant(of:row,matching:find.text('23:30')),findsOneWidget);
   });
   // catches: showing only Wake in the overview, duplicating coincident time labels, or omitting the overnight cut.
-  testWidgets('overview cuts the night and labels every time with coincident icons stacked vertically',(t)async{
+  testWidgets('overview cuts the night and labels every time; a coincident column is an icon and a "…" under it (m269)',(t)async{
     await pump(t,PilotAlarmScreen(alarms:[PilotAlarm(id:'a',label:'A',wakeMinute:390,phoneSound:true,soundDelayMinutes:0,phoneVibration:true,vibrationDelayMinutes:0)],now:day,reference:(_)async=>sample(),onSave:(_)async{}));
     final chart=t.widget<PilotTimelineChart>(find.byType(PilotTimelineChart));expect(chart.overview,true);expect(chart.cut,isNotNull);expect(find.byKey(const ValueKey('pilot-overview-cut')),findsOneWidget);
     final time=find.byKey(ValueKey('pilot-overview-time:${base+390*60}'));expect(time,findsOneWidget);
     final group=find.ancestor(of:time,matching:find.byType(Row)).first;
-    final icons=find.descendant(of:group,matching:find.byType(Icon));expect(icons,findsNWidgets(4));
-    expect(t.getTopLeft(icons.at(1)).dy,greaterThan(t.getTopLeft(icons.first).dy));expect(t.getTopLeft(icons.at(1)).dx,t.getTopLeft(icons.first).dx);
+    final icons=find.descendant(of:group,matching:find.byType(Icon));expect(icons,findsOneWidget);
+    final more=find.descendant(of:group,matching:find.byKey(const ValueKey('pilot-overview-more')));expect(more,findsOneWidget);
+    expect(t.getTopLeft(more).dy,greaterThan(t.getTopLeft(icons.first).dy));expect(t.getCenter(more).dx,moreOrLessEquals(t.getCenter(icons.first).dx,epsilon:.5));
     expect(find.text('Usual sleep'),findsOneWidget);expect(find.text('Sleep'),findsNothing);expect(t.takeException(),null);
   });
   // catches: hiding the recorded usual-sleep stat merely because expected wake is outside the window.

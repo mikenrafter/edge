@@ -10,6 +10,7 @@ import 'package:openstrap_edge/pilot/alarm_screen.dart';
 import 'package:openstrap_edge/pilot/pilot_flags.dart';
 import 'package:openstrap_edge/pilot/pilot_readout.dart';
 import 'package:openstrap_edge/pilot/pilot_theme.dart';
+import 'package:openstrap_edge/ui2/theme.dart' show P,C;
 import 'package:openstrap_edge/pilot/sleep_editor.dart';
 import 'package:openstrap_edge/pilot/timeline_chart.dart';
 import 'package:openstrap_edge/ui2/charts.dart' show SleepStage;
@@ -43,6 +44,9 @@ void main(){
     expect(find.text('06:10–06:30'),findsOneWidget);
     expect(find.text('~6 h 40 min'),findsOneWidget);expect(find.text('400 min'),findsNothing);
     expect(find.text('17:30–19:00'),findsOneWidget);expect(find.text('Zone 3+'),findsOneWidget);
+    // m261: the repeat days and the switch sit right on every card, whatever the name's length.
+    for(final id in ['w','r']){final card=t.getRect(find.byKey(ValueKey('pilot-alarm:$id')));final toggle=t.getRect(find.descendant(of:find.byKey(ValueKey('pilot-alarm:$id')),matching:find.byType(Switch)));
+      expect(card.right-toggle.right,lessThan(20));}
     // m244.3: the sleep alarm's chart draws no heart rate; the workout alarm's keeps it.
     expect([for(final chart in t.widgetList<PilotTimelineChart>(find.byType(PilotTimelineChart)))chart.showHeartRate],unorderedEquals([false,true]));
   });
@@ -68,11 +72,58 @@ void main(){
     await t.ensureVisible(row);await t.pumpAndSettle();
     expect(find.descendant(of:row,matching:find.byType(Switch)),findsNothing);
     expect(find.text('Not the primary alarm'),findsOneWidget);
+    // m261: the subtitle says what a tap does.
+    expect(find.textContaining('Tap to make this the primary alarm.'),findsOneWidget);
     expect(t.getSemantics(row).flagsCollection.isToggled,Tristate.isFalse);
     await t.tap(row);await t.pumpAndSettle();
     expect(find.text('Primary alarm for these days'),findsOneWidget);
+    expect(find.textContaining('Tap to stop this being the primary alarm.'),findsOneWidget);
     expect(t.getSemantics(row).flagsCollection.isToggled,Tristate.isTrue);
     handle.dispose();
+  });
+
+  // why: m268/m269 — on the list card graph a same-minute column holds its first icon and a "…"
+  // standing for the rest; icons pushed down by a nearby different minute stay as they are.
+  // catches: a same-minute column of three icons, a "…" without the hidden items' times, or
+  // nearby different-minute icons being dropped.
+  testWidgets('overview caps a same-minute column at an icon and an ellipsis',(t)async{
+    final handle=t.ensureSemantics();
+    final c=TimelineController(homeStartSec:base,homeEndSec:base+86400);final i=TimelineInteraction(retention:PilotScrub.temporary);
+    addTearDown(c.dispose);addTearDown(i.dispose);c.selectRange(base+5*3600,base+8*3600);
+    ChartAnnotation a(String id,int minute)=>ChartAnnotation(id:id,kind:AnnotationKind.wake,at:base+minute*60.0,label:id);
+    await pump(t,Scaffold(body:Padding(padding:const EdgeInsets.all(16),child:PilotTimelineChart(controller:c,interaction:i,overview:true,height:72,showHeartRate:false,
+      graph:DayGraph(dayStart:base,hr:List.filled(1440,62),movement:List.filled(1440,.1)),
+      annotations:[a('Sound',390),a('Vibration',390),a('Flash',390),a('Sunrise',420),a('Gradual',422)]))));
+    expect(find.byTooltip('Sound'),findsOneWidget);
+    expect(find.byTooltip('Vibration'),findsNothing);expect(find.byTooltip('Flash'),findsNothing);
+    expect(find.byKey(const ValueKey('pilot-overview-more')),findsOneWidget);
+    expect(find.byWidgetPredicate((w)=>w is Semantics&&w.properties.label=='Vibration 06:30, Flash 06:30'),findsOneWidget);
+    // Nearby different minutes: both drawn, as before.
+    expect(find.byTooltip('Sunrise'),findsOneWidget);expect(find.byTooltip('Gradual'),findsOneWidget);
+    handle.dispose();
+  });
+
+  // why: m273 + v22 open(nw) — the + sheet's palette, a new alarm's title, the workout caption.
+  // catches: an unstyled type picker, a new alarm titled Edit "…", or TIMES on a workout editor.
+  testWidgets('+ opens the v22 sheet and the new alarm is titled as new',(t)async{
+    await pump(t,PilotAlarmScreen(alarms:[PilotAlarm(id:'w',label:'Work',days:{1})],now:DateTime(2026,11,23,5),reference:(_)async=>sample(),onSave:(_)async{}));
+    await t.tap(find.byTooltip('Add alarm'));await t.pumpAndSettle();
+    // m273: the Material sheet, in the mock-up palette.
+    expect(find.byType(ListTile),findsNWidgets(2));
+    expect(t.widget<Icon>(find.descendant(of:find.byKey(const ValueKey('pilot-add:sleep')),matching:find.byType(Icon))).color,P.of(t.element(find.byType(ListTile).first)).on(C.indigo));
+    expect(t.getSize(find.byKey(const ValueKey('pilot-add:sleep'))).height,greaterThanOrEqualTo(56));
+    await t.tap(find.byKey(const ValueKey('pilot-add:sleep')));await t.pumpAndSettle();
+    expect(find.text('New sleep alarm'),findsOneWidget);expect(find.textContaining('Edit'),findsNothing);
+    expect(find.text('TIMES · TAP ONE, THEN DRAG IT ON THE GRAPH'),findsOneWidget);
+    await t.tap(find.text('Cancel').first);await t.pumpAndSettle();
+    await t.tap(find.byTooltip('Add alarm'));await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('pilot-add:workout')));await t.pumpAndSettle();
+    expect(find.text('New workout alarm'),findsOneWidget);
+    expect(find.text('WINDOW · TAP ONE, THEN DRAG IT ON THE GRAPH'),findsOneWidget);
+    await t.tap(find.text('Cancel').first);await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('pilot-alarm:w')));await t.pumpAndSettle();
+    expect(find.text('Edit "Work"'),findsOneWidget);
+    expect(t.takeException(),null);
   });
 
   // catches: bare ListTile timing rows, Material SwitchListTiles, text-only Cancel/Save, or a heart-rate alarm chart.

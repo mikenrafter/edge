@@ -14,7 +14,8 @@ import '../notify/buzz_sequence.dart';
 import '../haptics/pattern_store.dart';
 import '../haptics/example_playback.dart' show HapticCancel;
 import '../ui2/screens/home_screen.dart' show repoOf;
-import '../ui2/grammar.dart' show BigButton,SubTabs;
+import '../ui2/grammar.dart' show BigButton,SubTabs,NavBar,Pressable;
+import '../ui2/day_navigation.dart' show DayStepBar;
 import '../ui2/profile/profile.dart' show SetRow;
 import '../state/app_state.dart';
 import '../state/clock_format.dart' show formatClock,formatClockOf;
@@ -51,15 +52,19 @@ class _AlarmListState extends State<PilotAlarmScreen>{
     finally{if(mounted)setState(()=>_saving=false);}
   }
   Future<void> _edit(PilotAlarm alarm,{bool adding=false})async{
-    final result=await Navigator.of(context).push<PilotAlarm>(MaterialPageRoute(builder:(_)=>PilotAlarmEditor(alarm:alarm,now:widget.now,graph:widget.graph,stages:widget.stages,reference:widget.reference,
+    final result=await Navigator.of(context).push<PilotAlarm>(MaterialPageRoute(builder:(_)=>PilotAlarmEditor(alarm:alarm,isNew:adding,now:widget.now,graph:widget.graph,stages:widget.stages,reference:widget.reference,
       onSave:(draft)async{final updated=[for(final a in _alarms)if(a.id!=draft.id)a.copy(),draft.copy()];await _save(updated);} )));
     if(result!=null&&mounted)setState((){});
   }
   Future<void> _add()async{
-    final type=await showModalBottomSheet<PilotAlarmType>(context:context,builder:(c)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
-      ListTile(minTileHeight:56,leading:const Icon(LucideIcons.moon),title:Text(l.pilotSleepAlarm),subtitle:Text(l.pilotSleepAlarmDescription),onTap:()=>Navigator.pop(c,PilotAlarmType.sleep)),
-      ListTile(minTileHeight:56,leading:const Icon(LucideIcons.dumbbell),title:Text(l.pilotWorkoutAlarm),subtitle:Text(l.pilotWorkoutAlarmDescription),onTap:()=>Navigator.pop(c,PilotAlarmType.workout)),
-    ])));
+    // Owner m273: the Material sheet as before, in the mock-up palette (v22
+    // .sheet #20283a, text #e8ecf3 / #9aa6b8, pressed row #2a3344).
+    final type=await showModalBottomSheet<PilotAlarmType>(context:context,backgroundColor:const Color(0xFF20283A),builder:(c)=>Theme(
+      data:Theme.of(c).copyWith(highlightColor:const Color(0xFF2A3344),splashColor:Colors.transparent),
+      child:SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+        ListTile(key:const ValueKey('pilot-add:sleep'),minTileHeight:56,leading:Icon(LucideIcons.moon,color:P.of(c).on(C.indigo)),title:Text(l.pilotSleepAlarm,style:const TextStyle(color:Color(0xFFE8ECF3))),subtitle:Text(l.pilotSleepAlarmDescription,style:const TextStyle(color:Color(0xFF9AA6B8))),onTap:()=>Navigator.pop(c,PilotAlarmType.sleep)),
+        ListTile(key:const ValueKey('pilot-add:workout'),minTileHeight:56,leading:Icon(LucideIcons.dumbbell,color:P.of(c).on(C.red)),title:Text(l.pilotWorkoutAlarm,style:const TextStyle(color:Color(0xFFE8ECF3))),subtitle:Text(l.pilotWorkoutAlarmDescription,style:const TextStyle(color:Color(0xFF9AA6B8))),onTap:()=>Navigator.pop(c,PilotAlarmType.workout)),
+      ]))));
     if(type==null||!mounted)return;
     await _edit(PilotAlarm(id:DateTime.now().microsecondsSinceEpoch.toString(),label:type==PilotAlarmType.sleep?l.pilotSleepAlarm:l.pilotWorkoutAlarm,type:type,wakeMinute:type==PilotAlarmType.sleep?420:1140),adding:true);
   }
@@ -79,18 +84,24 @@ class _AlarmListState extends State<PilotAlarmScreen>{
     final app=widget.onSave==null?context.watch<AppState>():null;
     final sorted=[..._alarms]..sort((a,b){final x=pilotNextAt(a,now),y=pilotNextAt(b,now);if(x==null)return y==null?0:1;if(y==null)return -1;return x.compareTo(y);});
     final next=sorted.where((a)=>a.enabled).firstOrNull?.id;
-    return PilotTheme(child:Builder(builder:(context)=>Scaffold(backgroundColor:p.bg,appBar:AppBar(title:Text(l.pilotAlarms)),floatingActionButton:FloatingActionButton(onPressed:_saving?null:_add,tooltip:l.pilotAddAlarm,child:const Icon(LucideIcons.plus)),
+    return PilotTheme(child:Builder(builder:(context)=>Scaffold(backgroundColor:p.bg,appBar:PreferredSize(preferredSize:const Size.fromHeight(52),child:SafeArea(bottom:false,child:NavBar(l.pilotAlarms))),floatingActionButton:FloatingActionButton(onPressed:_saving?null:_add,tooltip:l.pilotAddAlarm,child:const Icon(LucideIcons.plus)),
       body:_loading?const Center(child:CircularProgressIndicator()):ListView(padding:const EdgeInsets.all(16),children:[
         if(app!=null)_activeWake(app),if(_error!=null)Text(_error!),if(_alarms.isEmpty)Text(l.pilotNoAlarms),
-        for(final a in sorted)Padding(padding:const EdgeInsets.only(bottom:12),child:GestureDetector(onTap:()=>_edit(a),behavior:HitTestBehavior.opaque,child:Container(key:ValueKey('pilot-alarm:${a.id}'),padding:const EdgeInsets.all(12),decoration:BoxDecoration(color:p.card,border:Border.all(color:a.id==next?p.on(C.blue):p.line),borderRadius:BorderRadius.circular(16)),child:Column(children:[
-          // Mock-up v22 .acard .head: star, label, "next", repeat days, switch.
-          // The whole card opens the editor.
-          Row(children:[if(a.primary)...[Icon(LucideIcons.star,color:p.on(C.yellow),size:14),const SizedBox(width:6)],
-            Flexible(child:Text(a.label,maxLines:1,overflow:TextOverflow.ellipsis,style:F.body.copyWith(color:p.ink,fontWeight:FontWeight.w600))),
+        for(final a in sorted)Padding(padding:const EdgeInsets.only(bottom:12),child:GestureDetector(onTap:()=>_edit(a),behavior:HitTestBehavior.opaque,child:Container(key:ValueKey('pilot-alarm:${a.id}'),padding:const EdgeInsets.fromLTRB(16,12,12,14),decoration:BoxDecoration(color:p.card,border:Border.all(color:a.id==next?p.on(C.blue):p.line),borderRadius:BorderRadius.circular(16)),child:Column(children:[
+          // Mock-up v22 .acard .head: star, label, "next" on the left; the repeat
+          // days and the switch on the right (m261). The whole card opens the editor.
+          // The name is capped, not Flexible: a Flexible beside the Expanded days
+          // would split the free space and leave a gap after the switch.
+          LayoutBuilder(builder:(context,box)=>Row(children:[if(a.primary)...[Icon(LucideIcons.star,color:p.on(C.yellow),size:14),const SizedBox(width:6)],
+            ConstrainedBox(constraints:BoxConstraints(maxWidth:box.maxWidth*.45),child:Text(a.label,maxLines:1,overflow:TextOverflow.ellipsis,style:F.body.copyWith(color:p.ink,fontWeight:FontWeight.w600))),
             if(a.id==next)...[const SizedBox(width:4),Text(l.pilotNext.toLowerCase(),style:F.cap.copyWith(color:p.on(C.blue),fontSize:11))],
-            const SizedBox(width:6),Icon(LucideIcons.repeat,size:12,color:p.ink3),const SizedBox(width:3),
-            Expanded(child:Text(_daysLabel(a,l),maxLines:1,overflow:TextOverflow.ellipsis,style:F.cap.copyWith(color:p.ink3))),
-            Switch(value:a.enabled,onChanged:_saving?null:(v){final copies=_alarms.map((x)=>x.copy()).toList();copies.firstWhere((x)=>x.id==a.id).enabled=v;unawaited(_save(copies).catchError((_){ }));})]),
+            const SizedBox(width:8),
+            Expanded(child:Row(mainAxisAlignment:MainAxisAlignment.end,children:[Icon(LucideIcons.repeat,size:12,color:p.ink3),const SizedBox(width:3),
+              Flexible(child:Text(_daysLabel(a,l),key:ValueKey('pilot-alarm-days:${a.id}'),maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.right,style:F.cap.copyWith(color:p.ink3)))])),
+            const SizedBox(width:8),
+            Switch(value:a.enabled,onChanged:_saving?null:(v){final copies=_alarms.map((x)=>x.copy()).toList();copies.firstWhere((x)=>x.id==a.id).enabled=v;unawaited(_save(copies).catchError((_){ }));})])),
+          const SizedBox(height:10),
+          // v22 .acard.off.dim: an off alarm's graph keeps every mark and range, at .35.
           Opacity(opacity:a.enabled?1:.35,child:IgnorePointer(child:_AlarmChart(alarm:a,now:now,graph:widget.graph,stages:widget.stages,reference:widget.reference))),
         ])))),
       ]))));
@@ -135,8 +146,11 @@ class _AlarmChartState extends State<_AlarmChart>{
     final left=bed==null?null:start+(bed!+50)*60.0,right=waking.isEmpty?null:waking.reduce(math.min)-600;
     final cut=left!=null&&right!=null&&right>left+1200?PilotTimelineCut(leftEnd:left,rightStart:right):null;
     final p=P.of(context);
-    Widget stat(String label,String value)=>Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(label,style:F.cap.copyWith(color:p.ink3)),Text(value,maxLines:1,overflow:TextOverflow.ellipsis,style:F.body.copyWith(color:p.ink,fontWeight:FontWeight.w500))]));
-    return Column(children:[PilotTimelineChart(controller:c,graph:measured??widget.graph,interaction:interaction,stages:a.type==PilotAlarmType.sleep?recorded??widget.stages:const [],height:114,overview:true,cut:cut,annotations:annotations,showHeartRate:a.type==PilotAlarmType.workout),
+    // m261: the three stats are right-aligned.
+    Widget stat(String label,String value)=>Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.end,children:[Text(label,textAlign:TextAlign.right,style:F.cap.copyWith(color:p.ink3)),Text(value,maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.right,style:F.body.copyWith(color:p.ink,fontWeight:FontWeight.w500))]));
+    // v22 .mchart: a 72 px graph (it grows only if stacked icons need it).
+    return Column(children:[PilotTimelineChart(controller:c,graph:measured??widget.graph,interaction:interaction,stages:a.type==PilotAlarmType.sleep?recorded??widget.stages:const [],height:72,overview:true,cut:cut,annotations:annotations,showHeartRate:a.type==PilotAlarmType.workout),
+      const SizedBox(height:10),
       // Mock-up v22 statsOf(): Wake (a range with early wake), Expected,
       // Usual sleep; workout: Window, Zone, Buzzes at.
       Row(children:a.type==PilotAlarmType.sleep?[
@@ -192,7 +206,9 @@ List<ChartAnnotation> pilotAlarmAnnotations(PilotAlarm a,AppLocalizations l,int 
 }
 
 class PilotAlarmEditor extends StatefulWidget{
-  const PilotAlarmEditor({super.key,required this.alarm,required this.onSave,this.now,this.graph=const DayGraph(),this.stages=const [],this.reference});
+  const PilotAlarmEditor({super.key,required this.alarm,required this.onSave,this.now,this.graph=const DayGraph(),this.stages=const [],this.reference,this.isNew=false});
+  /// Opened from + (v22 open(nw)): titled "New … alarm" until it is saved.
+  final bool isNew;
   final Future<PilotAlarmReference?> Function(DateTime)? reference;
   final PilotAlarm alarm;final Future<void> Function(PilotAlarm) onSave;final DateTime? now;final DayGraph graph;final List<SleepStage?> stages;
   @override State<PilotAlarmEditor> createState()=>_AlarmEditorState();
@@ -310,13 +326,13 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
       // Mock-up v22 .navx: filled Cancel / Save (the app's dense BigButton).
       Padding(padding:const EdgeInsets.fromLTRB(16,6,16,6),child:Row(children:[
         SizedBox(width:92,child:BigButton(l.pilotCancel,dense:true,soft:true,color:C.n500,onTap:saving?null:()=>Navigator.pop(context))),
-        Expanded(child:Text(l.pilotEditAlarm(a.label),maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.center,style:F.head.copyWith(color:p.ink))),
+        Expanded(child:Text(widget.isNew?(a.type==PilotAlarmType.sleep?l.pilotNewSleepAlarm:l.pilotNewWorkoutAlarm):l.pilotEditAlarm(a.label),maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.center,style:F.head.copyWith(color:p.ink))),
         SizedBox(width:92,child:BigButton(l.pilotSave,dense:true,color:C.indigo,busy:saving,onTap:saving?null:_save))])),
-      if(a.type==PilotAlarmType.sleep)Container(margin:const EdgeInsets.fromLTRB(16,0,16,6),decoration:BoxDecoration(color:p.card2,borderRadius:BorderRadius.circular(12)),child:Row(key:const ValueKey('pilot-night-pager'),children:[
-        IconButton(tooltip:l.pilotPreviousNight,onPressed:night>0?()=>_pageNight(night-1):null,icon:const Icon(LucideIcons.chevronLeft)),
-        Expanded(child:Text(nights.isEmpty?l.pilotTonight:_nightLabel(nights[night.clamp(0,nights.length-1)]),textAlign:TextAlign.center,style:F.body.copyWith(color:p.ink,fontWeight:FontWeight.w600))),
-        IconButton(tooltip:l.pilotNextNight,onPressed:night<nights.length-1?()=>_pageNight(night+1):null,icon:const Icon(LucideIcons.chevronRight)),
-      ])),
+      // Owner m261: the app's one day switcher (DayStepBar), stepping nights.
+      if(a.type==PilotAlarmType.sleep)Padding(padding:const EdgeInsets.fromLTRB(16,0,16,6),child:DayStepBar(key:const ValueKey('pilot-night-pager'),
+        label:nights.isEmpty?l.pilotTonight:_nightLabel(nights[night.clamp(0,nights.length-1)]),previousLabel:l.pilotPreviousNight,nextLabel:l.pilotNextNight,
+        previousKey:const ValueKey('pilot-night-previous'),nextKey:const ValueKey('pilot-night-next'),
+        onPrevious:night>0?()=>_pageNight(night-1):null,onNext:night<nights.length-1?()=>_pageNight(night+1):null)),
       Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:PilotTimelineChart(controller:c,graph:graph,interaction:interaction,stages:stages,handles:handles,selectedAnnotationId:focus,onHandle:_handle,onSelect:(id){if({'bed','wake','early','gradual','sunrise','sound','vibration','flash','window'}.contains(id))select(id,start+_minuteFor(id)*60.0);},
         showHeartRate:a.type==PilotAlarmType.workout,showHeader:false,annotations:pilotAlarmAnnotations(a,l,start,bedMinute:previewBed,expectedWake:expectedWake))),
       // Mock-up v22 .tabs; a new phone timing flashes the Times tab (m206).
@@ -348,7 +364,7 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
             if(repeat)const Spacer(),
             PilotZoomControls(controller:c,onZoom:interaction.zoom,trailing:Align(alignment:Alignment.centerRight,child:TextButton.icon(onPressed:()=>setState(()=>repeat=!repeat),icon:Icon(repeat?LucideIcons.check:LucideIcons.repeat,size:16),label:Text(repeat?l.pilotDone:_daysLabel(a,l),maxLines:1,overflow:TextOverflow.ellipsis)))),
           ]))),
-          section(l.pilotTimesHint),
+          section(a.type==PilotAlarmType.workout?l.pilotWindowHint:l.pilotTimesHint),
           if(a.type==PilotAlarmType.sleep&&previewBed!=null)timeRow('bed',l.pilotFallAsleep,previewBed!,sub:previewBed==usualBed?l.pilotYourUsual:l.pilotWhatIf,timeColor:previewBed==usualBed?null:const Color(0xFFF5A36B),trailing:previewBed==usualBed?null:_resetChip(()=>setState(()=>previewBed=usualBed))),
           if(a.type==PilotAlarmType.sleep)...[
             timeRow('early',l.pilotEarlyWake,a.wakeMinute-a.earlyMinutes,showTime:a.earlyMinutes>0,sub:a.earlyMinutes==0?null:l.pilotUpToEarlier(a.earlyMinutes).replaceFirst('U','u'),trailing:a.earlyMinutes==0?null:PilotRowChip(l.pilotDisable,onTap:()=>setState(()=>a.earlyMinutes=0))),
@@ -368,14 +384,14 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
           // bare star (#f2c94c filled on, #7f8ba0 off), no tile and no Switch.
           // A workout alarm shows the row at .45, inert.
           Semantics(key:const ValueKey('pilot-primary'),toggled:a.canBePrimary&&a.primary,enabled:a.canBePrimary,onTap:a.canBePrimary?()=>setState(()=>a.primary=!a.primary):null,excludeSemantics:true,
-            label:'${a.canBePrimary&&a.primary?l.pilotPrimaryOn:l.pilotPrimaryOff}. ${a.canBePrimary?l.pilotPrimarySub:l.pilotPrimaryWorkoutSub}',
+            label:'${a.canBePrimary&&a.primary?l.pilotPrimaryOn:l.pilotPrimaryOff}. ${a.canBePrimary?'${a.primary?l.pilotPrimaryTapToStop:l.pilotPrimaryTapToMake} ${l.pilotPrimarySub}':l.pilotPrimaryWorkoutSub}',
             child:Opacity(opacity:a.canBePrimary?1:.45,child:GestureDetector(behavior:HitTestBehavior.opaque,onTap:a.canBePrimary?()=>setState(()=>a.primary=!a.primary):null,
               child:ConstrainedBox(constraints:const BoxConstraints(minHeight:44),child:Padding(padding:const EdgeInsets.symmetric(vertical:8),child:Row(children:[
                 SizedBox(width:40,height:40,child:Icon(a.canBePrimary&&a.primary?Icons.star_rounded:LucideIcons.star,size:a.canBePrimary&&a.primary?23:20,color:a.canBePrimary&&a.primary?const Color(0xFFF2C94C):const Color(0xFF7F8BA0))),
                 const SizedBox(width:10),
                 Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
                   Text(a.canBePrimary&&a.primary?l.pilotPrimaryOn:l.pilotPrimaryOff,style:F.body.copyWith(color:p.ink)),
-                  Text(a.canBePrimary?l.pilotPrimarySub:l.pilotPrimaryWorkoutSub,style:F.cap.copyWith(color:const Color(0xFF9AA6B8),fontSize:12)),
+                  Text(a.canBePrimary?'${a.primary?l.pilotPrimaryTapToStop:l.pilotPrimaryTapToMake} ${l.pilotPrimarySub}':l.pilotPrimaryWorkoutSub,style:F.cap.copyWith(color:const Color(0xFF9AA6B8),fontSize:12)),
                 ])),
               ])))))),
         ],

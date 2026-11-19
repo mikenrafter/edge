@@ -21570,6 +21570,8 @@
   "pilotSaturday": "Sat",
   "pilotSunday": "Sun",
   "pilotEditAlarm": "Edit \"{name}\"",
+  "pilotNewSleepAlarm": "New sleep alarm",
+  "pilotNewWorkoutAlarm": "New workout alarm",
   "@pilotEditAlarm": {
     "placeholders": {
       "name": {
@@ -21595,6 +21597,8 @@
   "pilotPrimary": "Primary alarm",
   "pilotPrimaryOn": "Primary alarm for these days",
   "pilotPrimaryOff": "Not the primary alarm",
+  "pilotPrimaryTapToMake": "Tap to make this the primary alarm.",
+  "pilotPrimaryTapToStop": "Tap to stop this being the primary alarm.",
   "pilotPrimarySub": "The primary alarm sets the wake time your day and bedtime reminders are planned around.",
   "pilotPrimaryWorkoutSub": "Workout alarms can't be primary. The primary alarm is the wake-up your day and bedtime reminders are planned around.",
   "pilotPrimaryDescription": "The main sleep alarm for its repeat days",
@@ -21719,11 +21723,12 @@
   "pilotTomorrowNight": "Tomorrow night",
   "pilotFallAsleep": "Fall asleep",
   "pilotYourUsual": "your usual",
-  "pilotWhatIf": "what-if · not saved",
+  "pilotWhatIf": "preview · not saved",
   "pilotUsualSleep": "Usual sleep",
   "pilotTapGraphOrRow": "Tap the graph or a row",
   "pilotSelected": "Selected",
   "pilotTimesHint": "Times · tap one, then drag it on the graph",
+  "pilotWindowHint": "Window · tap one, then drag it on the graph",
   "pilotDragHint": "Tap one, then drag it on the graph",
   "pilotGradualStarts": "Gradual starts",
   "pilotSunriseStarts": "Sunrise starts",

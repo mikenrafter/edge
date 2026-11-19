@@ -190,22 +190,27 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
         ChartAnnotation? nearest;
         for(final a in visible){if(nearest==null||(a.at-(c.scrub??c.view.center)).abs()<(nearest.at-(c.scrub??c.view.center)).abs())nearest=a;}
         if(widget.selectedAnnotationId!=null&&c.scrub==null){nearest=widget.annotations.where((a)=>a.id==widget.selectedAnnotationId).firstOrNull??nearest;}
-        final annotationStep=math.max(18.0,MediaQuery.textScalerOf(context).scale(13.0)+2);
-        final overviewGroups=<({double at,List<ChartAnnotation> items,double left,int lane})>[];
+        // v22 .slot: 15 px icons with 1 px gaps.
+        final annotationStep=math.max(16.0,MediaQuery.textScalerOf(context).scale(10.0)+4);
+        final overviewGroups=<_OverviewSlot>[];
         if(widget.overview){
           final groups=<double,List<ChartAnnotation>>{};
           for(final a in visible.where((a)=>!iconless(a))){(groups[(a.at/60).round()*60.0]??=[]).add(a);}
           final ends=<double>[];
           for(final at in groups.keys.toList()..sort()){
-            final items=groups[at]!,sx=widget.cut?.x(at,c.view,_width)??c.view.fraction(at)*_width;
+            // Owner m269: one minute's column holds at most two tiles, its first
+            // icon and a "…" standing for the rest. Icons pushed down by a nearby
+            // different minute are laid out as before.
+            final all=groups[at]!,items=all.length>2?[all.first]:all,more=all.length>2?all.sublist(1):const <ChartAnnotation>[],rowsUsed=items.length+(more.isEmpty?0:1);
+            final sx=widget.cut?.x(at,c.view,_width)??c.view.fraction(at)*_width;
             final labelSize=TextPainter(text:TextSpan(text:pilotClock(at),style:F.cap.copyWith(fontSize:11)),textDirection:TextDirection.ltr,textScaler:MediaQuery.textScalerOf(context))..layout();
             final width=22+labelSize.width;labelSize.dispose();
             final left=(sx-8).clamp(0.0,math.max(0.0,_width-width)).toDouble();
             var lane=0;
-            bool free(int row){for(var j=row;j<row+items.length;j++){if(j<ends.length&&left<ends[j]+3)return false;}return true;}
+            bool free(int row){for(var j=row;j<row+rowsUsed;j++){if(j<ends.length&&left<ends[j]+3)return false;}return true;}
             while(!free(lane)){lane++;}
-            for(var j=lane;j<lane+items.length;j++){while(ends.length<=j){ends.add(-100);}ends[j]=left+width;}
-            overviewGroups.add((at:at,items:items,left:left,lane:lane));
+            for(var j=lane;j<lane+rowsUsed;j++){while(ends.length<=j){ends.add(-100);}ends[j]=left+width;}
+            overviewGroups.add(_OverviewSlot(at,items,left,lane)..more.addAll(more));
           }
         }
         final selectedLane=marks.where((m)=>m.annotation.id==widget.selectedAnnotationId).firstOrNull?.lane??0;
@@ -214,7 +219,7 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
         Widget chip(IconData icon,Color color,{bool on=false,bool small=false,int lane=0})=>Container(width:small?16:22,height:small?15:20,alignment:Alignment.center,
           decoration:BoxDecoration(color:on?const Color(0xFFE8ECF3):lane>0?const Color(0xCC0D121B):const Color(0xFF0D121B),borderRadius:BorderRadius.circular(small?5:6),border:Border.all(color:on?const Color(0xFFE8ECF3):const Color(0xFF3A4560))),
           child:Icon(icon,size:small?10:13,color:on?const Color(0xFF0D121B):color));
-        final plotHeight=widget.overview?math.max(widget.height,overviewGroups.fold<double>(0,(h,g)=>math.max(h,(g.lane+g.items.length)*annotationStep+8))):widget.height;
+        final plotHeight=widget.overview?math.max(widget.height,overviewGroups.fold<double>(0,(h,g)=>math.max(h,(g.lane+g.items.length+(g.more.isEmpty?0:1))*annotationStep+8))):widget.height;
         return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
           if(!widget.overview&&widget.showHeader)SizedBox(height:26,child:Row(children:[Expanded(child:Text(nearest?.label??'',maxLines:1,overflow:TextOverflow.ellipsis,style:F.cap.copyWith(color:p.ink2))),Text('bpm',style:F.cap.copyWith(color:p.on(C.red)))])),
           Listener(onPointerDown:_start,onPointerMove:_move,onPointerUp:_end,onPointerCancel:_end,
@@ -228,9 +233,15 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
                       child:IgnorePointer(child:Center(child:Container(width:h.active?6:2,height:widget.height-28,decoration:BoxDecoration(color:h.color.withValues(alpha:h.active?1:.35),borderRadius:BorderRadius.circular(3))))),),
                   if(!widget.overview)for(final mark in marks)Positioned(left:mark.x-11,top:4+mark.lane*22.0,child:Tooltip(message:mark.annotation.label,
                     child:chip(mark.annotation.icon??annotationIcon(mark.annotation.kind),p.on(_pilotAnnotationColor(mark.annotation)),on:c.scrub==null&&mark.annotation.id==widget.selectedAnnotationId,lane:mark.lane))),
-                  for(final group in overviewGroups)Positioned(left:group.left,top:group.lane*annotationStep,child:DecoratedBox(decoration:BoxDecoration(color:p.card.withValues(alpha:.9),borderRadius:BorderRadius.circular(4)),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                    Column(children:[for(final a in group.items)Padding(padding:const EdgeInsets.only(bottom:1),child:Tooltip(message:a.label,child:chip(a.icon??annotationIcon(a.kind),p.on(_pilotAnnotationColor(a)),small:true)))]),
-                    Text(pilotClock(group.at),key:ValueKey('pilot-overview-time:${group.at.round()}'),style:F.cap.copyWith(color:p.ink,fontSize:11)),
+                  for(final group in overviewGroups)Positioned(left:group.left,top:group.lane*annotationStep,child:DecoratedBox(decoration:BoxDecoration(color:const Color(0xCC121824),borderRadius:BorderRadius.circular(5)),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                    Column(children:[for(final a in group.items)Padding(padding:const EdgeInsets.only(bottom:1),child:Tooltip(message:a.label,child:chip(a.icon??annotationIcon(a.kind),p.on(_pilotAnnotationColor(a)),small:true))),
+                      // The "…" tile: the icon tile's size and style, no time label.
+                      if(group.more.isNotEmpty)Builder(builder:(context){final hidden=[for(final a in group.more)'${a.label} ${pilotClock(a.at)}'].join(', ');
+                        return Semantics(label:hidden,excludeSemantics:true,child:Tooltip(message:hidden,child:Container(key:const ValueKey('pilot-overview-more'),width:16,height:15,alignment:Alignment.center,
+                          decoration:BoxDecoration(color:const Color(0xFF0D121B),borderRadius:BorderRadius.circular(5),border:Border.all(color:const Color(0xFF3A4560))),
+                          child:Text('…',style:F.cap.copyWith(color:const Color(0xFFE8ECF3),fontSize:10,height:1)))));}),
+                    ]),
+                    Padding(padding:const EdgeInsets.symmetric(horizontal:3),child:Text(pilotClock(group.at),key:ValueKey('pilot-overview-time:${group.at.round()}'),style:F.cap.copyWith(color:const Color(0xFFE8ECF3),fontSize:10,fontWeight:FontWeight.w600,height:1.5))),
                   ]))),
                   if(widget.selectedAnnotationId!=null&&!widget.overview)Builder(builder:(context){final at=(c.scrub??widget.handles.firstOrNull?.at??c.view.center),x=widget.cut?.x(at,c.view,_width)??c.view.fraction(at)*_width;
                     // Mock-up tlab beside the selected icon (x+14, or x-58 at the right
@@ -250,6 +261,13 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
         ]);
       })));
   }
+}
+
+/// One stack of overview icons (one minute) on the list card's graph: the
+/// icons it shows and, in [more], what its "…" tile stands for (m268).
+class _OverviewSlot {
+  _OverviewSlot(this.at,this.items,this.left,this.lane);
+  final double at,left;final int lane;final List<ChartAnnotation> items;final more=<ChartAnnotation>[];
 }
 
 class _PilotPainter extends CustomPainter {
