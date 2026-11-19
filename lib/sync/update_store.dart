@@ -109,20 +109,27 @@ class UpdateStore {
       return await attempt(reset: false);
     } catch (error) {
       if (!await _notDatabase(error, path)) rethrow;
-      // Another engine may have repaired the file while this one was opening.
-      // Serialize recovery and retry under the lock before replacing anything.
-      final lock = await File('$path.recovery-lock').open(mode: FileMode.append);
+      // SQLite serializes engines in one process too; Dart's file locks do
+      // not. Recheck under that ownership before replacing a corrupt file.
+      final recovery = UpdateStore(await f.openDatabase('$path.recovery.db',
+          options: OpenDatabaseOptions(singleInstance: false)));
       try {
-        await lock.lock(FileLock.blockingExclusive);
-        try {
-          return await attempt(reset: false);
-        } catch (retryError) {
-          if (!await _notDatabase(retryError, path)) rethrow;
-          await f.deleteDatabase(path);
-          return await attempt(reset: true);
-        }
+        await recovery.db.rawQuery('PRAGMA busy_timeout = 0');
+        await recovery.db.rawQuery('PRAGMA journal_mode=WAL');
+        return await recovery._tx((txn) async {
+          await txn.execute(
+            'CREATE TABLE IF NOT EXISTS recovery_owner (id INTEGER PRIMARY KEY)',
+          );
+          try {
+            return await attempt(reset: false);
+          } catch (retryError) {
+            if (!await _notDatabase(retryError, path)) rethrow;
+            await f.deleteDatabase(path);
+            return await attempt(reset: true);
+          }
+        });
       } finally {
-        await lock.close();
+        await recovery.db.close();
       }
     }
   }

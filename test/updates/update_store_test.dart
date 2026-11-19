@@ -54,8 +54,10 @@ class _RecoveryRaceFactory implements DatabaseFactory {
   @override
   Future<Database> openDatabase(String path, {OpenDatabaseOptions? options}) {
     if (path == primaryPath) {
-      if (++primaryOpens == 4) secondReady.complete(true);
-    } else if (++recoveryOpens == 2) {
+      if (++primaryOpens == 4 && !secondReady.isCompleted) {
+        secondReady.complete(true);
+      }
+    } else if (++recoveryOpens == 2 && !secondReady.isCompleted) {
       secondReady.complete(false);
     }
     return databaseFactoryFfi.openDatabase(path,
