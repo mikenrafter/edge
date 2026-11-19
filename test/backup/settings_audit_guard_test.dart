@@ -63,6 +63,7 @@ const _mustTravel = {
 };
 
 const _mustStay = {
+  'ui.load_memory.v1',
   'device_alerts.low_armed',
   'install_device_id', 'paired_remote_id', 'paired_serial', 'paired_generation',
   'paired_worn_on', 'ble.ask_add_pending',
