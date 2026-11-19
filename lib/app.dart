@@ -159,7 +159,7 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       unawaited(context.read<CoachConfig>().refreshKeyOnResume());
       app.maybeFinishFromLiveActivity();
       unawaited(app.maybeStopBreathingFromLiveActivity());
-      app.refreshAppStatus(); // re-check OTA + admin banner on every foreground
+      unawaited(app.refreshReleaseChecks()); // cached results and the due daily check
       app.runCadenceChecks(); // evening wind-down / weekly recap nudges (best-effort)
       // Slots of "Assume I drank water" that passed while we were away.
       unawaited(app.catchUpAssumedWater());
@@ -648,6 +648,7 @@ class _ShellState extends State<AppMainShell> implements GuideShellLink, Call0<N
     _guideRunner?.attachShell(this);
     _app!.navRequest.addListener(_consumeSoon);
     _app!.screenRequest.addListener(_consumeSoon);
+    _app!.releaseOpenFailed.addListener(_releaseOpenFailed);
     ActivityRelaunch.listen(this);
     // Cold launch from a tapped notification: the route may already be set
     // before this shell mounted (so the listener never fired). Consume it once
@@ -662,6 +663,26 @@ class _ShellState extends State<AppMainShell> implements GuideShellLink, Call0<N
   }
 
   bool _pending = false;
+
+  /// A tapped release notification whose page the browser could not open: say
+  /// so, with a retry, instead of dropping the tap.
+  void _releaseOpenFailed() {
+    final app = _app;
+    final page = app?.releaseOpenFailed.value;
+    if (app == null || page == null || !mounted) return;
+    app.releaseOpenFailed.value = null;
+    final l = AppLocalizations.of(context);
+    if (l == null) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text(l.updatesOpenFailed),
+        action: SnackBarAction(
+          label: l.updatesRetry,
+          onPressed: () => unawaited(app.openReleasePage(page)),
+        ),
+      ),
+    );
+  }
 
   /// Both requests come from ONE tap and are written one after the other, so
   /// whichever listener fires second used to win — and which one that is
@@ -742,6 +763,7 @@ class _ShellState extends State<AppMainShell> implements GuideShellLink, Call0<N
     if (_guideShell != null) _guideRunner?.detachShell(_guideShell!);
     _app?.navRequest.removeListener(_consumeSoon);
     _app?.screenRequest.removeListener(_consumeSoon);
+    _app?.releaseOpenFailed.removeListener(_releaseOpenFailed);
     ActivityRelaunch.stop(this);
     _selection.dispose();
     super.dispose();

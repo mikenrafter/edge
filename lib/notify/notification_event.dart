@@ -12,8 +12,9 @@
 // hours and sleep; critical priority never grants an exception.
 
 import 'tap_router.dart';
+import '../sync/update_models.dart' show kRouteRelease;
 
-enum NotifCategory { health, recovery, reminders, device }
+enum NotifCategory { health, recovery, reminders, device, updates }
 
 enum NotifPriority { critical, normal, low }
 
@@ -53,6 +54,11 @@ enum NotifClass {
   /// may interrupt, and filing "did you work out?" under `exception` would make
   /// the one honest list in the notification system lie.
   prompt,
+
+  /// An opted-in release announcement: new app release, opens its release page.
+  /// Consent lives in the update checker's own install-local store; the
+  /// central alert policy still holds it in quiet hours and sleep.
+  update,
 }
 
 /// Which class [e] belongs to, or null for anything that is not one of the
@@ -74,6 +80,11 @@ enum NotifClass {
 /// gate opening for a whole category. `shouldFireOs` already reads the route
 /// for the same reason (the auto-detect off switch).
 NotifClass? classOf(NotificationEvent e) => switch (e.category) {
+      NotifCategory.updates
+          when e.priority == NotifPriority.normal &&
+              routePath(e.route ?? '') == kRouteRelease =>
+        NotifClass.update,
+      NotifCategory.updates => null,
       NotifCategory.health || NotifCategory.device => NotifClass.exception,
       NotifCategory.reminders
           when e.priority == NotifPriority.critical &&

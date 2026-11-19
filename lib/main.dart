@@ -16,6 +16,7 @@ import 'state/locale_controller.dart';
 import 'state/units_controller.dart';
 import 'sync/headless_boot.dart';
 import 'sync/ios_bg_task.dart';
+import 'sync/update_background.dart';
 import 'sync/ios_shortcut_sync.dart';
 import 'theme/theme_controller.dart';
 import 'widget/widget_service.dart';
@@ -97,6 +98,17 @@ Future<void> main() async {
         Workmanager().cancelByUniqueName(kHeavyDeriveTaskName),
         Workmanager().cancelByUniqueName(kSyncTaskName),
       ]).timeout(_kStartupInitTimeout);
+    } catch (_) {}
+  }
+
+  // The release-metadata worker is the ONLY WorkManager callback registered. It
+  // runs in its own isolate but owns just the update store: it never opens
+  // LocalDb or touches BLE, sync or derivation.
+  if (Platform.isAndroid) {
+    try {
+      await Workmanager()
+          .initialize(updateCallbackDispatcher)
+          .timeout(_kStartupInitTimeout);
     } catch (_) {}
   }
 

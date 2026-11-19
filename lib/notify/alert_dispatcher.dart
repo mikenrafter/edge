@@ -146,6 +146,7 @@ class AlertDispatcher {
     Future<BuzzDelivery> Function()? bandDelivery,
     Set<String>? transportTargets,
     bool Function(String target)? targetAllowed,
+    Future<bool> Function()? handoffAllowed,
     // A band transport that legitimately runs longer than [transportTimeout]
     // (a recorded rhythm: up to 8 buzzes, 2 s apart) asks for the time it
     // needs. Never shorter than the default.
@@ -251,7 +252,8 @@ class AlertDispatcher {
           if (!(await policy?.call(current, target) ?? true)) return false;
           final allowed = targetAllowed;
           return unavailable(target, current) == null &&
-              (allowed == null || [target].every(allowed));
+              (allowed == null || [target].every(allowed)) &&
+              (handoffAllowed == null || await handoffAllowed());
         }
         if (!await permit()) {
           if (target == 'band' && unavailable(target) != null) bandRefused = true;
@@ -371,13 +373,30 @@ class AlertDispatcher {
 /// ledger with a distinct per-target namespace.
 class NotificationCenterDeliveryLedger implements AlertDeliveryLedger {
   const NotificationCenterDeliveryLedger();
+
+  static final Map<String, AlertDeliveryLedger> _byRule = {};
+
+  /// Take every destination claim of rule [ruleId] from [ledger] instead of the
+  /// health database. The category's own claim (see EventClaimLedger) still
+  /// owns the phone; this covers the other routed destinations.
+  static bool hasRuleLedger(String ruleId) => _byRule.containsKey(ruleId);
+
+  static void registerRuleLedger(String ruleId, AlertDeliveryLedger ledger) =>
+      _byRule[ruleId] = ledger;
+
   @override
-  Future<bool> claim(String key) async =>
-      (jsonDecode(key) as List).last == 'phone'
-      ? true
-      : await const DurableAlertDeliveryLedger().claim(key);
+  Future<bool> claim(String key) async {
+    final own = _byRule[(jsonDecode(key) as List).first];
+    if (own != null) return own.claim(key);
+    return (jsonDecode(key) as List).last == 'phone'
+        ? true
+        : await const DurableAlertDeliveryLedger().claim(key);
+  }
+
   @override
   Future<void> release(String key) async {
+    final own = _byRule[(jsonDecode(key) as List).first];
+    if (own != null) return own.release(key);
     if ((jsonDecode(key) as List).last != 'phone') {
       await const DurableAlertDeliveryLedger().release(key);
     }

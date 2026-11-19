@@ -156,6 +156,7 @@ class AlertCapabilityRegistry {
     'hardwareProbe',
   };
   static const derivedKinds = {
+    'updates',
     'health',
     'recovery',
     'reminders',

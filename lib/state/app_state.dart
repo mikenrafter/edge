@@ -27,7 +27,6 @@ import '../ai/briefing.dart';
 import '../ai/briefing_engine.dart';
 import '../ai/nightly_sweep.dart';
 import '../coach/coach_config.dart';
-import '../models/app_status.dart';
 import '../ble/accessory_setup.dart';
 import '../ble/adapters/_registry.dart' show kBleHrs, kPolarPmd, kWhoopGen4;
 import '../ble/adapters/host.dart' show BandHost;
@@ -192,7 +191,8 @@ import '../sync/ios_shortcut_sync.dart';
 import '../sync/shortcut_sync_task.dart';
 import '../sync/paired_device.dart';
 import '../sync/sync_policy.dart';
-import '../sync/update_service.dart';
+import '../sync/update_background.dart';
+import '../sync/update_coordinator.dart';
 import '../telemetry/telemetry_service.dart';
 import '../telemetry/health_uploader.dart';
 import '../widget/widget_service.dart';
@@ -2673,7 +2673,6 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
           backupCleanupError ??= e.toString();
         }
       }
-      appStatus = null;
       _savedAlarm = null;
       _armGeneration++;
 
@@ -2746,47 +2745,20 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// True once the profile has the fields the analytics personalization needs.
   bool get profileComplete => _profile.isComplete;
 
-  // ── app status: the OTA update pointer ──────────────────────────────────────
-  // Fetched directly by UpdateService from a public, unauthenticated pointer
-  // URL — independent of any backend / JWT (the authed client was deleted).
-  //
-  // The operator-pushed alert banner that used to live here is GONE: it was
-  // fetched, dismissible and persisted, but no screen ever drew one, so the
-  // dismissed-id set could only ever be empty. Deleted rather than wired —
-  // nothing in the product asks for an operator broadcast channel.
-  AppStatus? appStatus;
-  int _currentBuild = 0; // our build number (from package_info); 0 if unknown
+  // ── release checks ─────────────────────────────────────────────────────────
+  // Notify and open a GitHub release PAGE; never download or install an APK.
+  // State is install-local (UpdateStore), outside the health database/exports.
+  final ReleaseChecks releaseChecks = ReleaseChecks();
+  UpdateSnapshot get releaseChecksSnapshot => releaseChecks.snapshot;
+  Future<UpdateCoordinator?> ensureUpdates() => releaseChecks.ensure();
+  bool get updateChecksAvailable => true;
+  Future<void> refreshReleaseChecks() => releaseChecks.refresh();
 
-  UpdateInfo? get _update => appStatus?.update;
-
-  /// A newer build is published (we're behind latest_build).
-  ///
-  /// Gated on [UpdateService.supported] (Android + [kSideloadOtaEnabled]):
-  /// store builds (Play Store / App Store) and any non-Android build must
-  /// never surface a self-update prompt at all, not just fall back to a
-  /// browser link — see update_service.dart.
-  bool get updateAvailable =>
-      UpdateService.supported &&
-      _update != null &&
-      _currentBuild > 0 &&
-      _update!.latestBuild > _currentBuild;
-
-  /// We're below the mandatory floor — the prompt can't be dismissed.
-  bool get updateMandatory =>
-      UpdateService.supported &&
-      _update != null &&
-      _currentBuild > 0 &&
-      _currentBuild < _update!.minBuild;
-
-  Future<void> _loadAppStatus() async {
+  Future<void> _loadVersionLabel() async {
     try {
       final info = await PackageInfo.fromPlatform();
-      _currentBuild = int.tryParse(info.buildNumber) ?? 0;
       _appVersionLabel = '${info.version}+${info.buildNumber}';
-    } catch (_) {
-      /* keep 0 → update prompts simply won't fire */
-    }
-    await refreshAppStatus();
+    } catch (_) {/* the About row stays blank */}
   }
 
   /// Whether Cycle is shown at all.
@@ -2807,27 +2779,6 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     notifyListeners();
   }
 
-  /// Whether this install checks for updates. Only meaningful on a sideload
-  /// build ([kSideloadOtaEnabled]) — that is the only build whose binary can
-  /// contact the endpoint at all. Defaults ON there, because a sideloaded app
-  /// has no store to tell it a fix exists, but it is refusable and the
-  /// Settings row says what the check discloses.
-  static const String _kUpdateChecks = 'update_checks_enabled';
-  bool get updateChecksEnabled => Prefs.getBool(_kUpdateChecks, true);
-
-  /// Whether the update-check row should appear at all: a build with the
-  /// feature compiled out has nothing to switch.
-  bool get updateChecksAvailable => kSideloadOtaEnabled;
-
-  Future<void> setUpdateChecksEnabled(bool on) async {
-    Prefs.setBool(_kUpdateChecks, on);
-    if (!on) {
-      appStatus = null; // drop whatever the last check answered
-    }
-    notifyListeners();
-    if (on) await refreshAppStatus();
-  }
-
   // The HR zone alert is an alert rule ('zone'): its destinations and buzz
   // pattern are in the alert prefs. Only the zone it watches lives here.
 
@@ -2840,16 +2791,6 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     Prefs.setInt(Prefs.zoneAlertTargetZone, zone.clamp(1, 5).toInt());
     notifyListeners();
   }
-
-  /// Re-poll the update pointer (best-effort; called on launch and on app resume).
-  Future<void> refreshAppStatus() async {
-    if (!updateChecksEnabled) return;
-    final status = await UpdateService.fetchStatus();
-    if (status == null) return;
-    appStatus = status;
-    notifyListeners();
-  }
-
 
   /// A tapped notification asks the shell to switch to this tab index. The shell
   /// listens; it resets to -1 after consuming. Kept off the ChangeNotifier path so
@@ -3148,10 +3089,26 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       _deriveCoordinator.debugAfterDrain(heavy: heavy, changedOnly: changedOnly);
   StreamSubscription<String>? _tapSub;
 
+  /// Set when the browser could not open a tapped release page, so the shell can
+  /// say so with a retry; cleared by the shell once shown.
+  final ValueNotifier<ReleasePage?> releaseOpenFailed = ValueNotifier(null);
+
   void _handleTapRoute(String route) {
     final t = resolveTapRoute(route); // pure — lib/notify/tap_router.dart
+    final page = t.release;
+    if (page != null) {
+      // A release tap opens the validated page and navigates nowhere.
+      unawaited(openReleasePage(page));
+      return;
+    }
     if (t.screen != null) screenRequest.value = t.screen;
     navRequest.value = t.tab;
+  }
+
+  Future<bool> openReleasePage(ReleasePage page) async {
+    final opened = await UpdateCoordinator.openRelease(page);
+    if (!opened && !_disposed) releaseOpenFailed.value = page;
+    return opened;
   }
 
   /// The engine's `onCommitBatch` (the ACK gate). See the comments inside.
@@ -3456,6 +3413,9 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     // The breathing recompute timer and _workoutTimer used to survive dispose, and
     // each of their callbacks ends in notifyListeners() on a disposed
     // ChangeNotifier (which throws in release).
+    releaseChecks.removeListener(notifyListeners);
+    releaseChecks.dispose();
+    releaseOpenFailed.dispose();
     _tapSub?.cancel();
     _deviceRowSub?.cancel();
     _deviceRowSub = null;
@@ -3612,6 +3572,9 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       }
       await armWaterReminder(prefs);
       await _ensureRemindersScheduled();
+      // An eligible recovery pass for held release announcements: from cache,
+      // revalidated, no request.
+      unawaited(releaseChecks.releaseHeld());
       if (!_disposed) bumpInsights(); // withdrawal can change totals without logging a new slot
     } catch (_) { /* Retried on the next publication or foreground refresh. */ }
   }
@@ -4725,7 +4688,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     // arm the water-reminder strap buzz (timers don't persist)
     unawaited(armWaterReminder());
     // App status (OTA pointer + admin alert banner) — best-effort, non-blocking.
-    unawaited(_loadAppStatus());
+    unawaited(_loadVersionLabel());
+    releaseChecks.addListener(notifyListeners);
+    // Only Android checks on its own; elsewhere the screen explains.
+    if (Platform.isAndroid) unawaited(releaseChecks.ensure());
     // Register the recurring wall-clock nudges as real OS-scheduled notifications
     // (wind-down, weekly recap) so they fire even when the app is closed.
     if (isPaired) unawaited(_ensureRemindersScheduled());

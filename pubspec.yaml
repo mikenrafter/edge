@@ -772,10 +772,11 @@ dependencies:
   timezone: ^0.9.4
   flutter_timezone: ^3.0.1
 
-  # OTA self-update (Android sideload): read our own version, download + install the
-  # signed APK from the backend's update pointer, with a browser fallback.
+  # Release metadata uses the installed version and opens GitHub release pages.
+  # The app never downloads or installs an APK (owner rule: NO INSTALLS, EVER).
   package_info_plus: ^8.1.0
-  ota_update: ^7.1.0
+  release_environment:
+    path: packages/release_environment
   url_launcher: ^6.3.0
   flutter_secure_storage: ^10.3.1
   gpt_markdown: ^1.1.7

@@ -4,6 +4,8 @@
 // consumes both requests. Unknown routes fall back to Today (never crash on a
 // stale payload from an old build).
 
+import '../sync/update_models.dart' show ReleasePage, ReleaseRoute;
+
 /// Sub-screen deep links (notification payloads). The 5 tab routes
 /// (/today /sleep /heart /body /workouts) stay as they were.
 const String kRouteAiMorning = '/ai/morning';
@@ -115,6 +117,10 @@ const String kRouteRecap = '/recap';
 const String kRouteAlarm = '/alarm';
 
 class TapTarget {
+  /// A validated release page to open in the browser; set only for a typed
+  /// `/release` route. The shell opens it after the tap and navigates nowhere.
+  final ReleasePage? release;
+
   /// Shell tab index to land on (always valid; unknown → 0 = Today).
   final int tab;
 
@@ -122,7 +128,7 @@ class TapTarget {
   /// (one of the kRoute* consts above).
   final String? screen;
 
-  const TapTarget(this.tab, [this.screen]);
+  const TapTarget(this.tab, [this.screen, this.release]);
 }
 
 const Map<String, int> _tabRoutes = {
@@ -168,6 +174,11 @@ const Map<String, int> _screenRoutes = {
 };
 
 TapTarget resolveTapRoute(String route) {
+  // A typed release route yields a validated page to open and no navigation.
+  // Foreground and cold-launch taps both come through here; there is no other
+  // way for a notification to open a URL.
+  final release = ReleaseRoute.parse(route);
+  if (release != null) return TapTarget(0, null, release);
   // Match on the PATH; hand the full route (id and all) back as the screen
   // request, so whatever the shell pushes still knows which bout it is about.
   final path = routePath(route);

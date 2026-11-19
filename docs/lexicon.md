@@ -259,3 +259,11 @@ in the same change that introduces it (AGENTS.md §6).
 - **Compatibility profile**: reviewed source-table, column and value dispositions for that certified target. Owned by `data/official_export/profile_tables.dart`.
 - **Snapshot receipt**: capture start/end instants, schema, immutable SQL content hash and independently omitted extras. Owned by `data/official_export/session.dart`.
 - **Recovery file**: an optional OSBK-encrypted copy of the same frozen fork SQL and supported extras, including data the certified target cannot use. Owned by `OfficialExportCoordinator`.
+## Update checker terms
+
+- **release claim**: the permanent, once-per-`(repository, release id)` record in
+  the update store that an announcement was (or may have been) shown. A quiet-hour
+  hold keeps it reserved; a known non-delivery gives it back; an ambiguous
+  hand-off keeps it consumed.
+- **release page**: the canonical `https://github.com/<repo>/releases/tag/<tag>`
+  URL rebuilt locally from a checked source and tag. The only thing the app opens.

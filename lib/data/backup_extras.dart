@@ -55,6 +55,7 @@ const Map<String, String> kPrefsNotBackedUp = {
   'notif_critical_override': 'Retired quiet-hours override; accepted from old storage but ignored.',
 
   'moment_review.queue': 'resume an interrupted Save',
+  'update_checks_enabled': 'Retired companion update pointer switch; release-check consent lives in the install-local update store and a restored value grants nothing.',
   'developer.load_timings.v1': 'local performance diagnostics for this install',
   'developer.load_timings_enabled.v1': 'switch for those diagnostics on this install',
   'install_device_id': 'identifies THIS install; a restore must not clone it',
@@ -167,6 +168,7 @@ const Map<String, String> kFileRootsNotBackedUp = {
   'lib/ui2/profile/official_export.dart': 'encrypted export artifacts in '
       'Documents/official_exports are output files for import/share; backing '
       'them up recursively would duplicate prior backups, not preserve input',
+  'lib/sync/update_store.dart': 'install-local release consent, cache and claims; never restored',
   'lib/data/disk_space.dart': 'reads the database volume free-space counter; writes no files',
   'lib/data/auto_backup.dart': 'the automatic backups themselves; they are '
       'what an import reads',

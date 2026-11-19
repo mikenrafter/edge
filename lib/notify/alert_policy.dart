@@ -1,3 +1,4 @@
+import 'dart:async';
 // Owns interruption eligibility for phone alerts and every queued band write.
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart' show debugPrintSynchronously, visibleForTesting;
@@ -49,6 +50,17 @@ class AlertPolicy {
 
   @visibleForTesting
   static AlertSleepSource sleepSource = const StoredAlertSleepSource();
+
+  static final _sleepSourceKey = Object();
+
+  /// A worker can scope a DB-free reader without changing foreground policy.
+  static Future<T> withSleepSource<T>(
+    AlertSleepSource source,
+    Future<T> Function() action,
+  ) => runZoned(action, zoneValues: {_sleepSourceKey: source});
+
+  static AlertSleepSource get _currentSleepSource =>
+      Zone.current[_sleepSourceKey] as AlertSleepSource? ?? sleepSource;
 
   /// Kinds the wearer started or is inside of: they are not alerts, so quiet
   /// hours and sleep never hold them (owner, 2026-11-18). The test/preview/find
@@ -102,6 +114,23 @@ class AlertPolicy {
   static Future<String> fallback() async =>
       (await NotificationPrefs.load()).fallbackDestination.name;
 
+  /// What the policy says about [rule] right now, with the same reloads as
+  /// [permits]. A storage failure holds (a retryable refusal): the wearer is
+  /// never assumed awake.
+  static Future<AlertDisposition> dispositionOf(AlertRule rule) async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      await sp.reload();
+      final prefs = await NotificationPrefs.load();
+      final now = clock.now();
+      final sleep = await _currentSleepSource.load(now);
+      return AlertPolicy(prefs, sleep).decide(rule, now).disposition;
+    } catch (error) {
+      debugPrintSynchronously('[notify] eligibility unavailable: $error');
+      return AlertDisposition.hold;
+    }
+  }
+
   /// Reloads at handoff; storage failure refuses delivery instead of assuming
   /// the wearer is awake. A cached onset is still aged against the new instant.
   static Future<bool> permits(AlertRule rule, String target) async {
@@ -117,7 +146,7 @@ class AlertPolicy {
       if (saved && !current.enabled) return false;
       if (releaseClass(current) == AlertReleaseClass.alwaysPass) return true;
       final now = clock.now();
-      final sleep = await sleepSource.load(now);
+      final sleep = await _currentSleepSource.load(now);
       final finalPrefs = await NotificationPrefs.load();
       final finalRule = saved ? _saved(finalPrefs, rule) : current;
       if (!finalRule.enabled) return false;

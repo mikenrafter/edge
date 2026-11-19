@@ -51,7 +51,7 @@ const _mustTravel = {
   'local_profile_json', 'onboarding_choice', 'onboard.completed',
   'onboard.skipped_pairing', 'onboard.saw_profile_setup',
   'backup.cadence', 'gesture_double_tap', 'band.strap_name',
-  'health_sync', 'phone_steps', 'cycle_tracking_enabled', 'update_checks_enabled',
+  'health_sync', 'phone_steps', 'cycle_tracking_enabled',
   'nutrition.barcode_lookup', 'share.map_tiles', 'dev.mode',
   // The user's opt-in, with when it was given. Restored imports are fenced by
   // alert_after_ts, so a restored timestamp cannot log old naps.
@@ -101,6 +101,7 @@ const _prefixExamples = {'ui.home_ring_details.v1', 'ui.load_memory.v1'};
 
 const _mustStay = {
   'device_alerts.charge_pending_ts',
+  'update_checks_enabled',
   'notif_critical_override',
   // Fork-owned diagnostics and local import/write recovery do not travel.
   'developer.load_timings.v1', 'developer.load_timings_enabled.v1',

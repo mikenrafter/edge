@@ -169,13 +169,13 @@ void main() {
         (t) async {
       await pump(t, const MoreSettings(), _caps());
       expect(find.text('Contribute my health data'), findsNothing);
-      expect(find.text('Check for updates'), findsNothing);
+      expect(find.text('App updates'), findsNothing);
       await pump(
           t,
           const MoreSettings(),
           _caps(healthShareConsent: true, updateChecksBuild: true));
       expect(find.text('Contribute my health data'), findsOneWidget);
-      expect(find.text('Check for updates'), findsOneWidget);
+      expect(find.text('App updates'), findsOneWidget);
     });
   });
 

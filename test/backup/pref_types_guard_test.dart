@@ -92,6 +92,7 @@ void main() {
   const validatedRawReads = {
     'notif_fallback_destination': 'string',
     'notif_critical_override': 'bool',
+    'update_checks_enabled': 'bool',
   };
   final files = Directory('lib').listSync(recursive: true)
       .whereType<File>().where((f) => f.path.endsWith('.dart')).toList();
@@ -215,7 +216,8 @@ void main() {
     expect(kPrefTypes.keys.where((k) => !read.contains(k)), isEmpty,
         reason: 'stale kPrefTypes entries');
     expect(kPrefTypes.keys.where((k) => kPrefsNotBackedUp.containsKey(k) &&
-        k != 'notif_critical_override'), isEmpty,
+        k != 'notif_critical_override' &&
+        k != 'update_checks_enabled'), isEmpty,
         reason: 'a denylisted key never reaches restore');
     for (final t in kPrefTypes.values) {
       expect(const {'string', 'bool', 'int', 'double', 'stringList'}, contains(t));

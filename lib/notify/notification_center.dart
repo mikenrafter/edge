@@ -15,6 +15,7 @@
 
 import 'dart:async';
 import '../haptics/band_queue.dart' show kAlertHandoffKey;
+import '../sync/update_models.dart' show isReleaseAnnouncement;
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,6 +27,7 @@ import '../data/journal_fields.dart';
 import '../data/med_store.dart';
 import '../state/clock_format.dart' show formatClockMinute;
 import '../data/water_units.dart';
+import 'event_claim_ledger.dart';
 import 'fired_keys.dart';
 import 'reminder_sleep_gate.dart';
 import 'alert_dispatcher.dart';
@@ -86,6 +88,15 @@ class NotificationCenter {
     // The caller already chose the phone as this rule's fallback.
     bool ruleDecidesFallback = false,
   }) async {
+    final ledger = _claimLedgers[e.category];
+    // A category with its own claim store is delivered ONLY through it. One
+    // that has not registered fails closed rather than falling back to the
+    // health database.
+    if (ledger != null) {
+      return _emitClaimed(e, ledger,
+          allowPermissionPrompt: allowPermissionPrompt);
+    }
+    if (e.category == NotifCategory.updates) return const {};
     final prefs = await NotificationPrefs.load();
     final id =
         ruleId ??
@@ -149,6 +160,147 @@ class NotificationCenter {
       ),
     );
     return out.targets.toSet();
+  }
+
+  final Map<NotifCategory, EventClaimLedger> _claimLedgers = {};
+
+  /// The rule release announcements are delivered under: phone by default.
+  /// Every destination the hardware and execution mode support may be chosen
+  /// here once the alert-settings revamp lands; until then it is fixed.
+  @visibleForTesting
+  AlertRule updateRule = const AlertRule(
+    id: 'updates',
+    kind: 'updates',
+    enabled: true,
+    destinations: AlertRule.phone,
+    executionMode: AlertExecutionMode.phoneDerived,
+    channelPolicyId: 'updates',
+  );
+
+  /// How long the OS hand-off may take before the outcome is called ambiguous.
+  @visibleForTesting
+  Duration presentTimeout = const Duration(seconds: 10);
+
+  /// Whether the OS will show a notification now, asked WITHOUT prompting.
+  /// Only a foreground tap on the Settings card may prompt.
+  @visibleForTesting
+  Future<bool> Function() claimedPermission =
+      () => NotificationService.instance.ensurePermission(allowPrompt: false);
+
+  /// Route a category's claims, OS ids and consent through [ledger] instead of
+  /// the health database. Idempotent per category; the last registration wins.
+  bool hasClaimLedger(NotifCategory category) =>
+      _claimLedgers.containsKey(category);
+
+  void registerClaimLedger(NotifCategory category, EventClaimLedger ledger) =>
+      _claimLedgers[category] = ledger;
+
+  /// Delivery for a category whose once-only claim, OS id and consent live in
+  /// its own ledger (the update checker's). The health database stays closed.
+  ///
+  /// Order matters: claim first; then consent; then the central quiet/sleep
+  /// policy (a hold keeps the SAME claim reserved for the recovery pass); then
+  /// permission (never prompting here); then consent and policy again at the
+  /// platform hand-off. Known non-delivery gives the claim back; an ambiguous
+  /// hand-off keeps it consumed (at most once, not exactly once).
+  Future<Set<String>> _emitClaimed(
+    NotificationEvent e,
+    EventClaimLedger ledger, {
+    required bool allowPermissionPrompt,
+  }) async {
+    if (e.category == NotifCategory.updates &&
+        !(e.priority == NotifPriority.normal &&
+            isReleaseAnnouncement(e.dedupeKey, e.route))) {
+      return const {};
+    }
+    final rule = updateRule;
+    final claim = await ledger.begin(e);
+    if (claim == null) return const {};
+    var outcome = ClaimOutcome.released;
+    var reached = <String>{};
+    var handedOff = false;
+    try {
+      if (!await ledger.stillWanted(e, claim)) return const {};
+      final disposition = await AlertPolicy.dispositionOf(rule);
+      if (disposition != AlertDisposition.deliver) {
+        outcome = disposition == AlertDisposition.hold
+            ? ClaimOutcome.held
+            : ClaimOutcome.released;
+        return const {};
+      }
+      var ambiguous = false;
+      final claimed = NotificationEvent(
+        dedupeKey: e.dedupeKey,
+        category: e.category,
+        title: e.title,
+        body: e.body,
+        date: e.date,
+        priority: e.priority,
+        route: e.route,
+        osId: claim.osId,
+      );
+      Future<bool> phoneTransport() async {
+        if (!await claimedPermission()) return false;
+        if (!await ledger.stillWanted(e, claim)) return false;
+        Future<bool> permit() async =>
+            await AlertPolicy.permits(rule, 'phone') && await ledger.stillWanted(e, claim);
+        try {
+          handedOff = true;
+          return await runZoned(
+            () => presentSink(claimed, allowPermissionPrompt: false)
+                .timeout(presentTimeout),
+            zoneValues: <Object?, Object?>{kAlertHandoffKey: permit},
+          );
+        } on TimeoutException {
+          ambiguous = true;
+          return false;
+        }
+      }
+
+      await FeatureFlags.ensureLoaded();
+      String? reason;
+      if (FeatureFlags.isOn(FeatureFlag.alertDispatcher)) {
+        final out = await dispatcher.dispatch(
+          rule,
+          eventId: e.dedupeKey,
+          sourceTime: DateTime.now(),
+          historical: false,
+          targetAllowed: (_) => true,
+          handoffAllowed: () => ledger.stillWanted(e, claim),
+          phoneTransport: phoneTransport,
+        );
+        reached = out.targets.toSet();
+        reason = out.suppressionReason;
+      } else {
+        final prefs = await NotificationPrefs.load();
+        if (rule.enabled &&
+            AlertCapabilityRegistry.destinationSupportReason(rule, 'phone') ==
+                null &&
+            (rule.phoneSelected ||
+                prefs.fallbackDestination == AlertDestination.phone) &&
+            await phoneTransport()) {
+          reached = {'phone'};
+        }
+      }
+      if (reached.isNotEmpty) {
+        outcome = ClaimOutcome.sent;
+      } else if (ambiguous || reason == 'deliveryUnconfirmed') {
+        outcome = ClaimOutcome.unknown;
+      } else if (await AlertPolicy.dispositionOf(rule) ==
+          AlertDisposition.hold) {
+        outcome = ClaimOutcome.held;
+      }
+    } catch (_) {
+      // Before the platform call nothing was shown, so the claim goes back; once
+      // handed off, what happened is unknown and the claim stays consumed.
+      outcome = handedOff ? ClaimOutcome.unknown : ClaimOutcome.released;
+      reached = {};
+    } finally {
+      try {
+        await ledger.settle(claim, outcome);
+      } catch (_) {}
+    }
+    return reached;
   }
 
   /// The persistent "already fired this dedupeKey" guard. See [FiredKeyStore].

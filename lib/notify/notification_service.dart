@@ -87,6 +87,9 @@ tz.TZDateTime nextInstanceOf(
 tz.TZDateTime nextCalendarDay(tz.TZDateTime d) =>
     tz.TZDateTime(d.location, d.year, d.month, d.day + 1, d.hour, d.minute);
 
+/// Notification permission as the wearer can act on it (App updates screen).
+enum ReleaseAlertAccess { granted, denied, channelMuted }
+
 class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
@@ -102,6 +105,13 @@ class NotificationService {
   Stream<String> get taps => _taps.stream;
 
   // ── Channels (one per category — keep them disjoint) ────────────────────────
+  static const AndroidNotificationChannel _updatesChannel =
+      AndroidNotificationChannel(
+    'app_updates',
+    'App updates',
+    description: 'Opted-in GitHub release announcements',
+  );
+
   static const AndroidNotificationChannel _deviceChannel =
       AndroidNotificationChannel(
     'device_alerts',
@@ -300,6 +310,7 @@ class NotificationService {
         NotifCategory.recovery => _recoveryChannel,
         NotifCategory.reminders => _remindersChannel,
         NotifCategory.device => _deviceChannel,
+        NotifCategory.updates => _updatesChannel,
       };
 
   Importance _importanceFor(NotifCategory c) =>
@@ -348,6 +359,7 @@ class NotificationService {
     final androidImpl = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     await androidImpl?.createNotificationChannel(_deviceChannel);
+    await androidImpl?.createNotificationChannel(_updatesChannel);
     await androidImpl?.createNotificationChannel(_healthChannel);
     await androidImpl?.createNotificationChannel(_recoveryChannel);
     await androidImpl?.createNotificationChannel(_remindersChannel);
@@ -746,6 +758,27 @@ class NotificationService {
 
   @visibleForTesting
   Call0<Future<void>>? debugOpenSettings;
+
+  /// Whether release announcements can reach the wearer now, without ever
+  /// prompting: granted, denied (or never asked), or granted with the app's
+  /// update channel muted in the OS.
+  Future<ReleaseAlertAccess> releaseAlertAccess() async {
+    if (!await hasPermission()) return ReleaseAlertAccess.denied;
+    try {
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      final channels = await android?.getNotificationChannels();
+      final channel = channels
+          ?.where((c) => c.id == _updatesChannel.id)
+          .firstOrNull;
+      if (channel != null && channel.importance == Importance.none) {
+        return ReleaseAlertAccess.channelMuted;
+      }
+    } catch (_) {
+      /* the channel state is unknown: the permission answer stands */
+    }
+    return ReleaseAlertAccess.granted;
+  }
 
   /// Open the OS page where the user can switch our notifications back on.
   /// After a denial neither platform will show the request dialog again (iOS
