@@ -44,10 +44,15 @@ class _WakeLightState extends State<PilotWakeLight> with SingleTickerProviderSta
   }
   @override void didChangeAppLifecycleState(AppLifecycleState state){_foreground=state==AppLifecycleState.resumed;_sync();}
   @override void dispose(){WidgetsBinding.instance.removeObserver(this);widget.runtime.effects.removeListener(_sync);widget.runtime.flash.removeListener(_sync);_pulse?.cancel();_torch(false);animation.dispose();super.dispose();}
+  Widget _screenFlash(){
+    final fire=widget.runtime.firedAt;
+    if(fire!=null)WidgetsBinding.instance.addPostFrameCallback((_){if(mounted&&_foreground&&_bright)widget.runtime.notePhoneEffectStarted(fire);});
+    return const Positioned.fill(child:IgnorePointer(child:ColoredBox(key:ValueKey('pilot-screen-flash'),color:Colors.white)));
+  }
   @override Widget build(BuildContext context)=>AnimatedBuilder(animation:animation,child:widget.child,builder:(context,child){
     final light=_foreground?widget.runtime.lightAt(DateTime.now()):0.0;
     return Stack(children:[child!,if(light>0)Positioned.fill(child:IgnorePointer(child:ColoredBox(color:Color.lerp(Colors.transparent,const Color(0xffffd8a0),light*.9)!))),
-      if(_bright)const Positioned.fill(child:IgnorePointer(child:ColoredBox(key:ValueKey('pilot-screen-flash'),color:Colors.white))),
+      if(_bright)_screenFlash(),
     ]);
   });
 }

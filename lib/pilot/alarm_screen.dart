@@ -1,5 +1,5 @@
 import 'recorded_stages.dart';
-import 'pilot_readout.dart';
+import 'alarm_readout.dart';
 import 'package:intl/intl.dart';
 import 'pilot_theme.dart';
 // Owner: alarm list State owns its saved snapshot; editor State owns one detached draft.
@@ -299,12 +299,8 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
                 )),
               ])),
               Row(children:[for(final preset in [({1,2,3,4,5},l.pilotWeekdays),({6,7},l.pilotWeekends),({1,2,3,4,5,6,7},l.pilotEveryDay),(<int>{},l.pilotOnce)])Expanded(child:TextButton(onPressed:()=>setState((){a.days={...preset.$1};_repeatChanged();}),child:Text(preset.$2,maxLines:1,overflow:TextOverflow.ellipsis)))]),
-            ]else Expanded(child:PilotReadout(key:const ValueKey('pilot-alarm-readout'),controller:c,graph:graph,stages:stages,fallbackTime:start+_minuteFor(focus)*60.0,
-              titleWidget:TextButton(onPressed:_rename,style:TextButton.styleFrom(padding:EdgeInsets.zero),child:Align(alignment:Alignment.centerLeft,child:Text(a.label,maxLines:1,overflow:TextOverflow.ellipsis))),
-              fallback:Row(children:[
-                Expanded(child:Text('${l.pilotExpected}\n${expectedWake==null?'—':formatClock(expectedWake!~/60,expectedWake!%60)}',maxLines:2)),
-                Expanded(child:Text('${l.pilotUsualBedtime}\n${usualBed==null?'—':formatClock(((usualBed!%1440)+1440)%1440~/60,((usualBed!%60)+60)%60)}',maxLines:2)),
-              ]))),
+            ]else Expanded(child:PilotAlarmReadout(key:const ValueKey('pilot-alarm-readout'),controller:c,graph:graph,stages:stages,alarm:a,dayStart:start,expectedMinute:expectedMinute,selectedMinute:_minuteFor(focus),bedtimeMinute:previewBed,
+              title:TextButton(onPressed:_rename,style:TextButton.styleFrom(padding:EdgeInsets.zero),child:Align(alignment:Alignment.centerLeft,child:Text(a.label,maxLines:1,overflow:TextOverflow.ellipsis))))),
             if(repeat)const Spacer(),
             PilotZoomControls(controller:c,onZoom:interaction.zoom,trailing:TextButton(onPressed:()=>setState(()=>repeat=!repeat),child:Text(repeat?l.pilotDone:_daysLabel(a,l),maxLines:1,overflow:TextOverflow.ellipsis))),
           ]))),
@@ -324,16 +320,16 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
         if(tab==1&&a.type==PilotAlarmType.sleep)...[
           if(!methods)Text(l.pilotEnableWakeMethods),
           Text(l.pilotBeforeAlarm,style:F.cap.copyWith(color:p.ink3)),
-          toggle(l.pilotSunrise,a.sunrise,(v){setState(()=>a.sunrise=v);if(v)_showNewTiming('sunrise');},sub:l.pilotPhoneLimit),
-          toggle(l.pilotGradual,a.gradual,(v)=>setState(()=>a.gradual=v)),
+          toggle(l.pilotSunrise,a.sunrise,(v){setState(()=>a.sunrise=v);if(v)_showNewTiming('sunrise');},sub:a.sunrise?'${l.pilotBeforeOnTimes(a.sunriseMinutes)}\n${l.pilotPhoneLimit}':l.pilotPhoneLimit),
+          toggle(l.pilotGradual,a.gradual,(v)=>setState(()=>a.gradual=v),sub:a.gradual?l.pilotBeforeOnTimes(a.gradualMinutes):null),
           if(a.gradual)...[SizedBox(height:56,child:playing?Center(child:LinearProgressIndicator(value:progress)):choices(GradualPattern.values,a.pattern,(v)=>a.pattern=v,(v)=>switch(v){GradualPattern.ramp=>l.pilotRamp,GradualPattern.steady=>l.pilotSteady,GradualPattern.wave=>l.pilotWave})),feelRow()],
           Text(l.pilotWhenAlarm,style:F.cap.copyWith(color:p.ink3)),
-          toggle(l.pilotBandBuzz,a.band,(v)=>setState(()=>a.band=v),sub:a.band?null:l.pilotBackupLimit),
+          toggle(l.pilotBandBuzz,a.band,(v){var added=false;setState((){a.band=v;if(!v&&!a.phoneSound&&!a.phoneVibration&&!a.phoneFlash){a.phoneSound=true;a.soundDelayMinutes=0;added=true;}});if(added)_showNewTiming('sound');},sub:a.band?null:l.pilotBackupLimit),
           if(a.band)...[choices(['default','custom'],a.customPatternId==null?'default':'custom',(v){if(v=='default'){a.customPatternId=null;}else{_pickPattern();}},(v)=>v=='default'?l.pilotBandDefault:l.pilotMyPattern),Text(l.pilotCustomTradeoff,style:F.cap.copyWith(color:p.ink2)),feelRow()],
           Text(l.pilotStillAsleep,style:F.cap.copyWith(color:p.ink3)),
-          toggle(l.pilotPhoneVibration,a.phoneVibration,(v){setState(()=>a.phoneVibration=v);if(v)_showNewTiming('vibration');},sub:l.pilotPhoneLimit),
-          toggle(l.pilotPhoneSound,a.phoneSound,(v){setState(()=>a.phoneSound=v);if(v)_showNewTiming('sound');}),
-          toggle(l.pilotPhoneFlash,a.phoneFlash,(v){setState(()=>a.phoneFlash=v);if(v)_showNewTiming('flash');},sub:l.pilotFlashLimit),
+          toggle(l.pilotPhoneVibration,a.phoneVibration,(v){setState(()=>a.phoneVibration=v);if(v)_showNewTiming('vibration');},sub:a.phoneVibration?'${l.pilotAfterOnTimes(a.vibrationDelayMinutes)}\n${l.pilotPhoneLimit}':l.pilotPhoneLimit),
+          toggle(l.pilotPhoneSound,a.phoneSound,(v){setState(()=>a.phoneSound=v);if(v)_showNewTiming('sound');},sub:a.phoneSound?l.pilotAfterOnTimes(a.soundDelayMinutes):null),
+          toggle(l.pilotPhoneFlash,a.phoneFlash,(v){setState(()=>a.phoneFlash=v);if(v)_showNewTiming('flash');},sub:a.phoneFlash?'${l.pilotAfterOnTimes(a.flashDelayMinutes)}\n${l.pilotFlashLimit}':l.pilotFlashLimit),
           Text(l.pilotSnooze,style:F.cap.copyWith(color:p.ink3)),
           toggle(l.pilotSnooze,a.snooze,(v)=>setState(()=>a.snooze=v)),
           if(a.snooze)...[

@@ -23,10 +23,10 @@ void main(){
   // catches: selecting an empty pilot schedule and sending disableAlarm.
   test('pilot on with no enabled pilot sleep alarm retains the weekly native arm',()async{
     await LocalDb.setAlarmScheduleRows([const AlarmScheduleEntry(weekday:0,hour:6,minute:30).toRow()]);
-    for(final alarms in [<PilotAlarm>[],[PilotAlarm(id:'off',label:'Off',enabled:false)],[PilotAlarm(id:'run',label:'Run',type:PilotAlarmType.workout)]]){
-      await PilotAlarmStore.save(alarms);final band=FakeAlarmEngine(),live=AppState.forTesting(engine:band);live.debugWakeClock=()=>DateTime(2026,11,23,6);
-      try{await live.debugArmNextAlarmOccurrence();expect(band.sets.map((at)=>[at.hour,at.minute]),[[6,30]]);}finally{live.dispose();}
-    }
+    final band=FakeAlarmEngine(),live=AppState.forTesting(engine:band);live.debugWakeClock=()=>DateTime(2026,11,23,6);
+    try{for(final alarms in [<PilotAlarm>[],[PilotAlarm(id:'off',label:'Off',enabled:false)],[PilotAlarm(id:'run',label:'Run',type:PilotAlarmType.workout)]]){
+      await PilotAlarmStore.save(alarms);await live.debugArmNextAlarmOccurrence();expect(band.sets.map((at)=>[at.hour,at.minute]),[[6,30]]);expect(band.disables,0);
+    }}finally{live.dispose();}
   });
   // catches: SystemSound.alert, which never reaches Android's ringtone bridge.
   test('Phone sound calls the existing ring_phone device action',()async{
@@ -34,7 +34,7 @@ void main(){
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel,(call)async{calls.add(call);return true;});
     addTearDown(()=>TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel,null));
     final live=AppState.forTesting(engine:FakeAlarmEngine()),alarm=PilotAlarm(id:'a',label:'A',phoneSound:true,soundDelayMinutes:0);
-    try{live.pilotWake.noteFire(alarm,latest);await live.pilotWake.tick(now:latest,connected:true,alarms:[alarm]);expect(calls.where((c)=>c.method=='perform').map((c)=>(c.arguments as Map)['action']),contains('ring_phone'));}finally{live.dispose();}
+    try{live.pilotWake.noteFire(alarm,latest);await live.pilotWake.tick(now:latest,connected:true,alarms:[alarm]);expect(calls.where((c)=>c.method=='perform').map((c)=>(c.arguments as Map)['action']),contains('ring_phone'));expect((calls.single.arguments as Map)['ensurePlaying'],true);}finally{live.dispose();}
   });
   // catches: accepting a Band-off configuration with nothing that can wake the wearer.
   test('save rejects Band off with no deliverable phone method',()async{
@@ -44,8 +44,15 @@ void main(){
   // catches: treating a successful notification post as a delivered wake effect.
   test('notification alone keeps backup while delayed sound has not started',()async{
     final cancels=<String>[];final a=PilotAlarm(id:'a',label:'A',band:false,days:{1},phoneSound:true,soundDelayMinutes:5);
-    final r=PilotWakeRuntime(arm:(_)async{},cancelWorkout:(_,_)async{},workouts:(_,_)async=>[],band:(_,_)async{},phone:(_,_)async{},fireApp:(_,_)async=>true,cancelBackup:(id,_)async{cancels.add(id);},isEnabled:()=>true);
+    final r=PilotWakeRuntime(arm:(_)async{},cancelWorkout:(_,_)async{},workouts:(_,_)async=>[],band:(_,_)async{},phone:(_,_)async=>true,fireApp:(_,_)async=>true,cancelBackup:(id,_)async{cancels.add(id);},isEnabled:()=>true);
     try{await r.tick(now:latest,connected:true,alarms:[a]);expect(r.firedAt,latest);expect(cancels,isEmpty);}finally{r.dispose();}
+  });
+  // catches: cancelling despite a failed ringtone bridge or waiting for acknowledgment.
+  test('backup cancels only once a due phone method reports success',()async{
+    var started=false;final cancels=<String>[];
+    final a=PilotAlarm(id:'a',label:'A',band:false,days:{1},phoneSound:true,soundDelayMinutes:0);
+    final r=PilotWakeRuntime(arm:(_)async{},cancelWorkout:(_,_)async{},workouts:(_,_)async=>[],band:(_,_)async{},phone:(_,_)async=>started,fireApp:(_,_)async=>true,cancelBackup:(id,_)async{cancels.add(id);},isEnabled:()=>true);
+    try{await r.tick(now:latest,connected:true,alarms:[a]);expect(cancels,isEmpty);started=true;await r.tick(now:latest.add(const Duration(seconds:30)),connected:true,alarms:[a]);expect(cancels,['a']);expect(r.acknowledged,false);}finally{r.dispose();}
   });
   // catches: an in-memory played set that forgets the occurrence on process restart.
   test('restart after a Band off fire does not fire that occurrence again',()async{
@@ -53,6 +60,8 @@ void main(){
     for(final delay in [0,30]){final live=AppState.forTesting(engine:FakeAlarmEngine());live.debugPilotAppFire=fire;
       try{await live.pilotWake.tick(now:latest.add(Duration(minutes:delay)),connected:false,alarms:[alarm]);}finally{live.dispose();}}
     expect(fire.count,1);
+    final next=AppState.forTesting(engine:FakeAlarmEngine());next.debugPilotAppFire=fire;
+    try{await next.pilotWake.tick(now:latest.add(const Duration(days:7)),connected:false,alarms:[alarm]);expect(fire.count,2);}finally{next.dispose();}
   });
   // catches: pilot-only details_json bookkeeping or restore re-encoding the original bytes.
   test('discard and Restore preserve production details bytes and undo only an unlogged absence',()async{
@@ -67,6 +76,13 @@ void main(){
       expect((await db.query('activity_suggestions',where:'id = ?',whereArgs:[id])).single['details_json'],details);
       if(pilot){final discarded=(await store.get(id))!;await db.transaction((tx)=>ActivityStore.restorePilot(tx,discarded));expect(await db.query('track_absence'),isEmpty);expect((await db.query('activity_suggestions',where:'id = ?',whereArgs:[id])).single['details_json'],details);}
       else{await db.delete('track_absence');}
+      if(pilot){
+        await store.discard((await store.get(id))!);
+        await db.insert('track_event',{'id':'logged','track_id':'test-track','date':'2026-11-23','source_kind':'manual','source_id':'logged'});
+        final discarded=(await store.get(id))!;await db.transaction((tx)=>ActivityStore.restorePilot(tx,discarded));
+        expect(await db.query('track_absence'),hasLength(1),reason:'a logged event protects the absence');
+        expect((await db.query('activity_suggestions',where:'id = ?',whereArgs:[id])).single['details_json'],details);
+      }
     }
   });
 }

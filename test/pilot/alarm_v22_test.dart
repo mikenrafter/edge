@@ -90,9 +90,20 @@ void main(){
     expect(find.text('Usual sleep'),findsOneWidget);expect(find.text('530 min'),findsOneWidget);
     await t.pumpWidget(const SizedBox());await pump(t,PilotAlarmScreen(alarms:[PilotAlarm(id:'a',label:'A')],now:day,onSave:(_)async{}));expect(find.text('Usual sleep'),findsNothing);
   });
+  // catches: cancelling a flash-only backup before a foreground frame is shown.
+  testWidgets('flash keeps backup until a foreground screen effect is rendered',(t)async{
+    final fire=DateTime(2026,11,23,7),cancelled=<DateTime>[];
+    final a=PilotAlarm(id:'a',label:'A',days:{1},band:false,phoneFlash:true,flashDelayMinutes:0);
+    final r=PilotWakeRuntime(arm:(_)async{},cancelWorkout:(_,_)async{},workouts:(_,_)async=>[],band:(_,_)async{},phone:(_,_)async=>false,fireApp:(_,_)async=>true,cancelBackup:(_,at)async{cancelled.add(at);},isEnabled:()=>true);
+    await r.tick(now:fire,connected:true,alarms:[a]);expect(cancelled,isEmpty);
+    await t.pumpWidget(MaterialApp(home:PilotWakeLight(runtime:r,torch:(_)async=>false,child:const SizedBox())));await t.pump();
+    expect(find.byKey(const ValueKey('pilot-screen-flash')),findsOneWidget);
+    await r.tick(now:fire.add(const Duration(seconds:30)),connected:true,alarms:[a]);expect(cancelled,[fire]);
+    await t.pumpWidget(const SizedBox());await t.pump();r.dispose();
+  });
   // catches: timing Flash from Latest/expected, or stopping screen flash when the torch cannot be opened.
   testWidgets('flash anchors to the early real fire and falls back to screen when torch is unavailable',(t)async{
-    final r=PilotWakeRuntime(arm:(_)async{},cancelWorkout:(_,_)async{},workouts:(_,_)async=>[],band:(_,_)async{},phone:(_,_)async{},isEnabled:()=>true);
+    final r=PilotWakeRuntime(arm:(_)async{},cancelWorkout:(_,_)async{},workouts:(_,_)async=>[],band:(_,_)async{},phone:(_,_)async=>true,isEnabled:()=>true);
     final a=PilotAlarm(id:'a',label:'A',phoneFlash:true,flashDelayMinutes:5,referenceWakeMinute:420);
     var now=DateTime(2026,11,23,6,45);final calls=<bool>[];
     r.noteFire(a,now);
@@ -109,7 +120,7 @@ void main(){
     addTearDown(()=>TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel,null));
     expect(await DeviceActions.setTorch(false),true);expect(states,[false]);states.clear();
     final now=DateTime(2026,11,23,7),a=PilotAlarm(id:'a',label:'A',phoneFlash:true,flashDelayMinutes:0);
-    final r=PilotWakeRuntime(arm:(_)async{},cancelWorkout:(_,_)async{},workouts:(_,_)async=>[],band:(_,_)async{},phone:(_,_)async{},isEnabled:()=>true);r.noteFire(a,now);
+    final r=PilotWakeRuntime(arm:(_)async{},cancelWorkout:(_,_)async{},workouts:(_,_)async=>[],band:(_,_)async{},phone:(_,_)async=>true,isEnabled:()=>true);r.noteFire(a,now);
     await pump(t,PilotWakeLight(runtime:r,child:const Scaffold()));await r.tick(now:now,connected:true,alarms:[a]);await t.pump();await t.pump();expect(r.flash.value,true);expect(find.byKey(const ValueKey('pilot-screen-flash')),findsOneWidget);expect(states,[true]);
     await r.tick(now:now,connected:true,alarms:[a],snoozed:true);await t.pump();expect(states,[true,false]);
     await r.tick(now:now,connected:true,alarms:[a]);await t.pump();expect(states,[true,false,true]);await t.pumpWidget(const SizedBox());await t.pump();expect(states,[true,false,true,false]);expect(methods,everyElement('setTorch'));r.dispose();

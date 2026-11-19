@@ -6,9 +6,14 @@ extension _AppPilotWake on AppState {
   PilotWakeRuntime _createPilotWake()=>PilotWakeRuntime(
     isEnabled:()=>!_disposed&&_pilotWakeOn,
     fireApp:_deliverPilotApp,
+    hasFired:(id,at)async=>(await SharedPreferences.getInstance()).getInt('pilot.fired.$id')==at.millisecondsSinceEpoch~/1000,
+    recordFire:(id,at)async{
+      if(!await (await SharedPreferences.getInstance()).setInt('pilot.fired.$id',at.millisecondsSinceEpoch~/1000))throw StateError('Alarm fire was not saved');
+    },
     cancelBackup:(id,latest)async{
       final prefs=await SharedPreferences.getInstance();
       if(!await prefs.setInt('pilot.backup.cancelled.$id',latest.add(const Duration(minutes:1)).millisecondsSinceEpoch~/1000))throw StateError('Backup cancellation was not saved');
+      await _clearPilotSnoozeSlot();
       // Replacing this occurrence uses the same serialized writer as every arm.
       // A failed radio write leaves the native backup intact and is retried.
       final result=await _armNextAlarmOccurrence();if(result.failed)throw StateError('Backup cancellation did not reach the band');
@@ -40,11 +45,13 @@ extension _AppPilotWake on AppState {
       await _dispatchBandAlert('wake',sequence:play,eventId:event,transportTargets:const {'band'},deliver:(rhythm,_)=>haptics.deliver(play));
     },
     phone:(alarm,event)async{
-      if(!_pilotWakeOn||pilotWake.acknowledged)return;
+      if(!_pilotWakeOn||pilotWake.acknowledged)return false;
       final l=lookupAppLocalizations(const Locale('en'));
       await NotificationCenter.instance.emit(NotificationEvent(dedupeKey:event.substring(0,event.lastIndexOf(':')),category:NotifCategory.reminders,priority:NotifPriority.critical,title:alarm.label,body:l.pilotAwakeExplanation,date:todayLabel(),route:kRouteAlarm),phoneOnly:true);
-      if(alarm.phoneSound)await SystemSound.play(SystemSoundType.alert);
-      if(alarm.phoneVibration)await vibratePhoneFor(const Duration(milliseconds:700));
+      var started=false;
+      if(alarm.phoneSound)started=await DeviceActions.perform('ring_phone',ensurePlaying:true);
+      if(alarm.phoneVibration){try{await vibratePhoneFor(const Duration(milliseconds:700));started=true;}catch(_){}}
+      return started;
     },
   );
 
@@ -66,7 +73,7 @@ extension _AppPilotWake on AppState {
   Future<bool> _playPilotPhoneSnooze()async{
     final alarm=_pilotFiredAlarm??pilotWake.firedAlarm;if(alarm==null)return false;
     final sent=await _deliverPilotApp(alarm,_wakeNow());
-    if(sent){await _clearPilotSnoozeSlot();pilotWake.noteSnoozeFire(alarm,_wakeNow());}
+    if(sent)pilotWake.noteSnoozeFire(alarm,_wakeNow());
     return sent;
   }
   Future<bool> _deliverPilotApp(pilot.PilotAlarm alarm,DateTime at)async{

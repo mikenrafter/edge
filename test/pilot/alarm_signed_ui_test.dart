@@ -33,13 +33,13 @@ void main(){
     await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'A'),now:day,onSave:(_)async{}));
     await t.tap(find.text('Waking'));await t.pumpAndSettle();
     await t.scrollUntilVisible(find.text('Band buzz'),160,scrollable:find.byType(Scrollable).last);
-    await t.tap(find.text('Band buzz'));await t.pump(const Duration(milliseconds:100));
+    await t.tap(find.text('Band buzz'));await t.pump();await t.pump(const Duration(milliseconds:100));
     final times=t.widget<TextButton>(find.widgetWithText(TextButton,'Times'));
     expect(times.style?.backgroundColor?.resolve({})?.a??0,greaterThan(0));
     await t.scrollUntilVisible(find.text('Phone sound'),160,scrollable:find.byType(Scrollable).last);
     final sound=find.widgetWithText(SwitchListTile,'Phone sound');expect(t.widget<SwitchListTile>(sound).value,true);
     expect(find.descendant(of:sound,matching:find.text('0 min after · set on Times')),findsOneWidget);
-    await t.tap(find.text('Times'));await t.pump();expect(find.byKey(const ValueKey('pilot-time:sound')),findsOneWidget);
+    await t.tap(find.text('Times'));await t.pumpAndSettle();t.state<ScrollableState>(find.byType(Scrollable).last).position.jumpTo(0);await t.pump();await t.scrollUntilVisible(find.byKey(const ValueKey('pilot-time:sound')),160,scrollable:find.byType(Scrollable).last);expect(find.byKey(const ValueKey('pilot-time:sound')),findsOneWidget);
   });
   // catches: idle two-cell stats becoming Stage/HR/movement, losing title/controls,
   // or using a text Happening value with no accessible icon description.
