@@ -7,13 +7,13 @@ import '../ui2/theme.dart';
 import 'timeline_chart.dart' show pilotClock;
 
 class PilotReadout extends StatelessWidget {
-  const PilotReadout({super.key,required this.controller,required this.graph,this.title='',this.stages=const [],this.fallback,this.controls,this.titleWidget,this.fallbackTime,this.compact=false});
+  const PilotReadout({super.key,required this.controller,required this.graph,this.title='',this.stages=const [],this.fallback,this.controls,this.titleWidget,this.fallbackTime,this.values,this.compact=false});
   /// Day timeline readout (mock-up v16 .ro): a blue caption, heart rate and
   /// movement only, the zoom/pin controls inside the card.
   final bool compact;
   final TimelineController controller;final DayGraph graph;final String title;
   final Widget? titleWidget;final double? fallbackTime;
-  final List<SleepStage?> stages;final Widget? fallback,controls;
+  final List<SleepStage?> stages;final Widget? fallback,controls,values;
   @override Widget build(BuildContext context){
     final p=P.of(context),l=AppLocalizations.of(context)??lookupAppLocalizations(const Locale('en'));
     return ListenableBuilder(listenable:controller.scrubChanges,builder:(context,_){
@@ -34,7 +34,7 @@ class PilotReadout extends StatelessWidget {
         child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
           Row(children:[Expanded(child:titleWidget??Text(title,maxLines:1,overflow:TextOverflow.ellipsis,style:F.head.copyWith(color:p.ink))),Text(time==null?(fallbackTime==null?'—':pilotClock(fallbackTime!)):pilotClock(time),style:F.head.copyWith(color:p.ink,fontSize:22))]),
           const SizedBox(height:8),
-          if(time==null&&fallback!=null)fallback! else Row(children:[
+          if(values!=null)values! else if(time==null&&fallback!=null)fallback! else Row(children:[
             cell(l.pilotStage,stage?.label(l)??'—'),cell(l.dayTimelineHeartRateTitle,hr==null?'—':'${hr.round()} bpm'),cell(l.homeMovement,motion==null?'—':'${(motion*100).round()}%'),
           ]),
           if(controls!=null)controls!,

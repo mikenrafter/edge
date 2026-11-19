@@ -1,5 +1,5 @@
 import 'recorded_stages.dart';
-import 'pilot_readout.dart';
+import 'alarm_readout.dart';
 import 'package:intl/intl.dart';
 import 'pilot_theme.dart';
 // Owner: alarm list State owns its saved snapshot; editor State owns one detached draft.
@@ -344,13 +344,8 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
                 )),
               ])),
               Row(children:[for(final preset in [({1,2,3,4,5},l.pilotWeekdays),({6,7},l.pilotWeekends),({1,2,3,4,5,6,7},l.pilotEveryDay),(<int>{},l.pilotOnce)])Expanded(child:TextButton(onPressed:()=>setState((){a.days={...preset.$1};_repeatChanged();}),child:Text(preset.$2,maxLines:1,overflow:TextOverflow.ellipsis)))]),
-            ]else Expanded(child:PilotReadout(key:const ValueKey('pilot-alarm-readout'),controller:c,graph:graph,stages:stages,fallbackTime:start+_minuteFor(focus)*60.0,
-              titleWidget:Align(alignment:Alignment.centerLeft,child:TextButton(onPressed:_rename,style:TextButton.styleFrom(padding:EdgeInsets.zero,foregroundColor:p.ink),child:Row(mainAxisSize:MainAxisSize.min,children:[Flexible(child:Text(a.label,maxLines:1,overflow:TextOverflow.ellipsis,style:F.body.copyWith(fontWeight:FontWeight.w600))),const SizedBox(width:6),Icon(LucideIcons.pencil,size:14,color:p.ink3)]))),
-              // Mock-up v22 statsOf(): Wake, Expected, Usual sleep (a ~ forecast).
-              fallback:Row(children:[for(final cell in a.type==PilotAlarmType.sleep?[(l.pilotWake,_wakeText(a)),(l.pilotExpected,expectedWake==null?'—':formatClock(expectedWake!~/60,expectedWake!%60)),(l.pilotUsualSleep,previewBed==null?'—':'~${hm((expectedMinute-previewBed!).clamp(0,1440))}')]
-                  :[(l.pilotWindow,'${formatClock(a.workoutStartMinute~/60,a.workoutStartMinute%60)}–${formatClock(a.wakeMinute~/60,a.wakeMinute%60)}'),(l.pilotZone,l.pilotZoneAtLeast(a.zone)),(l.pilotBuzzesAt,formatClock(a.wakeMinute~/60,a.wakeMinute%60))])
-                Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(cell.$1,maxLines:1,overflow:TextOverflow.ellipsis,style:F.cap.copyWith(color:p.ink3)),Text(cell.$2,maxLines:1,overflow:TextOverflow.ellipsis,style:F.head.copyWith(color:p.ink,fontSize:15))])),
-              ]))),
+            ]else Expanded(child:PilotAlarmReadout(key:const ValueKey('pilot-alarm-readout'),controller:c,graph:graph,stages:stages,alarm:a,dayStart:start,expectedMinute:expectedMinute,selectedMinute:_minuteFor(focus),bedtimeMinute:previewBed,
+              title:Align(alignment:Alignment.centerLeft,child:TextButton(onPressed:_rename,style:TextButton.styleFrom(padding:EdgeInsets.zero,foregroundColor:p.ink),child:Row(mainAxisSize:MainAxisSize.min,children:[Flexible(child:Text(a.label,maxLines:1,overflow:TextOverflow.ellipsis,style:F.body.copyWith(fontWeight:FontWeight.w600))),const SizedBox(width:6),Icon(LucideIcons.pencil,size:14,color:p.ink3)]))))),
             if(repeat)const Spacer(),
             PilotZoomControls(controller:c,onZoom:interaction.zoom,trailing:Align(alignment:Alignment.centerRight,child:TextButton.icon(onPressed:()=>setState(()=>repeat=!repeat),icon:Icon(repeat?LucideIcons.check:LucideIcons.repeat,size:16),label:Text(repeat?l.pilotDone:_daysLabel(a,l),maxLines:1,overflow:TextOverflow.ellipsis)))),
           ]))),
@@ -375,17 +370,16 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
         if(tab==1&&a.type==PilotAlarmType.sleep)...[
           if(!methods)Text(l.pilotEnableWakeMethods),
           section(l.pilotBeforeAlarm),
-          toggle(l.pilotSunrise,a.sunrise,(v){setState(()=>a.sunrise=v);if(v)_showNewTiming('sunrise');},sub:a.sunrise?l.pilotSetOnTimesBefore(a.sunriseMinutes):l.pilotPhoneLimit,icon:LucideIcons.sun,color:C.orange),
-          toggle(l.pilotGradual,a.gradual,(v)=>setState(()=>a.gradual=v),icon:LucideIcons.vibrate,color:C.yellow),
+          toggle(l.pilotSunrise,a.sunrise,(v){setState(()=>a.sunrise=v);if(v)_showNewTiming('sunrise');},sub:a.sunrise?'${l.pilotBeforeOnTimes(a.sunriseMinutes)}\n${l.pilotPhoneLimit}':l.pilotPhoneLimit,icon:LucideIcons.sun,color:C.orange),
+          toggle(l.pilotGradual,a.gradual,(v)=>setState(()=>a.gradual=v),sub:a.gradual?l.pilotBeforeOnTimes(a.gradualMinutes):null,icon:LucideIcons.vibrate,color:C.yellow),
           if(a.gradual)...[SizedBox(height:56,child:playing?Center(child:LinearProgressIndicator(value:progress)):choices(GradualPattern.values,a.pattern,(v)=>a.pattern=v,(v)=>switch(v){GradualPattern.ramp=>l.pilotRamp,GradualPattern.steady=>l.pilotSteady,GradualPattern.wave=>l.pilotWave})),feelRow()],
           section(l.pilotWhenAlarm),
-          toggle(l.pilotBandBuzz,a.band,(v)=>setState(()=>a.band=v),sub:a.band?null:l.pilotBackupLimit,icon:LucideIcons.watch,color:C.blue),
+          toggle(l.pilotBandBuzz,a.band,(v){var added=false;setState((){a.band=v;if(!v&&!a.phoneSound&&!a.phoneVibration&&!a.phoneFlash){a.phoneSound=true;a.soundDelayMinutes=0;added=true;}});if(added)_showNewTiming('sound');},sub:a.band?null:l.pilotBackupLimit,icon:LucideIcons.watch,color:C.blue),
           if(a.band)...[choices(['default','custom'],a.customPatternId==null?'default':'custom',(v){if(v=='default'){a.customPatternId=null;}else{_pickPattern();}},(v)=>v=='default'?l.pilotBandsAlarm:l.pilotMyPattern),feelRow(),Text(l.pilotCustomTradeoff,style:F.cap.copyWith(color:p.ink2))],
           section(l.pilotStillAsleep),
-          toggle(l.pilotPhoneSound,a.phoneSound,(v){setState(()=>a.phoneSound=v);if(v)_showNewTiming('sound');},sub:a.phoneSound?l.pilotSetOnTimes(a.soundDelayMinutes):null,icon:LucideIcons.volume2,color:C.pink),
-          toggle(l.pilotPhoneVibration,a.phoneVibration,(v){setState(()=>a.phoneVibration=v);if(v)_showNewTiming('vibration');},sub:a.phoneVibration?l.pilotSetOnTimes(a.vibrationDelayMinutes):null,icon:LucideIcons.smartphone,color:C.pink),
-          toggle(l.pilotPhoneFlash,a.phoneFlash,(v){setState(()=>a.phoneFlash=v);if(v)_showNewTiming('flash');},sub:a.phoneFlash?l.pilotSetOnTimes(a.flashDelayMinutes):l.pilotFlashLimit,icon:LucideIcons.flashlight,color:C.pink),
-          Padding(padding:const EdgeInsets.only(top:4),child:Text(l.pilotPhoneLimit,style:F.cap.copyWith(color:p.ink3))),
+          toggle(l.pilotPhoneSound,a.phoneSound,(v){setState(()=>a.phoneSound=v);if(v)_showNewTiming('sound');},sub:a.phoneSound?l.pilotAfterOnTimes(a.soundDelayMinutes):null,icon:LucideIcons.volume2,color:C.pink),
+          toggle(l.pilotPhoneVibration,a.phoneVibration,(v){setState(()=>a.phoneVibration=v);if(v)_showNewTiming('vibration');},sub:a.phoneVibration?'${l.pilotAfterOnTimes(a.vibrationDelayMinutes)}\n${l.pilotPhoneLimit}':l.pilotPhoneLimit,icon:LucideIcons.smartphone,color:C.pink),
+          toggle(l.pilotPhoneFlash,a.phoneFlash,(v){setState(()=>a.phoneFlash=v);if(v)_showNewTiming('flash');},sub:a.phoneFlash?'${l.pilotAfterOnTimes(a.flashDelayMinutes)}\n${l.pilotFlashLimit}':l.pilotFlashLimit,icon:LucideIcons.flashlight,color:C.pink),
           section(l.pilotSnooze),
           toggle(l.pilotSnooze,a.snooze,(v)=>setState(()=>a.snooze=v),icon:LucideIcons.alarmClockMinus,color:C.n500),
           if(a.snooze)...[

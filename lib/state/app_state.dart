@@ -1,5 +1,6 @@
 import '../pilot/alarm_pilot.dart' as pilot;
 import '../pilot/wake_runtime.dart';
+import '../platform/device_actions.dart';
 import '../haptics/pattern_store.dart';
 import '../haptics/phone_vibration.dart' show vibratePhoneFor;
 import '../l10n/app_localizations.dart';
@@ -14,7 +15,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'package:flutter/services.dart' show HapticFeedback, SystemSound, SystemSoundType;
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;

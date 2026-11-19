@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
@@ -15,6 +16,8 @@ void main(){
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(()async{sqfliteFfiInit();databaseFactory=databaseFactoryFfi;LocalDb.dbName='pilot_alarm_owner.db';await LocalDb.close();});
   tearDownAll(()async{await LocalDb.close();await databaseFactory.deleteDatabase('${await databaseFactory.getDatabasesPath()}/${LocalDb.dbName}');});
+  setUp((){TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('openstrap/device_actions'),(call)async=>true);});
+  tearDown((){TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('openstrap/device_actions'),null);});
   // why: the real foreground arm flight must select the pilot source exactly once.
   // catches: retaining a weekly arm pass beside the pilot store's write.
   test('real AppState arm deduplicates both stores at 06:30 and restores weekly untouched',()async{
@@ -38,7 +41,7 @@ void main(){
     SharedPreferences.setMockInitialValues({});await Prefs.reload();
     await PilotFlags.set(PilotFlag.alarmScreen,true);await PilotFlags.set(PilotFlag.wakeMethods,true);
     final latest=DateTime(2026,11,23,7);
-    await PilotAlarmStore.save([PilotAlarm(id:'phone',label:'Phone',days:{1},band:false)]);
+    await PilotAlarmStore.save([PilotAlarm(id:'phone',label:'Phone',days:{1},band:false,phoneSound:true,soundDelayMinutes:0)]);
     final band=NativeClockBand();final live=AppState.forTesting(engine:band);var now=latest.subtract(const Duration(hours:1));
     live.debugWakeClock=()=>now;live.debugPilotAppFire=const AcceptAppFire();
     var disposed=false;
@@ -60,13 +63,14 @@ void main(){
   // catches: app-driven snooze with no native slot or arming the old Latest instead.
   for(final bandOn in [true,false])test('early fire then snooze then killed app retains one native deadline, Band $bandOn',()async{
     SharedPreferences.setMockInitialValues({});await Prefs.reload();await PilotFlags.set(PilotFlag.alarmScreen,true);await PilotFlags.set(PilotFlag.wakeMethods,true);
-    final latest=DateTime(2026,11,23,7),alarm=PilotAlarm(id:'a',label:'A',days:{1},band:bandOn,earlyMinutes:30);
+    final latest=DateTime(2026,11,23,7),alarm=PilotAlarm(id:'a',label:'A',days:{1},band:bandOn,phoneSound:true,soundDelayMinutes:0,earlyMinutes:30);
     await PilotAlarmStore.save([alarm]);final band=NativeClockBand(),live=AppState.forTesting(engine:band);var now=DateTime(2026,11,23,6);
     live.debugWakeClock=()=>now;live.debugPilotAppFire=const AcceptAppFire();live.debugSnoozePlay=(_,{notes,onFirstWrite})async{onFirstWrite?.call();return true;};live.debugSnoozeConfirmedWake=()async=>false;live.debugSnoozeStore=MemorySnoozeStore();
     var disposed=false;
     try{
       await live.debugArmNextAlarmOccurrence();now=DateTime(2026,11,23,6,45);
       await live.pilotWake.appFire(alarm,now,occurrence:latest,connected:true);
+      await live.pilotWake.tick(now:now,connected:true,alarms:[alarm]);
       expect(band.armed,bandOn?latest:DateTime(2026,11,30,7,1));
       await live.snoozePilotAlarm();final due=bandOn?latest:DateTime(2026,11,23,6,55);
       if(bandOn){live.wake.noteWakeAwaitingAck(latest.millisecondsSinceEpoch~/1000,WakePath.natural);await live.wake.acknowledgeWake(cancelNative:true);}
@@ -78,11 +82,12 @@ void main(){
   // catches: clearing runtime state but leaving the snooze native slot armed.
   test('Band off I am up clears the pending snooze backup',()async{
     SharedPreferences.setMockInitialValues({});await Prefs.reload();await PilotFlags.set(PilotFlag.alarmScreen,true);await PilotFlags.set(PilotFlag.wakeMethods,true);
-    final alarm=PilotAlarm(id:'a',label:'A',days:{1},band:false),latest=DateTime(2026,11,23,7);
+    final alarm=PilotAlarm(id:'a',label:'A',days:{1},band:false,phoneSound:true,soundDelayMinutes:0),latest=DateTime(2026,11,23,7);
     await PilotAlarmStore.save([alarm]);final band=NativeClockBand(),live=AppState.forTesting(engine:band);var now=DateTime(2026,11,23,6);
     live.debugWakeClock=()=>now;live.debugPilotAppFire=const AcceptAppFire();live.debugSnoozePlay=(_,{notes,onFirstWrite})async{onFirstWrite?.call();return true;};live.debugSnoozeConfirmedWake=()async=>false;live.debugSnoozeStore=MemorySnoozeStore();
     try{
       await live.debugArmNextAlarmOccurrence();now=DateTime(2026,11,23,6,45);await live.pilotWake.appFire(alarm,now,occurrence:latest,connected:true);
+      await live.pilotWake.tick(now:now,connected:true,alarms:[alarm]);
       await live.snoozePilotAlarm();expect(band.armed,DateTime(2026,11,23,6,55));
       await live.wake.acknowledgeWake(cancelNative:true);await live.debugArmNextAlarmOccurrence();
       expect(band.armed,DateTime(2026,11,30,7,1));expect(await PilotSnoozeSlot.load(),null);
