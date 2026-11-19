@@ -5,6 +5,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:openstrap_edge/data/backup_storage.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/official_export/coordinator.dart';
 import 'package:openstrap_edge/data/official_export/session.dart';
@@ -28,6 +29,19 @@ class IntentDestination extends Destination {
     expect(record['pending_name'],name,reason:'creation intent must survive before a provider returns its handle');
     return super.createCiphertext(name);
   }
+}
+
+// A tree whose persisted grant is gone: every call fails like the native bridge.
+class RevokedTree implements CipherBackupStorage {
+  @override String get label=>'Old folder';
+  Never _deny()=>throw PlatformException(code:'SecurityException',message:'grant revoked');
+  @override Future<List<BackupFile>> listCiphertext()async=>_deny();
+  @override Future<void> deleteCiphertext(BackupFile file)async=>_deny();
+  @override Future<BackupFile> createCiphertext(String name)async=>_deny();
+  @override Future<void> appendCiphertext(BackupFile file,List<int> bytes)async=>_deny();
+  @override Future<void> closeCiphertext(BackupFile file)async=>_deny();
+  @override Stream<List<int>> readCiphertext(BackupFile file)=>Stream.error(PlatformException(code:'SecurityException'));
+  @override Future<BackupFile> publishCiphertext(BackupFile file,String name)async=>_deny();
 }
 
 void main() {
@@ -234,4 +248,66 @@ void main() {
       expect(File('${outside.path}/keep').readAsStringSync(),'keep');
     }finally{await root.delete(recursive:true);await outside.delete(recursive:true);}
   });
+
+  // WHY: review F1. Cleanup of an earlier export is best effort: a journal that
+  // cannot be acted on must never stop a new export from producing a file.
+  Future<OfficialExportOutcome> exportTo(OfficialExportCoordinator c,RichFixture fx,Directory root,Directory private,Destination dest,Space free)=>
+    c.export(snapshot:Snapshot(fx.forkPath),privateRoot:private,destination:dest,space:ExportSpaceBudget(source:free),prompts:Prompts(()async=>'pw',(_)async=>false));
+  Future<void> journalWith(Directory private,Map<String,Object?> record)async {
+    await private.create(recursive:true);
+    await File('${private.path}/interruption.json').writeAsString(jsonEncode(record));
+  }
+  const staleRecord={'version':1,'folder':'Old folder','tree':'content://old/tree','pending_name':'openstrap-official-x.db.osbk.incomplete','official':{'name':'previous.db.osbk'}};
+  test('a revoked old folder does not block a new export and names the leftover',()async {
+    final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('f1_revoked_');
+    final coordinator=OfficialExportCoordinator()..storageForTree=((_)=>RevokedTree());
+    try {
+      final free=Space();final private=Directory('${root.path}/private');final dest=Destination(Directory('${root.path}/new')..createSync(),free);
+      await journalWith(private,staleRecord);
+      final first=await exportTo(coordinator,fx,root,private,dest,free);
+      expect(first,isA<OfficialExportSaved>(),reason:first is OfficialExportFailed?'${first.reason}':'$first');
+      expect(coordinator.notices.map((n)=>(n.kind,n.file,n.folder)),[(ExportNoticeKind.leftover,'openstrap-official-x.db.osbk.incomplete','Old folder')]);
+      final leftovers=File('${private.path}/leftovers.json').readAsStringSync();
+      expect(leftovers,contains('content://old/tree'));expect(leftovers,isNot(contains('pw')));
+      final second=await exportTo(coordinator,fx,root,private,dest,free);
+      expect(second,isA<OfficialExportSaved>());
+      expect(coordinator.notices.single.kind,ExportNoticeKind.leftover,reason:'still unverified, still named');
+    }finally{await coordinator.finish();coordinator.dispose();await root.delete(recursive:true);await fx.dispose();}
+  },timeout:const Timeout(Duration(minutes:4)));
+  test('an unreadable journal is set aside and does not block a new export',()async {
+    final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('f1_corrupt_');
+    final coordinator=OfficialExportCoordinator();
+    try {
+      final free=Space();final private=Directory('${root.path}/private');final dest=Destination(Directory('${root.path}/new')..createSync(),free);
+      await journalWith(private,{'version':7,'folder':'x'});
+      final first=await exportTo(coordinator,fx,root,private,dest,free);
+      expect(first,isA<OfficialExportSaved>(),reason:first is OfficialExportFailed?'${first.reason}':'$first');
+      expect(coordinator.notices.map((n)=>n.kind),[ExportNoticeKind.journalUnreadable]);
+      expect(File('${private.path}/interruption.unreadable').existsSync(),isTrue);
+      await File('${private.path}/interruption.json').writeAsString('not json');
+      final second=await exportTo(coordinator,fx,root,private,dest,free);
+      expect(second,isA<OfficialExportSaved>());
+    }finally{await coordinator.finish();coordinator.dispose();await root.delete(recursive:true);await fx.dispose();}
+  },timeout:const Timeout(Duration(minutes:4)));
+  test('a leftover is deleted quietly once the old folder is reachable again',()async {
+    final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('f1_regrant_');
+    final coordinator=OfficialExportCoordinator()..storageForTree=((_)=>RevokedTree());
+    try {
+      final old=Directory('${root.path}/old')..createSync();
+      final leftover=File('${old.path}/openstrap-official-x.db.osbk.incomplete')..writeAsStringSync('half');
+      final other=File('${old.path}/keep.txt')..writeAsStringSync('mine');
+      final free=Space();final private=Directory('${root.path}/private');final dest=Destination(Directory('${root.path}/new')..createSync(),free);
+      await journalWith(private,staleRecord);
+      final first=await exportTo(coordinator,fx,root,private,dest,free);
+      expect(first,isA<OfficialExportSaved>());
+      expect(leftover.existsSync(),isTrue,reason:'nothing is deleted without access');
+      coordinator.storageForTree=((_)=>LocalCipherBackupStorage(old));
+      final second=await exportTo(coordinator,fx,root,private,dest,free);
+      expect(second,isA<OfficialExportSaved>());
+      expect(leftover.existsSync(),isFalse);expect(other.existsSync(),isTrue);
+      expect(coordinator.notices,isEmpty);
+      expect(File(second.official!.file.path).existsSync(),isTrue);
+      expect(File('${private.path}/leftovers.json').existsSync()?File('${private.path}/leftovers.json').readAsStringSync():'',isNot(contains('x.db.osbk')));
+    }finally{await coordinator.finish();coordinator.dispose();await root.delete(recursive:true);await fx.dispose();}
+  },timeout:const Timeout(Duration(minutes:4)));
 }
