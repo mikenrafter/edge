@@ -631,10 +631,7 @@ Widget reviewButton(BuildContext c, String key, String label, VoidCallback? tap,
     Color color = C.blue, bool primary = false}) => Semantics(
   key: ValueKey(key), button: true, enabled: tap != null, selected: selected,
   label: label, onTap: tap, excludeSemantics: true,
-  child: PilotFlag.timelines.enabled ? Opacity(opacity:tap == null ? .4 : 1,child:TextButton(
-    style:TextButton.styleFrom(minimumSize:const Size(48,48),padding:const EdgeInsets.symmetric(horizontal:4),backgroundColor:selected?P.of(c).wash(color):null),
-    onPressed:tap,child:FittedBox(fit:BoxFit.scaleDown,child:Row(mainAxisSize:MainAxisSize.min,children:[if(glyph!=null)...[Icon(glyph,size:14),const SizedBox(width:3)],Text(label,maxLines:1,softWrap:false)]))))
-    : Opacity(opacity: tap == null ? .4 : 1, child: BigButton(label,
+  child: Opacity(opacity: tap == null ? .4 : 1, child: BigButton(label,
       dense: true, icon: glyph, color: color,
       soft: !primary && !selected, onTap: tap)),
 );
@@ -707,6 +704,7 @@ class DayReviewActions extends StatelessWidget {
                 : null;
     // Three across need a word's width each; at large text a word like
     // "Discard" no longer fits a third of the row, so the buttons stack.
+    // m192: pilot list buttons never wrap or stack.
     final stacked = !PilotFlag.timelines.enabled && MediaQuery.textScalerOf(c).scale(1) > 1.25;
     return Padding(padding: const EdgeInsets.only(bottom: S.x2),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

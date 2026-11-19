@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/ui2/grammar.dart' show SubTabs;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/pilot/alarm_pilot.dart';
 import 'package:openstrap_edge/pilot/alarm_screen.dart';
@@ -38,9 +39,10 @@ void main(){
   testWidgets('Once has one preview night and only Times and Waking tabs',(t)async{
     await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'A',days:{}),now:day,onSave:(_)async{}));
     expect(t.widget<IconButton>(find.ancestor(of:find.byTooltip('Next night'),matching:find.byType(IconButton))).onPressed,null);
-    expect(find.widgetWithText(TextButton,'Tonight'),findsNothing);
-    expect(find.widgetWithText(TextButton,'Times'),findsOneWidget);expect(find.widgetWithText(TextButton,'Waking'),findsOneWidget);
-    expect(find.text('Usual sleep'),findsNothing);expect(find.byKey(const ValueKey('pilot-time:bed')),findsNothing);
+    Finder tab(String text)=>find.descendant(of:find.byType(SubTabs),matching:find.text(text));
+    expect(tab('Tonight'),findsNothing);
+    expect(tab('Times'),findsOneWidget);expect(tab('Waking'),findsOneWidget);
+    expect(find.byKey(const ValueKey('pilot-time:bed')),findsNothing);
   });
   // catches: an icon hidden behind its thumb or a zoom that jumps instead of gliding.
   testWidgets('annotation selects its own timing and alarm zoom glides without a cursor',(t)async{
@@ -60,7 +62,7 @@ void main(){
     final plotRect=t.getRect(plot),rowRect=t.getRect(row),detailSize=t.getSize(detail);
     final held=await t.startGesture(Offset(plotRect.left+plotRect.width*.22,plotRect.center.dy));await t.pump(const Duration(milliseconds:350));
     expect(t.widget<PilotTimelineChart>(find.byType(PilotTimelineChart)).controller.scrub,isNotNull);
-    expect(find.text('Stage'),findsOneWidget);expect(t.getSize(detail),detailSize);expect(t.getRect(row),rowRect);expect(t.getRect(plot),plotRect);
+    expect(find.descendant(of:detail,matching:find.text('Stage')),findsOneWidget);expect(t.getSize(detail),detailSize);expect(t.getRect(row),rowRect);expect(t.getRect(plot),plotRect);
     await held.moveBy(const Offset(40,0));await t.pump();expect(t.getRect(row),rowRect);await held.up();await t.pump();expect(t.getSize(detail),detailSize);expect(t.takeException(),null);
   });
   // catches: silently persisting a what-if, adding another subtitle line, or forgetting Preview orange/Reset (m225).
@@ -70,8 +72,7 @@ void main(){
     expect(find.descendant(of:row,matching:find.text('your usual')),findsOneWidget);
     await t.drag(row,const Offset(20,0));await t.pumpAndSettle();
     expect(find.descendant(of:row,matching:find.text('what-if · not saved')),findsOneWidget);expect(t.getSize(row).height,before);
-    final tile=t.widget<ListTile>(find.descendant(of:row,matching:find.byType(ListTile)));
-    final time=t.widget<Text>(find.descendant(of:row,matching:find.text('23:40')));expect(time.style!.color,const Color(0xFFF5A36B));expect((tile.subtitle! as Text).data,'what-if · not saved');
+    final time=t.widget<Text>(find.descendant(of:row,matching:find.text('23:40')));expect(time.style!.color,const Color(0xFFF5A36B));
     await t.tap(find.descendant(of:row,matching:find.text('Reset')));await t.pumpAndSettle();expect(find.descendant(of:row,matching:find.text('your usual')),findsOneWidget);expect(find.descendant(of:row,matching:find.text('23:30')),findsOneWidget);
   });
   // catches: showing only Wake in the overview, duplicating coincident time labels, or omitting the overnight cut.
@@ -87,7 +88,7 @@ void main(){
   // catches: hiding the recorded usual-sleep stat merely because expected wake is outside the window.
   testWidgets('overview hides Usual sleep only when the recorded bedtime is absent',(t)async{
     await pump(t,PilotAlarmScreen(alarms:[PilotAlarm(id:'a',label:'A')],now:day,reference:(_)async=>sample(wake:500,sleep:530),onSave:(_)async{}));
-    expect(find.text('Usual sleep'),findsOneWidget);expect(find.text('530 min'),findsOneWidget);
+    expect(find.text('Usual sleep'),findsOneWidget);expect(find.text('~8 h 50 min'),findsOneWidget);
     await t.pumpWidget(const SizedBox());await pump(t,PilotAlarmScreen(alarms:[PilotAlarm(id:'a',label:'A')],now:day,onSave:(_)async{}));expect(find.text('Usual sleep'),findsNothing);
   });
   // catches: cancelling a flash-only backup before a foreground frame is shown.
