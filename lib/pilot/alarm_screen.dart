@@ -86,14 +86,16 @@ class _AlarmListState extends State<PilotAlarmScreen>{
         for(final a in sorted)Padding(padding:const EdgeInsets.only(bottom:12),child:GestureDetector(onTap:()=>_edit(a),behavior:HitTestBehavior.opaque,child:Container(key:ValueKey('pilot-alarm:${a.id}'),padding:const EdgeInsets.fromLTRB(16,12,12,14),decoration:BoxDecoration(color:p.card,border:Border.all(color:a.id==next?p.on(C.blue):p.line),borderRadius:BorderRadius.circular(16)),child:Column(children:[
           // Mock-up v22 .acard .head: star, label, "next" on the left; the repeat
           // days and the switch on the right (m261). The whole card opens the editor.
-          Row(children:[if(a.primary)...[Icon(LucideIcons.star,color:p.on(C.yellow),size:14),const SizedBox(width:6)],
-            Flexible(child:Text(a.label,maxLines:1,overflow:TextOverflow.ellipsis,style:F.body.copyWith(color:p.ink,fontWeight:FontWeight.w600))),
+          // The name is capped, not Flexible: a Flexible beside the Expanded days
+          // would split the free space and leave a gap after the switch.
+          LayoutBuilder(builder:(context,box)=>Row(children:[if(a.primary)...[Icon(LucideIcons.star,color:p.on(C.yellow),size:14),const SizedBox(width:6)],
+            ConstrainedBox(constraints:BoxConstraints(maxWidth:box.maxWidth*.45),child:Text(a.label,maxLines:1,overflow:TextOverflow.ellipsis,style:F.body.copyWith(color:p.ink,fontWeight:FontWeight.w600))),
             if(a.id==next)...[const SizedBox(width:4),Text(l.pilotNext.toLowerCase(),style:F.cap.copyWith(color:p.on(C.blue),fontSize:11))],
             const SizedBox(width:8),
             Expanded(child:Row(mainAxisAlignment:MainAxisAlignment.end,children:[Icon(LucideIcons.repeat,size:12,color:p.ink3),const SizedBox(width:3),
               Flexible(child:Text(_daysLabel(a,l),key:ValueKey('pilot-alarm-days:${a.id}'),maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.right,style:F.cap.copyWith(color:p.ink3)))])),
             const SizedBox(width:8),
-            Switch(value:a.enabled,onChanged:_saving?null:(v){final copies=_alarms.map((x)=>x.copy()).toList();copies.firstWhere((x)=>x.id==a.id).enabled=v;unawaited(_save(copies).catchError((_){ }));})]),
+            Switch(value:a.enabled,onChanged:_saving?null:(v){final copies=_alarms.map((x)=>x.copy()).toList();copies.firstWhere((x)=>x.id==a.id).enabled=v;unawaited(_save(copies).catchError((_){ }));})])),
           const SizedBox(height:10),
           // v22 .acard.off.dim: an off alarm's graph keeps every mark and range, at .35.
           Opacity(opacity:a.enabled?1:.35,child:IgnorePointer(child:_AlarmChart(alarm:a,now:now,graph:widget.graph,stages:widget.stages,reference:widget.reference))),

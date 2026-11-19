@@ -43,6 +43,9 @@ void main(){
     expect(find.text('06:10–06:30'),findsOneWidget);
     expect(find.text('~6 h 40 min'),findsOneWidget);expect(find.text('400 min'),findsNothing);
     expect(find.text('17:30–19:00'),findsOneWidget);expect(find.text('Zone 3+'),findsOneWidget);
+    // m261: the repeat days and the switch sit right on every card, whatever the name's length.
+    for(final id in ['w','r']){final card=t.getRect(find.byKey(ValueKey('pilot-alarm:$id')));final toggle=t.getRect(find.descendant(of:find.byKey(ValueKey('pilot-alarm:$id')),matching:find.byType(Switch)));
+      expect(card.right-toggle.right,lessThan(20));}
     // m244.3: the sleep alarm's chart draws no heart rate; the workout alarm's keeps it.
     expect([for(final chart in t.widgetList<PilotTimelineChart>(find.byType(PilotTimelineChart)))chart.showHeartRate],unorderedEquals([false,true]));
   });
