@@ -18,6 +18,11 @@ import '../ui2/day_timeline/timeline_controller.dart';
 import '../ui2/screens/day_timeline.dart' show dayGraph;
 import '../ui2/screens/home_screen.dart' show repoOf;
 import '../ui2/theme.dart';
+import '../ui2/grammar.dart' show SubTabs,BigButton;
+import '../ui2/profile/profile.dart' show SetRow;
+import '../ui2/screens/home_screen.dart' show hm;
+import '../l10n/date_text.dart' show prettyDay;
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../wake/wake_outcome.dart';
 import 'day_layout.dart' show PilotDayRow;
 import 'pilot_readout.dart';
@@ -113,13 +118,26 @@ class _SleepEditorState extends State<PilotSleepEditor>{
     final candidates=_targets(b).where((t)=>(t.at-at).abs()>0&&(t.at-at).abs()<=1800).toList()..sort((a,b)=>(a.at-at).abs().compareTo((b.at-at).abs()));
     final snapped=b.snapped[end];
     final offer=detected!=at&&(snapped==null||(at-snapped).abs()>1200)?candidates.firstOrNull:null;
-    return ListTile(contentPadding:EdgeInsets.zero,minTileHeight:56,selected:end==endSelected,title:Text(end?l.pilotEnd:l.pilotStart),subtitle:detected==null?null:Text('${l.pilotActual} ${pilotClock(detected.toDouble())}'),
-      trailing:Row(mainAxisSize:MainAxisSize.min,children:[
-        if(offer!=null)TextButton(onPressed:(){_checkpoint();setState((){if(end)b.end=math.max(b.start+600,offer.at);else b.start=math.min(b.end-600,offer.at);b.snapped[end]=offer.at;});},child:Text('${offer.label} ${pilotClock(offer.at.toDouble())}'))
-        else if(detected!=null&&at!=detected)TextButton(onPressed:(){_checkpoint();setState((){if(end)b.end=detected;else b.start=detected;b.snapped.remove(end);});},child:Text(l.pilotResetDetected)),
-        Text(pilotClock(at.toDouble()),style:F.head),
-      ]),onTap:(){setState(()=>endSelected=end);c!.reveal(at.toDouble());});
+    // Mock-up v11 .item on the app's SetRow: icon, name, snap/reset chip,
+    // time with "detected" under it; the selected time sits on a card.
+    final p=P.of(context),main=b.entry?.kind!=SleepBlockKind.nap,selectedRow=end==endSelected;
+    Widget chip(String label,VoidCallback tap)=>BigButton(label,dense:true,soft:true,color:C.n500,onTap:tap);
+    return Container(margin:const EdgeInsets.symmetric(vertical:1),padding:const EdgeInsets.symmetric(horizontal:10),
+      decoration:BoxDecoration(color:selectedRow?p.card2:null,borderRadius:BorderRadius.circular(12),border:Border.all(color:selectedRow?p.on(C.blue).withValues(alpha:.45):Colors.transparent)),
+      child:SetRow(main?(end?LucideIcons.sunrise:LucideIcons.moon):LucideIcons.bedDouble,main?(end?C.orange:C.indigo):C.teal,
+        main?(end?l.pilotWokeUp:l.pilotFellAsleep):(end?l.pilotNapEnds:l.pilotNapStarts),chevron:false,
+        onTap:(){setState(()=>endSelected=end);c!.reveal(at.toDouble());},
+        trailing:Row(mainAxisSize:MainAxisSize.min,children:[
+          if(offer!=null)chip('${offer.label} ${pilotClock(offer.at.toDouble())}',(){_checkpoint();setState((){if(end)b.end=math.max(b.start+600,offer.at);else b.start=math.min(b.end-600,offer.at);b.snapped[end]=offer.at;});})
+          else if(detected!=null&&at!=detected)chip(l.pilotResetDetected,(){_checkpoint();setState((){if(end)b.end=detected;else b.start=detected;b.snapped.remove(end);});}),
+          const SizedBox(width:8),
+          Column(crossAxisAlignment:CrossAxisAlignment.end,children:[
+            Text(pilotClock(at.toDouble()),style:F.body.copyWith(color:p.ink)),
+            Text(detected==null?l.pilotAddedByYou:at==detected?l.pilotDetected:l.pilotDetectedAt(pilotClock(detected.toDouble())),style:F.cap.copyWith(color:p.ink3,fontSize:11)),
+          ]),
+        ])));
   }
+  String _label(SleepIntervalDraft b)=>b.entry?.kind==SleepBlockKind.nap||b.entry==null?l.pilotNapAt(pilotClock(b.start.toDouble())):l.pilotMainSleep;
   Future<void> _save({SleepMergeProposal? merge})async{
     final r=read;if(r==null)return;final save=widget.onSave??context.read<AppState>().saveSleepEditor;setState(()=>saving=true);
     try{
@@ -152,36 +170,55 @@ class _SleepEditorState extends State<PilotSleepEditor>{
     return PilotTheme(child:Builder(builder:(context)=>PopScope(canPop:_allowPop||(!dirty&&!saving),onPopInvokedWithResult:(didPop,result)async{
       if(didPop||saving)return;final leave=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(l.pilotCancel),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(l.pilotCancel)),TextButton(onPressed:()=>Navigator.pop(c,true),child:Text(l.dayReviewDiscard))]));
       if(leave==true&&mounted){setState(()=>_allowPop=true);await WidgetsBinding.instance.endOfFrame;if(mounted)Navigator.pop(this.context);}
-    },child:Scaffold(backgroundColor:p.bg,appBar:AppBar(title:Text(l.pilotSleepEditor)),body:SafeArea(child:loading?const Center(child:CircularProgressIndicator()):controller==null?Center(child:Text(error??l.pilotSourceFailed)):Column(children:[
+    },child:Scaffold(backgroundColor:p.bg,appBar:AppBar(centerTitle:true,title:Text(l.pilotSleepEditor,style:F.head.copyWith(color:p.ink))),body:SafeArea(child:loading?const Center(child:CircularProgressIndicator()):controller==null?Center(child:Text(error??l.pilotSourceFailed)):Column(children:[
       Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:Column(children:[
-        PilotDayRow(day:day,dirty:dirty,busy:saving,onPrevious:()=>_go(-1),onNext:()=>_go(1),onCancel:(){setState(()=>_bind(read!,graph,stages));},onSave:_save),
-        SizedBox(height:24,child:adding?Text(addedStart==null?l.pilotTapStart:l.pilotTapEnd):null),
-        PilotTimelineChart(controller:controller,graph:graph,interaction:interaction,stages:stages,dimHrInsideSleep:false,onTapTime:_tap,
+        PilotDayRow(day:prettyDay(day,l),dirty:dirty,busy:saving,onPrevious:()=>_go(-1),onNext:()=>_go(1),onCancel:(){setState(()=>_bind(read!,graph,stages));},onSave:_save),
+        if(adding)SizedBox(height:24,child:Text(addedStart==null?l.pilotTapStart:l.pilotTapEnd)),
+        PilotTimelineChart(controller:controller,graph:graph,interaction:interaction,stages:stages,dimHrInsideSleep:false,showHeader:false,onTapTime:_tap,
           handles:b==null||b.removed?[]:[PilotHandle('start',b.start.toDouble(),p.on(C.blue),active:!endSelected),PilotHandle('end',b.end.toDouble(),p.on(C.blue),active:endSelected)],onHandle:_move,
           annotations:[...wakeEvents,for(final row in blocks)ChartAnnotation(id:row.id,kind:row.entry?.kind==SleepBlockKind.main?AnnotationKind.mainSleep:AnnotationKind.nap,at:row.start.toDouble(),until:row.end.toDouble(),label:row.entry?.kind==SleepBlockKind.main?l.tabSleep:l.dayTimelineNap)],
           onSelect:(id){if(id=='start'||id=='end'){setState(()=>endSelected=id=='end');return;}final match=blocks.where((b)=>b.id==id).firstOrNull;if(match!=null)_select(match);}),
-        SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[for(final row in [...blocks]..sort((a,b)=>a.start.compareTo(b.start)))TextButton(style:TextButton.styleFrom(minimumSize:const Size(48,48),backgroundColor:row.id==selected?p.card2:null),onPressed:()=>_select(row),child:Text(row.entry?.kind==SleepBlockKind.main?l.tabSleep:l.dayTimelineNap,style:TextStyle(decoration:row.removed?TextDecoration.lineThrough:null)))])),
+        Builder(builder:(context){final ordered=[...blocks]..sort((a,b)=>a.start.compareTo(b.start));
+          // The app's SubTabs, one per block in time order; a removed block is muted.
+          return Padding(padding:const EdgeInsets.only(top:6),child:SubTabs([for(final row in ordered)_label(row)],math.max(0,ordered.indexWhere((r)=>r.id==selected)),(i)=>_select(ordered[i]),color:C.blue,
+            muted:{for(var i=0;i<ordered.length;i++)if(ordered[i].removed)i}));}),
       ])),
       Expanded(child:ListView(padding:const EdgeInsets.fromLTRB(16,8,16,32),children:[
         if(error!=null)Text(error!,style:TextStyle(color:p.on(C.red))),
-        if(b!=null)PilotReadout(controller:controller,graph:graph,stages:stages,title:b.entry?.kind==SleepBlockKind.main?l.tabSleep:l.dayTimelineNap,
-          fallback:Column(children:[Text('${l.pilotSleepStages} · ${b.moved?l.pilotPreview:l.pilotActual}',style:F.cap.copyWith(color:p.ink2)),
-            Row(children:[Expanded(child:Text('${l.pilotAsleep}\n${_asleep(b)??'—'}')),Expanded(child:Text('${l.pilotSleepWindow}\n${(b.end-b.start)~/60} min')),Expanded(child:Text('${l.pilotWindow}\n${pilotClock(b.start.toDouble())}–${pilotClock(b.end.toDouble())}'))])]),
-          controls:PilotZoomControls(controller:controller,onZoom:interaction.zoom,trailing:TextButton(onPressed:()=>setState((){adding=!adding;addedStart=null;}),child:Text(l.pilotAddBlock,maxLines:1)))),
+        if(b!=null)PilotReadout(controller:controller,graph:graph,stages:stages,fallbackTime:(endSelected?b.end:b.start).toDouble(),
+          titleWidget:Row(children:[Flexible(child:Text(_label(b),maxLines:1,overflow:TextOverflow.ellipsis,style:F.body.copyWith(color:p.ink,fontWeight:FontWeight.w600))),
+            if(b.entry==null||b.moved)Padding(padding:const EdgeInsets.only(left:6),child:Text((b.entry==null?l.pilotAdded:l.pilotEdited).toUpperCase(),style:F.cap.copyWith(color:p.on(C.orange),fontSize:11,fontWeight:FontWeight.w700)))]),
+          fallback:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            // Mock-up v11 .key: heart rate, motion, stages Actual (green) / Preview (orange).
+            Wrap(spacing:12,runSpacing:2,crossAxisAlignment:WrapCrossAlignment.center,children:[
+              _key(p.on(C.red),l.pilotHeartRateBpm),_key(p.on(C.purple),l.pilotMotion),
+              Text.rich(TextSpan(children:[TextSpan(text:'${l.pilotSleepStages} · '),TextSpan(text:b.moved?l.pilotPreview:l.pilotActual,style:TextStyle(color:p.on(b.moved?C.orange:C.green),fontWeight:FontWeight.w700))]),style:F.cap.copyWith(color:p.ink3,fontSize:11)),
+            ]),
+            const SizedBox(height:6),
+            Row(children:[for(final cell in [(l.pilotAsleep,_asleep(b)??'—'),(l.pilotSleepWindow,hm((b.end-b.start)~/60)),(l.pilotWindow,'${pilotClock(b.start.toDouble())}–${pilotClock(b.end.toDouble())}')])
+              Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(cell.$1,maxLines:1,overflow:TextOverflow.ellipsis,style:F.cap.copyWith(color:p.ink3)),Text(cell.$2,maxLines:1,overflow:TextOverflow.ellipsis,style:F.head.copyWith(color:p.ink,fontSize:15))]))]),
+          ]),
+          controls:PilotZoomControls(controller:controller,onZoom:interaction.zoom,trailing:Align(alignment:Alignment.centerRight,child:TextButton.icon(onPressed:()=>setState((){adding=!adding;addedStart=null;}),icon:Icon(adding?LucideIcons.x:LucideIcons.plus,size:16),label:Text(l.pilotAddBlock,maxLines:1))))),
+        if(b!=null)Padding(padding:const EdgeInsets.fromLTRB(2,12,2,4),child:Text(l.pilotDragHint.toUpperCase(),style:F.cap.copyWith(color:p.ink3,fontSize:11,letterSpacing:.4))),
         if(b!=null&&!b.removed)...[
           _timeRow(b,false),_timeRow(b,true),
-          if(b.entry?.kind==SleepBlockKind.main)SwitchListTile(contentPadding:EdgeInsets.zero,title:Text(l.pilotWokeDream),value:dream==true,onChanged:dreamEpoch==null?null:(v)=>setState(()=>dream=v)),
-          const Padding(padding:EdgeInsets.symmetric(vertical:20),child:Divider()),
-          SizedBox(height:48,child:TextButton(onPressed:()=>setState(()=>b.calculate=true),child:Text(l.pilotCalculateStages))),
-          SizedBox(height:48,child:TextButton(onPressed:(){_checkpoint();setState((){if(b.entry==null){blocks.remove(b);selected=blocks.firstOrNull?.id;}else b.removed=true;});},child:Text(l.pilotRemoveBlock))),
+          // Owner m169: the whole dream row is the toggle (app SetRow + Switch).
+          if(b.entry?.kind==SleepBlockKind.main)...[Divider(height:1,color:p.line),Padding(padding:const EdgeInsets.symmetric(horizontal:10),child:SetRow(dream==true?LucideIcons.cloudMoon:LucideIcons.sun,dream==true?C.indigo:C.n500,l.pilotWokeDream,chevron:false,enabled:dreamEpoch!=null,
+            onTap:dreamEpoch==null?null:()=>setState(()=>dream=!(dream??false)),trailing:Switch(value:dream==true,onChanged:dreamEpoch==null?null:(v)=>setState(()=>dream=v))))],
+          Padding(padding:const EdgeInsets.fromLTRB(4,22,4,14),child:Divider(height:1,color:p.line)),
+          // Mock-up v11 .btn.full: full-width icon buttons; Remove in the warning colour.
+          BigButton(l.pilotCalculateThisBlock,dense:true,soft:true,color:C.blue,icon:LucideIcons.sparkles,onTap:()=>setState(()=>b.calculate=true)),
+          const SizedBox(height:8),
+          BigButton(l.pilotRemoveThisBlock,dense:true,soft:true,color:C.red,icon:LucideIcons.trash2,onTap:(){_checkpoint();setState((){if(b.entry==null){blocks.remove(b);selected=blocks.firstOrNull?.id;}else b.removed=true;});}),
         ],
         if(undo!=null)Row(children:[Expanded(child:Text(l.pilotUndo)),TextButton(onPressed:()=>setState((){blocks=undo!;undo=null;selected=blocks.firstOrNull?.id;}),child:Text(l.pilotUndo))]),
       ])),
     ]))))));
   }
+  Widget _key(Color color,String label)=>Row(mainAxisSize:MainAxisSize.min,children:[Container(width:14,height:3,decoration:BoxDecoration(color:color,borderRadius:BorderRadius.circular(2))),const SizedBox(width:5),Text(label,style:F.cap.copyWith(color:P.of(context).ink3,fontSize:11))]);
   String? _asleep(SleepIntervalDraft b){
     if(b.moved)return null;
     final h=b.entry?.history;if(h is! DetectedKnown)return null;
-    final minutes=h.measures['asleep_min'];return minutes is num?'${minutes.round()} min':null;
+    final minutes=h.measures['asleep_min'];return minutes is num?hm(minutes):null;
   }
 }

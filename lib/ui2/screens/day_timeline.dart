@@ -1591,16 +1591,19 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
           color: _highlight == row.id ? p.wash(C.domMind) : null,
           child: PilotFlag.timelines.enabled&&row.moment.timelineKind==DayTimelineKind.discarded
               ? MomentRow(row.moment,below:Row(children:[Expanded(child:reviewButton(context,'pilot-restore:${row.id}',AppLocalizations.of(context)!.pilotRestore,
-                review?.canEdit==true?()=>review!.togglePilotRestore(row.id):null,selected:review?.pilotRestoreStaged(row.id)==true,glyph:LucideIcons.undo2))]))
+                review?.canEdit==true?()=>review!.togglePilotRestore(row.id):null,selected:review?.pilotRestoreStaged(row.id)==true,glyph:LucideIcons.undo2)),const Spacer(),const Spacer()]))
               : (PilotFlag.timelines.enabled && (row.moment.annotationKind==AnnotationKind.mainSleep||(row.moment.annotationKind==AnnotationKind.nap&&review?.needsReview(row.id)!=true)))
-              ? MomentRow(row.moment,below:Row(children:[Expanded(child:TextButton(onPressed:()=>openRowEditor(row.moment),child:Text(AppLocalizations.of(context)!.activityEdit)))]))
+              ? MomentRow(row.moment,below:Padding(padding:const EdgeInsets.only(bottom:S.x2),child:Row(children:[Expanded(child:reviewButton(context,'pilot-sleep-edit:${row.id}',AppLocalizations.of(context)!.activityEdit,()=>openRowEditor(row.moment),glyph:LucideIcons.pencil)),const Spacer(),const Spacer()])))
               : DayReviewActions.shows(review, row.id, row.moment, this)
               // Buttons belong to their item: one inset card holds both.
               ? Container(
                   margin: const EdgeInsets.symmetric(vertical: S.x1),
                   padding: const EdgeInsets.symmetric(horizontal: S.x3),
+                  // Pilot: the earlier day-timeline pilot's row card (c6b764aae
+                  // ActivitiesTimelineState._item): orange while it waits for a
+                  // choice, plain once Keep or Discard is staged (mock-up .pend).
                   decoration: BoxDecoration(color: p.card2,
-                      border:review?.needsReview(row.id)==true ? Border.all(color:p.on(C.blue)) : null,
+                      border:PilotFlag.timelines.enabled ? Border.all(width:1.2,color:review?.needsReview(row.id)==true&&review?.choice(row.id)==null?p.on(C.orange):Colors.transparent) : null,
                       borderRadius: BorderRadius.circular(R.md)),
                   child: MomentRow(row.moment,
                       below: DayReviewActions(controller: review, id: row.id,
@@ -1700,11 +1703,12 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         onTab:(value)=>setState(()=>_pilotTab=value),listController:_listController,
         annotations:annotations,onAnnotation:annotationTapped,onScrub:_scrubRow,
         onPan:(at){if(!_pilotInteraction.handScrubbing)_scrubRow(at);},
-        rows:_dayRows(rows,review),before:[
-          TextButton(onPressed:()=>go(c,const TypicalDayScreen()),child:Text(l?.typicalDayTitle??'Typical day')),
-          if(d.computedAtMs!=null)Text(l!.asOfTime(clockOfTs(d.computedAtMs!~/1000)),style:F.cap.copyWith(color:p.ink3)),
-        ],after:[
+        counts:{for(final t in PilotTimelineTab.values)t:ranked.where((e)=>(e.row.moment.timelineKind??DayTimelineKind.saved).name==t.name).length},
+        rows:_dayRows(rows,review),after:[
           if(d.notes.isNotEmpty)alsoLoggedSection(c,d.notes),
+          // Mock-up v16: "Typical day ›" follows the list, left-aligned.
+          Align(alignment:Alignment.centerLeft,child:TextButton(onPressed:()=>go(c,const TypicalDayScreen()),child:Text('${l?.typicalDayTitle??'Typical day'} ›'))),
+          if(d.computedAtMs!=null)Text(l!.asOfTime(clockOfTs(d.computedAtMs!~/1000)),style:F.cap.copyWith(color:p.ink3)),
           if(widget.reviewEntry)const NapAutoLogRow(),DayReviewNotices(controller:review,reloader:this),
         ],backToOpened:_openedDay!=null&&day!=_openedDay?TextButton(onPressed:()=>_goDay(_openedDay!),child:Text(_openedDay==todayLabel()?(l?.homeBackToToday??'Back to today'):l!.pilotBackToDay(prettyDay(_openedDay,l)))):null));
     }

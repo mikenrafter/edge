@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/ui2/grammar.dart' show SubTabs;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/pilot/alarm_pilot.dart';
 import 'package:openstrap_edge/pilot/alarm_screen.dart';
@@ -38,8 +39,9 @@ void main(){
   testWidgets('Once has one preview night and only Times and Waking tabs',(t)async{
     await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'A',days:{}),now:day,onSave:(_)async{}));
     expect(t.widget<IconButton>(find.ancestor(of:find.byTooltip('Next night'),matching:find.byType(IconButton))).onPressed,null);
-    expect(find.widgetWithText(TextButton,'Tonight'),findsNothing);
-    expect(find.widgetWithText(TextButton,'Times'),findsOneWidget);expect(find.widgetWithText(TextButton,'Waking'),findsOneWidget);
+    Finder tab(String text)=>find.descendant(of:find.byType(SubTabs),matching:find.text(text));
+    expect(tab('Tonight'),findsNothing);
+    expect(tab('Times'),findsOneWidget);expect(tab('Waking'),findsOneWidget);
     expect(find.text('Usual sleep'),findsNothing);expect(find.byKey(const ValueKey('pilot-time:bed')),findsNothing);
   });
   // catches: an icon hidden behind its thumb or a zoom that jumps instead of gliding.
@@ -70,8 +72,7 @@ void main(){
     expect(find.descendant(of:row,matching:find.text('your usual')),findsOneWidget);
     await t.drag(row,const Offset(20,0));await t.pumpAndSettle();
     expect(find.descendant(of:row,matching:find.text('what-if · not saved')),findsOneWidget);expect(t.getSize(row).height,before);
-    final tile=t.widget<ListTile>(find.descendant(of:row,matching:find.byType(ListTile)));
-    final time=t.widget<Text>(find.descendant(of:row,matching:find.text('23:40')));expect(time.style!.color,const Color(0xFFF5A36B));expect((tile.subtitle! as Text).data,'what-if · not saved');
+    final time=t.widget<Text>(find.descendant(of:row,matching:find.text('23:40')));expect(time.style!.color,const Color(0xFFF5A36B));
     await t.tap(find.descendant(of:row,matching:find.text('Reset')));await t.pumpAndSettle();expect(find.descendant(of:row,matching:find.text('your usual')),findsOneWidget);expect(find.descendant(of:row,matching:find.text('23:30')),findsOneWidget);
   });
   // catches: showing only Wake in the overview, duplicating coincident time labels, or omitting the overnight cut.

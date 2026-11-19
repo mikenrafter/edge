@@ -28,7 +28,7 @@ void main(){
     final next=find.byKey(const ValueKey('pilot-alarm:next')),late=find.byKey(const ValueKey('pilot-alarm:late'));
     expect(t.getSize(next).height,t.getSize(late).height);
     expect(t.getTopLeft(next).dy,lessThan(t.getTopLeft(late).dy));
-    expect(find.text('Next'),findsOneWidget);expect(t.takeException(),null);
+    expect(find.text('next'),findsOneWidget);expect(t.takeException(),null);
   });
   // catches: edits escaping the detached draft before Save.
   testWidgets('primary draft and repeat edits cancel without writing',(t)async{
@@ -110,15 +110,15 @@ void main(){
     await PilotFlags.set(PilotFlag.wakeMethods,true);
     await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'A'),now:DateTime(2026,11,23),onSave:(_)async{}));
     await t.tap(find.text('Waking'));await t.pumpAndSettle();await t.scrollUntilVisible(find.text('Sunrise alarm'),200,scrollable:find.byType(Scrollable).last);await t.tap(find.text('Sunrise alarm'));await t.pump();
-    Color? tabColor()=>t.widget<TextButton>(find.widgetWithText(TextButton,'Times')).style!.backgroundColor!.resolve({});
+    Color? tabColor(){final f=find.byKey(const ValueKey('pilot-times-flash'));return f.evaluate().isEmpty?null:(t.widget<DecoratedBox>(f).decoration as BoxDecoration).color;}
     await t.pump(const Duration(milliseconds:250));final first=tabColor();await t.pump(const Duration(milliseconds:250));expect(tabColor(),isNot(first));
     await t.pump(const Duration(milliseconds:250));expect(tabColor(),first);await t.pump(const Duration(milliseconds:250));
     await t.scrollUntilVisible(find.text('Phone sound'),200,scrollable:find.byType(Scrollable).last);await t.tap(find.text('Phone sound'));await t.pumpAndSettle();
     await t.tap(find.text('Times'));await t.pump();await t.pump(const Duration(milliseconds:450));
     final row=find.byKey(const ValueKey('pilot-time:sunrise'));
-    Color rowColor()=>t.widget<ColoredBox>(find.descendant(of:row,matching:find.byType(ColoredBox)).first).color;
-    expect(rowColor().a,greaterThan(0));
-    final sound=find.byKey(const ValueKey('pilot-time:sound'));expect(t.widget<ColoredBox>(find.descendant(of:sound,matching:find.byType(ColoredBox)).first).color.a,greaterThan(0));await t.pumpAndSettle();expect(rowColor(),Colors.transparent);
-    await t.tap(find.text('Waking'));await t.pumpAndSettle();await t.tap(find.text('Times'));await t.pump(const Duration(milliseconds:450));expect(rowColor(),Colors.transparent);
+    Color? glow(Finder r)=>(t.widget<Container>(find.descendant(of:r,matching:find.byType(Container)).first).decoration as BoxDecoration).color;
+    expect(glow(row)!.a,greaterThan(0));
+    final sound=find.byKey(const ValueKey('pilot-time:sound'));expect(glow(sound)!.a,greaterThan(0));await t.pumpAndSettle();expect(glow(row),isNull);
+    await t.tap(find.text('Waking'));await t.pumpAndSettle();await t.tap(find.text('Times'));await t.pump(const Duration(milliseconds:450));expect(glow(row),isNull);
   });
 }

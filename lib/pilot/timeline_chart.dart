@@ -45,7 +45,7 @@ class PilotTimelineChart extends StatefulWidget {
   const PilotTimelineChart({super.key,required this.controller,required this.graph,
     required this.interaction,this.annotations=const [],this.stages=const [],
     this.handles=const [],this.onHandle,this.onSelect,this.onScrub,this.onPan,
-    this.onTapTime,this.height=112,this.dimHrInsideSleep=true,this.overview=false,this.cut,this.selectedAnnotationId});
+    this.onTapTime,this.height=112,this.dimHrInsideSleep=true,this.overview=false,this.cut,this.selectedAnnotationId,this.showHeartRate=true,this.showHeader=true});
   final TimelineController controller;
   final DayGraph graph;
   final TimelineInteraction interaction;
@@ -57,6 +57,11 @@ class PilotTimelineChart extends StatefulWidget {
   final ValueChanged<double>? onScrub,onPan,onTapTime;
   final double height;
   final bool dimHrInsideSleep;final bool overview;final PilotTimelineCut? cut;final String? selectedAnnotationId;
+  /// Alarm charts show a forecast night: stages and annotations only, no
+  /// recorded heart rate or motion (alarm mock-ups v12-v22, m149/m167).
+  final bool showHeartRate;
+  /// The label/bpm row above the plot; the alarm editor labels in the chart.
+  final bool showHeader;
   @override State<PilotTimelineChart> createState()=>_PilotChartState();
 }
 
@@ -182,27 +187,35 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
             overviewGroups.add((at:at,items:items,left:left,lane:lane));
           }
         }
+        final selectedLane=marks.where((m)=>m.annotation.id==widget.selectedAnnotationId).firstOrNull?.lane??0;
+        Widget chip(IconData icon,Color color,{bool on=false,bool small=false})=>Container(width:small?16:22,height:small?15:20,alignment:Alignment.center,
+          decoration:BoxDecoration(color:on?p.ink:p.bg,borderRadius:BorderRadius.circular(small?5:6),border:Border.all(color:on?p.ink:p.line)),
+          child:Icon(icon,size:small?10:13,color:on?p.bg:color));
         final plotHeight=widget.overview?math.max(widget.height,overviewGroups.fold<double>(0,(h,g)=>math.max(h,(g.lane+g.items.length)*annotationStep+8))):widget.height;
         return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-          if(!widget.overview)SizedBox(height:26,child:Row(children:[Expanded(child:Text(nearest?.label??'',maxLines:1,overflow:TextOverflow.ellipsis,style:F.cap.copyWith(color:p.ink2))),Text('bpm',style:F.cap.copyWith(color:p.on(C.red)))])),
+          if(!widget.overview&&widget.showHeader)SizedBox(height:26,child:Row(children:[Expanded(child:Text(nearest?.label??'',maxLines:1,overflow:TextOverflow.ellipsis,style:F.cap.copyWith(color:p.ink2))),Text('bpm',style:F.cap.copyWith(color:p.on(C.red)))])),
           Listener(onPointerDown:_start,onPointerMove:_move,onPointerUp:_end,onPointerCancel:_end,
             child:GestureDetector(onPanUpdate:(_){},behavior:HitTestBehavior.opaque,
               child:SizedBox(key:const ValueKey('pilot-timeline-plot'),height:plotHeight+24,
                 child:ClipRect(child:Stack(children:[
                   Positioned.fill(child:CustomPaint(painter:_PilotPainter(p:p,view:c.view,graph:widget.graph,stages:widget.stages,
-                    annotations:visible,scrub:c.scrub,selection:c.selection,height:plotHeight,dimHrInsideSleep:widget.dimHrInsideSleep,cut:widget.cut))),
+                    annotations:visible,scrub:c.scrub,selection:c.selection,height:plotHeight,dimHrInsideSleep:widget.dimHrInsideSleep,cut:widget.cut,showHeartRate:widget.showHeartRate,bpmInPlot:!widget.showHeader))),
                   if(c.selection==null)for(final h in widget.handles)if(h.at>=c.view.start&&h.at<=c.view.end)
                     Positioned(left:c.view.fraction(h.at)*_width-24,top:22,width:48,height:math.max(48,widget.height-24),
                       child:IgnorePointer(child:Center(child:Container(width:h.active?6:2,height:widget.height-28,decoration:BoxDecoration(color:h.color.withValues(alpha:h.active?1:.35),borderRadius:BorderRadius.circular(3))))),),
-                  if(!widget.overview)for(final mark in marks)Positioned(left:mark.x-12,top:mark.lane*22.0,child:Tooltip(message:mark.annotation.label,
-                    child:Icon(mark.annotation.icon??annotationIcon(mark.annotation.kind),size:18,color:p.on(_pilotAnnotationColor(mark.annotation))))),
+                  if(!widget.overview)for(final mark in marks)Positioned(left:mark.x-11,top:2+mark.lane*22.0,child:Tooltip(message:mark.annotation.label,
+                    child:chip(mark.annotation.icon??annotationIcon(mark.annotation.kind),p.on(_pilotAnnotationColor(mark.annotation)),on:c.scrub==null&&mark.annotation.id==widget.selectedAnnotationId))),
                   for(final group in overviewGroups)Positioned(left:group.left,top:group.lane*annotationStep,child:DecoratedBox(decoration:BoxDecoration(color:p.card.withValues(alpha:.9),borderRadius:BorderRadius.circular(4)),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                    Column(children:[for(final a in group.items)Tooltip(message:a.label,child:Icon(a.icon??annotationIcon(a.kind),size:16,color:p.on(_pilotAnnotationColor(a))))]),
+                    Column(children:[for(final a in group.items)Padding(padding:const EdgeInsets.only(bottom:1),child:Tooltip(message:a.label,child:chip(a.icon??annotationIcon(a.kind),p.on(_pilotAnnotationColor(a)),small:true)))]),
                     Text(pilotClock(group.at),key:ValueKey('pilot-overview-time:${group.at.round()}'),style:F.cap.copyWith(color:p.ink,fontSize:11)),
                   ]))),
-                  if(widget.selectedAnnotationId!=null&&!widget.overview)Positioned(left:((widget.cut?.x(c.scrub??widget.handles.firstOrNull?.at??c.view.center,c.view,_width)??c.view.fraction(c.scrub??widget.handles.firstOrNull?.at??c.view.center)*_width)+14).clamp(0.0,math.max(0.0,_width-55)),top:4,child:DecoratedBox(decoration:BoxDecoration(color:p.card2,borderRadius:BorderRadius.circular(4)),child:Text(pilotClock(c.scrub??widget.handles.firstOrNull?.at??c.view.center),style:F.cap.copyWith(color:p.ink)))),
+                  if(widget.selectedAnnotationId!=null&&!widget.overview)Builder(builder:(context){final at=(c.scrub??widget.handles.firstOrNull?.at??c.view.center),x=widget.cut?.x(at,c.view,_width)??c.view.fraction(at)*_width;var left=x+14;if(left>_width-52)left=x-58;
+                    return Positioned(left:left.clamp(0.0,math.max(0.0,_width-52)),top:4+(c.scrub==null?selectedLane*22.0:0),child:DecoratedBox(decoration:BoxDecoration(color:p.card2,borderRadius:BorderRadius.circular(6)),child:Padding(padding:const EdgeInsets.symmetric(horizontal:6,vertical:1),child:Text(pilotClock(at),style:F.cap.copyWith(color:p.ink,fontSize:11,fontWeight:FontWeight.w600)))));}),
                   if(widget.cut!=null)Positioned(left:widget.cut!.leftWidth(_width)-3,top:plotHeight/2-10,width:34,child:Text('…',key:const ValueKey('pilot-overview-cut'),textAlign:TextAlign.center,style:F.head.copyWith(color:p.ink3))),
-                  if(!widget.overview)Positioned(right:6,bottom:30,child:IgnorePointer(child:Opacity(opacity:.65,child:Text(_fine?l.pilotFineSteps:_scrub?l.pilotScrubbing:l.pilotHoldScrub,style:F.cap.copyWith(color:p.ink2))))),
+                  // Mock-ups: a translucent pill in the bottom-left corner, clear of
+                  // the heart-rate graduations on the right.
+                  if(!widget.overview)Positioned(left:8,bottom:30,child:IgnorePointer(child:Opacity(opacity:_scrub||_fine?1:.6,child:DecoratedBox(decoration:BoxDecoration(color:p.card2.withValues(alpha:.6),borderRadius:BorderRadius.circular(6)),
+                    child:Padding(padding:const EdgeInsets.symmetric(horizontal:8,vertical:1),child:Text(_fine?l.pilotFineSteps:_scrub?l.pilotScrubbing:l.pilotHoldScrub,style:F.cap.copyWith(color:p.ink,fontSize:11))))))),
                 ]))))),
         ]);
       })));
@@ -211,10 +224,10 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
 
 class _PilotPainter extends CustomPainter {
   _PilotPainter({required this.p,required this.view,required this.graph,required this.stages,
-    required this.annotations,required this.scrub,required this.selection,required this.height,required this.dimHrInsideSleep,this.cut});
+    required this.annotations,required this.scrub,required this.selection,required this.height,required this.dimHrInsideSleep,this.cut,this.showHeartRate=true,this.bpmInPlot=false});
   final P p; final TimelineView view; final DayGraph graph; final List<SleepStage?> stages;
   final List<ChartAnnotation> annotations;final double? scrub;final TimelineView? selection;final double height;
-  final bool dimHrInsideSleep;final PilotTimelineCut? cut;
+  final bool dimHrInsideSleep;final PilotTimelineCut? cut;final bool showHeartRate,bpmInPlot;
   @override void paint(Canvas canvas,Size size){
     final w=size.width,base=(graph.dayStart??view.start).toDouble();
     double x(double at)=>cut?.x(at,view,w)??view.fraction(at)*w;
@@ -226,7 +239,7 @@ class _PilotPainter extends CustomPainter {
     for(final gap in graph.unmeasured){
       canvas.drawRect(Rect.fromLTRB(x(base+gap.$1*60),20,x(base+gap.$2*60),height),Paint()..color=p.card2);
     }
-    final ticks=visibleHeartRateTicks(graph.hr,start:((view.start-base)/60).floor(),end:((view.end-base)/60).ceil());
+    final ticks=!showHeartRate?const <int>[]:visibleHeartRateTicks(graph.hr,start:((view.start-base)/60).floor(),end:((view.end-base)/60).ceil());
     final low=ticks.isEmpty?0:ticks.first,high=ticks.isEmpty?1:ticks.last;
     double y(num v)=>25+(1-(v-low)/(high-low))*(height-35);
     for(final t in ticks){
@@ -239,23 +252,32 @@ class _PilotPainter extends CustomPainter {
       if(a.until!=null)canvas.drawRect(Rect.fromLTRB(x(a.at),20,x(a.until!),height),Paint()..color=color.withValues(alpha:.09));
       for(final at in [a.at,if(a.until!=null)a.until!])for(var top=22.0;top<height;top+=7){canvas.drawLine(Offset(x(at),top),Offset(x(at),top+3),Paint()..color=color.withValues(alpha:.4));}
     }
-    final colors=Hypnogram.cols(p);
-    for(var i=0;i<stages.length;i++){
-      final st=stages[i];if(st==null)continue;
-      final left=x(base+i*300),right=x(base+(i+1)*300);
-      if(right<0||left>w)continue;
-      final depth=switch(st){SleepStage.awake=>0,SleepStage.rem=>1,SleepStage.light=>2,SleepStage.deep=>3};
-      canvas.drawRect(Rect.fromLTRB(left,28+depth*(height-38)/4,right,28+(depth+1)*(height-38)/4-2),Paint()..color=colors[st]!.withValues(alpha:.5));
+    // Stages go through the app's own Hypnogram painter, one call per
+    // unbroken run, so runs merge and lanes have no per-slot seams (m233).
+    int segment(int i){final at=base+i*300.0;return cut==null?0:at<=cut!.leftEnd?0:at>=cut!.rightStart?2:1;}
+    void run(int from,int to){
+      final left=x(base+from*300),right=x(base+to*300),top=26.0,box=Size(right-left,height-top-6);
+      if(right<=0||left>=w||box.width<1)return;
+      canvas.save();canvas.translate(left,top);
+      canvas.saveLayer(Offset.zero&box,Paint()..color=Color.fromRGBO(0,0,0,showHeartRate?.5:1));
+      Hypnogram([for(var i=from;i<to;i++)stages[i]!],p).paint(canvas,box);
+      canvas.restore();canvas.restore();
+    }
+    var from=-1;
+    for(var i=0;i<=stages.length;i++){
+      final open=i<stages.length&&stages[i]!=null&&segment(i)!=1;
+      if(from>=0&&(!open||segment(i)!=segment(from))){run(from,i);from=-1;}
+      if(open&&from<0)from=i;
     }
     Offset? previous;
-    for(var i=math.max(0,((view.start-base)/60).floor()-1);i<graph.hr.length&&base+i*60<=view.end+60;i++){
+    if(showHeartRate)for(var i=math.max(0,((view.start-base)/60).floor()-1);i<graph.hr.length&&base+i*60<=view.end+60;i++){
       final value=graph.hr[i];if(value==null||!value.isFinite||value<=0){previous=null;continue;}
       final point=Offset(x(base+i*60),y(value));
       final asleep=graph.rest.any((s)=>i>=s.$1&&i<s.$2);
       if(previous!=null)canvas.drawLine(previous,point,Paint()..color=p.on(C.red).withValues(alpha:asleep && dimHrInsideSleep ? .38 : .75)..strokeWidth=1.4);
       previous=point;
     }
-    for(var i=math.max(0,((view.start-base)/60).floor());i<graph.movement.length&&base+i*60<view.end;i++){
+    if(showHeartRate)for(var i=math.max(0,((view.start-base)/60).floor());i<graph.movement.length&&base+i*60<view.end;i++){
       final v=graph.movement[i];if(v==null||!v.isFinite)continue;
       canvas.drawRect(Rect.fromLTRB(x(base+i*60),height-v.clamp(0,1)*(height-25)*.32,x(base+(i+1)*60),height),Paint()..color=p.on(C.purple).withValues(alpha:.75));
     }
@@ -263,6 +285,7 @@ class _PilotPainter extends CustomPainter {
     if(scrub!=null)canvas.drawLine(Offset(x(scrub!),0),Offset(x(scrub!),height),Paint()..color=p.ink..strokeWidth=1.5);
     canvas.restore();
     for(final t in ticks)text('$t',w-3,y(t)-11,p.on(C.red),right:true);
+    if(bpmInPlot&&ticks.isNotEmpty)text('bpm',w-3,2,p.on(C.red),right:true);
     if(cut!=null){
       final left=cut!.leftWidth(w);
       canvas.drawRect(Rect.fromLTWH(left,0,28,height),Paint()..color=p.card);
