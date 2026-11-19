@@ -7,6 +7,7 @@ import 'package:openstrap_edge/data/official_export/mapper.dart';
 import 'package:openstrap_edge/data/official_export/payload_requirements.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'rich_fixture.dart';
+import 'support.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -42,7 +43,7 @@ void main() {
           final rows=await target.query('activity_suggestions');
           if(mode=='pending') {
             expect(rows,isEmpty);
-            expect((report.tables['activity_suggestions'] as Map)['target_count'],0);
+            expect(report.targetCounts['activity_suggestions']??0,0);
           }else {
             expect(rows.single['linked_id'],'2026-10-20:1792504800');
             expect(rows.single['status'],'confirmed');
