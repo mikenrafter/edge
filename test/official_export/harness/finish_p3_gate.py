@@ -29,6 +29,7 @@ def parse(path):
   diagnostic=re.sub(r'file://'+re.escape(str(root))+'/', '',diagnostic).replace(str(root)+'/','')
   diagnostic=re.sub(r'(?:file://)?/home/user/runs/[^/]+/', '',diagnostic)
   diagnostic=re.sub(r'/tmp/[^\s/]+', '/tmp/TEMP',diagnostic)
+  diagnostic=re.sub(r'(\.dart):\d+(?::\d+)?', r'\1:LINE',diagnostic)
   diagnostic=re.sub(r'\\x1b\[[0-9;]*m','',diagnostic)
   rows.append(dict(file=file,name=t.get('name',''),diagnostic=diagnostic))
  return rows,done,counts
