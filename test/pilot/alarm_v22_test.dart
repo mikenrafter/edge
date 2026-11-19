@@ -62,7 +62,7 @@ void main(){
     final plotRect=t.getRect(plot),rowRect=t.getRect(row),detailSize=t.getSize(detail);
     final held=await t.startGesture(Offset(plotRect.left+plotRect.width*.22,plotRect.center.dy));await t.pump(const Duration(milliseconds:350));
     expect(t.widget<PilotTimelineChart>(find.byType(PilotTimelineChart)).controller.scrub,isNotNull);
-    expect(find.text('Stage'),findsOneWidget);expect(t.getSize(detail),detailSize);expect(t.getRect(row),rowRect);expect(t.getRect(plot),plotRect);
+    expect(find.descendant(of:detail,matching:find.text('Stage')),findsOneWidget);expect(t.getSize(detail),detailSize);expect(t.getRect(row),rowRect);expect(t.getRect(plot),plotRect);
     await held.moveBy(const Offset(40,0));await t.pump();expect(t.getRect(row),rowRect);await held.up();await t.pump();expect(t.getSize(detail),detailSize);expect(t.takeException(),null);
   });
   // catches: silently persisting a what-if, adding another subtitle line, or forgetting Preview orange/Reset (m225).

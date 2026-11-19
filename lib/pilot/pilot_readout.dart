@@ -32,7 +32,7 @@ class PilotReadout extends StatelessWidget {
         ]));
       return Container(padding:const EdgeInsets.all(12),decoration:BoxDecoration(color:p.card,borderRadius:BorderRadius.circular(12)),
         child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-          Row(children:[Expanded(child:titleWidget??Text(title,maxLines:1,overflow:TextOverflow.ellipsis,style:F.head.copyWith(color:p.ink))),Text(time==null?(fallbackTime==null?'—':pilotClock(fallbackTime!)):pilotClock(time),style:F.head.copyWith(color:p.ink,fontSize:22))]),
+          Row(children:[Expanded(child:titleWidget??Text(title,maxLines:1,overflow:TextOverflow.ellipsis,style:F.head.copyWith(color:p.ink))),Text(time==null?(fallbackTime==null?'—':pilotClock(fallbackTime!)):pilotClock(time),key:const ValueKey('pilot-readout-time'),style:F.head.copyWith(color:p.ink,fontSize:22))]),
           const SizedBox(height:8),
           if(values!=null)values! else if(time==null&&fallback!=null)fallback! else Row(children:[
             cell(l.pilotStage,stage?.label(l)??'—'),cell(l.dayTimelineHeartRateTitle,hr==null?'—':'${hr.round()} bpm'),cell(l.homeMovement,motion==null?'—':'${(motion*100).round()}%'),

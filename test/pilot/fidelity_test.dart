@@ -37,7 +37,7 @@ void main(){
     await pump(t,PilotAlarmScreen(alarms:[PilotAlarm(id:'w',label:'Work',wakeMinute:390,earlyMinutes:20,days:{1,2,3,5}),PilotAlarm(id:'r',label:'Run',type:PilotAlarmType.workout,wakeMinute:1140,days:{1,3})],now:DateTime(2026,11,23,5),reference:(_)async=>sample(),onSave:(_)async{}));
     expect(find.text('next'),findsOneWidget);
     expect(find.text('06:10–06:30'),findsOneWidget);
-    expect(find.text('~6h 40m'),findsOneWidget);expect(find.text('400 min'),findsNothing);
+    expect(find.text('~6 h 40 min'),findsOneWidget);expect(find.text('400 min'),findsNothing);
     expect(find.text('17:30–19:00'),findsOneWidget);expect(find.text('Zone 3+'),findsOneWidget);
     for(final chart in t.widgetList<PilotTimelineChart>(find.byType(PilotTimelineChart)))expect(chart.showHeartRate,false);
   });

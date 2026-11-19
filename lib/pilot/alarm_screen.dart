@@ -13,7 +13,7 @@ import '../l10n/app_localizations.dart';
 import '../notify/buzz_sequence.dart';
 import '../haptics/pattern_store.dart';
 import '../haptics/example_playback.dart' show HapticCancel;
-import '../ui2/screens/home_screen.dart' show repoOf,hm;
+import '../ui2/screens/home_screen.dart' show repoOf;
 import '../ui2/grammar.dart' show SubTabs,BigButton;
 import '../ui2/profile/profile.dart' show SetRow;
 import '../state/app_state.dart';
@@ -137,9 +137,9 @@ class _AlarmChartState extends State<_AlarmChart>{
       // Mock-up v22 statsOf(): Wake (a range with early wake), Expected,
       // Usual sleep; workout: Window, Zone, Buzzes at.
       Row(children:a.type==PilotAlarmType.sleep?[
-        stat(l.pilotWake,_wakeText(a)),
-        stat(l.pilotExpected,expected==null?'—':formatClock(expected!~/60,expected!%60)),
-        stat(l.pilotUsualSleep,usualSleepMinutes==null?'—':'~${hm(usualSleepMinutes)}'),
+        stat(l.pilotWakeShort,_wakeText(a)),
+        stat(l.pilotExpectedShort,expected==null?'—':formatClock(expected!~/60,expected!%60)),
+        stat(l.pilotUsualSleep,usualSleepMinutes==null?'—':pilotForecastText(l,usualSleepMinutes!)),
       ]:[
         stat(l.pilotWindow,'${formatClock(a.workoutStartMinute~/60,a.workoutStartMinute%60)}–${formatClock(a.wakeMinute~/60,a.wakeMinute%60)}'),
         stat(l.pilotZone,l.pilotZoneAtLeast(a.zone)),
@@ -345,6 +345,8 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
               ])),
               Row(children:[for(final preset in [({1,2,3,4,5},l.pilotWeekdays),({6,7},l.pilotWeekends),({1,2,3,4,5,6,7},l.pilotEveryDay),(<int>{},l.pilotOnce)])Expanded(child:TextButton(onPressed:()=>setState((){a.days={...preset.$1};_repeatChanged();}),child:Text(preset.$2,maxLines:1,overflow:TextOverflow.ellipsis)))]),
             ]else Expanded(child:PilotAlarmReadout(key:const ValueKey('pilot-alarm-readout'),controller:c,graph:graph,stages:stages,alarm:a,dayStart:start,expectedMinute:expectedMinute,selectedMinute:_minuteFor(focus),bedtimeMinute:previewBed,
+              rest:a.type==PilotAlarmType.sleep?[(l.pilotWakeShort,_wakeText(a)),(l.pilotExpectedShort,expectedWake==null?'—':formatClock(expectedWake!~/60,expectedWake!%60)),(l.pilotUsualSleep,previewBed==null?'—':pilotForecastText(l,(expectedMinute-previewBed!).clamp(0,1440)))]
+                :[(l.pilotWindow,'${formatClock(a.workoutStartMinute~/60,a.workoutStartMinute%60)}–${formatClock(a.wakeMinute~/60,a.wakeMinute%60)}'),(l.pilotZone,l.pilotZoneAtLeast(a.zone)),(l.pilotBuzzesAt,formatClock(a.wakeMinute~/60,a.wakeMinute%60))],
               title:Align(alignment:Alignment.centerLeft,child:TextButton(onPressed:_rename,style:TextButton.styleFrom(padding:EdgeInsets.zero,foregroundColor:p.ink),child:Row(mainAxisSize:MainAxisSize.min,children:[Flexible(child:Text(a.label,maxLines:1,overflow:TextOverflow.ellipsis,style:F.body.copyWith(fontWeight:FontWeight.w600))),const SizedBox(width:6),Icon(LucideIcons.pencil,size:14,color:p.ink3)]))))),
             if(repeat)const Spacer(),
             PilotZoomControls(controller:c,onZoom:interaction.zoom,trailing:Align(alignment:Alignment.centerRight,child:TextButton.icon(onPressed:()=>setState(()=>repeat=!repeat),icon:Icon(repeat?LucideIcons.check:LucideIcons.repeat,size:16),label:Text(repeat?l.pilotDone:_daysLabel(a,l),maxLines:1,overflow:TextOverflow.ellipsis)))),

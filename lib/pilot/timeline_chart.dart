@@ -259,7 +259,7 @@ class _PilotPainter extends CustomPainter {
       final left=x(base+from*300),right=x(base+to*300),top=26.0,box=Size(right-left,height-top-6);
       if(right<=0||left>=w||box.width<1)return;
       canvas.save();canvas.translate(left,top);
-      canvas.saveLayer(Offset.zero&box,Paint()..color=Color.fromRGBO(0,0,0,showHeartRate?.5:1));
+      canvas.saveLayer(Offset.zero&box,Paint()..color=Color.fromRGBO(0,0,0,showHeartRate ? .5 : 1.0));
       Hypnogram([for(var i=from;i<to;i++)stages[i]!],p).paint(canvas,box);
       canvas.restore();canvas.restore();
     }
