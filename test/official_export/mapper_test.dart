@@ -1,6 +1,7 @@
 // CLAIM(official-export-accounted-identities), CLAIM(official-export-unit-keys),
 // CLAIM(official-export-no-fork-results): drive the file builder, not a test copy.
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/official_export/mapper.dart';
 import 'package:openstrap_edge/data/official_export/payload_requirements.dart';
@@ -98,6 +99,13 @@ void main() {
       final packet=report.tables['ecg_raw_packet'] as Map;
       expect(packet['source_count'],0);
       expect(packet['omitted_columns'],['origin']);
+      final out=await databaseFactoryFfi.openDatabase(path);
+      try {
+        final manifest=jsonDecode((await out.query('fork_transition_manifest')).single['payload_json'] as String) as Map;
+        final persisted=(manifest['tables'] as Map)['ecg_raw_packet'] as Map;
+        expect(persisted['omitted_columns'],['origin']);
+        expect(persisted['source_count'],0);
+      }finally{await out.close();}
     }finally{await fx.dispose();}
   });
 

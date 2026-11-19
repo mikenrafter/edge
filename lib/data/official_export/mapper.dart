@@ -406,7 +406,12 @@ class _Mapper {
       expectedCounts[policy.dest!] = (expectedCounts[policy.dest!] ?? 0) + written;
     }
     ledger.verify();
-    reports[name] = ledger.toJson();
+    reports[name] = {
+      ...ledger.toJson(),
+      // Schema omissions remain explicit even when the table has no rows or
+      // every omitted value is NULL; row ranges still describe actual values.
+      'omitted_columns':[for(final column in policy.omit) if(shape.columnNames.contains(column))column],
+    };
   }
 
   Future<Set<String>> observedDays(Database db) async {
