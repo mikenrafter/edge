@@ -751,6 +751,8 @@ class NotificationPrefs {
     NotifCategory.recovery => recoveryEnabled,
     NotifCategory.reminders => remindersEnabled,
     NotifCategory.device => deviceEnabled,
+    // Consent for release announcements is the update checker's own store.
+    NotifCategory.updates => true,
   };
 
   /// True if [minuteOfDay] falls inside the quiet window (inclusive start,

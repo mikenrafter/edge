@@ -102,6 +102,13 @@ class NotificationService {
   Stream<String> get taps => _taps.stream;
 
   // ── Channels (one per category — keep them disjoint) ────────────────────────
+  static const AndroidNotificationChannel _updatesChannel =
+      AndroidNotificationChannel(
+    'app_updates',
+    'App updates',
+    description: 'Opted-in GitHub release announcements',
+  );
+
   static const AndroidNotificationChannel _deviceChannel =
       AndroidNotificationChannel(
     'device_alerts',
@@ -300,6 +307,7 @@ class NotificationService {
         NotifCategory.recovery => _recoveryChannel,
         NotifCategory.reminders => _remindersChannel,
         NotifCategory.device => _deviceChannel,
+        NotifCategory.updates => _updatesChannel,
       };
 
   Importance _importanceFor(NotifCategory c) =>
@@ -348,6 +356,7 @@ class NotificationService {
     final androidImpl = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     await androidImpl?.createNotificationChannel(_deviceChannel);
+    await androidImpl?.createNotificationChannel(_updatesChannel);
     await androidImpl?.createNotificationChannel(_healthChannel);
     await androidImpl?.createNotificationChannel(_recoveryChannel);
     await androidImpl?.createNotificationChannel(_remindersChannel);

@@ -4,6 +4,8 @@
 // consumes both requests. Unknown routes fall back to Today (never crash on a
 // stale payload from an old build).
 
+import '../sync/update_models.dart' show ReleasePage;
+
 /// Sub-screen deep links (notification payloads). The 5 tab routes
 /// (/today /sleep /heart /body /workouts) stay as they were.
 const String kRouteAiMorning = '/ai/morning';
@@ -115,6 +117,10 @@ const String kRouteRecap = '/recap';
 const String kRouteAlarm = '/alarm';
 
 class TapTarget {
+  /// A validated release page to open in the browser; set only for a typed
+  /// `/release` route. The shell opens it after the tap and navigates nowhere.
+  final ReleasePage? release;
+
   /// Shell tab index to land on (always valid; unknown → 0 = Today).
   final int tab;
 
@@ -122,7 +128,7 @@ class TapTarget {
   /// (one of the kRoute* consts above).
   final String? screen;
 
-  const TapTarget(this.tab, [this.screen]);
+  const TapTarget(this.tab, [this.screen, this.release]);
 }
 
 const Map<String, int> _tabRoutes = {

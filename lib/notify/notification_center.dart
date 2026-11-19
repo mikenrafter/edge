@@ -26,6 +26,7 @@ import '../data/journal_fields.dart';
 import '../data/med_store.dart';
 import '../state/clock_format.dart' show formatClockMinute;
 import '../data/water_units.dart';
+import 'event_claim_ledger.dart';
 import 'fired_keys.dart';
 import 'reminder_sleep_gate.dart';
 import 'alert_dispatcher.dart';
@@ -86,6 +87,10 @@ class NotificationCenter {
     // The caller already chose the phone as this rule's fallback.
     bool ruleDecidesFallback = false,
   }) async {
+    if (_claimLedgers.containsKey(e.category) ||
+        e.category == NotifCategory.updates) {
+      return const {};
+    }
     final prefs = await NotificationPrefs.load();
     final id =
         ruleId ??
@@ -150,6 +155,36 @@ class NotificationCenter {
     );
     return out.targets.toSet();
   }
+
+  final Map<NotifCategory, EventClaimLedger> _claimLedgers = {};
+
+  /// The rule release announcements are delivered under: phone by default.
+  /// Every destination the hardware and execution mode support may be chosen
+  /// here once the alert-settings revamp lands; until then it is fixed.
+  @visibleForTesting
+  AlertRule updateRule = const AlertRule(
+    id: 'updates',
+    kind: 'updates',
+    enabled: true,
+    destinations: AlertRule.phone,
+    executionMode: AlertExecutionMode.phoneDerived,
+    channelPolicyId: 'updates',
+  );
+
+  /// How long the OS hand-off may take before the outcome is called ambiguous.
+  @visibleForTesting
+  Duration presentTimeout = const Duration(seconds: 10);
+
+  /// Whether the OS will show a notification now, asked WITHOUT prompting.
+  /// Only a foreground tap on the Settings card may prompt.
+  @visibleForTesting
+  Future<bool> Function() claimedPermission =
+      () => NotificationService.instance.ensurePermission(allowPrompt: false);
+
+  /// Route a category's claims, OS ids and consent through [ledger] instead of
+  /// the health database. Idempotent per category; the last registration wins.
+  void registerClaimLedger(NotifCategory category, EventClaimLedger ledger) =>
+      _claimLedgers[category] = ledger;
 
   /// The persistent "already fired this dedupeKey" guard. See [FiredKeyStore].
   final FiredKeyStore _fired = const FiredKeyStore();
