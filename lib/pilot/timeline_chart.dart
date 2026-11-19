@@ -285,7 +285,7 @@ class _PilotPainter extends CustomPainter {
       final value=graph.hr[i];if(value==null||!value.isFinite||value<=0){previous=null;continue;}
       final point=Offset(x(base+i*60),y(value));
       final asleep=graph.rest.any((s)=>i>=s.$1&&i<s.$2);
-      if(previous!=null)canvas.drawLine(previous,point,Paint()..color=p.on(C.red).withValues(alpha:dimHrInsideSleep?(asleep?.75:1.0):.75)..strokeWidth=1.4);
+      if(previous!=null)canvas.drawLine(previous,point,Paint()..color=p.on(C.red).withValues(alpha:dimHrInsideSleep ? (asleep ? .75 : 1.0) : .75)..strokeWidth=1.4);
       previous=point;
     }
     if(showHeartRate)for(var i=math.max(0,((view.start-base)/60).floor());i<graph.movement.length&&base+i*60<view.end;i++){
