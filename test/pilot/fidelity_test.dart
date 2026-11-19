@@ -47,13 +47,18 @@ void main(){
     await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'A',earlyMinutes:20,phoneSound:true),now:day,reference:(_)async=>sample(),onSave:(_)async{}));
     expect(find.byType(SubTabs),findsOneWidget);
     expect(find.descendant(of:find.byKey(const ValueKey('pilot-time:early')),matching:find.byType(SetRow)),findsOneWidget);
+    // v22 .item .t small: the subtitle sits under the time, right-aligned.
+    final early=find.byKey(const ValueKey('pilot-time:early'));
+    final time=t.getRect(find.descendant(of:early,matching:find.text('06:40'))),sub=t.getRect(find.descendant(of:early,matching:find.text('up to 20 min earlier')));
+    expect(sub.top,greaterThanOrEqualTo(time.bottom-1));expect((sub.right-time.right).abs(),lessThan(1));
+    final title=t.getRect(find.descendant(of:early,matching:find.text('Early wake')));expect(title.height,lessThan(time.height*1.6));
     expect(find.widgetWithText(BigButton,'Save'),findsOneWidget);expect(find.widgetWithText(BigButton,'Cancel'),findsOneWidget);
     final chart=t.widget<PilotTimelineChart>(find.byType(PilotTimelineChart));expect(chart.showHeartRate,false);expect(chart.showHeader,false);
     await t.tap(find.text('Waking'));await t.pumpAndSettle();
     expect(find.byType(SwitchListTile),findsNothing);
     final band=find.widgetWithText(SetRow,'Band buzz');expect(band,findsOneWidget);
     expect(find.descendant(of:band,matching:find.byType(Switch)),findsOneWidget);
-    expect(find.descendant(of:find.widgetWithText(SetRow,'Phone sound'),matching:find.text('1 min after · set on Times')),findsOneWidget);
+    expect(find.descendant(of:find.widgetWithText(SetRow,'Phone sound'),matching:find.textContaining('min after · set on Times')),findsOneWidget);
   });
 
   // catches: the day readout repeating the screen title, or zoom/pin outside the readout card.

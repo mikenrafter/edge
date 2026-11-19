@@ -55,6 +55,10 @@ class SetRow extends StatelessWidget {
   /// the extra param. Sized and tinted the same as the [Icon] it replaces.
   final Widget Function(Color tint)? glyph;
 
+  /// Caps the title at this many lines, with an ellipsis. Null wraps freely
+  /// (every settings row); set for rows whose height must stay fixed.
+  final int? titleMaxLines;
+
   const SetRow(IconData this.icon, this.color, this.title,
       {super.key,
       this.sub = '',
@@ -65,6 +69,7 @@ class SetRow extends StatelessWidget {
       this.trailing,
       this.replacement,
       this.enabled = true,
+      this.titleMaxLines,
       this.onTap})
       : glyph = null;
 
@@ -78,6 +83,7 @@ class SetRow extends StatelessWidget {
       this.enabled = true,
       this.onTap})
       : icon = null,
+        titleMaxLines = null,
         trailing = null,
         replacement = null;
 
@@ -87,7 +93,10 @@ class SetRow extends StatelessWidget {
   /// readable "title" for finders and tests.
   Widget _title(BuildContext c, P p) {
     final style = F.body.copyWith(color: danger ? p.on(C.red) : p.ink);
-    if (replacement == null) return Text(title, style: style);
+    if (replacement == null) {
+      return Text(title, style: style, maxLines: titleMaxLines,
+          overflow: titleMaxLines == null ? null : TextOverflow.ellipsis);
+    }
     return RichText(
         text: TextSpan(
             text: title, style: DefaultTextStyle.of(c).style.merge(style)),
