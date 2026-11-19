@@ -69,7 +69,8 @@ class UpdateCatalog {
     }
     _freshPages.add(page);
     return (rows: normalized,
-      hash: sha256.convert(utf8.encode('${hasNext ? 1 : 0}:${response.body}')).toString(),
+      // Download and reaction counts change without changing release selection.
+      hash: sha256.convert(utf8.encode(jsonEncode([normalized, hasNext]))).toString(),
       next: hasNext);
   }
 
