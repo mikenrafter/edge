@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/official_export/mapper.dart';
 import 'package:openstrap_edge/data/official_export/payload_requirements.dart';
 import 'package:openstrap_edge/data/official_export/profile_tables.dart';
+import 'package:sqflite/sqflite.dart' show Sqflite;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'rich_fixture.dart';
 import 'support.dart';
@@ -69,12 +70,12 @@ void main() {
           expect((await out.rawQuery('PRAGMA table_info(ecg_raw_packet)')).map((r)=>r['name']),isNot(contains('origin')));
         }finally{await out.close();}
         if(legacy) {
-          expect(report.tables['ecg_gesture_session']!['omitted_all'],isTrue);
-          expect(report.tables['ecg_gesture_session']!['source_count'],greaterThan(0));
-          expect((report.tables['ecg_raw_packet']!['rowid_ranges'] as Map).keys,contains('mapped; columns=origin'));
+          expect((report.tables['ecg_gesture_session'] as Map)['omitted_all'],isTrue);
+          expect((report.tables['ecg_gesture_session'] as Map)['source_count'],greaterThan(0));
+          expect(((report.tables['ecg_raw_packet'] as Map)['rowid_ranges'] as Map).keys,contains('mapped; columns=origin'));
         }else {
           expect(report.tables, isNot(contains('ecg_gesture_session')));
-          expect((report.tables['ecg_raw_packet']!['rowid_ranges'] as Map).keys,contains('mapped; columns='));
+          expect(((report.tables['ecg_raw_packet'] as Map)['rowid_ranges'] as Map).keys,contains('mapped; columns='));
         }
       }finally{await fx.dispose();}
     });
