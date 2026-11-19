@@ -387,4 +387,44 @@ void main() {
     expect(jobs.map((r)=>r['day_id']).toSet(),days.toSet());
     expect(jobs.every((r)=>r['revision']==0 && (r['nap_revision'] as int)>(r['nap_applied_revision'] as int)),isTrue);
   });
+  // WHY C2: Delete everything removes the destination activation marker.
+  // A pre-94 file still contains real detector naps that composition must keep.
+  // CLAIM(sleep-editor-transport).
+  for(final mode in ['source-cutoff','missing-source-meta','next-night-phantom']) {
+    test('C2 wiped restore preserves pre-review naps: $mode',() async {
+      final phantom=mode=='next-night-phantom';
+      final path=await backup([]);
+      final src=await databaseFactory.openDatabase(path);
+      await src.execute('DROP TABLE sleep_block');
+      await src.execute('PRAGMA user_version = 92');
+      if(mode=='source-cutoff') {
+        await src.update('activity_review_meta',{'activated_at':start+3000});
+      } else { await src.execute('DROP TABLE activity_review_meta'); }
+      final tooLate=mode=='source-cutoff'?start+7200:
+        DateTime.now().millisecondsSinceEpoch~/1000+3600;
+      await seedDay(src,day,naps:[
+        {'start':start,'end':start+1200,'duration_min':20},
+        {'start':tooLate,'end':tooLate+1200,'duration_min':20},
+        if(phantom) {'start':start+4000,'end':start+4600,'duration_min':10},
+      ]);
+      if(phantom) { await seedDay(src,otherDay,
+        window:{'onset_ms':(start+3600)*1000,'offset_ms':(start+6000)*1000}); }
+      await src.close();
+      await LocalDb.wipeAll();
+      expect(await db.query('activity_review_meta'),isEmpty);
+      await restoreBackup(path);
+      final blocks=await rows();
+      expect(blocks,hasLength(1),reason:'source activation, else import start, preserves exactly the eligible real nap');
+      expect([blocks.single['id'],blocks.single['source'],blocks.single['state'],blocks.single['history']],
+        ['legacy:nap:$day:$start','legacy','live','known']);
+      expect((await db.query('sleep_nap')).map((r)=>r['start_ts']),[start],
+        reason:'post-cutoff naps and next-night phantoms never become projections');
+      await db.transaction((tx)=>SleepEditStore.enqueue(tx,day,main:false));
+      final job=(await db.query('sleep_edit_job',where:'day_id = ?',whereArgs:[day])).single;
+      await LocalDb.recomposeNaps(day,job['nap_revision'] as int);
+      final value=jsonDecode((await LocalDb.dayResult(day))!['payload_json'] as String);
+      expect(value['naps']['value'].map((n)=>n['start']),[start]);
+      expect(value['scalars']['nap_min'],20);
+    });
+  }
 }
