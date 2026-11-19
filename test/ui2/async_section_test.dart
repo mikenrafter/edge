@@ -14,6 +14,14 @@ class _Content implements AsyncSectionContent<String> {
   @override Widget failed(BuildContext context) => const Text('Try again');
 }
 
+Widget _pendingHost(Widget child, {bool reduced = false, bool rtl = false}) => MaterialApp(
+  themeAnimationDuration: Duration.zero,
+  theme: buildTheme(Brightness.dark),
+  home: MediaQuery(data: MediaQueryData(disableAnimations: reduced),
+    child: Directionality(textDirection: rtl ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(body: Align(alignment: Alignment.topLeft, child: child)))),
+);
+
 void main() {
   testWidgets('pending content keeps its card size and disables actions', (
     t,
@@ -149,6 +157,47 @@ void main() {
     await t.pumpWidget(page(false));
     await t.pump(const Duration(milliseconds: 500));
     expect(tone().fade, 1, reason: 'a completed fast read cancels placeholder paint and reveals the new data');
+    await t.pumpWidget(const SizedBox());
+  });
+  // Proves reduced-motion settlement uses natural size in its first frame.
+  // Catches: leaving a height controller mounted when animations are disabled.
+  testWidgets('reduced motion settles pending content immediately, including RTL', (t) async {
+    Widget section(bool pending, double height) => _pendingHost(PendingContent(pending: pending,
+      child: SizedBox(height: height)), reduced: true, rtl: true);
+    await t.pumpWidget(section(true, 80));
+    await t.pumpWidget(section(false, 160));
+    expect(t.getSize(find.byType(PendingContent)).height, 160);
+    await t.pumpWidget(const SizedBox());
+  });
+  // Catches: a pending region continuing to schedule pulse frames after the
+  // wearer turns reduced motion on while the read is still pending.
+  testWidgets('reduced motion stops a visible pending pulse', (t) async {
+    Widget page(bool reduced) => _pendingHost(const PendingContent(pending: true,
+      child: Text('A pending reading')), reduced: reduced);
+    await t.pumpWidget(page(false));
+    await t.pump(const Duration(milliseconds: 200));
+    await t.pump(const Duration(milliseconds: 250));
+    expect(t.binding.hasScheduledFrame, isTrue, reason: 'normal pending pulse is active');
+    await t.pumpWidget(page(true));
+    await t.pump(const Duration(milliseconds: 500));
+    expect(t.binding.hasScheduledFrame, isFalse, reason: 'reduced motion must stop the pulse clock');
+    await t.pumpWidget(const SizedBox());
+  });
+  // WHY: a pending read on a hidden tab must not keep scheduling frames.
+  // Catches: subscribing the shared pulse while TickerMode is disabled.
+  testWidgets('ticker mode stops and resumes a visible pending pulse', (t) async {
+    Widget page(bool enabled) => _pendingHost(TickerMode(enabled: enabled,
+      child: const PendingContent(pending: true, child: Text('A pending reading'))));
+    await t.pumpWidget(page(false));
+    await t.pump(const Duration(milliseconds: 200));
+    await t.pump(const Duration(milliseconds: 250));
+    expect(t.binding.hasScheduledFrame, isFalse, reason: 'hidden pending must stop the pulse clock');
+    await t.pumpWidget(page(true));
+    await t.pump(const Duration(milliseconds: 16));
+    expect(t.binding.hasScheduledFrame, isTrue, reason: 'visible pending resumes the pulse clock');
+    await t.pumpWidget(page(false));
+    await t.pump(const Duration(milliseconds: 500));
+    expect(t.binding.hasScheduledFrame, isFalse, reason: 'hiding a pending section leaves the pulse clock');
     await t.pumpWidget(const SizedBox());
   });
 }
