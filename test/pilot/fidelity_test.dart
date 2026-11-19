@@ -10,6 +10,7 @@ import 'package:openstrap_edge/pilot/alarm_screen.dart';
 import 'package:openstrap_edge/pilot/pilot_flags.dart';
 import 'package:openstrap_edge/pilot/pilot_readout.dart';
 import 'package:openstrap_edge/pilot/pilot_theme.dart';
+import 'package:openstrap_edge/ui2/theme.dart' show P,C;
 import 'package:openstrap_edge/pilot/sleep_editor.dart';
 import 'package:openstrap_edge/pilot/timeline_chart.dart';
 import 'package:openstrap_edge/ui2/charts.dart' show SleepStage;
@@ -102,12 +103,14 @@ void main(){
     handle.dispose();
   });
 
-  // why: v22 #addSheet and open(nw) — the + sheet, a new alarm's title, the workout caption.
-  // catches: bare ListTiles in the type picker, a new alarm titled Edit "…", or TIMES on a workout editor.
+  // why: m273 + v22 open(nw) — the + sheet's palette, a new alarm's title, the workout caption.
+  // catches: an unstyled type picker, a new alarm titled Edit "…", or TIMES on a workout editor.
   testWidgets('+ opens the v22 sheet and the new alarm is titled as new',(t)async{
     await pump(t,PilotAlarmScreen(alarms:[PilotAlarm(id:'w',label:'Work',days:{1})],now:DateTime(2026,11,23,5),reference:(_)async=>sample(),onSave:(_)async{}));
     await t.tap(find.byTooltip('Add alarm'));await t.pumpAndSettle();
-    expect(find.text('New alarm'),findsOneWidget);expect(find.byType(ListTile),findsNothing);
+    // m273: the Material sheet, in the mock-up palette.
+    expect(find.byType(ListTile),findsNWidgets(2));
+    expect(t.widget<Icon>(find.descendant(of:find.byKey(const ValueKey('pilot-add:sleep')),matching:find.byType(Icon))).color,P.of(t.element(find.byType(ListTile).first)).on(C.indigo));
     expect(t.getSize(find.byKey(const ValueKey('pilot-add:sleep'))).height,greaterThanOrEqualTo(56));
     await t.tap(find.byKey(const ValueKey('pilot-add:sleep')));await t.pumpAndSettle();
     expect(find.text('New sleep alarm'),findsOneWidget);expect(find.textContaining('Edit'),findsNothing);

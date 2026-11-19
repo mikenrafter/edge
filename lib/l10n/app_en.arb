@@ -21272,7 +21272,6 @@
   "pilotSaturday": "Sat",
   "pilotSunday": "Sun",
   "pilotEditAlarm": "Edit \"{name}\"",
-  "pilotNewAlarm": "New alarm",
   "pilotNewSleepAlarm": "New sleep alarm",
   "pilotNewWorkoutAlarm": "New workout alarm",
   "@pilotEditAlarm": {

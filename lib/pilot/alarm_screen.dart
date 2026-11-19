@@ -57,27 +57,14 @@ class _AlarmListState extends State<PilotAlarmScreen>{
     if(result!=null&&mounted)setState((){});
   }
   Future<void> _add()async{
-    // Mock-up v22 #addSheet on the app's sheet route (sheetMotion, as
-    // confirmRemove): a #20283a card, 1 px #3a4560, radius 16, padding 12,
-    // "New alarm", then 56 pt rows with a 22 px coloured icon that highlight
-    // on press (.opt2:hover #2a3344).
-    final type=await showModalBottomSheet<PilotAlarmType>(context:context,sheetAnimationStyle:sheetMotion(context),backgroundColor:Colors.transparent,elevation:0,builder:(c){final p=P.of(c);
-      Widget option(PilotAlarmType type,IconData icon,Color color,String title,String sub)=>Material(type:MaterialType.transparency,child:InkWell(key:ValueKey('pilot-add:${type.name}'),
-        onTap:()=>Navigator.pop(c,type),borderRadius:BorderRadius.circular(12),highlightColor:const Color(0xFF2A3344),hoverColor:const Color(0xFF2A3344),splashColor:Colors.transparent,
-        child:ConstrainedBox(constraints:const BoxConstraints(minHeight:56),child:Padding(padding:const EdgeInsets.all(6),child:Row(children:[
-          Icon(icon,size:22,color:color),const SizedBox(width:10),
-          Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
-            Text(title,style:F.body.copyWith(color:p.ink,fontWeight:FontWeight.w700)),
-            Text(sub,style:F.cap.copyWith(color:const Color(0xFF9AA6B8),fontSize:12)),
-          ])),
-        ])))));
-      return SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(16,0,16,16),child:Container(padding:const EdgeInsets.all(12),
-        decoration:BoxDecoration(color:const Color(0xFF20283A),border:Border.all(color:const Color(0xFF3A4560)),borderRadius:BorderRadius.circular(16)),
-        child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-          Padding(padding:const EdgeInsets.only(bottom:4),child:Text(l.pilotNewAlarm,style:F.cap.copyWith(color:const Color(0xFF9AA6B8),fontSize:12))),
-          option(PilotAlarmType.sleep,LucideIcons.moon,p.on(C.indigo),l.pilotSleepAlarm,l.pilotSleepAlarmDescription),
-          option(PilotAlarmType.workout,LucideIcons.dumbbell,p.on(C.red),l.pilotWorkoutAlarm,l.pilotWorkoutAlarmDescription),
-        ]))));});
+    // Owner m273: the Material sheet as before, in the mock-up palette (v22
+    // .sheet #20283a, text #e8ecf3 / #9aa6b8, pressed row #2a3344).
+    final type=await showModalBottomSheet<PilotAlarmType>(context:context,backgroundColor:const Color(0xFF20283A),builder:(c)=>Theme(
+      data:Theme.of(c).copyWith(highlightColor:const Color(0xFF2A3344),splashColor:Colors.transparent),
+      child:SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+        ListTile(key:const ValueKey('pilot-add:sleep'),minTileHeight:56,leading:Icon(LucideIcons.moon,color:P.of(c).on(C.indigo)),title:Text(l.pilotSleepAlarm,style:const TextStyle(color:Color(0xFFE8ECF3))),subtitle:Text(l.pilotSleepAlarmDescription,style:const TextStyle(color:Color(0xFF9AA6B8))),onTap:()=>Navigator.pop(c,PilotAlarmType.sleep)),
+        ListTile(key:const ValueKey('pilot-add:workout'),minTileHeight:56,leading:Icon(LucideIcons.dumbbell,color:P.of(c).on(C.red)),title:Text(l.pilotWorkoutAlarm,style:const TextStyle(color:Color(0xFFE8ECF3))),subtitle:Text(l.pilotWorkoutAlarmDescription,style:const TextStyle(color:Color(0xFF9AA6B8))),onTap:()=>Navigator.pop(c,PilotAlarmType.workout)),
+      ]))));
     if(type==null||!mounted)return;
     await _edit(PilotAlarm(id:DateTime.now().microsecondsSinceEpoch.toString(),label:type==PilotAlarmType.sleep?l.pilotSleepAlarm:l.pilotWorkoutAlarm,type:type,wakeMinute:type==PilotAlarmType.sleep?420:1140),adding:true);
   }
