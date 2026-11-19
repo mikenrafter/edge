@@ -52,12 +52,12 @@ pins:
 check: pins analyze test
 
 build apk:
-	$(RUN) flutter build apk --release
+	$(RUN) tool/build_release.sh apk
 build profile:
 	$(RUN) flutter build apk --profile
 
 bundle:
-	$(RUN) flutter build appbundle --release
+	$(RUN) tool/build_release.sh appbundle
 
 debug:
 	$(RUN) flutter build apk --debug
