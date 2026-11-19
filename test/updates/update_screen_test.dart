@@ -36,6 +36,7 @@ void main() {
   // WHY: deleting the production registration must fail even when fake routes work.
   // catches: leaving exportRoute null or discarding the cached release date.
   testWidgets('the production update route opens the shared official export screen', (t)async {
+    expect(productionExportRoute,isNotNull,reason:'the update card must register the shared export route');
     await t.pumpWidget(host(Builder(builder:(context)=>TextButton(
       onPressed:()=>productionExportRoute!.open(context,newerOfficialAvailable:true,checkedAt:DateTime.utc(2026,11,15)),
       child:const Text('Export')))));

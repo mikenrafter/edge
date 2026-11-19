@@ -330,7 +330,7 @@ void main() {
       free.available=64*1024*1024;
       expect(await exportTo(restarted,fx,root,private,dest,free),isA<OfficialExportRefused>());
       final record=jsonDecode(await File('${private.path}/interruption.json').readAsString()) as Map;
-      expect((record['leftovers'] as List).single['name'],'openstrap-official-x.db.osbk.incomplete');
+      expect(record['leftovers'],[{'folder':'Old folder','name':'openstrap-official-x.db.osbk.incomplete','tree':'content://old/tree'}]);
       expect(restarted.notices.map((n)=>n.file),['openstrap-official-x.db.osbk.incomplete']);
       await restarted.dismissNotices();
       final afterDismiss=OfficialExportCoordinator();
