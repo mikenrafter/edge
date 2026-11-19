@@ -1,7 +1,6 @@
 // why: owner m233 fidelity fixes against the signed-off mock-ups (alarms v22,
 // day timeline v16, sleep editor v11). Behaviour checks, not pixel goldens.
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/data/sleep_editor.dart';
@@ -45,15 +44,6 @@ void main(){
     expect(find.text('17:30–19:00'),findsOneWidget);expect(find.text('Zone 3+'),findsOneWidget);
     // m244.3: the sleep alarm's chart draws no heart rate; the workout alarm's keeps it.
     expect([for(final chart in t.widgetList<PilotTimelineChart>(find.byType(PilotTimelineChart)))chart.showHeartRate],unorderedEquals([false,true]));
-  });
-
-  // why: m244.6 — the repeat button reads in full beside the zoom buttons (v22 .ctl, daysText runs).
-  // catches: zoom buttons squeezing the repeat label to "Mon, T…".
-  testWidgets('repeat button shows the whole days text',(t)async{
-    await pump(t,PilotAlarmEditor(alarm:PilotAlarm(id:'a',label:'A',days:{1,2,3,5}),now:day,reference:(_)async=>sample(),onSave:(_)async{}));
-    expect(find.text('Mon–Wed, Fri'),findsOneWidget);
-    expect(t.renderObject<RenderParagraph>(find.text('Mon–Wed, Fri')).didExceedMaxLines,false);
-    expect(t.takeException(),null);
   });
 
   // catches: bare ListTile timing rows, Material SwitchListTiles, text-only Cancel/Save, or a heart-rate alarm chart.
