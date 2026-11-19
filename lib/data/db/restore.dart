@@ -1134,6 +1134,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileWithReaderHeld(String path, {req
 
 Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List<String>? only, required bool tolerant, required void Function(ImportProgress p)? onProgress, ImportRun? run}) async {
     final resetGen = ResetGate.generation;
+    final importStartedAtSec = (run?.startedAt ?? DateTime.now().millisecondsSinceEpoch) ~/ 1000;
     var identityCommitted = false;
     Future<void> beforePageCommit(Transaction txn) async {
       if (ResetGate.changedSince(resetGen)) {
@@ -1225,7 +1226,11 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       final naps = blocks.isEmpty ? await readSource('sleep_nap') : <Map<String,Object?>>[];
       final suggestions = await readSource('activity_suggestions');
       List<Map<String,Object?>> served = [];
+      int? sourceActivatedAtSec;
       if(blocks.isEmpty) {
+        final sourceMeta=await readSource('activity_review_meta');
+        final sourceCutoff=sourceMeta.firstOrNull?['activated_at'];
+        if(sourceCutoff is int) sourceActivatedAtSec=sourceCutoff;
         try {
           served = await SleepBlockStore.legacyNapInputs(src);
         } on DatabaseException catch(e) {
@@ -1235,7 +1240,8 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       final notes = await src.mainTransaction(db,(tx) async {
         await beforePageCommit(tx);
         final notes = await SleepBlockStore.absorb(tx,overrides:overrides,naps:naps,
-          blocks:blocks,servedDayResults:served,suggestions:suggestions,mode:AbsorbMode.importFile);
+          blocks:blocks,servedDayResults:served,suggestions:suggestions,mode:AbsorbMode.importFile,
+          sourceActivatedAtSec:sourceActivatedAtSec,importStartedAtSec:importStartedAtSec);
         for(final day in {for(final e in notes) if(e.other=='decided_locally') e.day}) {
           await ActivityStore.markDayChanged(tx,day);
         }

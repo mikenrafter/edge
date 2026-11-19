@@ -454,16 +454,28 @@ abstract final class SleepBlockStore {
     List<Map<String, Object?>> blocks = const [],
     required AbsorbMode mode,
     List<Map<String, Object?>> suggestions = const [],
+    int? sourceActivatedAtSec,
+    int? importStartedAtSec,
   }) async {
     final importing = mode == AbsorbMode.importFile;
+    // A wiped destination has no activation marker. A never-activated source
+    // is entirely pre-review; retain its served detector naps [C2]. Backfill
+    // without local activation still skips step 3.
+    final importFallbackCutoff = importing
+      ? sourceActivatedAtSec ?? importStartedAtSec ?? DateTime.now().millisecondsSinceEpoch ~/ 1000
+      : null;
     // Freeze before inserting: historical pairs from one source travel whole.
     final local = importing ? await tx.query('sleep_block') : <Map<String,Object?>>[];
+    // As in the release path, superseded also counts as decided locally.
     final decisions = importing ? await tx.query('activity_suggestions',
       where: "status <> 'pending'") : <Map<String,Object?>>[];
     final inserted = <Map<String,Object?>>[];
     final report = <SleepImportEntry>[];
     final legacyPhantomDays=<String>{};
     final servedByDay={for(final r in servedDayResults) r['day_id']:r};
+    // Absorption uses served window_json and requires an unskipped own day.
+    // The later raw-free cleanup can inspect any stored bundle version; these
+    // narrow inputs deliberately do not claim to cover those two rare shapes.
     bool overlapsNextNight(String day,int start,int end) {
       final nextStart=servedByDay[day]?['next_start'], nextEnd=servedByDay[day]?['next_end'];
       return nextStart is int && nextEnd is int && nextEnd>nextStart && start<nextEnd && end>nextStart;
@@ -605,7 +617,7 @@ abstract final class SleepBlockStore {
         payload: raw),table:'sleep_nap');
     }
     final meta = await tx.query('activity_review_meta', columns: ['activated_at']);
-    final cutoff = meta.firstOrNull?['activated_at'];
+    final cutoff = meta.firstOrNull?['activated_at'] ?? importFallbackCutoff;
     if (cutoff is! int) return finish();
     for (final served in servedDayResults) {
       final day = served['day_id'] as String;
