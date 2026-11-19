@@ -377,6 +377,8 @@ class NotificationCenterDeliveryLedger implements AlertDeliveryLedger {
   /// Take every destination claim of rule [ruleId] from [ledger] instead of the
   /// health database. The category's own claim (see EventClaimLedger) still
   /// owns the phone; this covers the other routed destinations.
+  static bool hasRuleLedger(String ruleId) => _byRule.containsKey(ruleId);
+
   static void registerRuleLedger(String ruleId, AlertDeliveryLedger ledger) =>
       _byRule[ruleId] = ledger;
 

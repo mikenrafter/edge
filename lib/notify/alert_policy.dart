@@ -102,6 +102,23 @@ class AlertPolicy {
   static Future<String> fallback() async =>
       (await NotificationPrefs.load()).fallbackDestination.name;
 
+  /// What the policy says about [rule] right now, with the same reloads as
+  /// [permits]. A storage failure holds (a retryable refusal): the wearer is
+  /// never assumed awake.
+  static Future<AlertDisposition> dispositionOf(AlertRule rule) async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      await sp.reload();
+      final prefs = await NotificationPrefs.load();
+      final now = clock.now();
+      final sleep = await sleepSource.load(now);
+      return AlertPolicy(prefs, sleep).decide(rule, now).disposition;
+    } catch (error) {
+      debugPrintSynchronously('[notify] eligibility unavailable: $error');
+      return AlertDisposition.hold;
+    }
+  }
+
   /// Reloads at handoff; storage failure refuses delivery instead of assuming
   /// the wearer is awake. A cached onset is still aged against the new instant.
   static Future<bool> permits(AlertRule rule, String target) async {

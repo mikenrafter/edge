@@ -63,7 +63,7 @@ void main() {
   Future<int?> storedOsId(String identity) async {
     final rows = await store.db.query('update_notifications',
         where: 'identity=?', whereArgs: [identity]);
-    return rows.isEmpty ? null : rows.single['os_id'] as int;
+    return rows.isEmpty ? null : 500000 + (rows.single['seq'] as int);
   }
 
   setUp(() async {

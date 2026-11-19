@@ -69,8 +69,6 @@
         android:maxSdkVersion="32" />
     <!-- Keep the CPU alive while the boot receiver starts the foreground service. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <!-- OTA self-update: download + launch the system installer for the new APK. -->
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- QUERY_ALL_PACKAGES: declared for a notification-relay app picker that was
          never built. Nothing in lib/ or the Kotlin sources calls
          getInstalledApplications or queryIntentActivities, and the `installed_apps`
@@ -272,27 +270,6 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
-
-        <!-- OTA self-update (ota_update 7.x). The plugin's LIBRARY manifest only
-             declares permissions — the host app MUST declare this FileProvider +
-             receiver itself, or the install handoff throws "Couldn't find meta-data
-             for provider with authority ...ota_update_provider" and crashes at 100%. -->
-        <provider
-            android:name="sk.fourq.otaupdate.OtaUpdateFileProvider"
-            android:authorities="${applicationId}.ota_update_provider"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/filepaths" />
-        </provider>
-        <receiver
-            android:name="sk.fourq.otaupdate.InstallResultReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="${applicationId}.ACTION_INSTALL_COMPLETE" />
-            </intent-filter>
-        </receiver>
 
         <!-- Home-screen widgets (Android siblings of ios/OpenStrapWidget). The app
              pushes snapshots via home_widget (WidgetService); these just render. -->

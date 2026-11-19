@@ -735,25 +735,25 @@ void main() {
         final bad = jsonDecode(jsonEncode(manifest)) as Map<String, dynamic>;
         (bad['artifacts'] as List).first['package'] = package;
         expect(
-          () => selectRelease(
+          selectRelease(
             ReleaseSource.fork,
             [forkRelease],
             service.installed,
             manifests: {90: bad},
           ),
-          throwsFormatException,
+          isNull,
         );
       }
       final badName = jsonDecode(jsonEncode(manifest)) as Map<String, dynamic>;
       (badName['artifacts'] as List).first['name'] = '../evil.apk';
       expect(
-        () => selectRelease(
+        selectRelease(
           ReleaseSource.fork,
           [forkRelease],
           service.installed,
           manifests: {90: badName},
         ),
-        throwsFormatException,
+        isNull,
       );
       expect(
         selectRelease(ReleaseSource.fork, [forkRelease], service.installed),
@@ -863,6 +863,7 @@ void main() {
         options: OpenDatabaseOptions(singleInstance: false),
       );
       final second = UpdateStore(secondDb);
+      await second.initialize();
       await store.setEnabled(true);
       try {
         final t = DateTime.utc(2026, 11, 15);

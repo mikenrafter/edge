@@ -78,7 +78,17 @@ final class CheckCompleted extends CheckOutcome {
   const CheckCompleted();
 }
 
-enum DeferReason { disabled, metered, throttled, leaseHeld, notDue, closed }
+enum DeferReason {
+  disabled,
+  metered,
+  throttled,
+  leaseHeld,
+  notDue,
+  closed,
+
+  /// The install's identity is unknown: no checks, a visible explanation.
+  unsupported,
+}
 
 /// Nothing was requested, by design.
 final class CheckDeferred extends CheckOutcome {
@@ -150,6 +160,12 @@ class ReleasePage {
     return null;
   }
 
+  /// The repository's releases list: the fallback a device that cannot
+  /// identify itself offers as a manually tapped link.
+  factory ReleasePage.indexOf(ReleaseSource source) => ReleasePage._(
+    Uri.https('github.com', '/${source.repository}/releases'),
+  );
+
   factory ReleasePage.forRelease(ReleaseSource source, String tag) {
     final page = tryParse(
       'https://github.com/${source.repository}/releases/tag/$tag',
@@ -159,6 +175,10 @@ class ReleasePage {
   }
   @override
   String toString() => uri.toString();
+  @override
+  bool operator ==(Object other) => other is ReleasePage && other.uri == uri;
+  @override
+  int get hashCode => uri.hashCode;
 }
 
 /// The notification payload for a release: a typed source/tag pair, never a
@@ -171,13 +191,24 @@ String releaseRoute(ReleaseSource source, String tag) => Uri(
   queryParameters: {'source': source.name, 'tag': tag},
 ).toString();
 
+/// A release announcement's identity: `release:<source>:<id>`, with a route
+/// that names the SAME source. The identity is the permanent claim key.
+bool isReleaseAnnouncement(String dedupeKey, String? route) {
+  final m = RegExp(r'^release:(official|fork):([1-9]\d{0,17})$').firstMatch(dedupeKey);
+  if (m == null || route == null) return false;
+  final page = ReleaseRoute.parse(route);
+  if (page == null) return false;
+  final prefix = 'https://github.com/${ReleaseSource.values.byName(m.group(1)!).repository}/';
+  return page.toString().startsWith(prefix);
+}
+
 abstract final class ReleaseRoute {
   /// The page a release route names, or null for anything else (an unknown
   /// source, an unsupported tag, extra parameters, an arbitrary URL).
   static ReleasePage? parse(String? route) {
     if (route == null) return null;
     final uri = Uri.tryParse(route);
-    if (uri == null || uri.hasScheme || uri.path != kRouteRelease) return null;
+    if (uri == null || uri.hasScheme || uri.hasAuthority || uri.path != kRouteRelease) return null;
     final q = uri.queryParameters;
     if (q.length != 2) return null;
     final name = q['source'];
@@ -230,7 +261,10 @@ class ReleaseCandidate {
   /// Local presentation state, recalculated for old cached candidates after an
   /// app upgrade. It never comes from GitHub and is never stored.
   final ReleaseRelation relation;
-  bool get separateApp => relation == ReleaseRelation.officialSeparateApp;
+  /// An official release seen from a fork install: another app either way.
+  bool get separateApp =>
+      relation == ReleaseRelation.officialSeparateApp ||
+      relation == ReleaseRelation.officialInformational;
 
   ReleaseCandidate withRelation(ReleaseRelation relation) => ReleaseCandidate(
     source: source,

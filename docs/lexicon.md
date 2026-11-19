@@ -205,3 +205,12 @@ in the same change that introduces it (AGENTS.md §6).
   session, including test/preview/find-band buzzes, Device lab probes, ECG,
   gesture acknowledgements and breathing cues. Quiet hours and sleep do not
   hold these cues, and rejected cues take no alert fallback.
+
+## Update checker terms
+
+- **release claim**: the permanent, once-per-`(repository, release id)` record in
+  the update store that an announcement was (or may have been) shown. A quiet-hour
+  hold keeps it reserved; a known non-delivery gives it back; an ambiguous
+  hand-off keeps it consumed.
+- **release page**: the canonical `https://github.com/<repo>/releases/tag/<tag>`
+  URL rebuilt locally from a checked source and tag. The only thing the app opens.

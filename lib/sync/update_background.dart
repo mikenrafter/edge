@@ -1,8 +1,159 @@
-// Android's best-effort daily release-metadata worker, and the one function that
-// turns a checked candidate into a notification. Independent of BLE and
-// headless sync: it never opens LocalDb.
-import 'update_models.dart';
+// Android's best-effort daily release-metadata worker, the production wiring of
+// the update checker, and the one function that turns a checked candidate into a
+// notification. Independent of BLE and headless sync: nothing here opens LocalDb
+// or runs band sync or derivation.
+import 'dart:io';
+import 'dart:math';
 
-/// Announce [candidate] through the shared emitter (claim ledger, quiet/sleep
-/// policy and destination routing live there).
-Future<void> notifyRelease(ReleaseCandidate candidate) async {}
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
+import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:workmanager/workmanager.dart';
+
+import '../data/day_label.dart';
+import '../notify/alert_dispatcher.dart' show NotificationCenterDeliveryLedger;
+import '../notify/notification_center.dart';
+import '../notify/notification_event.dart';
+import '../state/locale_controller.dart';
+import 'update_claim_ledger.dart';
+import 'update_coordinator.dart';
+import 'update_store.dart';
+
+const updateTaskFrequency = Duration(days: 1);
+const updateTaskNetworkType = NetworkType.unmetered;
+
+const _environment = MethodChannel('openstrap/release_environment');
+const _forkPackage = 'wtf.openstrap.openstrap_edge.dev';
+const _officialPackage = 'wtf.openstrap.openstrap_edge';
+
+/// Route the emitter's release claims through this install's UpdateStore. Safe
+/// to call from any isolate, any number of times.
+void registerUpdateLedgers() {
+  final center = NotificationCenter.instance;
+  if (!center.hasClaimLedger(NotifCategory.updates)) {
+    center.registerClaimLedger(
+      NotifCategory.updates,
+      UpdateClaimLedger(UpdateStore.open),
+    );
+  }
+  if (!NotificationCenterDeliveryLedger.hasRuleLedger('updates')) {
+    NotificationCenterDeliveryLedger.registerRuleLedger(
+      'updates',
+      UpdateTargetLedger(UpdateStore.open),
+    );
+  }
+}
+
+/// Announce [candidate] through the shared emitter: claim ledger, central
+/// quiet/sleep hold and destination routing all live there. Never prompts.
+Future<void> notifyRelease(ReleaseCandidate candidate) async {
+  registerUpdateLedgers();
+  final l = await LocaleController.currentStrings();
+  final source = candidate.source == ReleaseSource.fork
+      ? l.updatesFork
+      : l.updatesOfficial;
+  final channel = candidate.prerelease ? l.updatesPrerelease : l.updatesStable;
+  await NotificationCenter.instance.emit(
+    NotificationEvent(
+      dedupeKey: candidate.identity,
+      category: NotifCategory.updates,
+      title: candidate.separateApp ? l.updatesOfficialNew : l.updatesAvailable,
+      body:
+          '${l.updatesReleaseLabel(source, candidate.tag, channel)}'
+          '${candidate.separateApp ? ' · ${l.updatesSeparateApp}' : ''}',
+      date: todayLabel(),
+      route: candidate.route,
+    ),
+    allowPermissionPrompt: false,
+  );
+}
+
+/// The installed identity, checked once: package and version from
+/// package_info_plus, ordered ABIs from the narrow native adapter, the compiled
+/// mode. An unrecognized package or a missing adapter leaves identity unknown
+/// rather than falling back to arm64/release.
+Future<InstalledRelease> readInstalledRelease() async {
+  final info = await PackageInfo.fromPlatform();
+  List<String> abis = const [];
+  if (Platform.isAndroid) {
+    try {
+      abis = await _environment.invokeListMethod<String>('abis') ?? const [];
+    } on PlatformException {
+      abis = const [];
+    } on MissingPluginException {
+      abis = const [];
+    }
+  }
+  final known =
+      Platform.isAndroid &&
+      abis.isNotEmpty &&
+      (info.packageName == _forkPackage || info.packageName == _officialPackage);
+  return InstalledRelease(
+    version: info.version,
+    build: int.tryParse(info.buildNumber) ?? 0,
+    fork: !known ? null : info.packageName == _forkPackage,
+    mode: kProfileMode
+        ? 'profile'
+        : kReleaseMode
+        ? 'release'
+        : 'debug',
+    abis: abis,
+  );
+}
+
+Future<UpdateCoordinator> createUpdateCoordinator({
+  Future<void> Function(ReleaseCandidate)? onRelease = notifyRelease,
+}) async {
+  final random = Random();
+  return UpdateCoordinator(
+    store: await UpdateStore.open(),
+    client: http.Client(),
+    clientFactory: () => http.Client(),
+    installed: await readInstalledRelease(),
+    now: DateTime.now,
+    unmetered: () async =>
+        Platform.isAndroid &&
+        (await _environment.invokeMethod<bool>('unmetered') ?? false),
+    schedule: scheduleUpdateChecks,
+    onRelease: onRelease,
+    // Up to six hours, so installs do not all ask GitHub in the same minute.
+    jitter: () => Duration(minutes: random.nextInt(6 * 60 + 1)),
+  );
+}
+
+Future<void> scheduleUpdateChecks(bool enabled) async {
+  if (!Platform.isAndroid) return;
+  if (!enabled) {
+    await Workmanager().cancelByUniqueName(updateTaskName);
+    return;
+  }
+  await Workmanager().registerPeriodicTask(
+    updateTaskName,
+    updateTaskName,
+    frequency: updateTaskFrequency,
+    initialDelay: const Duration(hours: 1),
+    constraints: Constraints(networkType: updateTaskNetworkType),
+    existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
+  );
+}
+
+@pragma('vm:entry-point')
+void updateCallbackDispatcher() {
+  Workmanager().executeTask((task, input) async {
+    WidgetsFlutterBinding.ensureInitialized();
+    if (task != updateTaskName) return true;
+    UpdateCoordinator? service;
+    try {
+      service = await createUpdateCoordinator();
+      await service.check();
+      return true;
+    } catch (_) {
+      // The next daily slot or a foreground check can retry. No retry loop.
+      return true;
+    } finally {
+      service?.dispose();
+    }
+  });
+}

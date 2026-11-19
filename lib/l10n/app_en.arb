@@ -21351,5 +21351,87 @@
   "timelineNoMatches": "No activities match these filters",
   "timelineMovementShare": "Movement (% of time moving)",
   "timelineMovementNote": "Movement is the share of each 5 minutes in which your wrist turned more than 5° between readings. It is not steps or effort.",
-  "timelineHere": "Here"
+  "timelineHere": "Here",
+  "updatesTitle": "App updates",
+  "updatesConsent": "Check GitHub for official and fork releases about once a day on an unmetered connection. GitHub receives your IP address and request time. Your health data stays on this device.",
+  "updatesAutomatic": "Automatic checks",
+  "updatesCheckNow": "Check now",
+  "updatesCheckOnce": "One-time request to both GitHub repositories. Automatic checks stay off until you enable them.",
+  "updatesMetered": "This check may use mobile data or a metered connection. Continue?",
+  "updatesContinue": "Continue",
+  "updatesOff": "Automatic checks off",
+  "updatesNotChecked": "Not checked",
+  "updatesChecking": "Checking…",
+  "updatesCurrent": "Up to date",
+  "updatesAvailable": "Update available",
+  "updatesOfficial": "Official",
+  "updatesFork": "Fork",
+  "updatesPrerelease": "Prerelease",
+  "updatesStable": "Release",
+  "updatesOpenRelease": "Open release page",
+  "updatesLastChecked": "Last checked: {time}",
+  "@updatesLastChecked": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "updatesWaiting": "Waiting for an unmetered connection",
+  "updatesStale": "Previous result · check failed",
+  "updatesErrorOffline": "Offline. Try again when connected.",
+  "updatesErrorMetadata": "Couldn’t read the release metadata.",
+  "updatesErrorRedirect": "GitHub redirected the request. Check refused.",
+  "updatesErrorRate": "GitHub rate limit reached. Try later.",
+  "updatesErrorIncomplete": "Release list incomplete. Try later.",
+  "updatesErrorNoRelease": "No release published.",
+  "updatesErrorNoAsset": "No recognized matching APK.",
+  "updatesErrorNetwork": "Couldn’t reach GitHub. Try again.",
+  "updatesErrorStorage": "Couldn’t access update settings. Try again.",
+  "updatesPermission": "Allow update notifications",
+  "updatesRetryAfter": "Try after {time}",
+  "@updatesRetryAfter": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "updatesOpenFailed": "Couldn’t open the release page.",
+  "updatesReleaseLabel": "{source} · {version} · {channel}",
+  "@updatesReleaseLabel": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      },
+      "version": {
+        "type": "String"
+      },
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "updatesOfficialPrereleases": "Official prereleases",
+  "updatesErrorScheduling": "Couldn’t schedule automatic checks. Open App updates to retry.",
+  "updatesOfficialNew": "New official app release",
+  "updatesSeparateApp": "Separate app. Your data stays here.",
+  "updatesErrorRefused": "GitHub refused the request. Try again later.",
+  "updatesErrorUnidentified": "Couldn’t identify this release.",
+  "updatesUnsupported": "This device can’t check for updates itself. Open a release page to see what is new.",
+  "updatesPermissionGranted": "Update notifications are on.",
+  "updatesPermissionDenied": "Update notifications are off. Allow them to hear about new releases.",
+  "updatesPermissionMuted": "Update notifications are muted in system settings.",
+  "updatesOpenSettings": "Open notification settings",
+  "updatesAuthorizationReset": "Update settings couldn’t be read and were reset to off.",
+  "updatesRetry": "Retry",
+  "updatesExportEntry": "Move your data to the official app",
+  "updatesOfficialInformational": "Official release {tag}. Not newer than this app.",
+  "@updatesOfficialInformational": {
+    "placeholders": {
+      "tag": {
+        "type": "String"
+      }
+    }
+  }
 }

@@ -21340,5 +21340,87 @@
   "timelineNoMatches": "ไม่มีกิจกรรมที่ตรงกับตัวกรองเหล่านี้",
   "timelineMovementShare": "การเคลื่อนไหว (% ของเวลาที่เคลื่อนไหว)",
   "timelineMovementNote": "การเคลื่อนไหวคือสัดส่วนของแต่ละช่วง 5 นาทีที่ข้อมือหมุนมากกว่า 5° ระหว่างการอ่านค่า ไม่ใช่จำนวนก้าวหรือความหนักของกิจกรรม",
-  "timelineHere": "ที่นี่"
+  "timelineHere": "ที่นี่",
+  "updatesTitle": "อัปเดตแอป",
+  "updatesConsent": "ตรวจสอบรุ่นทางการและรุ่นฟอร์กบน GitHub วันละประมาณหนึ่งครั้งเมื่อใช้การเชื่อมต่อที่ไม่คิดตามปริมาณ GitHub จะได้รับที่อยู่ IP และเวลาของคำขอ ข้อมูลสุขภาพของคุณอยู่บนอุปกรณ์นี้เท่านั้น",
+  "updatesAutomatic": "ตรวจสอบอัตโนมัติ",
+  "updatesCheckNow": "ตรวจสอบตอนนี้",
+  "updatesCheckOnce": "ส่งคำขอครั้งเดียวไปยังทั้งสองที่เก็บบน GitHub การตรวจสอบอัตโนมัติจะยังปิดอยู่จนกว่าคุณจะเปิด",
+  "updatesMetered": "การตรวจสอบนี้อาจใช้อินเทอร์เน็ตมือถือหรือการเชื่อมต่อที่คิดตามปริมาณ ดำเนินการต่อหรือไม่",
+  "updatesContinue": "ดำเนินการต่อ",
+  "updatesOff": "ปิดการตรวจสอบอัตโนมัติ",
+  "updatesNotChecked": "ยังไม่ได้ตรวจสอบ",
+  "updatesChecking": "กำลังตรวจสอบ…",
+  "updatesCurrent": "เป็นรุ่นล่าสุดแล้ว",
+  "updatesAvailable": "มีอัปเดตใหม่",
+  "updatesOfficial": "ทางการ",
+  "updatesFork": "ฟอร์ก",
+  "updatesPrerelease": "รุ่นก่อนเผยแพร่",
+  "updatesStable": "รุ่นเผยแพร่",
+  "updatesOpenRelease": "เปิดหน้ารุ่นเผยแพร่",
+  "updatesLastChecked": "ตรวจสอบล่าสุด: {time}",
+  "@updatesLastChecked": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "updatesWaiting": "รอการเชื่อมต่อที่ไม่คิดตามปริมาณ",
+  "updatesStale": "ผลลัพธ์ก่อนหน้า · การตรวจสอบล้มเหลว",
+  "updatesErrorOffline": "ออฟไลน์ ลองอีกครั้งเมื่อเชื่อมต่อแล้ว",
+  "updatesErrorMetadata": "อ่านข้อมูลรุ่นเผยแพร่ไม่ได้",
+  "updatesErrorRedirect": "GitHub เปลี่ยนเส้นทางคำขอ จึงปฏิเสธการตรวจสอบ",
+  "updatesErrorRate": "ถึงขีดจำกัดคำขอของ GitHub แล้ว ลองใหม่ภายหลัง",
+  "updatesErrorIncomplete": "รายการรุ่นไม่ครบ ลองใหม่ภายหลัง",
+  "updatesErrorNoRelease": "ยังไม่มีรุ่นที่เผยแพร่",
+  "updatesErrorNoAsset": "ไม่พบ APK ที่ตรงกันและรู้จัก",
+  "updatesErrorNetwork": "เชื่อมต่อ GitHub ไม่ได้ ลองอีกครั้ง",
+  "updatesErrorStorage": "เข้าถึงการตั้งค่าอัปเดตไม่ได้ ลองอีกครั้ง",
+  "updatesPermission": "อนุญาตการแจ้งเตือนอัปเดต",
+  "updatesRetryAfter": "ลองหลัง {time}",
+  "@updatesRetryAfter": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "updatesOpenFailed": "เปิดหน้ารุ่นเผยแพร่ไม่ได้",
+  "updatesReleaseLabel": "{source} · {version} · {channel}",
+  "@updatesReleaseLabel": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      },
+      "version": {
+        "type": "String"
+      },
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "updatesOfficialPrereleases": "รุ่นทางการก่อนเผยแพร่",
+  "updatesErrorScheduling": "ตั้งเวลาตรวจสอบอัตโนมัติไม่ได้ เปิดอัปเดตแอปเพื่อลองใหม่",
+  "updatesOfficialNew": "แอปทางการรุ่นใหม่",
+  "updatesSeparateApp": "เป็นแอปแยกต่างหาก ข้อมูลของคุณยังอยู่ที่นี่",
+  "updatesErrorRefused": "GitHub ปฏิเสธคำขอ ลองใหม่ภายหลัง",
+  "updatesErrorUnidentified": "ระบุรุ่นเผยแพร่นี้ไม่ได้",
+  "updatesUnsupported": "อุปกรณ์นี้ตรวจสอบอัปเดตเองไม่ได้ เปิดหน้ารุ่นเผยแพร่เพื่อดูสิ่งใหม่",
+  "updatesPermissionGranted": "เปิดการแจ้งเตือนอัปเดตอยู่",
+  "updatesPermissionDenied": "ปิดการแจ้งเตือนอัปเดตอยู่ อนุญาตเพื่อรับแจ้งเมื่อมีรุ่นใหม่",
+  "updatesPermissionMuted": "การแจ้งเตือนอัปเดตถูกปิดเสียงในการตั้งค่าระบบ",
+  "updatesOpenSettings": "เปิดการตั้งค่าการแจ้งเตือน",
+  "updatesAuthorizationReset": "อ่านการตั้งค่าอัปเดตไม่ได้ จึงรีเซ็ตเป็นปิด",
+  "updatesRetry": "ลองอีกครั้ง",
+  "updatesExportEntry": "ย้ายข้อมูลไปยังแอปทางการ",
+  "updatesOfficialInformational": "รุ่นทางการ {tag} ไม่ใหม่กว่าแอปนี้",
+  "@updatesOfficialInformational": {
+    "placeholders": {
+      "tag": {
+        "type": "String"
+      }
+    }
+  }
 }

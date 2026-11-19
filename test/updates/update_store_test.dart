@@ -131,6 +131,7 @@ void main() {
           options: OpenDatabaseOptions(singleInstance: false),
         ),
       );
+      await second.initialize();
       addTearDown(second.db.close);
       final claims = await Future.wait([
         store.claim(t0, manual: true),

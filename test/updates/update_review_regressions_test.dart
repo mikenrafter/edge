@@ -11,6 +11,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:openstrap_edge/notify/alert_dispatcher.dart';
+import 'package:openstrap_edge/notify/alert_policy.dart';
 import 'package:openstrap_edge/notify/notification_center.dart';
 import 'package:openstrap_edge/notify/notification_event.dart';
 import 'package:openstrap_edge/notify/notification_prefs.dart';
@@ -18,6 +20,7 @@ import 'package:openstrap_edge/sync/update_background.dart';
 import 'package:openstrap_edge/sync/update_claim_ledger.dart';
 import 'package:openstrap_edge/sync/update_coordinator.dart';
 import 'package:openstrap_edge/sync/update_store.dart';
+import '../support/alert_sleep_source.dart';
 import 'update_checker_test.dart' show release;
 
 Map<String, dynamic> manifest(String tag, {int code = 78}) => {
@@ -91,11 +94,14 @@ void main() {
     SharedPreferences.setMockInitialValues({'locale_override': 'en'});
     await const NotificationPrefs(quietEnabled: false).save();
     center.registerClaimLedger(NotifCategory.updates, UpdateClaimLedger(() async => store));
+    NotificationCenterDeliveryLedger.registerRuleLedger('updates', UpdateTargetLedger(() async => store));
     center.claimedPermission = () async => true;
+    AlertPolicy.sleepSource = const AwakeAlertSleepSource();
     service = createService();
   });
   tearDown(() async {
     service.dispose();
+    AlertPolicy.sleepSource = const StoredAlertSleepSource();
     center.presentSink = (e, {bool allowPermissionPrompt = true}) async =>
         false;
     await store.db.close();
