@@ -85,7 +85,7 @@ class PilotAlarmStore {
         if(a.days.any(primaryDays.contains)) a.primary=false;
         else primaryDays.addAll(a.days);
       }
-      if(a.wakeMinute<0 || a.wakeMinute>=1440 || a.earlyMinutes<0 || a.earlyMinutes>720 ||
+      if((a.type==PilotAlarmType.sleep&&!a.band&&!a.phoneSound&&!a.phoneVibration&&!a.phoneFlash) || a.wakeMinute<0 || a.wakeMinute>=1440 || a.earlyMinutes<0 || a.earlyMinutes>720 ||
           a.gradualMinutes<0 || a.gradualMinutes>180 || a.snoozeMinutes<1 ||
           a.maxSnoozes<0 || (a.flashDelayMinutes<0||a.flashDelayMinutes>30||a.soundDelayMinutes<0||a.soundDelayMinutes>30||a.vibrationDelayMinutes<0||a.vibrationDelayMinutes>30||a.sunriseMinutes<5||a.sunriseMinutes>60) || a.days.any((d)=>d<1||d>7)) {
         throw const FormatException('Invalid alarm settings');
@@ -121,13 +121,15 @@ AlarmScheduleEntry _nativeEntry(PilotAlarm a,AlarmScheduleEntry entry,bool metho
     oneShotAt:once,nativeOffsetMinutes:offset,skippedAt:offset>0&&cancelled!=null?DateTime.fromMillisecondsSinceEpoch(cancelled*1000):null,
     naturalWindowMinutes:entry.naturalWindowMinutes);
 }
-// CLAIM(pilot-one-alarm-source): the unselected store is never read
+// CLAIM(pilot-one-alarm-source): an enabled pilot sleep alarm selects the pilot
+// store exclusively; until then the weekly wake remains in force.
 // [alarm_screen_test: flag on selects one store and arms 06:30 once].
 Future<List<AlarmScheduleEntry>> selectedAlarmSchedule(Future<List<AlarmScheduleEntry>> Function() production,{DateTime? at}) async {
   final prefs=await SharedPreferences.getInstance();
   await prefs.reload();
   if(prefs.getBool(PilotFlag.alarmScreen.key)!=true) return production();
   final alarms=await PilotAlarmStore.load();
+  if(!alarms.any((a)=>a.enabled&&a.type==PilotAlarmType.sleep))return production();
   final now=at??DateTime.now();
   if(prefs.getBool(PilotFlag.wakeMethods.key)==true){
     final slot=await PilotSnoozeSlot.load();

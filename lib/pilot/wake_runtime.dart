@@ -23,15 +23,17 @@ class WakeLeadUpPolicy {
 
 class PilotWakeRuntime {
   PilotWakeRuntime({required this.arm,required this.cancelWorkout,required this.workouts,
-    required this.band,required this.phone,required this.isEnabled,this.fireApp,this.cancelBackup,
+    required this.band,required this.phone,required this.isEnabled,this.fireApp,this.cancelBackup,this.hasFired,this.recordFire,
     this.leadUps=const WakeLeadUpPolicy()});
   final Future<void> Function(DateTime) arm;
   final Future<void> Function(String,DateTime) cancelWorkout;
   final Future<List<PilotWorkoutEvidence>> Function(DateTime,DateTime) workouts;
   final Future<void> Function(BuzzSequence,String) band;
-  final Future<void> Function(PilotAlarm,String) phone;
+  final Future<bool> Function(PilotAlarm,String) phone;
   final Future<bool> Function(PilotAlarm,DateTime)? fireApp;
   final Future<void> Function(String,DateTime)? cancelBackup;
+  final Future<bool> Function(String,DateTime)? hasFired;
+  final Future<void> Function(String,DateTime)? recordFire;
   final bool Function() isEnabled;
   final WakeLeadUpPolicy leadUps;
   final sunrise=ValueNotifier<double>(0);
@@ -41,14 +43,17 @@ class PilotWakeRuntime {
   final Set<String> _played={};
   bool _running=false;
   PilotAlarm? firedAlarm;DateTime? firedAt,_firedOccurrence;bool acknowledged=false;
-  double _sunriseAtFire=0;
+  double _sunriseAtFire=0;bool _phoneStarted=false;
   void noteFire(PilotAlarm? alarm,DateTime at,{DateTime? occurrence}){
     if(!isEnabled()||alarm==null||firedAt==at)return;
-    firedAlarm=alarm.copy();firedAt=at;acknowledged=false;_sunriseAtFire=sunrise.value;
+    firedAlarm=alarm.copy();firedAt=at;acknowledged=false;_phoneStarted=false;_sunriseAtFire=sunrise.value;
     _firedOccurrence=occurrence??pilotNextAt(alarm,at.subtract(const Duration(seconds:1)))??pilotPreviousAt(alarm,at);
     effects.value++;
   }
   void noteSnoozeFire(PilotAlarm alarm,DateTime at)=>noteFire(alarm,at,occurrence:_firedOccurrence);
+  // A notification post is not proof of a wake: only a transport success or
+  // a rendered foreground flash can release the Band-off native backstop.
+  void notePhoneEffectStarted(DateTime fire){if(firedAt==fire&&!acknowledged)_phoneStarted=true;}
   void acknowledge(){acknowledged=true;sunrise.value=0;flash.value=false;effects.value++;}
   double lightAt(DateTime now){
     final at=firedAt;
@@ -59,15 +64,17 @@ class PilotWakeRuntime {
   Future<bool> appFire(PilotAlarm alarm,DateTime at,{required DateTime occurrence,required bool connected})async{
     final key='${alarm.id}:${occurrence.millisecondsSinceEpoch}:app';
     if(!_played.contains(key)){
+      if(await hasFired?.call(alarm.id,occurrence)==true){_played.add(key);return true;}
       if(await fireApp?.call(alarm,at)!=true)return false;
+      await recordFire?.call(alarm.id,occurrence);
       _played.add(key);noteFire(alarm,at,occurrence:occurrence);
     }
     await _cancelBackup(alarm,occurrence,connected);
     return true;
   }
   Future<void> _cancelBackup(PilotAlarm alarm,DateTime occurrence,bool connected)async{
-    final key='${alarm.id}:${occurrence.millisecondsSinceEpoch}:cancel';
-    if(alarm.band||!connected||_played.contains(key))return;
+    final key='${alarm.id}:${firedAt?.millisecondsSinceEpoch}:cancel';
+    if(!_phoneStarted||alarm.band||!connected||_played.contains(key))return;
     await cancelBackup?.call(alarm.id,occurrence);_played.add(key);
   }
   Future<void> tick({required DateTime now,required bool connected,required List<PilotAlarm> alarms,bool snoozed=false})async{
@@ -133,11 +140,12 @@ class PilotWakeRuntime {
           final effect='$key:phone:${elapsed.inSeconds~/30}';
           if((sound||vibration)&&_played.add(effect)){
             final due=alarm.copy()..phoneSound=sound..phoneVibration=vibration;
-            await phone(due,effect);
+            if(await phone(due,effect))notePhoneEffectStarted(at);
           }
         }
       }
       sunrise.value=brightness;flash.value=flashing;effects.value++;
+      if(alarm!=null&&_firedOccurrence!=null)await _cancelBackup(alarm,_firedOccurrence!,connected);
     }finally{_running=false;}
   }
   void suspendFlash(){flash.value=false;}

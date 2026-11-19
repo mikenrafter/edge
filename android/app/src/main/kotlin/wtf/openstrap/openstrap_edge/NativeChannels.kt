@@ -223,7 +223,8 @@ object NativeChannels {
                             app,
                             call.argument<String>("action") ?: "",
                             call.argument<String>("slot"),
-                            call.argument<Int>("taps")
+                            call.argument<Int>("taps"),
+                            call.argument<Boolean>("ensurePlaying") == true
                         )
                     )
                     else -> result.notImplemented()
@@ -377,7 +378,7 @@ object NativeChannels {
         }
     }
 
-    private fun perform(ctx: Context, action: String, slot: String? = null, taps: Int? = null): Boolean {
+    private fun perform(ctx: Context, action: String, slot: String? = null, taps: Int? = null, ensurePlaying: Boolean = false): Boolean {
         return try {
             when (action) {
                 "media_play_pause" -> dispatchMediaKey(ctx, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
@@ -385,7 +386,7 @@ object NativeChannels {
                 "media_prev" -> dispatchMediaKey(ctx, KeyEvent.KEYCODE_MEDIA_PREVIOUS)
                 "volume_up" -> adjustVolume(ctx, AudioManager.ADJUST_RAISE)
                 "volume_down" -> adjustVolume(ctx, AudioManager.ADJUST_LOWER)
-                "ring_phone" -> ringPhone(ctx)
+                "ring_phone" -> return ringPhone(ctx, ensurePlaying)
                 "torch" -> toggleTorch(ctx)
                 "broadcast_to_tasker" -> sendTaskerBroadcast(ctx, slot, taps)
                 else -> return false
@@ -553,15 +554,17 @@ object NativeChannels {
         )
     }
 
-    private fun ringPhone(ctx: Context) {
+    private fun ringPhone(ctx: Context, ensurePlaying: Boolean): Boolean {
         // Toggle: a second double-tap while it's ringing stops it early.
         if (activeRingtone?.isPlaying == true) {
+            // Alarm retries ensure a wake is playing; gestures retain their toggle.
+            if (ensurePlaying) return true
             stopRing()
-            return
+            return true
         }
         val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
             ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-        val rt = RingtoneManager.getRingtone(ctx.applicationContext, uri) ?: return
+        val rt = RingtoneManager.getRingtone(ctx.applicationContext, uri) ?: return !ensurePlaying
         // Loop for the whole find-my-phone window (API 28+); older versions loop a
         // TYPE_RINGTONE by default. Either way the timeout below guarantees it stops.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) rt.isLooping = true
@@ -575,6 +578,7 @@ object NativeChannels {
         ringStopRunnable = stop
         ringHandler.postDelayed(stop, RING_TIMEOUT_MS)
         vibrate(ctx)
+        return !ensurePlaying || rt.isPlaying
     }
 
     private fun stopRing() {

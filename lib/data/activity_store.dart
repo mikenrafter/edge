@@ -396,30 +396,26 @@ class ActivityStore {
         );
         if(expected.kind!=ActivityKind.nap) await _changed(tx, row['day_id'] as String);
         if (expected.kind == ActivityKind.track && expected.isPrompt) {
-          final before=PilotFlag.timelines.enabled?await tx.query('track_absence',columns:['track_id'],where:'track_id = ? AND date = ?',whereArgs:[expected.trackId,row['day_id']],limit:1):null;
           await TrackActivity.answerNo(tx, expected, row['day_id'] as String);
-          if(before!=null&&before.isEmpty){
-            final after=await tx.query('track_absence',columns:['track_id'],where:'track_id = ? AND date = ?',whereArgs:[expected.trackId,row['day_id']],limit:1);
-            if(after.isNotEmpty)await tx.update('activity_suggestions',{'details_json':jsonEncode({...expected.details,'pilot_discard_absence':true})},where:'id = ?',whereArgs:[expected.id]);
-          }
         }
       }
     return transaction == null ? db.transaction(write) : write(transaction);
   }
 
-  /// Restore only the exact discarded revision the user reviewed. Existing
-  /// unowned track absences remain untouched.
+  /// Restore only the exact discarded revision the user reviewed. Undo an
+  /// absence only while the day still has no logged occurrence.
   static Future<void> restorePilot(Transaction tx,ActivitySuggestion expected)async{
     if(!PilotFlag.timelines.enabled)throw const ActivityReviewException('The timeline pilot is off.');
     final rows=await tx.query('activity_suggestions',where:'id = ?',whereArgs:[expected.id],limit:1);
     if(rows.isEmpty||rows.single['status']!='discarded'||rows.single['revision']!=expected.revision){
       throw const ActivityReviewException('This item changed. Read the day again.');
     }
-    final row=rows.single,details=Map<String,dynamic>.of(expected.details);
-    if(details.remove('pilot_discard_absence')==true&&expected.trackId!=null){
-      await tx.delete('track_absence',where:'track_id = ? AND date = ?',whereArgs:[expected.trackId,row['day_id']]);
+    final row=rows.single;
+    if(expected.kind==ActivityKind.track&&expected.isPrompt&&expected.trackId!=null){
+      final logged=await tx.query('track_event_feed',columns:['id'],where:'track_id = ? AND date = ?',whereArgs:[expected.trackId,row['day_id']],limit:1);
+      if(logged.isEmpty)await tx.delete('track_absence',where:'track_id = ? AND date = ?',whereArgs:[expected.trackId,row['day_id']]);
     }
-    await tx.update('activity_suggestions',{'status':'pending','revision':expected.revision+1,'updated_at':DateTime.now().millisecondsSinceEpoch,'details_json':jsonEncode(details)},where:'id = ?',whereArgs:[expected.id]);
+    await tx.update('activity_suggestions',{'status':'pending','revision':expected.revision+1,'updated_at':DateTime.now().millisecondsSinceEpoch},where:'id = ?',whereArgs:[expected.id]);
     await _changed(tx,row['day_id'] as String);
   }
 

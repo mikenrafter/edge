@@ -21714,5 +21714,18 @@
   "pilotFallAsleep": "Fall asleep",
   "pilotYourUsual": "your usual",
   "pilotWhatIf": "what-if · not saved",
-  "pilotUsualSleep": "Usual sleep"
+  "pilotUsualSleep": "Usual sleep",
+  "pilotAsleepFor": "Asleep for",
+  "pilotHappening": "Happening",
+  "pilotAlarmEvent": "Alarm",
+  "pilotBeforeOnTimes": "{minutes} min before · set on Times",
+  "@pilotBeforeOnTimes": {"placeholders": {"minutes": {"type": "int"}}},
+  "pilotAfterOnTimes": "{minutes} min after · set on Times",
+  "@pilotAfterOnTimes": {"placeholders": {"minutes": {"type": "int"}}},
+  "pilotForecastMinutes": "~{minutes} min",
+  "@pilotForecastMinutes": {"placeholders": {"minutes": {"type": "int"}}},
+  "pilotForecastHours": "~{hours} h",
+  "@pilotForecastHours": {"placeholders": {"hours": {"type": "int"}}},
+  "pilotForecastHoursMinutes": "~{hours} h {minutes} min",
+  "@pilotForecastHoursMinutes": {"placeholders": {"hours": {"type": "int"}, "minutes": {"type": "int"}}}
 }

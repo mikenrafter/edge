@@ -48,13 +48,16 @@ class DeviceActions {
   /// [slot] (a `GestureSlots` id) and [taps] say which gesture fired the
   /// action; they are sent only when given. Broadcast to Tasker is the one
   /// action that uses them: they become the intent's `slot` and `taps` extras.
+  /// Alarm retries use [ensurePlaying] to retain an existing ring and require
+  /// native playback success; gesture calls keep their toggle semantics.
   static Future<bool> perform(String actionId,
-      {String? slot, int? taps}) async {
+      {String? slot, int? taps, bool ensurePlaying = false}) async {
     try {
       final ok = await _ch.invokeMethod<bool>('perform', {
         'action': actionId,
         'slot': ?slot,
         'taps': ?taps,
+        if (ensurePlaying) 'ensurePlaying': true,
       });
       return ok ?? false;
     } catch (e) {
