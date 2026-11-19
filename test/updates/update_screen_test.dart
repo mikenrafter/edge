@@ -16,7 +16,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:clock/clock.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
-import 'package:openstrap_edge/sync/update_models.dart';
 import 'package:openstrap_edge/ui2/profile/app_updates.dart';
 import 'package:openstrap_edge/ui2/profile/official_export.dart' show OfficialExportScreen;
 

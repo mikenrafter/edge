@@ -147,10 +147,12 @@ class OfficialExportCoordinator extends ChangeNotifier {
         }
       }
       final saved=await _saveLeftovers(space);
-      if(saved)try {
-        final journal=File('${_root.path}/interruption.json');
-        if(await journal.exists())await journal.delete();
-      } catch(_) { /* A later run reads and settles it again. */ }
+      if(saved) {
+        try {
+          final journal=File('${_root.path}/interruption.json');
+          if(await journal.exists())await journal.delete();
+        } catch(_) { /* A later run reads and settles it again. */ }
+      }
     }
     _interruption=null;
   }

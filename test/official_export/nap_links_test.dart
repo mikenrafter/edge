@@ -4,7 +4,6 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/official_export/mapper.dart';
-import 'package:openstrap_edge/data/official_export/payload_requirements.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'rich_fixture.dart';
 import 'support.dart';
