@@ -1,3 +1,4 @@
+import 'skeleton/pending_scope.dart';
 // THE UX GRAMMAR
 //
 // Every card has a job. Cards are not decoration, and a screen that reaches
@@ -675,7 +676,10 @@ class ChartPanel extends StatelessWidget {
 }
 
 /// The base card surface. Elevation, not outline.
-class Surface extends StatelessWidget {
+class Surface extends StatelessWidget implements PendingSectionLabel {
+  @override
+  String? get pendingSectionName => semanticLabel ??
+      (child is PendingSectionLabel ? (child as PendingSectionLabel).pendingSectionName : null);
   final Widget child;
   final EdgeInsets pad;
   final VoidCallback? onTap;
@@ -731,7 +735,9 @@ class GuideBox extends StatelessWidget {
 }
 
 /// Full-width section. Whitespace separates concepts, not borders.
-class Section extends StatelessWidget {
+class Section extends StatelessWidget implements PendingSectionLabel {
+  @override
+  String? get pendingSectionName => title;
   final bool wrapTitle;
   final String title;
   final String? action;
@@ -806,10 +812,18 @@ class Section extends StatelessWidget {
 
 // ══════════════════ A · SIGNAL ══════════════════
 /// One number. Glanceable. Lives in grids.
-class SignalCard extends StatelessWidget {
+class SignalCard extends StatelessWidget implements PendingSectionLabel {
+  @override
+  String get pendingSectionName => label;
   final IconData icon;
   final Color color;
   final String label, value, unit, sub;
+
+  /// Invisible loaded unit on the empty twin, preserving its row geometry.
+  final String reserveUnit;
+
+  /// Minimum subtitle lines, including when no subtitle is present.
+  final int subMinLines;
 
   final VoidCallback? onTap;
 
@@ -824,6 +838,8 @@ class SignalCard extends StatelessWidget {
     this.value, {
     super.key,
     this.unit = '',
+    this.reserveUnit = '',
+    this.subMinLines = 0,
     this.sub = '',
     this.onTap,
     this.trailing,
@@ -843,12 +859,12 @@ class SignalCard extends StatelessWidget {
               Icon(icon, size: 16, color: p.on(color)),
               const SizedBox(width: S.x2),
               Expanded(
-                child: Text(
+                child: PendingStatic(child: Text(
                   label,
                   style: F.cap.copyWith(color: p.ink2),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                ),
+                )),
               ),
               ?trailing,
             ],
@@ -868,17 +884,25 @@ class SignalCard extends StatelessWidget {
               ),
               if (unit.isNotEmpty) ...[
                 const SizedBox(width: S.x1),
-                Text(uiText(c, unit), style: F.cap.copyWith(color: p.ink3)),
+                PendingStatic(child: Text(uiText(c, unit), style: F.cap.copyWith(color: p.ink3))),
+              ] else if (reserveUnit.isNotEmpty) ...[
+                const SizedBox(width: S.x1),
+                Flexible(child: ExcludeSemantics(child: Opacity(opacity: 0,
+                  child: Text(uiText(c, reserveUnit), style: F.cap)))),
               ],
             ],
           ),
-          if (sub.isNotEmpty) ...[
+          if (sub.isNotEmpty || subMinLines > 0) ...[
             const SizedBox(height: S.x1),
-            Text(
-              sub,
-              style: F.over.copyWith(color: p.ink3),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+            ConstrainedBox(
+              constraints: BoxConstraints(minHeight: MediaQuery.textScalerOf(c).scale(
+                (F.over.fontSize ?? 11) * (F.over.height ?? 1.3)) * subMinLines),
+              child: sub.isEmpty ? null : Text(
+                sub,
+                style: F.over.copyWith(color: p.ink3),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ],
@@ -889,7 +913,9 @@ class SignalCard extends StatelessWidget {
 
 // ══════════════════ B · PROGRESS ══════════════════
 /// Something moving toward a goal. Current → target.
-class ProgressCard extends StatelessWidget {
+class ProgressCard extends StatelessWidget implements PendingSectionLabel {
+  @override
+  String? get pendingSectionName => label;
   final String label, value, target;
   final double frac;
   final Color color;
@@ -996,7 +1022,9 @@ class _Bar extends StatelessWidget {
 ///
 /// With [dayOf], pressing and holding the sparkline reads the day under the
 /// finger in place of [window]; a tap still opens [onTap].
-class TrendCard extends StatefulWidget {
+class TrendCard extends StatefulWidget implements PendingSectionLabel {
+  @override
+  String? get pendingSectionName => label;
   final String label, value, unit, delta, window;
   final bool up;
 
@@ -1785,7 +1813,9 @@ String _trendWord(Trend? t) => switch (t) {
     };
 
 /// A metric in a list: name → value → trend.
-class MetricRow extends StatelessWidget {
+class MetricRow extends StatelessWidget implements PendingSectionLabel {
+  @override
+  String? get pendingSectionName => name;
   final IconData icon;
   final Color color;
   final String name, sub, value, unit;
@@ -1805,6 +1835,9 @@ class MetricRow extends StatelessWidget {
   final String? status;
   final VoidCallback? onTap;
 
+  /// Caps a status subtitle so pending and loaded rows share its line count.
+  final int? subMaxLines;
+
   const MetricRow(
     this.icon,
     this.color,
@@ -1817,6 +1850,7 @@ class MetricRow extends StatelessWidget {
     this.rising = Rising.neither,
     this.status,
     this.onTap,
+    this.subMaxLines,
   });
 
   @override
@@ -1826,13 +1860,15 @@ class MetricRow extends StatelessWidget {
     final title = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        PendingStatic(child: Text(
           name,
           style: F.body.copyWith(color: p.ink),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-        ),
-        if (sub.isNotEmpty) Text(sub, style: F.over.copyWith(color: p.ink3)),
+        )),
+        if (sub.isNotEmpty) Text(sub, style: F.over.copyWith(color: p.ink3),
+          maxLines: subMaxLines,
+          overflow: subMaxLines == null ? null : TextOverflow.ellipsis),
       ],
     );
     final big = bigText(c);
@@ -1859,7 +1895,7 @@ class MetricRow extends StatelessWidget {
         if (big) Flexible(child: valueText) else valueText,
         if (unit.isNotEmpty) ...[
           const SizedBox(width: 2),
-          Text(displayUnit, style: F.over.copyWith(color: p.ink3)),
+          PendingStatic(child: Text(displayUnit, style: F.over.copyWith(color: p.ink3))),
         ],
       ],
     );
@@ -2697,7 +2733,9 @@ class BigButton extends StatelessWidget {
 /// the start, middle and end of what is actually drawn. They must describe the
 /// range on screen — a fixed `['30 days ago', '15', 'Today']` under a
 /// seven-day window is worse than no labels at all.
-class ChartFrame extends StatelessWidget {
+class ChartFrame extends StatelessWidget implements PendingSectionLabel {
+  @override
+  String? get pendingSectionName => title;
   final String title;
 
   /// `bpm`, `ms`, `min`, `°`. Always rendered.
@@ -2714,6 +2752,9 @@ class ChartFrame extends StatelessWidget {
   final List<String> xLabels;
   final List<(String, Color)> legend;
   final String? footnote;
+
+  /// Minimum footnote lines, including an explicitly empty footnote.
+  final int footnoteLines;
 
   /// The series behind [child], for the SPOKEN version of the chart. A painter
   /// is a picture and a picture has no screen-reader form, so before this a
@@ -2757,6 +2798,7 @@ class ChartFrame extends StatelessWidget {
     this.xLabels = const [],
     this.legend = const [],
     this.footnote,
+    this.footnoteLines = 0,
     this.empty,
     this.series = const [],
     this.xMarks = const [],
@@ -2840,16 +2882,16 @@ class ChartFrame extends StatelessWidget {
   }
 
   Widget _header(BuildContext c, P p, bool stacked) {
-    final name = Text(
+    final name = PendingStatic(child: Text(
       title,
       style: F.cap.copyWith(color: p.ink, fontWeight: FontWeight.w600),
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
-    );
-    final measure = Text(
+    ));
+    final measure = PendingStatic(child: Text(
       uiText(c, unit),
       style: F.over.copyWith(color: p.ink3),
-    );
+    ));
     if (!stacked) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -3129,7 +3171,10 @@ class ChartFrame extends StatelessWidget {
             ExcludeSemantics(
               child: Padding(
                 padding: const EdgeInsets.only(top: S.x2),
-                child: Text(footnote!, style: F.cap.copyWith(color: p.ink3)),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: footnoteLines *
+                    _measure('0', F.cap, scaler, dir).height),
+                  child: Text(footnote!, style: F.cap.copyWith(color: p.ink3))),
               ),
             ),
         ],
