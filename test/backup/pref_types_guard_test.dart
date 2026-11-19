@@ -11,10 +11,14 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:openstrap_edge/data/backup_extras.dart';
+import 'pref_key_scanner.dart';
 
 /// "file|expression|type" -> keys the call can read. The table must give each
 /// one that exact type. `*` as the file skips the file check.
 const _dynamicReads = <String, List<String>>{
+  "pilot_wake.dart|'pilot.fired.\$id'|int": ['pilot.fired.alarm1'],
+  "alarm_pilot.dart|'pilot.workout.completed.\${alarm.id}'|int": ['pilot.workout.completed.alarm1'],
+  "alarm_pilot.dart|'pilot.backup.cancelled.\${a.id}'|int": ['pilot.backup.cancelled.alarm1'],
   'feature_flags.dart|f.prefsKey|bool': ['ff.alert_dispatcher', 'ff.native_relay',
     'ff.source_resolver_ui', 'ff.tap_classifiers', 'ff.natural_wake'],
   // The shared wrapper still owns Tasker consent after ECG counting is removed.
@@ -69,10 +73,6 @@ const _dynamicReads = <String, List<String>>{
 /// A key read with two types is a bug in the app; none is excused today.
 const _readWithTwoTypes = <String, String>{};
 
-final _constRe = RegExp(
-    r'''(?:static\s+)?const\s+(?:String\s+)?(\w+)\s*=\s*(?:'([^'$]*)'|"([^"$]*)")\s*;''');
-final _aliasRe = RegExp(
-    r'(?:static\s+)?const\s+(?:String\s+)?(\w+)\s*=\s*([A-Za-z_]\w*(?:\.\w+)?)\s*;');
 final _readRe = RegExp(
     r'\.(getString|getBool|getInt|getDouble|getStringList)\(\s*([^,)]+?)\s*[,)]');
 
@@ -98,42 +98,7 @@ void main() {
       .whereType<File>().where((f) => f.path.endsWith('.dart')).toList();
   final text = {for (final f in files) f.path: f.readAsStringSync()};
 
-  // name -> value, per file and across lib (the latter only when unambiguous).
-  final local = <String, Map<String, String>>{};
-  final global = <String, Set<String>>{};
-  void add(String file, String name, String value) {
-    (local[file] ??= {})[name] = value;
-    (global[name] ??= {}).add(value);
-  }
-
-  for (final e in text.entries) {
-    for (final m in _constRe.allMatches(e.value)) {
-      add(e.key, m.group(1)!, m.group(2) ?? m.group(3)!);
-    }
-  }
-  // Aliases (`const _k = otherConst;`), a few rounds deep.
-  for (var round = 0; round < 3; round++) {
-    for (final e in text.entries) {
-      for (final m in _aliasRe.allMatches(e.value)) {
-        final name = m.group(1)!;
-        if (local[e.key]?.containsKey(name) ?? false) continue;
-        final target = m.group(2)!.split('.').last;
-        final v = local[e.key]?[target] ??
-            (global[target]?.length == 1 ? global[target]!.single : null);
-        if (v != null) add(e.key, name, v);
-      }
-    }
-  }
-
-  String? resolve(String file, String expr) {
-    if ((expr.startsWith("'") && expr.endsWith("'")) ||
-        (expr.startsWith('"') && expr.endsWith('"'))) {
-      return expr.contains(r'$') ? null : expr.substring(1, expr.length - 1);
-    }
-    final name = expr.split('.').last;
-    return local[file]?[name] ??
-        (global[name]?.length == 1 ? global[name]!.single : null);
-  }
+  final scanner = PrefKeyScanner(text);
 
   final reads = <String, Map<String, Set<String>>>{}; // key -> type -> sites
   final dynamicSeen = <String>{};
@@ -148,9 +113,11 @@ void main() {
         dynamicSeen.add(dynamicId);
         continue;
       }
-      final key = resolve(e.key, expr);
-      if (key != null) {
-        ((reads[key] ??= {})[type] ??= {}).add('${e.key}:$line');
+      final keys = scanner.resolve(e.key, expr, m.start);
+      if (keys.isNotEmpty) {
+        for (final key in keys) {
+          ((reads[key] ??= {})[type] ??= {}).add('${e.key}:$line');
+        }
         continue;
       }
       final id = '${_base(e.key)}|$expr|$type';
@@ -188,7 +155,7 @@ void main() {
   test('every backed-up key that is read has its type in the table', () {
     final wrong = <String>[];
     void check(String key, String type, String where) {
-      if (kPrefsNotBackedUp.containsKey(key)) return;
+      if (!prefsKeyBackedUp(key)) return;
       final want = expectedPrefType(key);
       if (want != type) wrong.add('$key read as $type at $where; table: $want');
     }

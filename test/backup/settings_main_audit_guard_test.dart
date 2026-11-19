@@ -10,6 +10,7 @@ import 'package:openstrap_edge/data/db.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'backup_support.dart';
+import 'pref_key_scanner.dart';
 
 // Deliberately independent of kPrefsNotBackedUp. Changing production policy
 // must not silently change the expected export. Add new settings here by hand.
@@ -40,7 +41,8 @@ const _mustTravel = {
   'ui.device_lab_tab',
   'ui.gestures_tab',
   'ui.haptics_tab',
-  'wake_acked_epoch',
+  'pilot.alarm_screen', 'pilot.wake_methods', 'pilot.timelines',
+  'pilot.alarms.v1',
   'workout.stop_pending',
   'ff.alert_dispatcher', 'ff.native_relay', 'ff.source_resolver_ui',
   'ff.tap_classifiers', 'ff.natural_wake', 'accordion_sync-details',
@@ -97,9 +99,14 @@ const _mustTravel = {
   'future.setting',
 };
 
-const _prefixExamples = {'ui.home_ring_details.v1', 'ui.load_memory.v1'};
+const _prefixExamples = {
+  'ui.home_ring_details.v1', 'ui.load_memory.v1',
+  'pilot.fired.alarm1', 'pilot.backup.cancelled.alarm1',
+  'pilot.workout.completed.alarm1',
+};
 
 const _mustStay = {
+  'pilot.native_snooze.v1', 'wake_acked_epoch',
   'device_alerts.charge_pending_ts',
   'update_checks_enabled',
   'notif_critical_override',
@@ -131,6 +138,9 @@ const _mustStay = {
 // and community-ask dismissal/cooldown are user preferences. metricTab has no
 // current writer, but its public key builder is covered for future callers.
 const _dynamicExamples = {
+  r'pilot.fired.$id': 'pilot.fired.alarm1',
+  r'pilot.backup.cancelled.$id': 'pilot.backup.cancelled.alarm1',
+  r'pilot.workout.completed.$id': 'pilot.workout.completed.alarm1',
   r'$_kReplayPrefix${DeviceAction.markMoment.id}': 'gesture_replay_mark_moment',
   r'$_kReplayPrefix${a.id}': 'gesture_replay_mark_moment',
   r'$_kSlotOptionsPrefix$slot': 'gesture_slot_options_default',
@@ -153,6 +163,8 @@ const _dynamicExamples = {
 // Runtime arguments and aliased constants the literal scanner cannot resolve.
 // Empty lists are delegating writers, audited at their owning call sites.
 const _indirectKeys = <String, List<String>>{
+  'lib/pilot/pilot_flags.dart:flag.key': [
+    'pilot.alarm_screen', 'pilot.wake_methods', 'pilot.timelines'],
   // Generic facades; the concrete writes are scanned at their callers.
   'lib/settings/settings_repository.dart:key': [],
   'lib/settings/settings_repository.dart:e.key': [],
@@ -201,28 +213,10 @@ const _indirectKeys = <String, List<String>>{
     'health_weight_trimmed:d1'],
 };
 
-Map<String, String> _constants(String text) => {
-  for (final m in RegExp(r'''(?:const|final)\s+(?:String\s+)?(\w+)\s*=\s*['"]([^'"\n]+)['"]''').allMatches(text))
-    m.group(1)!: m.group(2)!,
-};
-
-String? _key(String expr, String text) {
-  final literal = RegExp(r'''^['"]([^'"]+)['"]$''').firstMatch(expr);
-  if (literal != null) return literal.group(1);
-  if (expr.startsWith('Prefs.')) {
-    return _constants(File('lib/state/prefs.dart').readAsStringSync())[
-        expr.substring('Prefs.'.length)];
-  }
-  if (expr.startsWith('AppState.')) {
-    return _constants(File('lib/state/app_state.dart').readAsStringSync())[
-        expr.substring('AppState.'.length)];
-  }
-  return _constants(text)[expr];
-}
-
 void main() {
   final lib = Directory('lib').listSync(recursive: true).whereType<File>()
       .where((f) => f.path.endsWith('.dart')).toList();
+  final scanner = PrefKeyScanner({for (final f in lib) f.path: f.readAsStringSync()});
   final writes = RegExp(r'''\.(setString|setStringList|setBool|setBoolAcked|setInt|setDouble)\(\s*('[^']*'|"[^"]*"|[\w.]+(?:\([^()]*\))?)\s*,''');
   late BackupEnv env;
   setUpAll(() async => env = await BackupEnv.create('bkx_main_audit_test.db'));
@@ -239,7 +233,10 @@ void main() {
         // These owners delegate a runtime key. A local `final key` in some
         // unrelated method is not a file-wide constant for this writer.
         final owner = '${f.path}:${m.group(2)}';
-        final key = _indirectKeys.containsKey(owner) ? null : _key(m.group(2)!, text);
+        final resolved = _indirectKeys.containsKey(owner)
+            ? const <String>{}
+            : scanner.resolve(f.path, m.group(2)!, m.start, interpolated: true);
+        final key = resolved.length == 1 ? resolved.single : null;
         if (key == null) {
           final owner = '${f.path}:${m.group(2)}';
           expect(_indirectKeys, contains(owner), reason: 'unresolved writer $owner');
@@ -262,7 +259,7 @@ void main() {
     final all = lib.map((f) => f.readAsStringSync()).join('\n');
     for (final e in _dynamicExamples.entries) {
       expect(all, contains(e.key), reason: 'stale dynamic family ${e.key}');
-      expect(_mustTravel, contains(e.value), reason: e.key);
+      expect({..._mustTravel, ..._prefixExamples}, contains(e.value), reason: e.key);
     }
   });
 
@@ -348,7 +345,10 @@ void main() {
         // These owners delegate a runtime key. A local `final key` in some
         // unrelated method is not a file-wide constant for this writer.
         final owner = '${f.path}:${m.group(2)}';
-        final key = _indirectKeys.containsKey(owner) ? null : _key(m.group(2)!, text);
+        final resolved = _indirectKeys.containsKey(owner)
+            ? const <String>{}
+            : scanner.resolve(f.path, m.group(2)!, m.start, interpolated: true);
+        final key = resolved.length == 1 ? resolved.single : null;
         if (key != null && credential.hasMatch(key) &&
             !key.endsWith('_present')) {
           bad.add('${f.path}: $key');

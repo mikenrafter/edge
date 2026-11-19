@@ -98,6 +98,8 @@ const Map<String, String> kPrefsNotBackedUp = {
   'telemetry_outbox': 'queued diagnostics belong to this install and its consent',
   'device_alerts.low_armed': 'low-battery latch belongs to the old band; '
       'the new band must establish its own battery state',
+  'pilot.native_snooze.v1': 'Pending native snooze arm belongs to this install; restoring it could suppress a real alarm.',
+  'wake_acked_epoch': 'Acknowledged-through arm state belongs to this install; restoring it could suppress a real alarm.',
   'alarm_epoch': 'arm belongs to the old band; the restored schedule must arm again',
   'alarm_remote_id': 'identifies the band that received this phone’s alarm; restored schedules arm again',
   'alarm_epoch_confirmed': 'confirmation belongs to an arm on the old band',
@@ -113,10 +115,12 @@ const Map<String, String> kPrefsNotBackedUp = {
       'install observes its own',
 };
 
-/// Key prefixes that stay on the device, each with the reason. Empty on
-/// purpose: a prefix once swept up `backup.cadence`, a setting the owner chose
-/// (daily/weekly), so the device-only `backup.*` keys are listed by name above.
+/// Key prefixes that stay on the device, each with the reason. Keep prefixes
+/// narrow: user settings such as `backup.cadence` must still travel.
 const Map<String, String> kPrefsNotBackedUpPrefixes = {
+  'pilot.fired.': 'Fired-occurrence receipts belong to this install; restoring them could suppress a real alarm.',
+  'pilot.backup.cancelled.': 'Cancelled backup occurrences belong to this install; restored schedules must arm again.',
+  'pilot.workout.completed.': 'Workout occurrence receipts belong to this install; restoring them could suppress a real alarm.',
   'ui.home_ring_details.': 'Secondary Home presentation snapshots, not portable health data',
   'ui.load_memory.': 'Local presentation estimates, not portable health data',
 };
@@ -804,7 +808,10 @@ const Map<String, String> kPrefTypes = {
   'ui.gestures_tab': 'string',
   'ui.haptics_tab': 'string',
   'ui.load_memory.v1': 'string',
-  'wake_acked_epoch': 'int',
+  'pilot.alarm_screen': 'bool',
+  'pilot.wake_methods': 'bool',
+  'pilot.timelines': 'bool',
+  'pilot.alarms.v1': 'string',
   'workout.stop_pending': 'string',
   'alerts.zone_pref_migrated': 'bool',
   'gesture_double_tap_actions': 'int',
