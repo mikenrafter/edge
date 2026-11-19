@@ -109,7 +109,7 @@ void main() {
     });
   }
 
-  for (final change in [false, true]) {
+  for (final change in ['none', 'head', 'later']) {
     // catches: restarting at page one forever, or trusting stale continuation.
     test('page four completes across restarts, catalog change=$change', () async {
       var changed = false;
@@ -119,7 +119,8 @@ void main() {
         final page = int.parse(r.url.queryParameters['page'] ?? '1');
         pagesSeen.add(page);
         final rows = page == 1
-            ? [release(changed ? 'v9.0.0' : 'v0.12.0', id: changed ? 99 : 1)]
+            ? [release(changed && change == 'head' ? 'v9.0.0' : 'v0.12.0', id: changed && change == 'head' ? 99 : 1)]
+            : page == 2 && changed && change == 'later' ? [release('v9.0.0', id: 99)]
             : page == 4 ? [release('v1.0.0', id: 4)]
             : [release('unsupported-$page', id: page, draft: true)];
         return http.Response(jsonEncode(rows), 200, headers: {
@@ -130,12 +131,12 @@ void main() {
       var result = await batch(ReleaseSource.official);
       expect(result.error, UpdateError.incomplete);
       expect(result.candidate, isNull);
-      if (change) changed = true;
+      if (change != 'none') changed = true;
       for (var i = 0; i < 12 && result.error == UpdateError.incomplete; i++) {
         result = await batch(ReleaseSource.official);
       }
       expect(result.error, isNull);
-      expect(result.candidate?.tag, change ? 'v9.0.0' : 'v1.0.0');
+      expect(result.candidate?.tag, change != 'none' ? 'v9.0.0' : 'v1.0.0');
       expect(pagesSeen, contains(4));
     });
   }

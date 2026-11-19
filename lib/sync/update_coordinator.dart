@@ -15,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../data/json_payload_lane.dart';
 import 'update_http.dart';
+import 'update_catalog.dart';
 import 'update_models.dart';
 import 'update_selection.dart';
 import 'update_store.dart';
@@ -311,37 +312,12 @@ class UpdateCoordinator extends ChangeNotifier {
           (!automatic || await unmetered()),
     );
     try {
-      final releases = <Map<String, dynamic>>[];
-      String? etag;
-      var paginated = false;
-      for (var page = 1; page <= maxListingPages; page++) {
-        final response = await wire.get(
-          listingUri(source, page),
-          etag: page == 1 ? previous?.etag : null,
-        );
-        if (response.status == 304) {
-          return await _notModified(source, previous, page);
-        }
-        if (isRateLimit(response)) return _rateLimited(response, previous);
-        if (response.status >= 300 && response.status < 400) {
-          throw const UpdateFailure(UpdateError.redirect);
-        }
-        if (response.status == 401 || response.status == 403) {
-          throw const UpdateFailure(UpdateError.refused);
-        }
-        if (response.status != 200) throw const UpdateFailure(UpdateError.network);
-        final decoded = await wire.parse(response.body);
-        if (decoded is! List || decoded.length > 100) {
-          throw const FormatException('Bad listing');
-        }
-        releases.addAll(decoded.map((r) => Map<String, dynamic>.from(r as Map)));
-        if (page == 1) etag = response.headers['etag'];
-        if (!linkNamesNextPage(source, response.headers['link'], page)) break;
-        paginated = true;
-        if (page == maxListingPages) {
-          throw const UpdateFailure(UpdateError.incomplete);
-        }
-      }
+      final catalog = UpdateCatalog(source, store, lease, wire,
+          await store.progress(source) ?? {});
+      await catalog.collect(conditional: previous?.etag);
+      final releases = catalog.rows;
+      final paginated = catalog.paginated;
+      final etag = catalog.etag;
       final knownTags = [
         for (final r in releases)
           if (r['draft'] == false &&
@@ -367,10 +343,10 @@ class UpdateCoordinator extends ChangeNotifier {
       var summary = ReleaseSelection(source, installed,
           officialPrereleases: snapshot.officialPrereleases);
       var offset = 0;
-      final saved = await store.progress(source);
-      if (saved?['catalogKey'] == catalogKey) {
+      final saved = catalog.progress;
+      if (saved['catalogKey'] == catalogKey) {
         try {
-          offset = saved!['offset'] as int;
+          offset = saved['offset'] as int;
           if (offset < 0 || offset > releases.length) throw const FormatException();
           summary = ReleaseSelection.fromJson(source, installed,
               Map<String, dynamic>.from(saved['selection'] as Map),
@@ -388,9 +364,13 @@ class UpdateCoordinator extends ChangeNotifier {
           summary.add(release, manifest: manifest);
         }
       } finally {
-        if (!await store.saveProgress(lease, source, {
+        catalog.progress.addAll({
           'catalogKey': catalogKey, 'offset': offset, 'selection': summary.toJson(),
-        })) throw const UpdateFailure(UpdateError.network);
+        });
+        await catalog.save();
+      }
+      if (!await catalog.validate()) {
+        throw const UpdateFailure(UpdateError.incomplete);
       }
       final selected = summary.selected;
       if (selected != null) {
@@ -403,14 +383,21 @@ class UpdateCoordinator extends ChangeNotifier {
       }
       // Nothing established. An empty list is a fact; a list we could not
       // match or validate keeps the dated last good metadata beside the error.
-      final retained = releases.isEmpty ? null : previous?.candidate;
+      final retained = !catalog.sawAny ? null : previous?.candidate;
       return SourceUpdate(
         candidate: retained,
         releasePage: inspectedPage,
         checkedAt: retained == null ? clock.now() : previous!.checkedAt,
         etag: paginated ? null : etag,
-        error: releases.isEmpty ? UpdateError.noRelease : UpdateError.noAsset,
+        error: !catalog.sawAny ? UpdateError.noRelease : UpdateError.noAsset,
       );
+    } on CatalogResponse catch (e) {
+      if (isRateLimit(e.response)) return _rateLimited(e.response, previous);
+      try {
+        return await _notModified(source, previous, e.page);
+      } on UpdateFailure catch (failure304) {
+        return failure(failure304.error);
+      }
     } on _ManifestRateLimit catch (e) {
       return _rateLimited(e.response, previous);
     } on UpdateFailure catch (e) {
