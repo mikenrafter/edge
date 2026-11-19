@@ -93,7 +93,9 @@ class OfficialExportCoordinator extends ChangeNotifier {
       // before the process died or before its receipt could be replaced.
       for(final candidate in await storage.listCiphertext()) {
         if((candidate.path==file['path'] || candidate.name==file['name'] || candidate.name==pendingName) &&
-            candidate.name!=(record['official'] as Map?)?['name'])await storage.deleteCiphertext(candidate);
+            candidate.name!=(record['official'] as Map?)?['name']) {
+          await storage.deleteCiphertext(candidate);
+        }
       }
     }
     final journal=File('${_root.path}/interruption.json');
