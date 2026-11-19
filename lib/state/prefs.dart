@@ -1,3 +1,4 @@
+import '../ui2/personal_day.dart';
 import 'dart:async' show unawaited;
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,6 +51,70 @@ class Prefs {
       // Keep the last known choice, or the explicit default on a cold start.
     }
     return sleepStagingMethod;
+  }
+
+  static const personalDayModeKey = 'ui.personal_day_mode';
+  static const personalDayTotalsKey = 'ui.personal_day_totals';
+  static const personalDayLearnedTotalsKey = 'ui.personal_day_learned_totals';
+  static final personalDayRevision = ValueNotifier<int>(0);
+  static String? get _personalModeName {
+    final raw = _sp?.get(personalDayModeKey);
+    return raw is String ? _sp?.getString(personalDayModeKey) : null;
+  }
+  static String? get _personalTotalsName {
+    final raw = _sp?.get(personalDayTotalsKey);
+    return raw is String ? _sp?.getString(personalDayTotalsKey) : null;
+  }
+  static bool get personalDayEnabled => PersonalDayMode.values.any(
+      (mode) => mode.name == _personalModeName);
+  static PersonalDayMode get personalDayMode {
+    final value = _personalModeName;
+    return PersonalDayMode.values.where((v) => v.name == value).firstOrNull ??
+        PersonalDayMode.calendarOffset;
+  }
+  static PersonalDayTotals? get _personalTotalsChoice {
+    final value = _personalTotalsName;
+    return PersonalDayTotals.values.where((v) => v.name == value).firstOrNull;
+  }
+  static PersonalDayTotals? get _learnedTotals {
+    final raw = _sp?.get(personalDayLearnedTotalsKey);
+    final value = raw is String ? _sp?.getString(personalDayLearnedTotalsKey) : null;
+    return PersonalDayTotals.values.where((v) => v.name == value).firstOrNull;
+  }
+  /// One global choice, learned once from a completed cycle. Until then an
+  /// unset install follows the mode; an explicit user choice always wins.
+  static PersonalDayTotals get personalDayTotals =>
+      _personalTotalsChoice ?? _learnedTotals ?? defaultTotalsFor(personalDayMode);
+  static bool get personalDayTotalsNeedsCycle =>
+      _personalTotalsChoice == null && _learnedTotals == null;
+  static Future<bool> learnPersonalDayTotals(PersonalDayTotals totals) async =>
+      !personalDayTotalsNeedsCycle ||
+      await _setPersonalChoice(personalDayLearnedTotalsKey, totals.name);
+  static bool get personalDayTotalsIsDefault => _personalTotalsChoice == null;
+  static Future<bool> setPersonalDayEnabled(bool enabled) =>
+      _setPersonalChoice(personalDayModeKey, enabled ? personalDayMode.name : null);
+  static Future<bool> setPersonalDayMode(PersonalDayMode mode) =>
+      _setPersonalChoice(personalDayModeKey, mode.name);
+  /// Null resumes the learned choice, or the mode default before any cycle.
+  static Future<bool> setPersonalDayTotals(PersonalDayTotals? totals) =>
+      _setPersonalChoice(personalDayTotalsKey, totals?.name);
+  static Future<bool> _setPersonalChoice(String key, String? value) async {
+    final old = _sp?.get(key);
+    bool saved = false;
+    try {
+      saved = value == null ? await _sp?.remove(key) ?? false
+          : await _sp?.setString(key, value) ?? false;
+    }
+    catch (_) { /* The cache may already have changed; restore it below. */ }
+    if (!saved) {
+      try {
+        if (old is String) { await _sp?.setString(key, old); }
+        else { await _sp?.remove(key); }
+      } catch (_) { /* The platform refusal is reported to the settings row. */ }
+      return false;
+    }
+    personalDayRevision.value++;
+    return true;
   }
 
   static const sleepWakeZoom = 'ui.sleep_wake_zoom';
@@ -301,6 +366,7 @@ class Prefs {
   static Future<void> reload() async {
     _sp = await SharedPreferences.getInstance();
     await _sp!.reload();
+    personalDayRevision.value++;
   }
 
   /// [setBoolAcked] for an int: false when there is no storage or the platform

@@ -1,4 +1,5 @@
 import '../wake/wake_journal.dart';
+import 'pulse_ep/pulse_ep_summary.dart';
 import '../wake/wake_timeline.dart';
 import '../compute/findings.dart' show servedReadiness;
 import '../compute/pulse_alert_record.dart';
@@ -77,6 +78,9 @@ import '../import/whoop_import.dart' show WhoopImporter;
 
 
 class LocalRepositoryImpl extends LocalRepository {
+  @override
+  Future<List<PulseEpisodeSummary>> getPulseEpisodes() => LocalDb.readerRun(readPulseEpisodeSummaries, name: 'pulse episode summaries');
+
   @override
   Future<WakeNightTimeline> getWakeTimeline(String day) =>
       const DbWakeJournal().forDay(day);
@@ -1787,6 +1791,8 @@ class LocalRepositoryImpl extends LocalRepository {
       // When the row behind this night was computed (epoch ms) — "As of" while
       // a newer one is being calculated.
       'computed_at': computedAt,
+      if (b['data_edge_sec'] case final num edge when edge.isFinite && edge > 0)
+        'recordings_through': (edge * 1000).round(),
       'sleep_edit': b['sleep_edit'],
       'sleep_source': sleepSource,
       'duration_min': (tst / 60).round(),
@@ -2651,6 +2657,7 @@ class LocalRepositoryImpl extends LocalRepository {
               'start': (nMap['start'] as num).toInt(),
               'end': (nMap['end'] as num).toInt(),
               'duration_min': (nMap['duration_min'] as num?)?.toInt(),
+              if(nMap['source'] is String) 'source': nMap['source'],
             },
     ];
 

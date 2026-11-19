@@ -14,12 +14,14 @@ class DayGraph {
     this.rest = const [],
     this.work = const [],
     this.dayStart,
+    this.clockAxis = false,
   });
 
   /// Epoch second of slot 0 — local midnight for a whole day, the window's
   /// first minute for a [window]. The annotation domain runs `dayStart` ..
   /// `dayStart + slots * 60`. Null for a graph built without a day.
   final int? dayStart;
+  final bool clockAxis;
 
   /// Beats per minute, one slot per minute of the day, `null` where nothing
   /// was recorded.
@@ -58,6 +60,7 @@ class DayGraph {
       rest: clip(rest),
       work: clip(work),
       dayStart: dayStart == null ? null : dayStart! + lo * 60,
+      clockAxis: true,
     );
   }
 

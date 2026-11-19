@@ -267,3 +267,9 @@ in the same change that introduces it (AGENTS.md §6).
   hand-off keeps it consumed.
 - **release page**: the canonical `https://github.com/<repo>/releases/tag/<tag>`
   URL rebuilt locally from a checked source and tag. The only thing the app opens.
+
+## Display pilots
+- **Personal day**: an optional display cycle bounded by wakes, sleep onsets, or local noon. Its navigation ID is a start instant; calendar-owned writes keep their original dates.
+- **Calendar totals choice**: one global first/last calendar-day selection for completed personal cycles. Open cycles retain the current calendar scores.
+- **Sleep summary**: the read-only top card of stored sleep intervals and observed wake dispatches. Its updated stamp is the served result's included recording edge.
+- **Observation entry**: a stored detector/day finding or published pulse episode in the selected day's list. An episode replaces only the daily pulse flags it covers.

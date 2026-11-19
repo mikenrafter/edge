@@ -156,6 +156,9 @@ class NotificationEvent {
   final String title;
   final String body;
 
+  /// Quiet presentation, with no phone sound/vibration or band transport.
+  final bool silent;
+
   /// Deep-link route to open on tap (e.g. '/heart', '/today', '/recap').
   final String? route;
 
@@ -178,6 +181,7 @@ class NotificationEvent {
     this.priority = NotifPriority.normal,
     this.route,
     this.osId,
+    this.silent = false,
   });
 
   // The OS notification id is NOT derived here any more. It used to be

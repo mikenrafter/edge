@@ -225,7 +225,10 @@ abstract interface class TrackLogObserver {
 
 /// Home and the journal use the same persisted timed logger.
 class TrackQuickLog extends StatelessWidget {
-  const TrackQuickLog({super.key, this.date, this.observer});
+  const TrackQuickLog({super.key, this.date, this.observer}) : initialAt = null;
+  // Cycle views supply an instant. Their labels cannot enter the date field.
+  const TrackQuickLog.at({super.key, this.initialAt, this.observer}) : date = null;
+  final DateTime? initialAt;
   final String? date;
   final TrackLogObserver? observer;
   @override
@@ -240,7 +243,7 @@ class TrackQuickLog extends StatelessWidget {
     ]),
     onPressed: () async {
       final logged = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => TrackLogScreen(date: date)),
+        MaterialPageRoute(builder: (_) => TrackLogScreen(date: date, initialAt: initialAt)),
       );
       if (logged == true && context.mounted) {
         await observer?.trackLogged();

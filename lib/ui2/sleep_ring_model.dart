@@ -1,3 +1,4 @@
+import 'personal_day.dart';
 import 'dart:math' as math;
 import '../state/control_operations.dart' show ExpectedSleepSchedule;
 
@@ -86,10 +87,6 @@ class SleepRingModel {
 /// stands instead.
 const int _minCycleLenMin = 60, _maxCycleLenMin = 150;
 
-/// An alarm further away than this is not tonight's wake (a weekday alarm seen
-/// from Friday evening), so the typical schedule answers instead.
-const int _maxAlarmHorizonMicros = 24 * 3600 * 1000000;
-
 SleepRingModel sleepRingModel({
   required DateTime now,
   num? durationMin,
@@ -101,6 +98,9 @@ SleepRingModel sleepRingModel({
   int? learnedOnsetMin,
   int? learnedWakeMin,
   int? cycleLenMin,
+  bool wakeObserved = false,
+  bool personalBoundary = false,
+  PersonalDayMode dayMode = PersonalDayMode.calendarOffset,
 }) {
   final learnedNeed = needMin != null && needMin.isFinite && needMin > 0 && needMin.round() > 0;
   final target = learnedNeed ? needMin.round() : kDefaultSleepTargetMin;
@@ -115,20 +115,26 @@ SleepRingModel sleepRingModel({
     return _slept(durationMin, stages, target, isDefault, cycleLen);
   }
 
+  if (wakeObserved) {
+    return SleepRingModel(phase: SleepRingPhase.none, targetMin: target,
+      targetIsDefault: isDefault, cycleLenMin: cycleLen);
+  }
+
   // ── unslept: wake ────────────────────────────────────────────────────────
   final n = now.toLocal();
   DateTime? wake;
   WakeSource? wakeSource;
   if (nextAlarm != null &&
-      nextAlarm.isAfter(now) &&
-      nextAlarm.difference(now).inMicroseconds <= _maxAlarmHorizonMicros) {
+      (dayMode == PersonalDayMode.calendarOffset && !personalBoundary
+        ? nextAlarm.isAfter(now) && nextAlarm.difference(now) <= const Duration(hours: 24)
+        : personalAlarmFits(now, nextAlarm, learnedOnsetMin, learnedWakeMin))) {
     wake = nextAlarm.toLocal();
     wakeSource = WakeSource.alarm;
   } else if (schedule != null) {
-    wake = _nextClock(n, schedule.wakeMinute);
+    wake = nextPersonalClock(n, schedule.wakeMinute);
     wakeSource = WakeSource.schedule;
   } else if (learnedWakeMin != null) {
-    wake = _nextClock(n, learnedWakeMin);
+    wake = nextPersonalClock(n, learnedWakeMin);
     wakeSource = WakeSource.learned;
   }
   if (wake == null) {
@@ -155,7 +161,7 @@ SleepRingModel sleepRingModel({
   }
   DateTime start = n;
   if (onsetMinute != null) {
-    final onset = _clockBefore(wake, onsetMinute);
+    final onset = personalClockBefore(wake, onsetMinute);
     if (onset.isAfter(n)) start = onset;
   }
 
@@ -220,27 +226,6 @@ SleepRingModel _slept(num durationMin, SleepStageMin? stages, int target,
     pct: pct,
     cycleLenMin: cycleLen,
   );
-}
-
-/// The first local [minuteOfDay] strictly after [from]. Calendar arithmetic,
-/// not `+ 24 h`, so the wall-clock time survives a DST change.
-DateTime _nextClock(DateTime from, int minuteOfDay) {
-  final today = DateTime(
-      from.year, from.month, from.day, minuteOfDay ~/ 60, minuteOfDay % 60);
-  return today.isAfter(from)
-      ? today
-      : DateTime(from.year, from.month, from.day + 1, minuteOfDay ~/ 60,
-          minuteOfDay % 60);
-}
-
-/// The latest local [minuteOfDay] strictly before [wake].
-DateTime _clockBefore(DateTime wake, int minuteOfDay) {
-  final same = DateTime(
-      wake.year, wake.month, wake.day, minuteOfDay ~/ 60, minuteOfDay % 60);
-  return same.isBefore(wake)
-      ? same
-      : DateTime(wake.year, wake.month, wake.day - 1, minuteOfDay ~/ 60,
-          minuteOfDay % 60);
 }
 
 /// Median local clock minute-of-day of the onsets and of the wakes in

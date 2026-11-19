@@ -2,6 +2,7 @@
 // SQLite transactions serialize answers and tuning across owner instances.
 // Storage errors propagate to the caller; a skipped question writes nothing.
 import 'dart:convert';
+import '../pilot/pilot_flags.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../data/db.dart';
@@ -76,12 +77,12 @@ class DbWakeJournal {
     await tuneFor(wakeEpochSec);
   }
 
-  Future<WakeNightTimeline> forEpoch(int wakeEpochSec) async =>
-      LocalDb.readerRun((db) => _forEpoch(db, wakeEpochSec), name: 'wake epoch');
+  Future<WakeNightTimeline> forEpoch(int wakeEpochSec, {bool confirmedDispatchOnly = false}) async =>
+      LocalDb.readerRun((db) => _forEpoch(db, wakeEpochSec, confirmedDispatchOnly: confirmedDispatchOnly), name: 'wake epoch');
 
   Future<WakeNightTimeline> _forEpoch(
     DatabaseExecutor db,
-    int wakeEpochSec,
+    int wakeEpochSec, {bool confirmedDispatchOnly = false}
   ) async {
     // Journal reads deliberately bypass the diagnostic store's 400-row cap.
     final rows = await db.query(
@@ -104,6 +105,7 @@ class DbWakeJournal {
     return WakeNightTimeline.forEpoch(
       wakeEpochSec: wakeEpochSec,
       trace: _entries(rows),
+      confirmedDispatchOnly: confirmedDispatchOnly,
       bandAlarms: [
         for (final r in alarms)
           WakeBandAlarm(
@@ -144,7 +146,7 @@ class DbWakeJournal {
     for (final row in rows) {
       final epoch = row['wake_epoch'] as int;
       if ((await LocalDb.wakeOutcomeContext(epoch))?['day_id'] == dayId) {
-        nights.add(await forEpoch(epoch));
+        nights.add(await forEpoch(epoch, confirmedDispatchOnly: PilotFlag.sleepSummary.enabled));
       }
     }
     final events = [for (final night in nights) ...night.events]
@@ -156,6 +158,7 @@ class DbWakeJournal {
     // acknowledgement to manufacture a duration.
     return WakeNightTimeline(
       events: events,
+      deliveries: [for(final night in nights) ...night.deliveries],
       adjustedFor: {for (final n in nights) ...n.adjustedFor},
       firstFireAt: primary?.firstFireAt,
       ackAt: primary?.ackAt,

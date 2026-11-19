@@ -21376,5 +21376,24 @@
         "type": "String"
       }
     }
-  }
+  },
+  "personalDaySetting": "วันของคุณ",
+  "personalDayWake": "วันของคุณ (ตื่นถึงตื่น)",
+  "personalDaySleep": "วันของคุณ (หลับถึงหลับ)",
+  "personalDayCalendar": "วันตามปฏิทิน (เลื่อน 12 ชม.)",
+  "personalDayTotals": "คะแนนและยอดรวมรายวัน",
+  "personalDayFirst": "วันแรกตามปฏิทิน",
+  "personalDayLast": "วันสุดท้ายตามปฏิทิน",
+  "personalDayExplain": "เลือกขอบเขตวันสำหรับไทม์ไลน์และประวัติ หน้าแรกแสดงวันปัจจุบันของคุณเสมอ การงีบไม่แบ่งวัน",
+  "personalDayCalendarNote": "คะแนนและยอดรวมมาจากวันตามปฏิทินหนึ่งวัน:",
+  "personalDayNotScored": "ยังไม่ได้ให้คะแนนการนอนเมื่อคืน",
+  "personalDayDefaultValue": "{value} (ค่าเริ่มต้น)",
+  "personalDayUnknown": "ไม่มียอดรวมตามปฏิทินสำหรับวันนี้",
+  "personalDaySaveFailed": "บันทึกการตั้งค่าไม่ได้ โปรดลองอีกครั้ง",
+  "personalDayCurrent": "การทำงานปัจจุบัน",
+  "personalDayTotalsExplain": "การเลือกวันตามปฏิทินนี้ใช้กับไทม์ไลน์และประวัติทั้งหมด ค่าเริ่มต้นจะเลือกจากรอบล่าสุดที่ครบถ้วนเมื่อมีข้อมูล",
+  "personalDayStarted": "วันของคุณเริ่มเวลา {time}",
+  "sleepSummaryEdit": "แก้ไขการนอนหลับ",
+  "sleepSummaryRecalculate": "คำนวณเวลาบนเตียงใหม่",
+  "sleepSummaryUpDream": "ฉันตื่นจากความฝัน"
 }

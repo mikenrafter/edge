@@ -14,6 +14,7 @@
 //     left behind by a dead pass becomes `unknown` and is never sent again.
 // Nothing here changes a flag, a day result or any analytics output.
 import 'dart:math';
+import '../pilot/pilot_flags.dart';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
@@ -125,6 +126,7 @@ class PulseAlertDelivery {
       dedupeKey: key,
       category: NotifCategory.health,
       priority: NotifPriority.critical,
+      silent: PilotFlag.observations.enabled && day != todayLabel(),
       title: notice.title(l),
       body: notice.body(l),
       date: day,
@@ -157,6 +159,7 @@ class PulseAlertDelivery {
       dedupeKey: key,
       category: NotifCategory.health,
       priority: NotifPriority.critical,
+      silent: PilotFlag.observations.enabled,
       title: l.pulseSummaryTitle(owned.length),
       body: l.pulseSummaryBody(owned.length, list),
       date: todayLabel(),

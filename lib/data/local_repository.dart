@@ -1,4 +1,5 @@
 import 'effect_work.dart';
+import 'pulse_ep/pulse_ep_summary.dart';
 // SEAM: cloud removed. Implement against openstrap_analytics + db.dart in the local re-layer. See HANDOFF.
 //
 // LocalRepository is the contract every UI screen consumes. It MIRRORS the old
@@ -187,6 +188,8 @@ abstract class LocalRepository {
   /// Repositories without an alert ledger return no metadata. Read failures
   /// propagate; the overview may omit this optional metadata on failure.
   Future<Map<String, PulseAlertRecord>> getPulseAlertRecords() async => const {};
+
+  Future<List<PulseEpisodeSummary>> getPulseEpisodes() async => const [];
 
   // ── day drill-down detail ────────────────────────────────────────────────────
   /// One read for the whole Sleep detail screen: the night, its timeline, the

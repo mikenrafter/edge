@@ -15,6 +15,9 @@ import 'pref_key_scanner.dart';
 // Deliberately independent of kPrefsNotBackedUp. Changing production policy
 // must not silently change the expected export. Add new settings here by hand.
 const _mustTravel = {
+  'ui.personal_day_mode',
+  'ui.personal_day_totals',
+  'ui.personal_day_learned_totals',
   // Fork additions: retained user choices and the fork's existing carry policy.
   'alerts.zone_pref_migrated',
   'demo.mode_enabled',
@@ -41,7 +44,7 @@ const _mustTravel = {
   'ui.device_lab_tab',
   'ui.gestures_tab',
   'ui.haptics_tab',
-  'pilot.alarm_screen', 'pilot.wake_methods', 'pilot.timelines', 'ui.full_width_tabs',
+  'pilot.sleep_summary', 'pilot.observations', 'pilot.alarm_screen', 'pilot.wake_methods', 'pilot.timelines', 'ui.full_width_tabs',
   'pilot.alarms.v1',
   'workout.stop_pending',
   'ff.alert_dispatcher', 'ff.native_relay', 'ff.source_resolver_ui',
@@ -164,7 +167,7 @@ const _dynamicExamples = {
 // Empty lists are delegating writers, audited at their owning call sites.
 const _indirectKeys = <String, List<String>>{
   'lib/pilot/pilot_flags.dart:flag.key': [
-    'pilot.alarm_screen', 'pilot.wake_methods', 'pilot.timelines', 'ui.full_width_tabs'],
+    'pilot.sleep_summary', 'pilot.observations', 'pilot.alarm_screen', 'pilot.wake_methods', 'pilot.timelines', 'ui.full_width_tabs'],
   // Generic facades; the concrete writes are scanned at their callers.
   'lib/settings/settings_repository.dart:key': [],
   'lib/settings/settings_repository.dart:e.key': [],

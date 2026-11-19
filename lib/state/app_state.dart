@@ -2939,6 +2939,11 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     }
   }
 
+  // AppState owns this display invalidation signal. Wake rows remain the
+  // durable source; Home need not wait for derivation to finish to reread them.
+  int _wakeEvidenceRevision = 0;
+  int get wakeEvidenceRevision => _wakeEvidenceRevision;
+
   /// Notes one wake event; returns the confirmed moment when it completed the
   /// double confirmation. Never throws: evidence is best-effort and must not
   /// break the alarm, the wake tick or the touch that triggered it.
@@ -2951,6 +2956,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   Future<int?> _noteWakeUnsafe(WakeEvidenceKind kind, DateTime at) async {
     try {
       final moment = await _wakeRecorder.note(kind, at);
+      if (!_disposed) {
+        _wakeEvidenceRevision++;
+        notifyListeners();
+      }
       if (moment != null && !_disposed) {
         _log('[wake] confirmed awake at '
             '${DateTime.fromMillisecondsSinceEpoch(moment * 1000).toIso8601String()} '

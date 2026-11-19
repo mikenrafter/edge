@@ -1,3 +1,7 @@
+import '../../pilot/pilot_flags.dart';
+import '../../data/pulse_ep/pulse_ep_summary.dart';
+import '../observation_history.dart';
+import 'pulse_episode.dart';
 import 'package:clock/clock.dart' as pc;
 import '../profile/profile.dart';
 import '../../l10n/display_text.dart';
@@ -105,6 +109,8 @@ class HealthData {
   /// Recomputed from the rollup on every load rather than logged, so the
   /// history is there from the first run instead of starting empty today.
   final List<Finding> findings;
+  final List<PulseEpisodeSummary> pulseEpisodes;
+  final bool pulseReadFailed;
 
   /// The newest day bundle's personal `baselines` block — the usual range the
   /// trend cards draw for resting HR and HRV. Null when it could not be read.
@@ -134,6 +140,8 @@ class HealthData {
     this.napCount,
     this.napDay = '',
     this.findings = const [],
+    this.pulseEpisodes = const [],
+    this.pulseReadFailed = false,
     this.baselines,
     this.chartsNewestDay,
     this.chartsComputedAt,
@@ -191,6 +199,10 @@ class HealthData {
         .catchError((_) => const <String, PulseAlertRecord>{});
     final today = await repo.getTodayStored();
     final cd = await repo.getInsights();
+    final episodesRead = PilotFlag.observations.enabled
+        ? repo.getPulseEpisodes().then((episodes) => (episodes:episodes, failed:false),
+          onError: (Object _) => (episodes:const <PulseEpisodeSummary>[], failed:true))
+        : Future.value((episodes:const <PulseEpisodeSummary>[], failed:false));
     final profile = await repo.getProfile();
     final days = await repo.availableDays();
 
@@ -275,7 +287,9 @@ class HealthData {
     final heart = await _soft(() => repo.getDayHeart(todayLabel()));
     final wearable = await wearableRead;
 
+    final pulse = await episodesRead;
     return HealthData(
+      pulseEpisodes: pulse.episodes, pulseReadFailed: pulse.failed,
       wearable: wearable,
       today: today,
       insights: cd,
@@ -780,6 +794,11 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
 
   // ─────────────── OVERVIEW ───────────────
   Widget _overview(BuildContext c, HealthData d) {
+    final observations = observationHistory(d.findings,d.pulseEpisodes);
+    final newest = observations.firstOrNull;
+    final newestEpisode = newest is PulseObservation ? newest.episode : null;
+    final newestFinding = newest is DailyObservation ? newest.finding : null;
+
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final rows = <Widget>[];
@@ -1079,14 +1098,22 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
       Section(
         key: const ValueKey('card:observations'),
         l?.healthObservationsTitle ?? 'Observations',
+        (PilotFlag.observations.enabled && d.pulseReadFailed
+            ? Surface(child: TextButton(onPressed: () => go(c, FindingsLog(d.findings,
+                rhr:d.points('resting_hr'), episodes:d.pulseEpisodes,
+                loadEpisodes:repoOf(c)?.getPulseEpisodes)),
+                child:const Text('Pulse recordings could not be loaded. Open Observations to retry.')))
+            : null) ??
         illnessCard ??
+        (PilotFlag.observations.enabled && newestEpisode != null
+            ? Surface(child:PulseEpisodeRow(newestEpisode)) : null) ??
             // No live illness, but the log is not empty: the newest entry in
             // place and the rest one tap away. ONE row — a wall of findings
             // on the tab you land on is the feed this is not.
             (d.findings.isNotEmpty
                 ? Surface(
-                    onTap: () => go(c, FindingsLog(d.findings, rhr: d.points('resting_hr'))),
-                    child: FindingRow(d.findings.first),
+                    onTap: () => go(c, FindingsLog(d.findings, rhr: d.points('resting_hr'), episodes:d.pulseEpisodes, loadEpisodes: d.pulseReadFailed ? repoOf(c)?.getPulseEpisodes : null)),
+                    child: FindingRow(PilotFlag.observations.enabled ? newestFinding ?? d.findings.first : d.findings.first),
                   )
                 : Surface(
                     // Two lines tall in both states: the "not yet" sentence is
@@ -1116,9 +1143,9 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
                     ]),
                     ),
                   )),
-        action: d.findings.isEmpty ? null : (l?.healthSeeAll ?? 'See all'),
+        action: observations.isEmpty ? null : (l?.healthSeeAll ?? 'See all'),
         onAction:
-            d.findings.isEmpty ? null : () => go(c, FindingsLog(d.findings, rhr: d.points('resting_hr'))),
+            observations.isEmpty ? null : () => go(c, FindingsLog(d.findings, rhr: d.points('resting_hr'), episodes:d.pulseEpisodes, loadEpisodes: d.pulseReadFailed ? repoOf(c)?.getPulseEpisodes : null)),
       ),
 
       // Naps moved to the Sleep tab, beside the night (the Naps door there).

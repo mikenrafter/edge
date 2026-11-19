@@ -9,6 +9,10 @@ export '../day_timeline/day_graph.dart' show DayGraph, kDayMinutes;
 import '../day_timeline/timeline_chart.dart';
 import '../day_timeline/timeline_filter.dart';
 import '../day_timeline/timeline_filter_button.dart';
+import '../../state/prefs.dart';
+import '../personal_day.dart';
+import '../personal_day_inputs.dart';
+import '../personal_day_widgets.dart';
 import 'detected_activities.dart' show NapAutoLogRow;
 import 'review_read_label.dart';
 import '../../l10n/presentation_text.dart';
@@ -108,6 +112,7 @@ class Moment {
     this.annotationLabel,
     this.identity,
     this.editRef,
+    this.calendarDay,
     this.fixedLines = false,
     this.eventGroup,
     this.wakeGroup,
@@ -125,6 +130,8 @@ class Moment {
   /// What opens this row's own editor ('nap', 'session:ID', 'moment:DATE HH:mm'
   /// for an answered marked moment), or NULL when the row has none. Only rows that can be edited carry one.
   final String? editRef;
+  /// Calendar owner of the source row, retained through cycle projection.
+  final String? calendarDay;
 
   /// An answered marked moment: the row is one title line and one detail line
   /// (ellipsis), reserved even when empty, so changing the answer never
@@ -267,6 +274,7 @@ String _span(int from, int? to) =>
 /// there is no placeholder for a domain the user does not use.
 List<Moment> dayMoments({
   required Map<String, dynamic> timeline,
+  String? calendarDay,
   Map<String, dynamic> wear = const {},
   List<FoodEntry> meals = const [],
   List<({String label, int at})> doses = const [],
@@ -341,6 +349,7 @@ List<Moment> dayMoments({
       annotationKind: AnnotationKind.nap,
       identity: 'nap:$on',
       editRef: 'nap',
+      calendarDay: calendarDay ?? timeline['date'] as String?,
     ));
   }
 
@@ -546,6 +555,7 @@ List<Moment> dayMoments({
       identity: 'moment:${m.key}',
       // The answer can be changed: its row carries an Edit (CLS-1).
       editRef: 'moment:${m.key}',
+      calendarDay: m.date,
       fixedLines: true,
       title: described?.describe(l) ?? choice.localized(l),
       // The row carries the clock; the detail is only the wearer's note.
@@ -837,10 +847,12 @@ class TimelineData {
     this.loadMillis = 0,
     this.rhrMarks = const [],
     this.discarded = const [],
+    this.personalView,
   });
 
   /// When the day's result was calculated (epoch ms), or null when unknown.
   final int? computedAtMs;
+  final PersonalDayView? personalView;
   final Map<String, int> readMillis;
   final int loadMillis;
   final List<ChartAnnotation> rhrMarks;
@@ -869,7 +881,25 @@ class TimelineData {
     AppLocalizations? l,
     void Function(Set<String>)? onPending,
     FutureOr<void> Function(TimelineData)? onPrimary,
+    bool calendarOnly = false,
+    DateTime? now,
   }) async {
+    if (!calendarOnly && Prefs.personalDayEnabled) {
+      final at = now ?? DateTime.now();
+      final view = await readPersonalDay(repo, want ?? dayLabelOf(at),
+          now: at, current: want == null);
+      if (view == null) return TimelineData(day: want);
+      final parts = <TimelineData>[];
+      var date = DateTime(view.day.start.year, view.day.start.month, view.day.start.day);
+      while (date.isBefore(view.day.end)) {
+        parts.add(await load(repo, want: dayLabelOf(date), l: l,
+            calendarOnly: true));
+        date = DateTime(date.year, date.month, date.day + 1);
+      }
+      final value = personalTimelineOf(view, parts);
+      await onPrimary?.call(value);
+      return value;
+    }
     final route = 'Review#${++_loadSequence}';
     final pending = <String>{};
     final elapsed = Stopwatch()..start();
@@ -901,7 +931,7 @@ class TimelineData {
     final primaryWear = read('primary wear', () => repo.getDayWear(day));
     final primary = (primaryTimeline, primaryWear).wait.then((rows) async {
       final value = TimelineData(day: day, days: days, raw: rows.$1, graph: dayGraph(rows.$1),
-        moments: dayMoments(timeline: rows.$1, wear: rows.$2, l: l));
+        moments: dayMoments(calendarDay: day, timeline: rows.$1, wear: rows.$2, l: l));
       await onPrimary?.call(value);
       LoadTimings.shared.record('Review', 'first usable rows', elapsed.elapsedMicroseconds, route: route);
     }, onError: (Object error, StackTrace stack) {
@@ -972,6 +1002,7 @@ class TimelineData {
       graph: dayGraph(timeline),
       raw: timeline,
       moments: dayMoments(
+        calendarDay: day,
         timeline: timeline,
         wakeTimeline: wake,
         wear: wear,
@@ -1032,6 +1063,58 @@ class TimelineData {
   }
 }
 
+/// Reuses DayGraph.window and the existing timeline join. Missing minutes
+/// stay null; untimed notes stay with their explicitly labelled calendar day.
+TimelineData personalTimelineOf(PersonalDayView view, List<TimelineData> parts) {
+  final cycle = view.day;
+  final start = DateTime(cycle.start.year, cycle.start.month, cycle.start.day);
+  final endDate = cycle.end.toLocal();
+  final end = DateTime(endDate.year, endDate.month, endDate.day + 1);
+  final epoch = start.millisecondsSinceEpoch ~/ 1000;
+  final minutes = end.difference(start).inMinutes;
+  final hr = List<double?>.filled(minutes, null);
+  final movement = List<double?>.filled(minutes, null);
+  final rest = <(int, int, Color)>[], work = <(int, int, Color)>[];
+  for (final part in parts) {
+    final graph = part.graph;
+    final origin = graph.dayStart;
+    if (origin == null) continue;
+    final shift = (origin - epoch) ~/ 60;
+    for (var i = 0; i < graph.slots; i++) {
+      final target = i + shift;
+      if (target < 0 || target >= minutes) continue;
+      if (i < graph.hr.length) hr[target] = graph.hr[i];
+      if (i < graph.movement.length) movement[target] = graph.movement[i];
+    }
+    rest.addAll([for (final (a, b, color) in graph.rest) (a + shift, b + shift, color)]);
+    work.addAll([for (final (a, b, color) in graph.work) (a + shift, b + shift, color)]);
+  }
+  final lo = (cycle.start.millisecondsSinceEpoch ~/ 1000 - epoch) ~/ 60;
+  final hi = ((cycle.end.millisecondsSinceEpoch ~/ 1000 - epoch) / 60).ceil();
+  final graph = DayGraph(dayStart: epoch, hr: hr, movement: movement,
+      rest: rest, work: work).window(lo, hi);
+  final moments = <Moment>[];
+  final seen = <String>{};
+  for (final part in parts) {
+    for (final moment in part.moments) {
+      if (!cycle.overlapsSeconds(moment.at, moment.until)) continue;
+      final id = moment.identity ?? '${moment.at}:${moment.until}:${moment.title}:${moment.eventId}';
+      if (seen.add(id)) moments.add(moment);
+    }
+  }
+  moments.sort((a, b) => a.at.compareTo(b.at));
+  final score = parts.where((p) => p.day == cycle.scoreDay).firstOrNull;
+  return TimelineData(day: cycle.scoreDay ?? cycle.label,
+    days: view.cycles.reversed.map((c) => c.id.value).toList(), personalView: view,
+    graph: graph, moments: moments,
+    discarded: {for(final part in parts) for(final m in part.discarded)
+      if(cycle.overlapsSeconds(m.at,m.until)) m.identity ?? '${m.at}:${m.editRef}': m}.values.toList(),
+    notes: score?.notes ?? const [],
+    raw: {'hr_owner': [for (final part in parts)
+      ...((part.raw?['hr_owner'] as List?) ?? const [])]},
+    computedAtMs: score?.computedAtMs);
+}
+
 /// An observation's title: a health measurement's own key (ours, or the
 /// scale's impedance) worded; any other name as [observationTitle] reads it.
 String measurementTitle(AppLocalizations? l, String name) => switch ((l, name)) {
@@ -1081,7 +1164,9 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
   final repo=repoOf(context),start=g.dayStart;if(repo==null||start==null)return;
   try{
     final d=DateTime.parse(day),out=List<SleepStage?>.filled((g.slots/5).ceil(),null);
-    for(final id in [day,dayLabelOf(DateTime(d.year,d.month,d.day+1))]){
+    final dates = _d?.personalView?.day.calendarDays ?? [dayLabelOf(d)];
+    final last = DateTime.parse(dates.last);
+    for(final id in {...dates,dayLabelOf(DateTime(last.year,last.month,last.day+1))}){
       final night=(await repo.getSleepDetailPrimary(id))?.bundle.night;if(night==null)continue;
       final s=recordedStages(night,origin:start,slots:g.slots);
       for(var i=0;i<out.length&&i<s.length;i++){out[i]??=s[i];}
@@ -1105,8 +1190,12 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
     });
   }
   TimelineController _chartFor(DayGraph graph) {
-    final start = graph.dayStart ?? localDayStartSec(_day ?? todayLabel())!;
-    final end = graph.slots > 0 ? start + graph.slots * 60 : localDayEndSec(_day ?? todayLabel())!;
+    final cycle = _d?.personalView?.day;
+    final calendarDay = _d?.day ?? dayLabelOf(DateTime.parse(_day ?? todayLabel()));
+    final start = graph.dayStart ?? (cycle == null
+        ? localDayStartSec(calendarDay)! : cycle.start.millisecondsSinceEpoch ~/ 1000);
+    final end = graph.slots > 0 ? start + graph.slots * 60
+        : cycle != null ? cycle.end.millisecondsSinceEpoch ~/ 1000 : localDayEndSec(calendarDay)!;
     if (_chart?.home != TimelineView(start.toDouble(),end.toDouble())) {
       final old = _chart;
       _chart = TimelineController(homeStartSec:start,homeEndSec:end);
@@ -1162,6 +1251,7 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
 
   @override
   void dispose() {
+    Prefs.personalDayRevision.removeListener(_personalDayChanged);
     _highlightTimer?.cancel();
     _pilotInteraction.dispose();
     _chart?.dispose();
@@ -1193,13 +1283,13 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
     }
   }
 
-  Future<void> _loadReview(String day) async {
+  Future<void> _loadReview(String day, {PersonalDay? cycle}) async {
     final repo = repoOf(context);
     if (repo == null) return;
     _review?.removeListener(_onReview);
     _review?.dispose();
     _savedRevision = 0;
-    _review = DayReviewController(repo, day,
+    _review = DayReviewController(repo, day, cycle: cycle,
         service: widget.reviewService,
         moments: widget.reviewMoments,
         editor: widget.reviewEditor, activities: widget.reviewActivities, snapshot: widget.reviewSnapshot,
@@ -1273,13 +1363,18 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
   /// Opens the editor of a saved row (a nap, a workout) and reloads after.
   @override
   Future<void> openRowEditor(Moment m) async {
-    final ref = m.editRef, day = _day ?? _d?.day;
-    if(day!=null && PilotFlag.timelines.enabled && (ref=='nap'||m.annotationKind==AnnotationKind.mainSleep||m.annotationKind==AnnotationKind.nap)){
+    final ref = m.editRef;
+    // CLAIM(personal-row-owner): the selected cycle/score never owns a row
+    // [review_r1_test.dart]. Mark keys preserve their source calendar date.
+    final day = m.calendarDay ?? (ref?.startsWith('moment:') == true
+        ? ref!.substring(7).split(' ').first
+        : dayLabelOf(DateTime.fromMillisecondsSinceEpoch(m.at * 1000)));
+    if(PilotFlag.timelines.enabled && (ref=='nap'||m.annotationKind==AnnotationKind.mainSleep||m.annotationKind==AnnotationKind.nap)){
       await go(context,PilotSleepEditor(day:day,initialTime:m.at));
       if(mounted && widget.data==null)unawaited(_load());
       return;
     }
-    if (ref == null || day == null) return;
+    if (ref == null) return;
     if (ref.startsWith('moment:')) {
       // Opens at once; the editor reads its own row (see MomentAnswerEditLoader).
       final changed = await go<bool>(context,
@@ -1367,16 +1462,23 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
     super.initState();
     _filter.addListener(_filterChanged);
     _listController.addListener(_listScrolled);
+    Prefs.personalDayRevision.addListener(_personalDayChanged);
     _day = widget.day;
     if (widget.data != null) {
       _d = widget.data;
       _loading = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _d?.day != null) _loadReview(_d!.day!);
+        if (mounted && _d?.day != null) _loadReview(_d!.day!, cycle: _d!.personalView?.day);
       });
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  void _personalDayChanged() {
+    _day = null;
+    if (widget.data == null) { _load(); }
+    else if (mounted) { setState(() {}); }
   }
 
   @override
@@ -1411,10 +1513,10 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
   Set<String> _pendingReads = const {};
   bool _reviewReading = false;
   int _reviewReadToken = 0;
-  Future<void> _readReview(String day) async {
+  Future<void> _readReview(String day, {PersonalDay? cycle}) async {
     final token = ++_reviewReadToken;
     if (mounted) setState(() => _reviewReading = true);
-    try { await _loadReview(day); }
+    try { await _loadReview(day, cycle: cycle); }
     finally { if (mounted && token == _reviewReadToken) setState(() => _reviewReading = false); }
   }
 
@@ -1430,12 +1532,12 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
     final l = AppLocalizations.of(context);
     final releasePrefetch = ReadPrefetch.shared.visibleRead('review-day');
     try {
-      final reviewRead = _day != null && _review?.day != _day ? _readReview(_day!) : Future<void>.value();
+      final reviewRead = !Prefs.personalDayEnabled && _day != null && _review?.day != _day ? _readReview(_day!) : Future<void>.value();
       var completeRead = false;
       final d = await TimelineData.load(repo, want: _day, l: l, onPrimary: (primary) async {
         await reviewRead;
-        if (mounted && token == _loadToken && _review?.day != primary.day && primary.day != null) {
-          await _readReview(primary.day!);
+        if (mounted && token == _loadToken && (_review?.day != primary.day || _review?.cycle?.id != primary.personalView?.day.id) && primary.day != null) {
+          await _readReview(primary.day!, cycle: primary.personalView?.day);
         }
         if (mounted && token == _loadToken && !completeRead) setState(() { _d = primary; _loading = false; });
         releasePrefetch();
@@ -1445,14 +1547,16 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
       completeRead = true;
       // A device's own HR curve needs HR of either cadence: a ring's 5-minute
       // history draws as well as a band's 1 Hz stream.
-      final candidates = mounted
+      final candidates = mounted && d.personalView == null
           ? _anyHrCandidates(context, context.read<AppState>())
           : const <DeviceOption>[];
       if (mounted && token == _loadToken) {
         // The chart can take its actual shape while the saved-review read finishes.
         setState(() => _d = d);
         await reviewRead;
-        if (_review?.day != d.day && d.day != null) await _readReview(d.day!);
+        if ((_review?.day != d.day || _review?.cycle?.id != d.personalView?.day.id) && d.day != null) {
+          await _readReview(d.day!, cycle: d.personalView?.day);
+        }
         if (!mounted || token != _loadToken) return;
         _review?.reconcileSettled(d.computedAtMs);
         setState(() => (
@@ -1634,12 +1738,28 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
     return out;
   }
 
+  int? _seenWakeEvidence;
+  void _watchWakeEvidence(BuildContext c) {
+    if (!Prefs.personalDayEnabled || widget.data != null) return;
+    try {
+      final revision = c.select<AppState, int>((a) => a.wakeEvidenceRevision);
+      final changed = _seenWakeEvidence != null && _seenWakeEvidence != revision;
+      _seenWakeEvidence = revision;
+      if (changed) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _load();
+        });
+      }
+    } catch (_) { /* A standalone gallery has no AppState. */ }
+  }
+
   @override
   Widget build(BuildContext c) => PilotFlag.timelines.enabled?_content(c):DayNavigationFrame(
       selectedDay: _day ?? _d?.day ?? widget.day ?? todayLabel(),
       onSelect: _goDay, child: _content(c));
 
   Widget _content(BuildContext c) {
+    _watchWakeEvidence(c);
     final d = _d ?? const TimelineData();
     final l = AppLocalizations.of(c);
     final p = P.of(c);
@@ -1759,11 +1879,16 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
               child: Padding(padding: const EdgeInsets.symmetric(horizontal: S.x4),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                DayNav(day: _day ?? d.day ?? todayLabel(), days: d.days,
-                  onDay: _goDay, alwaysShow: true),
+                PendingContent(pending: _loading && _d == null,
+                  child: DayNav(day: d.personalView?.day.id.value ?? _day ?? d.day ?? todayLabel(), days: d.days,
+                    labels: {for (final cycle in d.personalView?.cycles ?? const <PersonalDay>[])
+                      cycle.id.value: personalDayNavLabel(cycle)},
+                    onDay: _goDay, alwaysShow: true)),
                 const SizedBox(height: S.x3),
                 TextButton(onPressed: () => go(c, const TypicalDayScreen()),
                   child: Text(l?.typicalDayTitle ?? 'Typical day')),
+                if (d.personalView != null)
+                  PersonalDayCaption(d.personalView!.day, d.personalView!.mode),
                 if (!_loading && _d == null && _pendingReads.contains('import to finish copying stored data'))
                   StatusCard(l?.reviewWaitingImportTitle ?? 'Waiting for import',
                     l?.reviewWaitingImportBody ?? 'The import is copying stored data. Your activities can be read when it finishes.',
@@ -2106,6 +2231,7 @@ List<Widget> timelineBody(BuildContext c, TimelineData d,
           key: ValueKey(d.day))
       : null;
   return [
+    if (d.personalView != null) PersonalDayCaption(d.personalView!.day, d.personalView!.mode),
     ?graph,
     if (d.moments.isEmpty && d.notes.isEmpty && graph == null)
       StatusCard(

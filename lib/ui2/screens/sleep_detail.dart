@@ -1,6 +1,7 @@
 import '../../pilot/pilot_flags.dart';
 import '../../pilot/sleep_editor.dart';
 import '../../wake/wake_timeline.dart';
+import '../day_timeline/sleep_summary.dart';
 import '../../l10n/display_text.dart';
 import 'rhr_annotations.dart';
 import 'beats.dart' show Beats;
@@ -945,7 +946,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   /// "As of <time>" while this night is being recalculated; the night on
   /// screen stays. Its own row's time, so stepping to another night never
   /// borrows this one's.
-  Widget _asOf(SleepData d) => AsOfHold(
+  Widget _asOf(SleepData d, {bool statusOnly = false}) => AsOfHold(
         shown: d,
         day: d.day,
         computedAt: computedAtOf(d.night['computed_at']),
@@ -953,7 +954,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             shownDay: d.day,
             computedAt: computedAtOf(d.night['computed_at']),
             recalc: recalc),
-        builder: (c, at) => AsOfLabel(at: at),
+        builder: (c, at) => AsOfLabel(at: at, statusOnly: statusOnly),
       );
 
   /// Another night. The scrub cursor belongs to the night it was placed on, so
@@ -1186,6 +1187,13 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     Widget link(IconData icon, String name, String sub, Widget target) =>
         detailLinkRow(c, icon, name, sub, () => go(c, target));
     return [
+      if (PilotFlag.sleepSummary.enabled)
+        Column(key: const ValueKey('sleep-tab:timeline'),
+          crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ..._dayNav(d),
+            Surface(child: _answerSlot(c,p,d,n)),
+          ])
+      else
       InsideCard(
         key: const ValueKey('sleep-tab:timeline'),
         child: Column(
@@ -1273,6 +1281,12 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (PilotFlag.sleepSummary.enabled) ...[
+              if (_deviceNight(d) case final dn?) _night(c,p,d,dn,device:dn)
+              else _night(c,p,d,n),
+              ..._napsButton(c,l,d.day),
+              const SizedBox(height:S.x3),
+            ],
             _overnight(c, p, d),
             const SizedBox(height: S.x3),
             section(l.sleepDetailStagesSection, _stages(c, p, n)),
@@ -1525,6 +1539,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   /// the recalculating and failure states the pushed screen shows.
   Widget _answerSlot(
       BuildContext c, P p, SleepData d, Map<String, dynamic> n) {
+    Widget answer() => PilotFlag.sleepSummary.enabled
+        ? widget.embedded ? _pilotNightCard(c,d) : Surface(child:_pilotNightCard(c,d))
+        : _answer(c,p,d,n);
     final failed = n['calculation_error'] as String?;
     final running = n['recalculating'] == true && failed == null;
     final editStatus = SleepEditView.of(n['sleep_edit']);
@@ -1551,9 +1568,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           ),
         if (editStatus?.dependsOn != null) SleepEditStatus(status: editStatus!),
         if (running && !dependents)
-          PendingContent(pending: true, child: _answer(c, p, d, n))
+          PendingContent(pending: true, child: answer())
         else
-          _answer(c, p, d, n),
+          answer(),
         if (_saving)
           Text('Saving times…', style: F.cap.copyWith(color: p.ink3)),
       ],
@@ -1569,8 +1586,50 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         child: const Text('Retry'));
   }
 
-  /// Total sleep, when it ran, and the two ratios that qualify it. Everything
-  /// here is measured; nothing is a judgement.
+  Widget _pilotNightCard(BuildContext c, SleepData d) {
+    final l = AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));
+    final n = d.night;
+    final source = n['sleep_source'];
+    final mine = source == 'manual' || source == 'confirmed';
+    DateTime? at(Object? ts) => ts is num
+        ? DateTime.fromMillisecondsSinceEpoch((ts * 1000).round()) : null;
+    final start = at(n['onset_ts']);
+    final end = at(n['wake_ts']);
+    final rejected = source == 'rejected';
+    final intervals = <SleepSummaryInterval>[
+      if (start != null && end != null)
+        SleepSummaryInterval(id: 'main', start: start, end: end),
+      for (final (i, nap) in (d.timeline['naps'] as List? ?? const []).whereType<Map>().indexed)
+        if (at(nap['start']) case final start?)
+          if (at(nap['end']) case final end?)
+            SleepSummaryInterval(id: 'nap:$i', start: start, end: end, nap: true,
+              source: nap['source'] as String?, durationMin: nap['duration_min'] as num?),
+    ];
+    return SleepSummary(
+      key: const ValueKey('sleep-summary'),
+      asleepMin: n['duration_min'] as num?,
+      inBedMin: n['in_bed_min'] as num?,
+      efficiency: n['efficiency'] as num?,
+      unobservedMin: d.unobservedMin,
+      changedAt: null,
+      sourceIcon: rejected ? LucideIcons.undo2 : mine ? LucideIcons.userCheck : LucideIcons.wandSparkles,
+      sourceText: rejected ? l.sleepDetailNotSleep
+          : mine ? l.sleepDetailWindowMine
+          : source == 'auto_fallback' ? l.sleepDetailWindowFallback
+          : source == 'vendor_staged' ? l.sleepDetailStagedByRing
+          : start == null ? l.sleepDetailNoNightBody : l.sleepDetailWindowAuto,
+      sourceDetail: source == 'auto_fallback' ? l.sleepDetailWindowFallbackBody
+          : mine && d.solMin != null ? l.sleepDetailWindowSol(_solBand(c, d.solMin!))
+          : mine && !d.hasNight && _storedRanges(n) != null ? l.sleepDetailTimesSavedRanges : null,
+      intervals: intervals,
+      wake: d.wakeTimeline,
+      updatedAt: computedAtOf(n['recordings_through']),
+
+      context: _asOf(d, statusOnly: true),
+      onEdit: _loading ? null : () => (n['onset_ts'] is num && n['wake_ts'] is num) ? _editWindow(d.day ?? todayLabel(), (n['onset_ts'] as num).toInt(), (n['wake_ts'] as num).toInt()) : _addWindow(d.day ?? todayLabel()),
+    );
+  }
+
   Widget _answer(BuildContext c, P p, SleepData d, Map<String, dynamic> n) {
     final l = AppLocalizations.of(c);
     final tst = n['duration_min'] as num?;

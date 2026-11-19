@@ -1,3 +1,6 @@
+import '../personal_day_inputs.dart';
+import '../personal_day_widgets.dart';
+import '../personal_day.dart';
 import '../../l10n/date_text.dart';
 export '../../l10n/date_text.dart' show prettyDay, monthName, monthShortName, weekdayShortName;
 import '../../data/sleep_edit_store.dart';
@@ -1526,6 +1529,11 @@ _RingState _ringOf(
     case HomeRingKind.recovery:
       final v = d.readiness.value;
       final band = readinessBand(v, l);
+      if (d.wakeObserved && d.readiness.value == null) {
+        return _RingState(k, l?.homeRingRecovery ?? 'Recovery',
+          LucideIcons.batteryCharging, C.green, value: '—',
+          why: l?.personalDayNotScored ?? "Last night isn't scored yet");
+      }
       if (d.recoveryState == 'night_in_progress') {
         return _RingState(k, l?.homeRingRecovery ?? 'Recovery',
             LucideIcons.batteryCharging, C.green,
@@ -1578,6 +1586,10 @@ _RingState _ringOf(
               olderVersion: d.strain.fromOlderVersion, olderReason: d.strain.olderVersionReason);
     case HomeRingKind.sleep:
       final label = l?.homeRingSleep ?? 'Sleep';
+      if (d.wakeObserved && d.sleepMin.value == null) {
+        return _RingState(k, label, LucideIcons.moon, C.blue, value: '—',
+          why: l?.personalDayNotScored ?? "Last night isn't scored yet");
+      }
       // A baseline still filling is progress, not an absence, and is drawn
       // exactly as before: dashed, ahead of any estimate.
       if (d.sleepMin.value == null &&
@@ -1587,6 +1599,9 @@ _RingState _ringOf(
       }
       final m = sleepRingModel(
         now: now,
+        wakeObserved: d.wakeObserved,
+        dayMode: d.personalMode,
+        personalBoundary: d.personalDay != null,
         durationMin: d.sleepMin.value,
         stages: d.sleepStages,
         needMin: d.sleepNeedMin.value,
@@ -2011,6 +2026,10 @@ SleepStageMin? sleepStagesOf(Map<String, dynamic> night) {
 }
 
 class HomeData {
+  final PersonalDay? personalDay;
+  final PersonalDayMode personalMode;
+  final bool wakeObserved;
+  final List<PersonalDay> personalCycles;
   final String? name;
   final String? dayId;
   final Metric readiness;
@@ -2119,7 +2138,10 @@ class HomeData {
   /// (nothing is drawn, as before).
   final WearableDay? wearable;
 
-  const HomeData({this.sleepProvisional = false, 
+  const HomeData({this.personalDay,
+    this.personalCycles = const [],
+    this.personalMode = PersonalDayMode.calendarOffset,
+    this.wakeObserved = false, this.sleepProvisional = false,
     this.name,
     this.dayId,
     this.readiness = Metric.empty,
@@ -2246,6 +2268,7 @@ class HomeData {
     ExpectedSleepSchedule? sleepSchedule,
   }) =>
       HomeData(
+        personalDay: personalDay, personalMode: personalMode, wakeObserved: wakeObserved, personalCycles: personalCycles,
         name: name,
         sleepEdit: sleepEdit,
         dayId: dayId,
@@ -2297,6 +2320,14 @@ class HomeData {
   /// ([LocalRepository.getDayStrain]/[getDaySleepV2]) plus the one figure
   /// neither carries ([getDayOverview]'s readiness/resting_hr).
   static Future<HomeData> loadForDay(LocalRepository repo, String date,
+      [AppLocalizations? l]) async {
+    if (Prefs.personalDayEnabled) {
+      return _personal(repo, const HomeData(), date, l);
+    }
+    return _loadCalendarForDay(repo, date, l);
+  }
+
+  static Future<HomeData> _loadCalendarForDay(LocalRepository repo, String date,
       [AppLocalizations? l]) async {
     // Started first, awaited last: the first paint waits for the slowest read,
     // not the sum. `_wearableOf` swallows a failed read (null), so leaving it
@@ -2365,7 +2396,39 @@ class HomeData {
   /// refresh (first paint); [refreshPending] then says whether one is owed.
   static Future<HomeData> load(LocalRepository repo, [AppLocalizations? l,
       bool stored = false]) => repo.sharingDayReads(
-        InlineAsyncWork(() => _loadShared(repo, l, stored)));
+        InlineAsyncWork(() async {
+          final base = await _loadShared(repo, l, stored);
+          return !Prefs.personalDayEnabled ? base
+              : _personal(repo, base, todayLabel(pc.clock.now()), l, current: true);
+        }));
+
+  static Future<HomeData> _personal(LocalRepository repo, HomeData base,
+      String date, AppLocalizations? l, {bool current = false}) async {
+    final view = await readPersonalDay(repo, date, now: pc.clock.now(), current: current, home: current);
+    final score = view?.day.scoreDay;
+    final chosen = score == null ? const HomeData()
+      : score == base.dayId ? base : await _loadCalendarForDay(repo, score, l);
+    return HomeData(
+      dayId: view?.day.label ?? date, personalDay: view?.day,
+      personalMode: view?.mode ?? PersonalDayMode.wakeToWake,
+      personalCycles: current ? const [] : view?.cycles ?? const [],
+      wakeObserved: view?.awake ?? false, name: base.name ?? chosen.name,
+      readiness: chosen.readiness, sleepMin: chosen.sleepMin, rhr: chosen.rhr,
+      strain: chosen.strain, steps: chosen.steps, calories: chosen.calories,
+      caloriesTotal: chosen.caloriesTotal, stepGoal: chosen.stepGoal,
+      sleepStages: chosen.sleepStages, sleepNeedMin: base.sleepNeedMin.isEmpty
+        ? chosen.sleepNeedMin : base.sleepNeedMin,
+      bedtime: base.bedtime, sleepSchedule: base.sleepSchedule,
+      nextAlarm: base.nextAlarm, learnedOnsetMin: base.learnedOnsetMin,
+      learnedWakeMin: base.learnedWakeMin, cycleLenMin: base.cycleLenMin,
+      sleepProvisional: chosen.sleepProvisional, sleepEdit: chosen.sleepEdit,
+      recoveryState: chosen.recoveryState, absentDiag: chosen.absentDiag,
+      pendingActivities: base.pendingActivities, pendingActivitiesFailed: base.pendingActivitiesFailed,
+      refreshPending: base.refreshPending, wearable: chosen.wearable,
+      overnightAt: chosen.overnightAt, activityAt: chosen.activityAt,
+      overnightDay: score, activityDay: score,
+    );
+  }
 
   static Future<HomeData> _loadShared(LocalRepository repo, AppLocalizations? l,
       bool stored) async {
@@ -2611,6 +2674,7 @@ class _HomeScreenState extends State<HomeScreen>
     stopWatchingPausedRead();
     WidgetsBinding.instance.removeObserver(this);
     _tick?.cancel();
+    Prefs.personalDayRevision.removeListener(_personalDayChanged);
     HomeSnapshotStore.changes.removeListener(_storeChanged);
     _lifecycle?.dispose();
     super.dispose();
@@ -2619,6 +2683,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
+    Prefs.personalDayRevision.addListener(_personalDayChanged);
     HomeSnapshotStore.changes.addListener(_storeChanged);
     watchPausedRead();
     WidgetsBinding.instance.addObserver(this);
@@ -2634,6 +2699,12 @@ class _HomeScreenState extends State<HomeScreen>
     _lifecycle = AppLifecycleListener(
         onHide: _onHide, onRestart: _onReturnFromBackground);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  void _personalDayChanged() {
+    _day = null;
+    if (widget.data == null) { _load(); }
+    else if (mounted) { setState(() {}); }
   }
 
   void _storeChanged() {
@@ -2785,8 +2856,10 @@ class _HomeScreenState extends State<HomeScreen>
       }
 
       final publishedToday =
-          day == null || day == today ? published(today, 'getToday') : null;
-      final publishedOverview = published(day, 'getDayOverview');
+          !Prefs.personalDayEnabled && (day == null || day == today)
+            ? published(today, 'getToday') : null;
+      final publishedOverview = !Prefs.personalDayEnabled
+          ? published(day, 'getDayOverview') : null;
       final d = publishedToday is Map<String, dynamic>
           ? HomeData.fromPublishedToday(publishedToday, l)
           : publishedOverview is Map<String, dynamic>
@@ -2875,7 +2948,10 @@ class _HomeScreenState extends State<HomeScreen>
   /// already restricts the arrows to [_days] — so this just re-loads for it.
   void _goDay(String day) {
     setState(() {
-      _day = homeSwitcherDay(day, now: widget.now);
+      final at = widget.now ?? pc.clock.now();
+      final cycle = _d?.personalCycles.where((c) => c.id.value == day).firstOrNull;
+      _day = !Prefs.personalDayEnabled ? homeSwitcherDay(day, now: widget.now)
+          : day == todayLabel(at) || cycle?.contains(at) == true ? null : day;
       _d = null;
       _recordingsThrough = null;
       _loading = true;
@@ -2900,8 +2976,24 @@ class _HomeScreenState extends State<HomeScreen>
     return (word: l?.homeGreetingEvening ?? 'Good evening', icon: LucideIcons.moon, color: C.indigo);
   }
 
+  int? _seenWakeEvidence;
+  void _watchWakeEvidence(BuildContext c) {
+    if (!Prefs.personalDayEnabled || widget.data != null) return;
+    try {
+      final revision = c.select<AppState, int>((a) => a.wakeEvidenceRevision);
+      final changed = _seenWakeEvidence != null && _seenWakeEvidence != revision;
+      _seenWakeEvidence = revision;
+      if (changed) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _load();
+        });
+      }
+    } catch (_) { /* A standalone gallery has no AppState. */ }
+  }
+
   @override
   Widget build(BuildContext c) {
+    _watchWakeEvidence(c);
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final loaded = _dataGeneration == HomeSnapshotStore.generation ? _d : null;
@@ -3025,7 +3117,7 @@ class _HomeScreenState extends State<HomeScreen>
               : shortfall ??
                   whyFromNote(d.readiness.note) ??
                   (l?.homeReadinessNoReason ?? 'No reading.'),
-          onTap: () => go(c, ReadinessDetail(day: isToday ? null : _day)));
+          onTap: () => go(c, ReadinessDetail(day: d.personalDay?.scoreDay ?? d.personalDay?.label ?? (isToday ? null : _day))));
     } else if (firstWeeks && d.drivers.isEmpty) {
       help = RingHelp(guidance);
     }
@@ -3083,10 +3175,18 @@ class _HomeScreenState extends State<HomeScreen>
       // against the safe area.
       ?rebuilt,
 
-      // The day switcher keeps its slot (arrows dimmed) before there is a
-      // second day, so the card is there from the first launch.
-      card('daynav',
-          DayNav(day: _day ?? d.dayId, days: _days, onDay: _goDay, alwaysShow: true)),
+      // The unset experience keeps its day switcher. Pilot history lives in
+      // the timeline, leaving Home on the current cycle.
+      if (!Prefs.personalDayEnabled) card('daynav',
+          DayNav(day: d.personalDay?.id.value ?? _day ?? d.dayId,
+            days: !Prefs.personalDayEnabled && d.personalCycles.isEmpty ? _days : d.personalCycles.reversed.map((c) => c.id.value).toList(),
+            labels: {for (final cycle in d.personalCycles) cycle.id.value: personalDayNavLabel(cycle)},
+            onDay: _goDay, alwaysShow: true)),
+      if (Prefs.personalDayEnabled && d.personalDay != null)
+        Padding(padding: const EdgeInsets.symmetric(vertical: S.x3),
+          child: Text(l?.personalDayStarted(clockOfTs(d.personalDay!.start.millisecondsSinceEpoch ~/ 1000))
+            ?? 'Your day started ${clockOfTs(d.personalDay!.start.millisecondsSinceEpoch ~/ 1000)}',
+            style: F.over.copyWith(color: p.ink3))),
       // (Held: the gap is inside the rings wrapper below, so the caption's tap
       // target can start at the day bar's edge.)
       if (held == null) const SizedBox(height: S.x3),
@@ -3118,13 +3218,13 @@ class _HomeScreenState extends State<HomeScreen>
           onOpen: (k) => go(
               c,
               switch (k) {
-                HomeRingKind.recovery => ReadinessDetail(day: isToday ? null : _day),
-                HomeRingKind.strain => DayStrainDetail(day: isToday ? null : _day),
+                HomeRingKind.recovery => ReadinessDetail(day: d.personalDay?.scoreDay ?? d.personalDay?.label ?? (isToday ? null : _day)),
+                HomeRingKind.strain => DayStrainDetail(day: d.personalDay?.scoreDay ?? d.personalDay?.label ?? (isToday ? null : _day)),
                 // The night the ring was drawn from, not last night. Today
                 // stays null even after the switcher steps back onto it:
                 // today's ring is the held-over night, and only the default
                 // pick resolves to that one.
-                HomeRingKind.sleep => SleepDetail(day: isToday ? null : _day),
+                HomeRingKind.sleep => SleepDetail(day: d.personalDay?.scoreDay ?? d.personalDay?.label ?? (isToday ? null : _day)),
               }),
         ),
       ),
@@ -3144,7 +3244,13 @@ class _HomeScreenState extends State<HomeScreen>
       // (activities, marked moments, assumed water), else "Breakdown of your
       // day". It is the way into the day, so it has no second door below.
       if (!ImportFocus.active.value) card('detected', _detectedActivities(d, _day)),
-      if (!ImportFocus.active.value) TrackQuickLog(date: _day ?? d.dayId, observer: this),
+      if (!ImportFocus.active.value)
+        // CLAIM(personal-calendar-write): logs belong to the calendar instant
+        // chosen in the logger [review_r1_test.dart], independent of navigation.
+        if (d.personalDay != null || Prefs.personalDayEnabled)
+          TrackQuickLog.at(initialAt: widget.now, observer: this)
+        else
+          TrackQuickLog(date: _day ?? d.dayId, observer: this),
       // Community asks: eligible or not, never part of the first-launch layout.
       if (!bare) const CommunityNudge(key: ValueKey('card:nudge')),
 

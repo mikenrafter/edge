@@ -19,12 +19,20 @@ class WakeNightEvent {
     this.count,
     this.reason,
     this.wakeEpochSec,
+    this.confirmedDelivery = false,
+    this.dream,
+    this.technologyVersion,
   });
   final WakeNightEventKind kind;
   final DateTime at;
   final int? count;
   final String? reason;
   final int? wakeEpochSec;
+  /// Successful transport dispatch or a band-reported alarm. This does not
+  /// confirm physical buzzing [AppState._sendWakeHaptic, wake_timeline_test].
+  final bool confirmedDelivery;
+  final WakeDreamResponse? dream;
+  final String? technologyVersion;
 }
 
 class WakeBandAlarm {
@@ -41,6 +49,7 @@ class WakeBandAlarm {
 class WakeNightTimeline {
   const WakeNightTimeline({
     this.events = const [],
+    this.deliveries = const [],
     this.firstFireAt,
     this.ackAt,
     this.timeToWake,
@@ -49,6 +58,9 @@ class WakeNightTimeline {
     this.adjustedFor = const {},
   });
   final List<WakeNightEvent> events;
+  /// Every successful dispatch, including each Gradual step, for the detailed
+  /// summary. [events] retains the legacy first-per-method projection.
+  final List<WakeNightEvent> deliveries;
   final Set<String> adjustedFor;
 
   /// Display projection only. The observed history remains available in [events].
@@ -76,6 +88,9 @@ class WakeNightTimeline {
           wakeEpochSec: first.wakeEpochSec,
           reason: first.reason,
           count: observations.length,
+          confirmedDelivery: first.confirmedDelivery,
+          dream: first.dream,
+          technologyVersion: first.technologyVersion,
         ),
       );
     }
@@ -94,6 +109,7 @@ class WakeNightTimeline {
   static WakeNightTimeline forEpoch({
     required int wakeEpochSec,
     required List<WakeTraceEntry> trace,
+    bool confirmedDispatchOnly = false,
     List<WakeBandAlarm> bandAlarms = const [],
     WakeDreamResponse? dream,
   }) {
@@ -101,7 +117,12 @@ class WakeNightTimeline {
     for (final e in trace) {
       if (e.wakeEpochSec != wakeEpochSec) continue;
       final kind = switch (e.kind) {
-        'natural' when e.data['reason'] == 'fire' => WakeNightEventKind.natural,
+        // A decision is persisted before delivery. Only a successful transport
+        // result proves dispatch, not physical buzzing [wake_timeline_test].
+        'natural' when !confirmedDispatchOnly && e.data['reason'] == 'fire' => WakeNightEventKind.natural,
+        'natural_haptic'
+            when confirmedDispatchOnly && e.data['phase'] == 'result' && e.data['result'] == 'sent' =>
+          WakeNightEventKind.natural,
         'natural_repeat'
             when e.data['phase'] == 'result' && e.data['result'] == 'sent' =>
           WakeNightEventKind.repeat,
@@ -120,6 +141,11 @@ class WakeNightTimeline {
           at: DateTime.fromMillisecondsSinceEpoch(e.atMs, isUtc: true),
           count: (e.data['count'] as num?)?.toInt(),
           reason: e.data['reason'] as String?,
+          confirmedDelivery: kind == WakeNightEventKind.natural && e.kind == 'natural_haptic' ||
+              kind == WakeNightEventKind.repeat || kind == WakeNightEventKind.gradual ||
+              kind == WakeNightEventKind.alarm,
+          dream: kind == WakeNightEventKind.ack ? dream : null,
+          technologyVersion: e.data['technologyVersion']?.toString(),
         ),
       );
     }
@@ -127,7 +153,7 @@ class WakeNightTimeline {
       if (alarm.wakeEpochSec == wakeEpochSec && alarm.code == 57) {
         candidates.add(
           WakeNightEvent(kind: WakeNightEventKind.alarm, at: alarm.at,
-            wakeEpochSec: wakeEpochSec),
+            wakeEpochSec: wakeEpochSec, confirmedDelivery: true),
         );
       }
     }
@@ -137,6 +163,14 @@ class WakeNightTimeline {
       final time = a.at.compareTo(b.at);
       return time != 0 ? time : a.kind.index.compareTo(b.kind.index);
     });
+    final deliveries = <WakeNightEvent>[];
+    final reportedAlarms = <DateTime>{};
+    for (final e in candidates.where((e) => e.confirmedDelivery)) {
+      // The same band alarm can be present in both band_events and its trace.
+      // Separate Gradual steps remain separate, even at the same timestamp.
+      if (e.kind == WakeNightEventKind.alarm && !reportedAlarms.add(e.at)) continue;
+      deliveries.add(e);
+    }
     final firstOnly = <WakeNightEventKind>{};
     final events = <WakeNightEvent>[];
     DateTime? firstFire, ack;
@@ -154,16 +188,20 @@ class WakeNightTimeline {
           break;
       }
       events.add(e);
-      if (e.kind == WakeNightEventKind.natural ||
-          e.kind == WakeNightEventKind.gradual ||
-          e.kind == WakeNightEventKind.alarm) {
+      if (confirmedDispatchOnly ? e.confirmedDelivery :
+          e.kind == WakeNightEventKind.natural || e.kind == WakeNightEventKind.gradual || e.kind == WakeNightEventKind.alarm) {
         firstFire ??= e.at;
       }
       if (e.kind == WakeNightEventKind.ack) ack = e.at;
       if (e.kind == WakeNightEventKind.snooze) snoozes++;
     }
+    final answeredEvents = [for (final e in events)
+      if (e.kind == WakeNightEventKind.ack)
+        WakeNightEvent(kind: e.kind, at: e.at, wakeEpochSec: e.wakeEpochSec, dream: dream)
+      else e];
     return WakeNightTimeline(
-      events: List.unmodifiable(events),
+      events: List.unmodifiable(answeredEvents),
+      deliveries: List.unmodifiable(deliveries),
       firstFireAt: firstFire,
       ackAt: ack,
       timeToWake: firstFire == null || ack == null || ack.isBefore(firstFire)

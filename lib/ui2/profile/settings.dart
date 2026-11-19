@@ -1,4 +1,5 @@
 import '../../pilot/labs_section.dart';
+import '../personal_day_widgets.dart';
 import 'step_calibration.dart' show StepCalibrationScreen;
 import '../../compute/profile.dart' show plausibleAgeYears, plausibleHeightCm, plausibleWeightKg;
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
@@ -872,6 +873,7 @@ class MoreSettingsView extends StatelessWidget {
                   SetRow(LucideIcons.sun, C.yellow,
                       l?.settingsAppearanceRowTitle ?? 'Appearance',
                       value: appearance, onTap: onCycleAppearance),
+                  const PersonalDaySettings(),
                   SetRow(LucideIcons.zoomIn, C.indigo,
                       l?.sleepWakeZoom ?? 'Zoom wake-up events',
                       sub: l?.sleepWakeZoomDescription ??

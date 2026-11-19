@@ -217,8 +217,16 @@ String dayNavLabel(String? day, [AppLocalizations? l]) =>
 /// The calendar, restricted to the days that exist. A picker that offers an
 /// empty day is a dead end, so [days] greys out everything it does not contain.
 Future<String?> chooseDay(
-    BuildContext c, List<String> days, String? current) async {
+    BuildContext c, List<String> days, String? current,
+    {Map<String, String> labels = const {}}) async {
   if (days.isEmpty) return null;
+  if (labels.isNotEmpty) {
+    return openPickerOnce(c, () => showModalBottomSheet<String>(context: c,
+      builder: (c) => SafeArea(child: ListView(shrinkWrap: true, children: [
+        for (final id in days) ListTile(title: Text(labels[id] ?? id),
+          selected: id == current, onTap: () => Navigator.pop(c, id)),
+      ]))));
+  }
   final have = days.toSet();
   final sorted = [...days]..sort(); // oldest → newest
   final first = DateTime.parse(sorted.first);
@@ -249,6 +257,7 @@ class DayNav extends StatelessWidget {
   /// Draws the bar (both arrows dimmed) with fewer than two days, for a screen
   /// that must not gain a row when the second day arrives.
   final bool alwaysShow;
+  final Map<String, String> labels;
 
   const DayNav({
     super.key,
@@ -256,6 +265,7 @@ class DayNav extends StatelessWidget {
     required this.days,
     required this.onDay,
     this.alwaysShow = false,
+    this.labels = const {},
   });
 
   @override
@@ -268,7 +278,7 @@ class DayNav extends StatelessWidget {
     final newer = i > 0 ? days[i - 1] : null;
 
     return DayStepBar(
-      label: dayNavLabel(day, l),
+      label: labels[day] ?? dayNavLabel(day, l),
       previousLabel: l?.metricDetailPreviousDay ?? 'Previous day',
       nextLabel: l?.metricDetailNextDay ?? 'Next day',
       onPrevious: older == null ? null : () => onDay(older),
@@ -276,7 +286,7 @@ class DayNav extends StatelessWidget {
       chooseLabel: l?.metricDetailChooseDayShowing(dayNavLabel(day, l)) ??
           'Choose a day. Showing ${dayNavLabel(day, l)}',
       onChoose: () async {
-        final picked = await chooseDay(c, days, day);
+        final picked = await chooseDay(c, days, day, labels: labels);
         if (c.mounted && picked != null && picked != day) {
           PendingUserAction.run(() => onDay(picked));
         }

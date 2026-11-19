@@ -14,7 +14,7 @@ import '../notify/buzz_sequence.dart';
 import '../haptics/pattern_store.dart';
 import '../haptics/example_playback.dart' show HapticCancel;
 import '../ui2/screens/home_screen.dart' show repoOf;
-import '../ui2/grammar.dart' show BigButton,SubTabs,NavBar,Pressable;
+import '../ui2/grammar.dart' show BigButton,SubTabs,NavBar;
 import '../ui2/day_navigation.dart' show DayStepBar;
 import '../ui2/profile/profile.dart' show SetRow;
 import '../state/app_state.dart';

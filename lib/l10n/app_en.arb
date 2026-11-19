@@ -21773,5 +21773,172 @@
   "pilotWakeShort": "Wake",
   "pilotExpectedShort": "Expected",
   "pilotPinShort": "Pin",
-  "labsFullWidthTabs": "Full-width tabs"
+  "labsFullWidthTabs": "Full-width tabs",
+  "personalDaySetting": "Your day",
+  "personalDayWake": "Your day (wake to wake)",
+  "personalDaySleep": "Your day (sleep to sleep)",
+  "personalDayCalendar": "Calendar days (12 h offset)",
+  "personalDayTotals": "Daily scores and totals",
+  "personalDayFirst": "First calendar day",
+  "personalDayLast": "Last calendar day",
+  "personalDayExplain": "Choose day boundaries for your timeline and history. Home always follows your current day. Naps do not split a day.",
+  "personalDayCalendarNote": "Scores and totals use one calendar day:",
+  "personalDayNotScored": "Last night isn't scored yet",
+  "personalDayDefaultValue": "{value} (default)",
+  "personalDayUnknown": "No calendar totals for this day",
+  "personalDaySaveFailed": "Could not save this setting. Try again.",
+  "personalDayTotalsExplain": "This calendar day choice applies throughout your timeline and history. The default is chosen from your latest complete cycle when available.",
+  "personalDayStarted": "Your day started {time}",
+  "personalDayCurrent": "Current behaviour",
+  "sleepSummaryEdit": "Edit sleep",
+  "sleepSummaryAsleep": "asleep",
+  "sleepSummaryInBed": "{time} in bed",
+  "@sleepSummaryInBed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryCoverage": "{watched} watched · {missing} not recorded.",
+  "@sleepSummaryCoverage": {
+    "placeholders": {
+      "watched": {
+        "type": "String"
+      },
+      "missing": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryNoWindow": "No recorded sleep window",
+  "sleepSummaryFellAsleep": "Fell asleep",
+  "sleepSummaryMainSleep": "Main sleep",
+  "sleepSummaryNapStarted": "Nap started",
+  "sleepSummaryNapEnded": "Nap ended",
+  "sleepSummaryLogged": "You logged this",
+  "sleepSummaryDetected": "Detected",
+  "sleepSummaryNapAsleep": "{time} asleep",
+  "@sleepSummaryNapAsleep": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryUpDream": "I'm up from a dream",
+  "sleepSummaryUpNormal": "I'm up normally",
+  "sleepSummaryUnanswered": "Dream/normal not answered",
+  "sleepSummaryAfterAlert": "{time} after first wake alert sent",
+  "@sleepSummaryAfterAlert": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryNaturalSent": "Natural Wake sent",
+  "sleepSummaryRepeatSent": "Natural Wake repeat sent",
+  "sleepSummaryGradualSent": "Gradual Wake sent",
+  "sleepSummaryAlarmReported": "Alarm reported by band",
+  "sleepSummarySleepEnded": "Sleep ended",
+  "sleepSummaryDuration": "{hours}h {minutes}m",
+  "@sleepSummaryDuration": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryElapsed": "{minutes}m {seconds}s",
+  "@sleepSummaryElapsed": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      },
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "sleepSummaryRecalculate": "Recalculate time in bed",
+  "sleepSummaryZoomIn": "Zoom in",
+  "sleepSummaryZoomOut": "Zoom out",
+  "sleepSummaryResetZoom": "Reset zoom",
+  "sleepSummaryBackNight": "Back to this night",
+  "sleepSummaryNoWake": "Wake alert and “I'm up” not recorded.",
+  "sleepSummaryConfirmed": "Detected · confirmed by you",
+  "sleepSummaryRecorded": "Recorded nap",
+  "sleepSummaryNap": "Nap",
+  "sleepSummarySaveChanges": "Save your time changes before changing this entry.",
+  "sleepSummaryEntryChanged": "This sleep entry changed while you were editing. Open it again.",
+  "sleepSummaryNotSaved": "Not saved",
+  "sleepSummaryChanged": "Changed {time}",
+  "@sleepSummaryChanged": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryPanEarlier": "Pan earlier",
+  "sleepSummaryPanLater": "Pan later",
+  "sleepSummaryAfterAlarm": "{time} after band-reported alarm",
+  "@sleepSummaryAfterAlarm": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryWindow": "{time} sleep window",
+  "sleepSummaryPercentageExplanation": "Asleep percentage is time asleep out of the time the band recorded in your sleep window.",
+  "sleepSummaryTimeToWake": "Time to wake",
+  "sleepSummaryTimeToWakeExplanation": "From first sent alert to “I’m up”.",
+  "sleepSummarySentExplanation": "Alerts were sent; band vibration is unconfirmed.",
+  "sleepSummaryNatural": "Natural Wake",
+  "sleepSummaryGradual": "Gradual Wake",
+  "sleepSummaryAlertRange": "{range} · {count, plural, one{1 alert} other{{count} alerts}}",
+  "sleepSummaryWindowUpdated": "{window} · updated {time}",
+  "@sleepSummaryWindow": {
+    "description": "Duration of the sleep window, without claiming the wearer was in bed.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "@sleepSummaryAlertRange": {
+    "description": "Collapsed run of sent wake alerts. Range is local clock time.",
+    "placeholders": {
+      "range": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@sleepSummaryWindowUpdated": {
+    "description": "Sleep-window figure followed by the latest recording included in the served result.",
+    "placeholders": {
+      "window": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sleepSummaryUpdating": "Updating this night",
+  "sleepSummaryHeldWorkout": "Paused during workout",
+  "sleepSummaryHeldSync": "Waiting for sync to finish",
+  "sleepSummaryHeldBackground": "Paused in the background",
+  "sleepSummaryHeldPower": "Waiting for power",
+  "sleepSummaryOverlappingAlerts": "Overlapping wake alerts",
+  "observationsLoading": "Loading observations",
+  "observationsPulsePattern": "Irregular pulse pattern"
 }

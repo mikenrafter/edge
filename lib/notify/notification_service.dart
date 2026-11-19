@@ -483,15 +483,20 @@ class NotificationService {
     }
   }
 
-  NotificationDetails _details(NotifCategory c) {
+  NotificationDetails detailsForEvent(NotificationEvent event) =>
+      _details(event.category, silent: event.silent);
+
+  NotificationDetails _details(NotifCategory c, {bool silent = false}) {
     final ch = _channelFor(c);
     return NotificationDetails(
       android: AndroidNotificationDetails(
-        ch.id,
-        ch.name,
+        silent ? '${ch.id}_silent' : ch.id,
+        silent ? '${ch.name} (silent)' : ch.name,
         channelDescription: ch.description,
-        importance: _importanceFor(c),
-        priority: _priorityFor(c),
+        importance: silent ? Importance.low : _importanceFor(c),
+        priority: silent ? Priority.low : _priorityFor(c),
+        playSound: !silent,
+        enableVibration: !silent,
         icon: '@mipmap/launcher_icon',
         // Device alerts reuse FIXED ids (idLowBattery/idCharging), so a re-post
         // is an UPDATE of a card the user is already looking at — it shouldn't
@@ -502,7 +507,8 @@ class NotificationService {
         // from making noise. iOS has no equivalent on DarwinNotificationDetails.
         onlyAlertOnce: c == NotifCategory.device,
       ),
-      iOS: const DarwinNotificationDetails(),
+      iOS: silent ? const DarwinNotificationDetails(presentSound: false)
+          : const DarwinNotificationDetails(),
     );
   }
 
@@ -532,7 +538,7 @@ class NotificationService {
       final id = e.osId ?? await NotificationIds.instance.idFor(e);
       final title = await osText(e.title);
       final body = e.body.isEmpty ? null : await osText(e.body);
-      final details = _details(e.category);
+      final details = detailsForEvent(e);
       final permit = Zone.current[kAlertHandoffKey] as Future<bool> Function()?;
       if (permit != null && !await Future<bool>.sync(permit)) return false;
       await _plugin.show(

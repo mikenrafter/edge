@@ -150,7 +150,7 @@ class NotificationCenter {
           prefs.shouldFireOs(e, DateTime.now().hour * 60 + DateTime.now().minute),
       // Legacy derived reports may describe yesterday. Their receipt time
       // cannot authorize a time-sensitive band haptic.
-      transportTargets: phoneOnly || e.date.compareTo(todayLabel()) < 0
+      transportTargets: phoneOnly || e.silent || e.date.compareTo(todayLabel()) < 0
           ? const {'phone'} : null,
       phoneTransport: () => _emitPhone(
         e,

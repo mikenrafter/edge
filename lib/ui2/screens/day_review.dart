@@ -1,6 +1,7 @@
 import '../../data/activity_store.dart';
 import '../../pilot/pilot_flags.dart';
 import '../../pilot/sleep_editor.dart';
+import '../personal_day.dart';
 import 'review_read_label.dart';
 // The open breakdown owns staged decisions. Durable writes go
 // through the repository batch, serialized with the existing moment service.
@@ -103,10 +104,11 @@ typedef ReviewReadSnapshot = ({List<ActivitySuggestion> activities, MomentFollow
 
 class DayReviewController extends ChangeNotifier {
   DayReviewController(this.repo, this.day, {MomentReviewService? service,
-      this.moments, this.editor, this.enabledSince, this.activities, ReviewReadSnapshot? snapshot}) : _snapshot = snapshot, service = service ?? MomentReviewService.shared {
+      this.moments, this.editor, this.enabledSince, this.activities, this.cycle, ReviewReadSnapshot? snapshot}) : _snapshot = snapshot, service = service ?? MomentReviewService.shared {
     _drafts.addAll(this.service.queue.decisions);
     _ranges.addAll(this.service.queue.ranges.where((r) =>
-        r.startKey.startsWith('$day ')));
+        _ownsDate(r.startKey.split(' ').first) &&
+        (cycle == null || (r.startSec != null && cycle!.overlapsSeconds(r.startSec!, r.endSec)))));
     for (final r in _ranges.where((r) => r.inProgress)) {
       _choices[ReviewKey.range(r)] = true;
       _choices['moment:${r.startKey}'] = true;
@@ -117,6 +119,9 @@ class DayReviewController extends ChangeNotifier {
   final List<ActivitySuggestion>? activities;
   final LocalRepository repo;
   final String day;
+  final PersonalDay? cycle;
+  bool _ownsDate(String date) => cycle?.calendarDays.contains(date) ?? date == day;
+  bool _includes(int at, [int? until]) => cycle?.overlapsSeconds(at, until) ?? true;
   final MomentReviewService service;
   final List<PendingMoment>? moments;
   final DateTime? enabledSince;
@@ -250,12 +255,14 @@ class DayReviewController extends ChangeNotifier {
         if (!answered.contains(m.key)) m.key: m}.values.toList();
       final glasses = editor?.preloadedAssumed ?? f!.pendingAssumed(now);
       if (_disposed || generation != _generation) return;
-      _activities = activities.where((s) => _activityDay(s) == day).toList();
+      _activities = activities.where((s) => _ownsDate(_activityDay(s)) &&
+          _includes(s.startTs, s.endTs)).toList();
       _activityEdits.removeWhere((id, edit) => !_activities.any((s) =>
           'activity:${s.id}' == id && s.revision == edit.suggestion.revision));
-      _marks = marks.where((m) => m.date == day).toList();
-      _pendingMarks = marks;
-      _glasses = glasses.where((g) => g.date == day).toList();
+      _marks = marks.where((m) => _ownsDate(m.date) && _includes(m.sec)).toList();
+      _pendingMarks = cycle == null ? marks : _marks.toList();
+      _glasses = glasses.where((g) => _ownsDate(g.date) &&
+          _includes(g.local.millisecondsSinceEpoch ~/ 1000)).toList();
     } catch (_) {
       if (!_disposed && generation == _generation) loadFailed = true;
     } finally {
@@ -333,7 +340,8 @@ class DayReviewController extends ChangeNotifier {
     return [m.hhmm, ?_drafts[id]?.note].join(' · ');
   }
   List<({String id, Moment moment})> pendingRows(BuildContext c) {
-    final rows = _pendingRows(c);
+    final rows = _pendingRows(c).where((r) =>
+        _includes(r.moment.at, r.moment.until)).toList();
     for (final r in rows) { _order.putIfAbsent(r.id, () => _order.length); }
     _order.removeWhere((id, _) => !rows.any((r) => r.id == id) &&
         !_settled.containsKey(id));
@@ -342,15 +350,13 @@ class DayReviewController extends ChangeNotifier {
   List<({String id, Moment moment})> _pendingRows(BuildContext c) => [
     for (final r in _ranges)
       if (r.inProgress && r.startSec != null)
-        (id: ReviewKey.range(r), moment: Moment(at: r.startSec!,
+        (id: ReviewKey.range(r), moment: Moment(at: r.startSec!, until: cycle == null ? null : r.endSec,
             title: r.choice.localized(AppLocalizations.of(c)),
             detail: '', icon: LucideIcons.link,
             color: C.domMind)),
     for (final s in _activities)
       (id: 'activity:${s.id}', moment: Moment(at: _activityEdits['activity:${s.id}']?.startTs ?? s.startTs,
-          // Pilot day timeline (m255): a pending activity is a range, so the
-          // chart shades it. The non-Labs chart keeps drawing it as a point.
-          until: PilotFlag.timelines.enabled ? _activityEdits['activity:${s.id}']?.endTs ?? s.endTs : null,
+          until: (PilotFlag.timelines.enabled || cycle != null) && !s.isPrompt ? _activityEdits['activity:${s.id}']?.endTs ?? s.endTs : null,
           title: title(c, 'activity:${s.id}'), detail: listDetail(c, 'activity:${s.id}'),
           icon: s.kind == ActivityKind.track
               ? (s.isPrompt ? LucideIcons.circleHelp : LucideIcons.tag) :

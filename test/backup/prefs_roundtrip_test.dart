@@ -21,6 +21,11 @@ const _settings = <String, Object>{
   'notif_battery_pct': 15,
   'notif_fired:2026-09-21:low_read': true,
   'theme_choice': 'dark',
+  'pilot.sleep_summary': true,
+  'pilot.observations': true,
+  'ui.personal_day_mode': 'wakeToWake',
+  'ui.personal_day_totals': 'first',
+  'ui.personal_day_learned_totals': 'last',
 };
 
 const _denied = <String, Object>{
