@@ -13,6 +13,9 @@ const _kept = <String,Set<String>>{
   'lib/data/sleep_edit_store.dart': {'SleepEditStore.reuseMeasuredNightIfCurrent'},
   'lib/data/sleep_block_store.dart': {'SleepBlockStore.backfill','SleepBlockStore.absorb',
     'SleepBlockStore._project'},
+  // R7 checks the private target projection, after resolving the frozen block
+  // id. It never uses a live projection to recover history or suppression.
+  'lib/data/official_export/mapper.dart': {'_Mapper.officialNapLink'},
 };
 bool allowed(String path,SleepReadSite site) =>
     _kept[path]?.contains(site.member) ?? false;
