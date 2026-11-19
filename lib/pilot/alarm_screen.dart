@@ -351,7 +351,7 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
           section(l.pilotTimesHint),
           if(a.type==PilotAlarmType.sleep&&previewBed!=null)timeRow('bed',l.pilotFallAsleep,previewBed!,sub:previewBed==usualBed?l.pilotYourUsual:l.pilotWhatIf,timeColor:previewBed==usualBed?null:const Color(0xFFF5A36B),trailing:previewBed==usualBed?null:_resetChip(()=>setState(()=>previewBed=usualBed))),
           if(a.type==PilotAlarmType.sleep)...[
-            timeRow('early',l.pilotEarlyWake,a.wakeMinute-a.earlyMinutes,showTime:a.earlyMinutes>0,sub:a.earlyMinutes==0?null:l.pilotUpToEarlier(a.earlyMinutes).replaceFirst('U','u'),trailing:a.earlyMinutes==0?null:_resetChip(()=>setState(()=>a.earlyMinutes=0))),
+            timeRow('early',l.pilotEarlyWake,a.wakeMinute-a.earlyMinutes,showTime:a.earlyMinutes>0,sub:a.earlyMinutes==0?null:l.pilotUpToEarlier(a.earlyMinutes).replaceFirst('U','u'),trailing:a.earlyMinutes==0?null:PilotRowChip(l.pilotDisable,onTap:()=>setState(()=>a.earlyMinutes=0))),
             if(methods&&a.gradual)Opacity(opacity:a.band?1:.4,child:IgnorePointer(ignoring:!a.band,child:timeRow('gradual',l.pilotGradualStarts,expectedMinute-a.gradualMinutes,sub:l.pilotBeforeFire(a.gradualMinutes)))),
             if(methods&&a.sunrise)timeRow('sunrise',l.pilotSunriseStarts,expectedMinute-a.sunriseMinutes,sub:l.pilotBeforeFire(a.sunriseMinutes)),
             timeRow('wake',l.pilotWake,a.wakeMinute),
@@ -364,9 +364,20 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
               time:formatClock((a.wakeMinute+(methods&&!a.band?1:0))%1440~/60,(a.wakeMinute+(methods&&!a.band?1:0))%60))),
           ]else...[timeRow('window',l.pilotWindowStart,a.workoutStartMinute),timeRow('wake',l.pilotWindowEnd,a.wakeMinute)],
           Divider(height:1,color:p.line),
-          // Owner m165: the whole primary row is the toggle.
-          SetRow(LucideIcons.star,a.primary?C.yellow:C.n500,l.pilotPrimary,sub:a.canBePrimary?l.pilotPrimaryDescription:l.pilotWorkoutNoPrimary,chevron:false,enabled:a.canBePrimary,
-            onTap:a.canBePrimary?()=>setState(()=>a.primary=!a.primary):null,trailing:Switch(value:a.primary,onChanged:a.canBePrimary?(v)=>setState(()=>a.primary=v):null)),
+          // Mock-up v22 #primRow (m165, m254): the whole row is the switch; a
+          // bare star (#f2c94c filled on, #7f8ba0 off), no tile and no Switch.
+          // A workout alarm shows the row at .45, inert.
+          Semantics(key:const ValueKey('pilot-primary'),toggled:a.canBePrimary&&a.primary,enabled:a.canBePrimary,onTap:a.canBePrimary?()=>setState(()=>a.primary=!a.primary):null,excludeSemantics:true,
+            label:'${a.canBePrimary&&a.primary?l.pilotPrimaryOn:l.pilotPrimaryOff}. ${a.canBePrimary?l.pilotPrimarySub:l.pilotPrimaryWorkoutSub}',
+            child:Opacity(opacity:a.canBePrimary?1:.45,child:GestureDetector(behavior:HitTestBehavior.opaque,onTap:a.canBePrimary?()=>setState(()=>a.primary=!a.primary):null,
+              child:ConstrainedBox(constraints:const BoxConstraints(minHeight:44),child:Padding(padding:const EdgeInsets.symmetric(vertical:8),child:Row(children:[
+                SizedBox(width:40,height:40,child:Icon(a.canBePrimary&&a.primary?Icons.star_rounded:LucideIcons.star,size:a.canBePrimary&&a.primary?23:20,color:a.canBePrimary&&a.primary?const Color(0xFFF2C94C):const Color(0xFF7F8BA0))),
+                const SizedBox(width:10),
+                Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                  Text(a.canBePrimary&&a.primary?l.pilotPrimaryOn:l.pilotPrimaryOff,style:F.body.copyWith(color:p.ink)),
+                  Text(a.canBePrimary?l.pilotPrimarySub:l.pilotPrimaryWorkoutSub,style:F.cap.copyWith(color:const Color(0xFF9AA6B8),fontSize:12)),
+                ])),
+              ])))))),
         ],
         if(tab==1&&a.type==PilotAlarmType.sleep)...[
           if(!methods)Text(l.pilotEnableWakeMethods),

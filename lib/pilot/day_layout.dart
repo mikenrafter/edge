@@ -17,7 +17,9 @@ class PilotDayLayout extends StatelessWidget {
   const PilotDayLayout({super.key,required this.title,required this.dayRow,required this.graph,
     required this.controller,required this.interaction,required this.tab,required this.onTab,
     required this.listController,required this.rows,required this.annotations,
-    this.onScrub,this.onPan,this.onAnnotation,this.before=const [],this.after=const [],this.backToOpened,this.counts=const {},this.stages=const []});
+    this.onScrub,this.onPan,this.onAnnotation,this.before=const [],this.after=const [],this.backToOpened,this.counts=const {},this.stages=const [],this.backdrop=const [],this.focusId});
+  /// Other tabs' ranged events, shaded without icons (v16), and the focused row's id.
+  final List<ChartAnnotation> backdrop;final String? focusId;
   /// Recorded stages for the visible day, one per 5-min slot from the graph's
   /// start; drawn at half opacity inside sleep (signed-off day timeline).
   final List<SleepStage?> stages;
@@ -39,7 +41,7 @@ class PilotDayLayout extends StatelessWidget {
       SizedBox(height:52,child:Row(children:[IconButton(onPressed:()=>Navigator.maybePop(context),icon:const Icon(LucideIcons.chevronLeft)),Expanded(child:Text(title,textAlign:TextAlign.center,maxLines:1,overflow:TextOverflow.ellipsis,style:F.head.copyWith(color:p.ink))),const SizedBox(width:48)])),
       Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:Column(children:[
         dayRow,
-        PilotTimelineChart(controller:controller,graph:graph,interaction:interaction,annotations:annotations,stages:stages,onScrub:onScrub,onPan:onPan,onSelect:onAnnotation),
+        PilotTimelineChart(controller:controller,graph:graph,interaction:interaction,annotations:annotations,stages:stages,onScrub:onScrub,onPan:onPan,onSelect:onAnnotation,backdrop:backdrop,focusId:focusId),
         const SizedBox(height:6),
         // Mock-up v16 .etabs, with each tab's count as its badge (.cnt).
         SubTabs([for(final value in PilotTimelineTab.values)switch(value){PilotTimelineTab.pending=>l.dayActivitiesPending,PilotTimelineTab.saved=>l.dayActivitiesSaved,PilotTimelineTab.discarded=>l.dayActivitiesDiscarded}],

@@ -1721,7 +1721,9 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
         onCancel:()async{await review?.discardDraft();if(mounted)setState((){});},onSave:()=>review?.save(c)),
         graph:d.graph,stages:_pilotStages,controller:chart,interaction:_pilotInteraction,tab:_pilotTab??PilotTimelineTab.pending,
         onTab:(value)=>setState(()=>_pilotTab=value),listController:_listController,
-        annotations:annotations,onAnnotation:annotationTapped,onScrub:_scrubRow,
+        annotations:annotations,onAnnotation:annotationTapped,onScrub:_scrubRow,focusId:_highlight,
+        // v16 shades every event's range whichever tab is open (m254/m255).
+        backdrop:dayAnnotations([for(final e in ranked)if(!visible(e.row.moment))e.row.moment]).where((a)=>a.until!=null).toList(),
         onPan:(at){if(!_pilotInteraction.handScrubbing)_scrubRow(at);},
         counts:{for(final t in PilotTimelineTab.values)t:ranked.where((e)=>(e.row.moment.timelineKind??DayTimelineKind.saved).name==t.name).length},
         rows:_dayRows(rows,review),after:[
