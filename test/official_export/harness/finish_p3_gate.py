@@ -28,7 +28,7 @@ def parse(path):
   rows.append(dict(file=file,name=t.get('name',''),diagnostic=diagnostic))
  return rows,done
 head=[row for p in sorted(out.glob('head-*.jsonl')) for row in parse(p)[0]]
-base_logs=list(sorted(out.glob('base-*.jsonl')))
+base_logs=list(sorted(out.glob('base-*.jsonl')))+list(sorted((out/'preloaded').glob('*.jsonl')))
 covered={}
 for p in base_logs:
  for line in p.read_text().splitlines():
