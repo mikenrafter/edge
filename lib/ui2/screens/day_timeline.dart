@@ -460,7 +460,7 @@ List<Moment> dayMoments({
       title: def.$1,
       detail: n > 1
           ? '${clockOfTs(from)}–${clockOfTs(to)} · $n×'
-          : clockOfTs(from),
+          : '',
       icon: def.$2,
       members: n > 1 ? [for (var k = i; k <= j; k++) stream[k].$1] : const [],
       eventId: id,
