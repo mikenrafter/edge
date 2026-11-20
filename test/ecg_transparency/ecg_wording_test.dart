@@ -65,7 +65,8 @@ AppLocalizations _l(String loc) => lookupAppLocalizations(Locale(loc));
 /// English set is also applied to every locale to catch untranslated copies).
 const Map<String, List<String>> _bannedLocal = {
   'de': ['normal', 'gesund', 'sauber', 'gute aufnahme', 'zu viel bewegung'],
-  'es': ['normal', 'saludable', 'limpi', 'buena grabaci', 'demasiado movimiento'],
+  // 'limpio'/'limpia' (clean), not the stem: "la limpieza" is data cleaning.
+  'es': ['normal', 'saludable', 'limpio', 'limpia', 'buena grabaci', 'demasiado movimiento'],
   'fr': ['normal', 'en bonne sant', 'propre', 'bon enregistrement', 'trop de mouvement'],
   'hi': ['सामान्य', 'स्वस्थ', 'साफ', 'अच्छी रिकॉर्डिंग'],
   'zh': ['正常', '健康', '干净', '清晰', '良好', '过多运动', '动作过多'],
@@ -324,14 +325,18 @@ void main() {
       // A pulse flag always names its recorded day (Pulse, c8d538334).
       expect(findingTitle(en, irregular),
           'Irregular pulse pattern flagged on Wed, Oct 7, 2026');
+      // The owner's Pulse wording (8a2d498d8, 2026-11-14) replaced the phase 1
+      // body: it dates the flag and states what the rule can and cannot say.
+      final body = findingDetail(en, irregular);
       expect(
-        findingDetail(en, irregular),
+        body,
         startsWith(
-          "Your beat-to-beat pulse timing looked irregular today. This screen "
-          "uses the wrist pulse, which can't show the heart's electrical "
-          "activity, and is not a diagnosis.",
+          "On Wed, Oct 7, 2026, the timing between the wrist sensor's pulse "
+          'readings matched our irregularity rule.',
         ),
       );
+      expect(body, contains('It cannot identify atrial fibrillation (AF)'));
+      expect(body, contains('an unflagged recording cannot rule out a rhythm problem'));
     });
 
     test('the other five titles are unchanged, now read from the ARBs', () {

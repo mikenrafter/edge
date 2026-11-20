@@ -147,7 +147,8 @@ void main() {
       // Stale pin: later bumps moved both (c8d538334, 2026-11-18: v126, analytics 6c45f3b).
       expect(kAlgoVersion, 126);
       expect(kAnalyticsPin, '6c45f3b0894e23bf5047f7cc0e34e533d0802417');
-      expect(kProtocolPin, '89080bcfac7767b3a871fd3a7d9307f5f30dad26');
+      // Stale pin: the protocol pin moved on too (fbadb5bd, current pubspec).
+      expect(kProtocolPin, 'fbadb5bd055965d9400e266d6cf42748992ba950');
     });
 
     test('the persisted irregular blocks keep their keys (the pipeline writes '

@@ -31,7 +31,21 @@ final _sameOnPurpose = <String>{
   for (final code in ['de', 'es', 'hi', 'ru', 'th'])
     '$code:slotCapabilityStatus',
   'es:flashFileInfo',
+  // Placeholder-only patterns (no words of their own): a screen-reader line
+  // and a count suffix.
+  for (final code in ['de', 'es', 'fr', 'hi', 'ru', 'th', 'zh']) ...[
+    '$code:hapticScoreSemantics',
+    '$code:hapticsRowSemantics',
+    '$code:wakeJournalCount',
+  ],
+  // Spelled the same: "Version {version}".
+  for (final code in ['de', 'fr']) '$code:homeOlderVersion',
   // Units and abbreviations.
+  for (final code in ['es', 'fr']) ...['$code:syncDurationMinutes', '$code:syncDurationHours'],
+  // Spelled the same in French (cortisol / stress, "cycles", "notes").
+  'fr:tracksStress',
+  'fr:sleepDetailTapDragCycles',
+  'fr:hapticScoreNotes',
   for (final code in ['de', 'fr', 'hi', 'th']) '$code:zoneRowsRange',
   for (final code in ['es', 'fr']) '$code:zoneRowsMinutes',
   for (final code in ['es', 'fr']) '$code:activityLengthMinutes',

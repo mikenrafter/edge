@@ -159,6 +159,8 @@ void main() {
       final lines = e.readAsLinesSync();
       for (var i = 0; i < lines.length; i++) {
         if (_pureComment.hasMatch(lines[i])) continue;
+        // A UI row id (Home's WhyRow), not a table reach.
+        if (lines[i].contains("WhyRow(")) continue;
         if (_namesTheTable(lines[i])) offenders.add('$rel:${i + 1}');
       }
     }

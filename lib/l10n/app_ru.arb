@@ -10670,7 +10670,7 @@
   "tracksLoggingIncomplete": "Подтвердите полноту записей для сравнения",
   "tracksCoverageHold": "Ожидание более полных записей",
   "tracksLearningNeedData": "Ожидание сопоставимых ночей",
-  "tracksAdjustedFor": "Adjusted for: {tracks}",
+  "tracksAdjustedFor": "С поправкой на: {tracks}",
   "activityPossibleTrack": "Возможно: {track}",
   "activityTrackNote": "Подсказка по сигналам вашего тела, не диагноз. Подтверждение добавляет запись без количества. Пороговые значения не проверены.",
   "activityTrackYes": "Да",
@@ -11054,8 +11054,8 @@
   "@pairSensorPairing": {
     "description": "Row sub: pairing in progress."
   },
-  "tracksNotTaken": "Not taken {from} – {to}",
-  "tracksDailyRange": "Daily {from} – {to}",
+  "tracksNotTaken": "Не принято {from} – {to}",
+  "tracksDailyRange": "Ежедневно {from} – {to}",
   "@wellnessJournalDefaultSubtitle": {
     "description": "Journal subtitle when no custom fields are configured"
   },
@@ -11736,7 +11736,7 @@
   "@wellnessWhichDays": {
     "description": "All-caps section label in the schedule picker for choosing weekdays"
   },
-  "tracksFromExperiment": "From your experiment: its randomized result is used instead of the day-to-day estimate.",
+  "tracksFromExperiment": "Из вашего эксперимента: используется его рандомизированный результат вместо оценки по дням.",
   "@homeIllnessRedTitle": {
     "description": "Illness watch headline in the red state: accumulated evidence of a raised resting heart rate, which one very high night can produce. Must not claim consecutive nights."
   },
@@ -11853,7 +11853,7 @@
   "@settingsNoticesLicencesRowTitle": {
     "description": "Settings row title opening open-source notices and licences"
   },
-  "sleepDetailStagingFallbackUncertain": "The default estimate may be shown for some or all of this night instead of the experimental model.",
+  "sleepDetailStagingFallbackUncertain": "Для части ночи или для всей ночи может быть показана стандартная оценка вместо экспериментальной модели.",
   "tracksExperimentDid": "I did it",
   "@capLabelStrain": {
     "description": "Name of a thing a device sends: strain."
@@ -12258,7 +12258,7 @@
   "@tabSleep": {
     "description": "Bottom tab: last night, sleep plan, alarm and body clock."
   },
-  "sleepDetailStagingFallbackPartial": "The experimental model showed little stage variation for {minutes} min of this night; the default estimate is shown there.",
+  "sleepDetailStagingFallbackPartial": "Экспериментальная модель показала малую вариативность стадий в течение {minutes} мин этой ночи; на этом отрезке показана стандартная оценка.",
   "@pairMainBandWhoopOnly": {
     "description": "Plain statement on the pairing screens: only WHOOP can be the main band; other devices are added as additional devices."
   },
@@ -13662,7 +13662,7 @@
   "@logWorkoutAdjustTimes": {
     "description": "Button/screen-title for widening the times on a detected workout before logging it"
   },
-  "tracksDailySince": "Daily since {from}",
+  "tracksDailySince": "Ежедневно с {from}",
   "@devicesNothingMeasuringYet": {
     "description": "Status card title."
   },
@@ -14175,7 +14175,7 @@
   "@sleepDetailTimesSavedRanges": {
     "description": "Caption under a typed sleep window when the band recorded too little to score the night; stages are shown as ranges."
   },
-  "tracksPrescribed": "Prescribed by a clinician",
+  "tracksPrescribed": "Назначено врачом",
   "@profileYourDataGroup": {
     "description": "Group header."
   },
@@ -14443,7 +14443,7 @@
   "@logFoodAgain": {
     "description": "Section heading listing recently logged foods for one-tap re-logging"
   },
-  "sleepDetailStagingFallbackSome": "The experimental model showed little stage variation for part of this night; the default estimate is shown there.",
+  "sleepDetailStagingFallbackSome": "Экспериментальная модель показала малую вариативность стадий в части этой ночи; на этом отрезке показана стандартная оценка.",
   "@investigateSd1Sd224h": {
     "description": "HRV metric label: SD1/SD2 ratio over 24 hours"
   },
@@ -14628,7 +14628,7 @@
   "@supplementAwakeMin81d9ac": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
-  "momentEditAmountNotKept": "This answer was saved before its amount was kept, so changing it could leave the wrong total in your journal. Nothing was changed.",
+  "momentEditAmountNotKept": "Этот ответ был сохранён до того, как стало сохраняться количество, поэтому его изменение могло бы дать неверную сумму в вашем дневнике. Ничего не изменено.",
   "@wellnessLoadFailedBody": {
     "description": "Body of the card shown when the Wellness screen or the sleep plan failed to load from the database."
   },
@@ -14713,7 +14713,7 @@
   "@cycleTrackingOffBody": {
     "description": "Status card body when cycle tracking is disabled."
   },
-  "momentEditNotFound": "This answer is no longer saved.",
+  "momentEditNotFound": "Этот ответ больше не сохранён.",
   "@workoutWeekdayLetterWed": {
     "description": "Single-letter weekday abbreviation (Wed) used in the This-week strip and small charts"
   },
@@ -14780,7 +14780,7 @@
   "@coachYourDataYourModel": {
     "description": "Coach screen: all-caps headline in the empty-chat welcome card"
   },
-  "tracksAround": "Around (optional, HH:mm)",
+  "tracksAround": "Около (необязательно, чч:мм)",
   "@calmBreathingCloseBreathing": {
     "description": "Semantic label for the close button on the breathing screen"
   },
@@ -14790,7 +14790,7 @@
   "@metricDetailToday": {
     "description": "Range picker chip and headline label for the current day, on the shared metric trend/detail screen."
   },
-  "tracksAmountPerDay": "Amount per day, optional",
+  "tracksAmountPerDay": "Количество в день, необязательно",
   "@dayStrainLowCoverageBody": {
     "description": "Status card body explaining why a partly-worn day is not comparable to a full one"
   },
@@ -14872,11 +14872,11 @@
   "@nutritionTitle": {
     "description": "Nutrition screen title"
   },
-  "tracksOngoing": "No end date (ongoing)",
+  "tracksOngoing": "Без даты окончания (продолжается)",
   "@homeRestingSub": {
     "description": "Signal card subtitle: Resting, under the heart rate reading."
   },
-  "tracksExperimentWashout": "This track takes about {days} days to wear off (five half-lives, or its withdrawal period). Experiment days alternate every day, so a skip day still carries earlier doses and withdrawal effects, and the comparison is biased toward zero. You can still run it; read the result with that in mind.",
+  "tracksExperimentWashout": "Этому треку нужно около {days} дн., чтобы перестать действовать (пять периодов полувыведения или срок отмены). Дни эксперимента чередуются каждый день, поэтому день пропуска всё ещё несёт эффекты прежних доз и отмены, и сравнение смещено к нулю. Вы всё равно можете его провести; читайте результат с учётом этого.",
   "@coachChatgptNotAllowedTitle": {
     "description": "Coach, ChatGPT sign-in: shown while signing in or out with ChatGPT."
   },
@@ -15619,7 +15619,7 @@
   "@settingsBuzzFromShortcutIosBody": {
     "description": "Section body on iOS explaining the inbound band-buzz endpoint"
   },
-  "tracksExperimentMultiplicity": "Each interval covers one system at 95%. With {count} systems compared, about one in twenty intervals would miss by chance alone, so treat one that only just excludes zero with caution.",
+  "tracksExperimentMultiplicity": "Каждый интервал охватывает одну систему с вероятностью 95%. При сравнении {count} систем примерно один интервал из двадцати промахнётся лишь по случайности, поэтому относитесь осторожно к тому, который едва исключает ноль.",
   "@settingsAlarmLatchFailedRowTitle": {
     "description": "Notification row title for the alarm latch-failure alert"
   },
@@ -15763,7 +15763,7 @@
   "@wellnessWhatYouLogScreenTitle": {
     "description": "Screen title for the journal findings detail screen"
   },
-  "momentEditTitle": "Edit marked moment",
+  "momentEditTitle": "Изменить отмеченный момент",
   "@supplementYourBeatToBeatPatternfed8f0": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
@@ -16552,7 +16552,7 @@
   "@homeNothingTodayTitle": {
     "description": "Title shown when there is history but nothing recorded for today."
   },
-  "tracksExperimentStop": "Stop experiment",
+  "tracksExperimentStop": "Остановить эксперимент",
   "@pairingFindMyBand": {
     "description": "Pairing CTA: idle."
   },
@@ -17014,7 +17014,7 @@
   "@bandStatusDisconnectedFix": {
     "description": "BandStatus fix action: band is not connected"
   },
-  "tracksExperimentStoppedNote": "You stopped this experiment early, so no effect is reported and no more reminders are sent.",
+  "tracksExperimentStoppedNote": "Вы остановили этот эксперимент досрочно, поэтому эффект не сообщается и напоминания больше не отправляются.",
   "@momentFollowUpNoteHint": {
     "description": "Hint of the optional free-text note field"
   },
@@ -17318,7 +17318,7 @@
   "@ecgNotDiagnosis": {
     "description": "WHOOP MG ECG: The category comes from the band. This is not a diagnosis."
   },
-  "activityTrackDidYouOn": "Did you have or do “{track}” on {date}?",
+  "activityTrackDidYouOn": "Вы принимали или делали «{track}» {date}?",
   "@metricDetailNoValueYet": {
     "description": "Empty-state body: today has not produced a value and the install has no data at all yet."
   },
@@ -17358,7 +17358,7 @@
   "@devicesWornOn": {
     "description": "Step calibration wearing-location setting"
   },
-  "tracksExperimentWashoutResult": "Caveat: this track takes about {days} days to wear off, so skip days include carry-over and withdrawal effects and the effect shown is biased toward zero.",
+  "tracksExperimentWashoutResult": "Оговорка: этому треку нужно около {days} дн., чтобы перестать действовать, поэтому дни пропуска включают эффекты переноса и отмены, и показанный эффект смещён к нулю.",
   "@supplementShownTonightOnVitalsa1d4ef": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
@@ -17891,7 +17891,7 @@
   "@reportSentTitle": {
     "description": "Issue report: success card title."
   },
-  "sleepDetailStagingExperimental": "Experimental sleep-stage estimate. Not validated against a clinical sleep study. Not for medical decisions.",
+  "sleepDetailStagingExperimental": "Экспериментальная оценка стадий сна. Не проверена в клиническом исследовании сна. Не для медицинских решений.",
   "@capReasonLiveSessions": {
     "description": "Caption under Steps for WHOOP 4: it counts steps only while the app has a live connection."
   },
@@ -17994,7 +17994,7 @@
   "@activitySetupRouteDetail": {
     "description": "Detail text under the route row on the activity setup screen"
   },
-  "tracksExperimentEffectLine": "{system}: {effect} {unit} (do minus skip; 95% interval {lower} to {upper} {unit}); {nDo} do days, {nSkip} skip days",
+  "tracksExperimentEffectLine": "{system}: {effect} {unit} (выполнение минус пропуск; 95% интервал от {lower} до {upper} {unit}); дней выполнения: {nDo}, дней пропуска: {nSkip}",
   "@capLabelHeartRate": {
     "description": "Table row: heart rate and resting heart rate, as one capability."
   },
@@ -18062,7 +18062,7 @@
   "@wellnessNothingToScoreBody": {
     "description": "Status card body explaining adherence has nothing to score yet"
   },
-  "momentEditChangedElsewhere": "This answer was changed somewhere else. Close this and open it again.",
+  "momentEditChangedElsewhere": "Этот ответ был изменён в другом месте. Закройте это окно и откройте его снова.",
   "@pairWearableNote": {
     "description": "Note under a ring’s or watch’s table on the pairing sheet. “Devices” is the device list in Settings."
   },
@@ -18090,7 +18090,7 @@
   "@settingsWindDownRowSub": {
     "description": "Notification row subtitle for the bedtime wind-down nudge"
   },
-  "activityTrackPromptNoteDay": "Yes adds an entry with no time or amount for that day. No records that none happened that day.",
+  "activityTrackPromptNoteDay": "«Да» добавляет запись без времени и количества за этот день. «Нет» фиксирует, что в этот день этого не было.",
   "@cycleNotEnoughDerivedNights": {
     "description": "Empty-state message on the current-cycle chart when too few nights have derived data."
   },
@@ -18770,7 +18770,7 @@
   "@pairingNotFoundAdviceFix": {
     "description": "Advice card fix: not found."
   },
-  "tracksUseObservational": "Use my day-to-day data instead",
+  "tracksUseObservational": "Использовать мои данные по дням",
   "@pairingSkipNote": {
     "description": "Note under the skip button."
   },
@@ -18780,7 +18780,7 @@
   "@sleepDetailTemp": {
     "description": "Short label for skin temperature in the scrub readout card."
   },
-  "tracksPrescribedNote": "The app never asks you to skip a prescribed treatment.",
+  "tracksPrescribedNote": "Приложение никогда не просит вас пропускать назначенное лечение.",
   "@ecgScreenerSinusMeaning": {
     "description": "WHOOP MG ECG: The band reported a regular rhythm at a heart rate between 51 and 99 beats per minute. The app has not checked"
   },
@@ -18865,7 +18865,7 @@
   "@supplementUnknownSensor98a1f7": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
-  "sleepDetailStagingFallback": "The experimental model showed little stage variation, so the default estimate is shown.",
+  "sleepDetailStagingFallback": "Экспериментальная модель показала малую вариативность стадий, поэтому показана стандартная оценка.",
   "@activitySummaryElapsedTime": {
     "description": "Fallback hero caption showing plain elapsed time"
   },
@@ -19582,7 +19582,7 @@
   "@supplementUnusualForYou770b0d": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
-  "momentEditFailed": "Could not save that change. Nothing was changed. Try again.",
+  "momentEditFailed": "Не удалось сохранить изменение. Ничего не изменено. Попробуйте ещё раз.",
   "@supplementLowBatteryc5b099": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
@@ -20203,7 +20203,7 @@
   "@homeAnalyzingBody": {
     "description": "Body shown on a bare day once the backlog has landed and a derive job is computing today's numbers."
   },
-  "sleepDetailStagingFallbackSomeGeneric": "For part of this night, the default estimate is shown instead of the experimental model.",
+  "sleepDetailStagingFallbackSomeGeneric": "Для части этой ночи показана стандартная оценка вместо экспериментальной модели.",
   "@dayStrainInputsBase": {
     "description": "First sentence of the day strain 'what this is made of' explanation"
   },
@@ -20426,7 +20426,7 @@
   "@alarmNavTitle": {
     "description": "Alarm screen title."
   },
-  "tracksExperimentPrescribed": "Prescribed treatments are never randomized; the app will not ask you to skip one. Talk to your clinician about changes.",
+  "tracksExperimentPrescribed": "Назначенное лечение никогда не рандомизируется; приложение не попросит вас его пропускать. Обсуждайте изменения с врачом.",
   "@deviceUseSheetOff": {
     "description": "Confirmation sheet: the switch can be turned off, and the device's contribution is removed."
   },
@@ -20451,7 +20451,7 @@
   "@symptomAreaThighs": {
     "description": "Symptom describer: body area \"thighs\" (lower case; used inside the sentence)"
   },
-  "sleepDetailStagingFallbackGeneric": "The default estimate is shown for this night instead of the experimental model.",
+  "sleepDetailStagingFallbackGeneric": "Для этой ночи показана стандартная оценка вместо экспериментальной модели.",
   "@supplementAASMSleepAccountingDefinitions79c9d9": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },

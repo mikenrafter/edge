@@ -237,9 +237,10 @@ void main() {
       expect(_texts(t).where((s) => s.contains('synced through')), isEmpty,
           reason: '"synced through" belongs to a finished sync');
       // The step list still shows the same fact: headline and row agree.
-      expect(find.textContaining('aiting to calculate'),
-          findsNWidgets(2),
-          reason: 'headline + Calculate row, both from the active step');
+      expect(find.textContaining('aiting to calculate'), findsOneWidget,
+          reason: 'the headline, from the active step');
+      expect(find.textContaining('aiting for another calculation'), findsOneWidget,
+          reason: 'the Calculate row says the same fact in its own words');
       await t.pumpWidget(const SizedBox());
     });
 

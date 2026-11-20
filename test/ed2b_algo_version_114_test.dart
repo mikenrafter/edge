@@ -14,9 +14,12 @@ void main() {
     final at = src.indexOf('// 122 → 125');
     expect(at, isNonNegative);
     final entry = src.substring(at, src.indexOf('const int kAlgoVersion', at));
-    for (final change in ['0.12.2', 'HMM', 'd876c42', 'night_checkpoint',
-      'DAY format is unchanged', 'IncrementalMinuteMetrics', 'input order',
-      '#102-#110', 'deferred']) {
+    // The entry was rewritten by the merge repairs and the 126 Pulse repin
+    // (c8d538334, 2026-11-18); these name what it still has to say: the merge,
+    // the sibling pins, and that the day format is unchanged.
+    for (final change in ['0.12.2', 'HMM', 'd876c42', 'a438df40',
+      'night_checkpoint', 'the fork DAY format is unchanged', '6b2f6869',
+      '6c45f3b0', 'PRSA/CVHR honesty']) {
       expect(entry, contains(change));
     }
   });

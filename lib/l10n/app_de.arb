@@ -5023,7 +5023,7 @@
   "tracksLoggingIncomplete": "Protokollierung bestätigen, um Nächte zu vergleichen",
   "tracksCoverageHold": "Warten auf vollständigere Aufzeichnungen",
   "tracksLearningNeedData": "Warten auf vergleichbare Nächte",
-  "tracksAdjustedFor": "Adjusted for: {tracks}",
+  "tracksAdjustedFor": "Angepasst für: {tracks}",
   "activityPossibleTrack": "Möglich: {track}",
   "activityTrackNote": "Ein Hinweis aus deinen Körpersignalen, keine Diagnose. Bestätigen fügt einen Eintrag ohne Menge hinzu. Die zugrunde liegenden Schwellenwerte sind nicht validiert.",
   "activityTrackYes": "Ja",
@@ -5641,8 +5641,8 @@
   "@pairSensorPairing": {
     "description": "Row sub: pairing in progress."
   },
-  "tracksNotTaken": "Not taken {from} – {to}",
-  "tracksDailyRange": "Daily {from} – {to}",
+  "tracksNotTaken": "Nicht genommen {from} – {to}",
+  "tracksDailyRange": "Täglich {from} – {to}",
   "@snoozeCardUntil": {
     "description": "Home card while a main-alarm snooze is pending; {time} is HH:MM.",
     "placeholders": {
@@ -6686,7 +6686,7 @@
       }
     }
   },
-  "tracksFromExperiment": "From your experiment: its randomized result is used instead of the day-to-day estimate.",
+  "tracksFromExperiment": "Aus deinem Experiment: Sein randomisiertes Ergebnis wird statt der Tag-zu-Tag-Schätzung verwendet.",
   "@wearableWhyNoDeviceSteps": {
     "placeholders": {
       "device": {
@@ -6857,7 +6857,7 @@
       }
     }
   },
-  "sleepDetailStagingFallbackUncertain": "The default estimate may be shown for some or all of this night instead of the experimental model.",
+  "sleepDetailStagingFallbackUncertain": "Für einen Teil dieser Nacht oder die ganze Nacht wird möglicherweise die Standardschätzung statt des experimentellen Modells angezeigt.",
   "tracksExperimentDid": "I did it",
   "@capLabelStrain": {
     "description": "Name of a thing a device sends: strain."
@@ -7557,7 +7557,7 @@
   "@tabSleep": {
     "description": "Bottom tab: last night, sleep plan, alarm and body clock."
   },
-  "sleepDetailStagingFallbackPartial": "The experimental model showed little stage variation for {minutes} min of this night; the default estimate is shown there.",
+  "sleepDetailStagingFallbackPartial": "Das experimentelle Modell zeigte für {minutes} Min. dieser Nacht wenig Phasenvariation; dort wird die Standardschätzung angezeigt.",
   "@pairMainBandWhoopOnly": {
     "description": "Plain statement on the pairing screens: only WHOOP can be the main band; other devices are added as additional devices."
   },
@@ -9008,7 +9008,7 @@
   "@activitySummaryKm": {
     "description": "Column header for kilometre number in the route splits table"
   },
-  "gesturesReplaySub": "A tap the band delivers late is still stamped with the minute and day it happened. Other actions never run for a late tap.",
+  "gesturesReplaySub": "Ein Tippen, das das Band verspätet liefert, trägt trotzdem die Minute und den Tag, an dem es geschah. Andere Aktionen laufen für ein verspätetes Tippen nie.",
   "@alarmHeadlinePending": {
     "description": "Detail card headline: pending."
   },
@@ -9928,7 +9928,7 @@
   "@logWorkoutAdjustTimes": {
     "description": "Button/screen-title for widening the times on a detected workout before logging it"
   },
-  "tracksDailySince": "Daily since {from}",
+  "tracksDailySince": "Täglich seit {from}",
   "@homeMonthAugustShort": {
     "description": "Abbreviated month name: August, for compact date chips."
   },
@@ -10166,7 +10166,7 @@
       }
     }
   },
-  "gesturesSectionBodyMulti": "Works only while the app is connected and awake. Turn on as many actions as you like; with every action off, a double-tap does nothing. If you tap while your phone is away, the band stores the tap and sends it later. A late tap runs only an action that says it can.",
+  "gesturesSectionBodyMulti": "Funktioniert nur, solange die App verbunden und aktiv ist. Schalte so viele Aktionen ein, wie du möchtest; sind alle Aktionen aus, bewirkt ein Doppeltippen nichts. Wenn du tippst, während dein Telefon nicht in der Nähe ist, speichert das Band das Tippen und sendet es später. Ein verspätetes Tippen löst nur eine Aktion aus, die das ausdrücklich unterstützt.",
   "@deviceActionLogWaterBlurb": {
     "description": "Band double-tap action picker: blurb for log water"
   },
@@ -10418,7 +10418,7 @@
   "@cycleDaysBetweenStarts": {
     "description": "Chart title: days between logged period starts."
   },
-  "asOfSemantics": "Showing results calculated at {when}; new results are being calculated",
+  "asOfSemantics": "Zeigt Ergebnisse, die um {when} berechnet wurden; neue Ergebnisse werden berechnet",
   "@settingsMedicationRemindersRowSub": {
     "description": "Notification row subtitle for medication-dose reminders"
   },
@@ -10716,7 +10716,7 @@
   "@sleepDetailTimesSavedRanges": {
     "description": "Caption under a typed sleep window when the band recorded too little to score the night; stages are shown as ranges."
   },
-  "tracksPrescribed": "Prescribed by a clinician",
+  "tracksPrescribed": "Vom Arzt verordnet",
   "@activitySummaryLongestBlock": {
     "description": "Interval ladder footnote naming the longest work or rest block",
     "placeholders": {
@@ -11154,7 +11154,7 @@
   "@logFoodAgain": {
     "description": "Section heading listing recently logged foods for one-tap re-logging"
   },
-  "sleepDetailStagingFallbackSome": "The experimental model showed little stage variation for part of this night; the default estimate is shown there.",
+  "sleepDetailStagingFallbackSome": "Das experimentelle Modell zeigte für einen Teil dieser Nacht wenig Phasenvariation; dort wird die Standardschätzung angezeigt.",
   "@investigateSd1Sd224h": {
     "description": "HRV metric label: SD1/SD2 ratio over 24 hours"
   },
@@ -11353,7 +11353,7 @@
   "@settingsResetAllDataRowTitle": {
     "description": "Settings row title for the destructive full data reset"
   },
-  "asOfDateTime": "As of {date}, {time}",
+  "asOfDateTime": "Stand {date}, {time}",
   "@sleepDetailNothingStoodOut": {
     "description": "Reassurance line shown when nothing unusual was found in the night."
   },
@@ -11421,7 +11421,7 @@
   "@supplementAwakeMin81d9ac": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
-  "momentEditAmountNotKept": "This answer was saved before its amount was kept, so changing it could leave the wrong total in your journal. Nothing was changed.",
+  "momentEditAmountNotKept": "Diese Antwort wurde gespeichert, bevor ihre Menge festgehalten wurde; eine Änderung könnte daher eine falsche Summe in deinem Journal hinterlassen. Es wurde nichts geändert.",
   "@wellnessLoadFailedBody": {
     "description": "Body of the card shown when the Wellness screen or the sleep plan failed to load from the database."
   },
@@ -11531,7 +11531,7 @@
   "@cycleTrackingOffBody": {
     "description": "Status card body when cycle tracking is disabled."
   },
-  "momentEditNotFound": "This answer is no longer saved.",
+  "momentEditNotFound": "Diese Antwort ist nicht mehr gespeichert.",
   "@workoutWeekdayLetterWed": {
     "description": "Single-letter weekday abbreviation (Wed) used in the This-week strip and small charts"
   },
@@ -11633,7 +11633,7 @@
   "@coachYourDataYourModel": {
     "description": "Coach screen: all-caps headline in the empty-chat welcome card"
   },
-  "tracksAround": "Around (optional, HH:mm)",
+  "tracksAround": "Gegen (optional, HH:mm)",
   "@homeIllnessBodyBelow": {
     "description": "Illness watch body text when the flagged night's heart rate sat below baseline, with the deviation amount."
   },
@@ -11670,7 +11670,7 @@
       }
     }
   },
-  "tracksAmountPerDay": "Amount per day, optional",
+  "tracksAmountPerDay": "Menge pro Tag, optional",
   "@dayStrainLowCoverageBody": {
     "description": "Status card body explaining why a partly-worn day is not comparable to a full one"
   },
@@ -11784,11 +11784,11 @@
   "@logWorkoutTryAgain": {
     "description": "Retry action label on the failed-read status card"
   },
-  "tracksOngoing": "No end date (ongoing)",
+  "tracksOngoing": "Kein Enddatum (laufend)",
   "@homeRestingSub": {
     "description": "Signal card subtitle: Resting, under the heart rate reading."
   },
-  "tracksExperimentWashout": "This track takes about {days} days to wear off (five half-lives, or its withdrawal period). Experiment days alternate every day, so a skip day still carries earlier doses and withdrawal effects, and the comparison is biased toward zero. You can still run it; read the result with that in mind.",
+  "tracksExperimentWashout": "Dieser Track klingt erst nach etwa {days} Tagen ab (fünf Halbwertszeiten oder sein Absetzzeitraum). Die Experimenttage wechseln täglich, daher tragen Auslasstage noch frühere Dosen und Absetzeffekte in sich, und der Vergleich ist zu null hin verzerrt. Du kannst es trotzdem durchführen; lies das Ergebnis mit diesem Hinweis.",
   "@coachChatgptNotAllowedTitle": {
     "description": "Coach, ChatGPT sign-in: shown while signing in or out with ChatGPT."
   },
@@ -13044,7 +13044,7 @@
   "@settingsBuzzFromShortcutIosBody": {
     "description": "Section body on iOS explaining the inbound band-buzz endpoint"
   },
-  "tracksExperimentMultiplicity": "Each interval covers one system at 95%. With {count} systems compared, about one in twenty intervals would miss by chance alone, so treat one that only just excludes zero with caution.",
+  "tracksExperimentMultiplicity": "Jedes Intervall deckt ein System mit 95 % ab. Bei {count} verglichenen Systemen läge etwa jedes zwanzigste Intervall allein durch Zufall daneben; behandle ein Intervall, das null nur knapp ausschließt, daher mit Vorsicht.",
   "@settingsAlarmLatchFailedRowTitle": {
     "description": "Notification row title for the alarm latch-failure alert"
   },
@@ -13262,7 +13262,7 @@
   "@wellnessWhatYouLogScreenTitle": {
     "description": "Screen title for the journal findings detail screen"
   },
-  "momentEditTitle": "Edit marked moment",
+  "momentEditTitle": "Markierten Moment bearbeiten",
   "@supplementYourBeatToBeatPatternfed8f0": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
@@ -14525,7 +14525,7 @@
   "@homeNothingTodayTitle": {
     "description": "Title shown when there is history but nothing recorded for today."
   },
-  "tracksExperimentStop": "Stop experiment",
+  "tracksExperimentStop": "Experiment beenden",
   "@pairingFindMyBand": {
     "description": "Pairing CTA: idle."
   },
@@ -15347,7 +15347,7 @@
   "@bandStatusDisconnectedFix": {
     "description": "BandStatus fix action: band is not connected"
   },
-  "tracksExperimentStoppedNote": "You stopped this experiment early, so no effect is reported and no more reminders are sent.",
+  "tracksExperimentStoppedNote": "Du hast dieses Experiment vorzeitig beendet, daher wird kein Effekt gemeldet und es werden keine Erinnerungen mehr gesendet.",
   "@momentFollowUpNoteHint": {
     "description": "Hint of the optional free-text note field"
   },
@@ -15554,7 +15554,7 @@
   "@homeStepSensorStrapPhone": {
     "description": "Step count sensor label: both the strap and phone counted."
   },
-  "healthNightOf": "Night of {day}",
+  "healthNightOf": "Nacht vom {day}",
   "@healthBlurbBrv": {
     "description": "Explore catalogue one-line description for breathing rate variability"
   },
@@ -15766,7 +15766,7 @@
   "@ecgNotDiagnosis": {
     "description": "WHOOP MG ECG: The category comes from the band. This is not a diagnosis."
   },
-  "activityTrackDidYouOn": "Did you have or do “{track}” on {date}?",
+  "activityTrackDidYouOn": "Hast du „{track}“ am {date} genommen oder gemacht?",
   "@investigatePrvOpenUnflagged": {
     "description": "Design 04 PRV diagnostics: {n} beats, not flagged",
     "placeholders": {
@@ -15838,7 +15838,7 @@
   "@ecgDetailAttempts": {
     "description": "WHOOP MG ECG: Attempts in this group"
   },
-  "tracksExperimentWashoutResult": "Caveat: this track takes about {days} days to wear off, so skip days include carry-over and withdrawal effects and the effect shown is biased toward zero.",
+  "tracksExperimentWashoutResult": "Hinweis: Dieser Track klingt erst nach etwa {days} Tagen ab, daher enthalten Auslasstage Übertragungs- und Absetzeffekte, und der gezeigte Effekt ist zu null hin verzerrt.",
   "@supplementShownTonightOnVitalsa1d4ef": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
@@ -16705,7 +16705,7 @@
   "@reportSentTitle": {
     "description": "Issue report: success card title."
   },
-  "sleepDetailStagingExperimental": "Experimental sleep-stage estimate. Not validated against a clinical sleep study. Not for medical decisions.",
+  "sleepDetailStagingExperimental": "Experimentelle Schätzung der Schlafphasen. Nicht anhand einer klinischen Schlafstudie validiert. Nicht für medizinische Entscheidungen.",
   "@capReasonLiveSessions": {
     "description": "Caption under Steps for WHOOP 4: it counts steps only while the app has a live connection."
   },
@@ -16910,7 +16910,7 @@
       }
     }
   },
-  "tracksExperimentEffectLine": "{system}: {effect} {unit} (do minus skip; 95% interval {lower} to {upper} {unit}); {nDo} do days, {nSkip} skip days",
+  "tracksExperimentEffectLine": "{system}: {effect} {unit} (Durchführen minus Auslassen; 95-%-Intervall {lower} bis {upper} {unit}); {nDo} Durchführungstage, {nSkip} Auslasstage",
   "@capLabelHeartRate": {
     "description": "Table row: heart rate and resting heart rate, as one capability."
   },
@@ -16989,7 +16989,7 @@
   "@supplementThatNightHasNoSleepa8ce2d": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
-  "healthWhyNotEnoughOvernight": "Not enough overnight data for this one",
+  "healthWhyNotEnoughOvernight": "Dafür liegen nicht genug Daten aus der Nacht vor",
   "@gesturesTimeBuzzCountSub": {
     "description": "Tell the time encoding: what the count mode does"
   },
@@ -17008,7 +17008,7 @@
   "@wellnessNothingToScoreBody": {
     "description": "Status card body explaining adherence has nothing to score yet"
   },
-  "momentEditChangedElsewhere": "This answer was changed somewhere else. Close this and open it again.",
+  "momentEditChangedElsewhere": "Diese Antwort wurde an anderer Stelle geändert. Schließe dies und öffne sie erneut.",
   "@pairWearableNote": {
     "description": "Note under a ring’s or watch’s table on the pairing sheet. “Devices” is the device list in Settings."
   },
@@ -17072,7 +17072,7 @@
   "@settingsWindDownRowSub": {
     "description": "Notification row subtitle for the bedtime wind-down nudge"
   },
-  "activityTrackPromptNoteDay": "Yes adds an entry with no time or amount for that day. No records that none happened that day.",
+  "activityTrackPromptNoteDay": "Ja fügt einen Eintrag ohne Zeit und Menge für diesen Tag hinzu. Nein hält fest, dass es an diesem Tag nicht stattfand.",
   "@homeDbRebuiltKept": {
     "description": "Database-rebuilt card: reassurance that the original file was kept, with its path.",
     "placeholders": {
@@ -17883,7 +17883,7 @@
   "@momentReviewRangeEnd": {
     "description": "Validation error for a paired range whose end is not after its start"
   },
-  "healthBlurbReadiness": "How ready your body looks for strain, against your own usual",
+  "healthBlurbReadiness": "Wie bereit dein Körper für Belastung wirkt, im Vergleich zu deinem Normalwert",
   "@wellnessNoSleepNeedBody": {
     "description": "Status card fallback body when there is no reason recorded for missing sleep need"
   },
@@ -18126,7 +18126,7 @@
   "@pairingNotFoundAdviceFix": {
     "description": "Advice card fix: not found."
   },
-  "tracksUseObservational": "Use my day-to-day data instead",
+  "tracksUseObservational": "Stattdessen meine Tag-zu-Tag-Daten verwenden",
   "@pairingSkipNote": {
     "description": "Note under the skip button."
   },
@@ -18163,7 +18163,7 @@
   "@sleepDetailTemp": {
     "description": "Short label for skin temperature in the scrub readout card."
   },
-  "tracksPrescribedNote": "The app never asks you to skip a prescribed treatment.",
+  "tracksPrescribedNote": "Die App fordert dich nie auf, eine verordnete Behandlung auszulassen.",
   "@ecgScreenerSinusMeaning": {
     "description": "WHOOP MG ECG: The band reported a regular rhythm at a heart rate between 51 and 99 beats per minute. The app has not checked"
   },
@@ -18279,7 +18279,7 @@
   "@supplementUnknownSensor98a1f7": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
-  "sleepDetailStagingFallback": "The experimental model showed little stage variation, so the default estimate is shown.",
+  "sleepDetailStagingFallback": "Das experimentelle Modell zeigte wenig Phasenvariation, daher wird die Standardschätzung angezeigt.",
   "@activitySummaryElapsedTime": {
     "description": "Fallback hero caption showing plain elapsed time"
   },
@@ -19069,7 +19069,7 @@
   "@pairStrapOnlyLink": {
     "description": "Text link under the band list for someone with only a heart-rate strap."
   },
-  "gesturesReplayTitle": "Also run for taps replayed from history",
+  "gesturesReplayTitle": "Auch bei nachträglich übermittelten Tipps ausführen",
   "@ecgInterruptions": {
     "description": "WHOOP MG ECG: Interruptions"
   },
@@ -19358,7 +19358,7 @@
   "@pairStrapNote": {
     "description": "Note on a strap’s sheet: workout recording needs the switch. Quotes deviceUseWorkoutsTitle."
   },
-  "healthBlurbStress": "How tense your heartbeat looks at rest",
+  "healthBlurbStress": "Wie angespannt dein Herzschlag in Ruhe wirkt",
   "@activityLiveStrokeFree": {
     "description": "Live swim screen: name of freestyle stroke."
   },
@@ -19489,7 +19489,7 @@
   "@supplementUnusualForYou770b0d": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
-  "momentEditFailed": "Could not save that change. Nothing was changed. Try again.",
+  "momentEditFailed": "Die Änderung konnte nicht gespeichert werden. Es wurde nichts geändert. Versuche es erneut.",
   "@supplementLowBatteryc5b099": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
@@ -20551,7 +20551,7 @@
   "@homeAnalyzingBody": {
     "description": "Body shown on a bare day once the backlog has landed and a derive job is computing today's numbers."
   },
-  "sleepDetailStagingFallbackSomeGeneric": "For part of this night, the default estimate is shown instead of the experimental model.",
+  "sleepDetailStagingFallbackSomeGeneric": "Für einen Teil dieser Nacht wird die Standardschätzung statt des experimentellen Modells angezeigt.",
   "@dayStrainInputsBase": {
     "description": "First sentence of the day strain 'what this is made of' explanation"
   },
@@ -20934,7 +20934,7 @@
   "@alarmNavTitle": {
     "description": "Alarm screen title."
   },
-  "tracksExperimentPrescribed": "Prescribed treatments are never randomized; the app will not ask you to skip one. Talk to your clinician about changes.",
+  "tracksExperimentPrescribed": "Verordnete Behandlungen werden nie randomisiert; die App fordert dich nicht auf, eine auszulassen. Besprich Änderungen mit deiner Ärztin oder deinem Arzt.",
   "@deviceUseSheetOff": {
     "description": "Confirmation sheet: the switch can be turned off, and the device's contribution is removed."
   },
@@ -20959,7 +20959,7 @@
   "@symptomAreaThighs": {
     "description": "Symptom describer: body area \"thighs\" (lower case; used inside the sentence)"
   },
-  "sleepDetailStagingFallbackGeneric": "The default estimate is shown for this night instead of the experimental model.",
+  "sleepDetailStagingFallbackGeneric": "Für diese Nacht wird die Standardschätzung statt des experimentellen Modells angezeigt.",
   "@supplementAASMSleepAccountingDefinitions79c9d9": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },

@@ -108,6 +108,15 @@ Future<Map<String, String>> _healthRun(Database db) async {
   };
 }
 
+
+/// Doubles to 9 significant digits. An analytics repin moves HRV by ~1e-12 in
+/// the last printed digits (getDayHrv, 2025-03-01); the golden's other bytes
+/// still have to match exactly. The golden file is unchanged (data goldens
+/// need the owner's approval to regenerate).
+String _toNineDigits(String json) => json.replaceAllMapped(
+    RegExp(r'-?\d+\.\d{9,}(?:[eE][+-]?\d+)?'),
+    (m) => double.parse(double.parse(m[0]!).toStringAsPrecision(9)).toString());
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   p21RestoreClockAfterEach();
@@ -232,10 +241,10 @@ void main() {
       // The Sleep editor (044a275bb, 2026-11-15) added an idle `"sleep_edit":null`
       // key to some readers; every other byte must match.
       expect(
-          got[k]
-              ?.replaceAll('"sleep_edit":null,', '')
-              .replaceAll(',"sleep_edit":null}', '}'),
-          want[k],
+          _toNineDigits(got[k]!
+              .replaceAll('"sleep_edit":null,', '')
+              .replaceAll(',"sleep_edit":null}', '}')),
+          _toNineDigits(want[k]!),
           reason: 'reader output changed: $k');
     }
 
