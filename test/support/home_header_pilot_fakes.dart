@@ -117,9 +117,12 @@ void pilotSurface(WidgetTester t, {double width = 390}) {
   addTearDown(t.view.reset);
 }
 
-Future<void> pilotPrefs({bool compact = false, int? alertAt, bool enabled = true}) async {
+Future<void> pilotPrefs({
+  bool compact = false, int? alertAt, bool enabled = true, bool sleepSummary = false,
+}) async {
   SharedPreferences.setMockInitialValues({
     'labs.home_header': enabled,
+    'pilot.day_timeline.sleep': sleepSummary,
     HomeHeader.compactKey: compact,
     'notif_battery_pct': ?alertAt,
   });

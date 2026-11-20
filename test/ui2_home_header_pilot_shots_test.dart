@@ -141,7 +141,7 @@ void main() {
 
   testWidgets('capture the same instant on the three tabs', (t) async {
     pilotSurface(t, width: 340);
-    await pilotPrefs();
+    await pilotPrefs(sleepSummary: true);
     final app = PilotHeaderApp(
       pres: pilotSync('deriving'), startEdge: pilotStartEdge,
     )..derive.value = const DeriveProgress(dayIndex: 2, dayTotal: 3);

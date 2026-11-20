@@ -288,6 +288,22 @@ void main() {
     });
   });
 
+  for (final summary in [false, true]) {
+    testWidgets('Sleep keeps one day stepper (summary=$summary)', (t) async {
+      await pilotPrefs(sleepSummary: summary);
+      final app = PilotHeaderApp(pres: pilotIdle());
+      addTearDown(app.dispose);
+      pilotSurface(t);
+      await withClock(Clock.fixed(pilotNow), () async {
+        await t.pumpWidget(pilotApp(app, Scaffold(body: pilotTab(ShellDomain.sleep))));
+        expect(find.byKey(const ValueKey('day-nav-previous')), findsOneWidget,
+            reason: 'the day control moves out of the Sleep timeline card');
+        expect(_under(_barKey, find.text('Night of Nov 19')), findsOneWidget);
+        await t.pumpWidget(const SizedBox());
+      });
+    });
+  }
+
   testWidgets('Activity moves History within the tab by session date', (t) async {
     pilotSurface(t);
     final app = PilotHeaderApp(pres: pilotIdle())..repo = _Sessions();

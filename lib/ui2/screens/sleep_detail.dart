@@ -1208,11 +1208,12 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     );
     Widget link(IconData icon, String name, String sub, Widget target) =>
         detailLinkRow(c, icon, name, sub, () => go(c, target));
+    final showLegacyDayNav = !HomeHeaderOpening.enabledIn(c);
     return [
       if (PilotFlag.sleepSummary.enabled)
         Column(key: const ValueKey('sleep-tab:timeline'),
           crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            ..._dayNav(d),
+            if (showLegacyDayNav) ..._dayNav(d),
             Surface(child: _answerSlot(c,p,d,n)),
           ])
       else
@@ -1221,7 +1222,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ..._dayNav(d),
+            if (showLegacyDayNav) ..._dayNav(d),
             _answerSlot(c, p, d, n),
             if (_deviceNight(d) case final dn?)
               _night(c, p, d, dn, device: dn)
