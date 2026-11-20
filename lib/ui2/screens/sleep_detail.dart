@@ -222,7 +222,7 @@ String _pct(double v) => '${v.round()}%';
 /// A stage interval as one label. Seconds in, because that is what the analytics
 /// interval carries; `hm` wants minutes.
 String _rangeText(ana.StageInterval i) =>
-    '${hm(i.loSec / 60)}–${hm(i.hiSec / 60)}';
+    '${nbsp(hm(i.loSec / 60))}–${nbsp(hm(i.hiSec / 60))}';
 
 /// D27 — a user's own window carries its stored stage bounds
 /// (`stage_ranges`, minutes), as wide as the time the band did not record.

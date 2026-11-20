@@ -25,7 +25,7 @@ import '../state/locale_controller.dart';
 import 'grammar.dart';
 import 'profile/import_progress_view.dart';
 import 'screens/home_screen.dart'
-    show connectionLine, syncedThroughLabel, syncedThroughShortLabel;
+    show bandRecordTimeUnknownOf, connectionLine, syncedThroughLabel, syncedThroughShortLabel;
 import 'shared_slot.dart';
 import 'sync_control.dart';
 import 'theme.dart';
@@ -130,10 +130,15 @@ class StatusLine extends StatelessWidget {
     // Only the fields this line needs, so AppState's heartbeat does not
     // rebuild it. A record compares by value.
     final at = now ?? pc.clock.now();
-    final sync = c.select<AppState, (bool, String, DateTime?)>((a) {
+    final sync = c.select<AppState, (bool, String, DateTime?, bool)>((a) {
       final s = a.syncPresentation;
       final visible = s.busy || syncStatusSource(s).phase == 'waiting_import';
-      return (visible, visible ? syncStatusHeadline(s, at, l) : '', a.lastRecordAt);
+      return (
+        visible,
+        visible ? syncStatusHeadline(s, at, l) : '',
+        a.lastRecordAt,
+        a.bandRecordTimeUnknown,
+      );
     });
     final String text;
     // A finished or failed import is terminal, not work in progress: the
@@ -153,7 +158,7 @@ class StatusLine extends StatelessWidget {
     } else if (sync.$1) {
       text = sync.$2;
     } else {
-      text = idleLabel ?? syncedThroughLabel(sync.$3, todayId ?? todayLabel(), l);
+      text = idleLabel ?? syncedThroughLabel(sync.$3, todayId ?? todayLabel(), l, sync.$4);
     }
     if (syncActions &&
         !indexActive &&
@@ -164,8 +169,8 @@ class StatusLine extends StatelessWidget {
       // reports this row's fixed slot, the same as the text-only line.
       final id = todayId ?? todayLabel();
       return HomeSyncStatus(
-        through: idleLabel ?? syncedThroughLabel(sync.$3, id, l),
-        throughShort: idleLabel ?? syncedThroughShortLabel(sync.$3, id, l),
+        through: idleLabel ?? syncedThroughLabel(sync.$3, id, l, sync.$4),
+        throughShort: idleLabel ?? syncedThroughShortLabel(sync.$3, id, l, sync.$4),
         inset: S.x1,
         slot: _height(c),
         actionLines: actionLines,
@@ -261,7 +266,7 @@ class HeaderRows extends StatelessWidget {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  syncedThroughLabel(edge, todayId, l),
+                  syncedThroughLabel(edge, todayId, l, bandRecordTimeUnknownOf(c)),
                   style: F.cap.copyWith(color: P.of(c).ink3),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

@@ -1329,11 +1329,14 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   bool? _storedBatteryWristOn;
   bool initialized = false;
 
+  // Mirror of LocalDb.hasGateDroppedArchive, read at boot and on every store.
+  bool _bandUntimedArchive = false;
+
   /// True while the app is backgrounded (owned by [SyncController]; the
   /// constructors seed it and the rest of AppState reads it here). On iOS we
   /// KEEP the BLE connection alive in this state (see [pauseForBackground]) so
   /// the OS keeps resuming us per BLE notification and the live drain continues.
-  bool get _background => _sync.background;
+    bool get _background => _sync.background;
   set _background(bool v) => _sync.background = v;
 
   bool get isPaired => paired != null;
@@ -1847,6 +1850,9 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       importProgress.value = const ImportRebuilding(0, 0, null);
       await refreshActivityReviews();
       await _finalizeImport();
+      final recTsHw = await LocalDb.getRecordFrontier();
+      if (recTsHw != null && recTsHw > (_lastRecTs ?? 0)) _lastRecTs = recTsHw;
+      _bandUntimedArchive = await LocalDb.hasGateDroppedArchive();
       passRequested = await _deriveImportWhenDone();
       await _deriveCoordinator.publishNow();
       // The resumed import's notes were saved by its record step; the mirror
@@ -2691,6 +2697,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       // deleted install's "Synced through …" — and no amount of syncing the new
       // band could pull the label back to the truth.
       _lastRecTs = null;
+      _bandUntimedArchive = false;
       lastSynced = null;
 
       // signOut() unpairs, so by the time it returns nothing is delivering.
@@ -3200,6 +3207,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       onArchiveRecord: (raw) async {
         if (_resetting || _replacingBand) return;
         await LocalDb.archiveRawRecord(raw);
+        if (raw.reason == kGateDroppedReason && !_bandUntimedArchive) {
+          _bandUntimedArchive = true;
+          notifyListeners();
+        }
       },
       cursorReader: (base) =>
           LocalDb.getCursorInt(LocalDb.cursorKeyFor(base, LocalDb.kPrimaryDeviceId)),
@@ -4405,6 +4416,9 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       if (recTsHw != null && recTsHw > (_lastRecTs ?? 0)) {
         _lastRecTs = recTsHw;
       }
+      try {
+        _bandUntimedArchive = await LocalDb.hasGateDroppedArchive();
+      } catch (_) {} // display-only; never block the derive below
       notifyListeners();
       _deriveScheduler.markStoredData();
       // Durable input can change sleep/alarm reminders. Refresh their shared
@@ -4633,6 +4647,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     // policies already trust).
     _lastRecTs =
         await LocalDb.getRecordFrontier() ?? lastSynced?.tsEpoch;
+    _bandUntimedArchive = await LocalDb.hasGateDroppedArchive();
     await LocalDb.refreshComputeFreshness();
     final alarmPrefs = await SharedPreferences.getInstance();
     _savedAlarm = persistedAlarmEpoch(alarmPrefs, paired?.remoteId);
@@ -8608,6 +8623,20 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   ///
   /// From TestFlight: "don't get to know if syncing is happening or not".
   bool get syncingNow => _sync.syncingNow;
+
+  /// The raw record frontier (`rec_ts_hw`), including a sub-floor value from a
+  /// strap whose RTC was never set. [lastRecordAt] drops that for display;
+  /// diagnostics (the support report) keep it, since it is what tells support
+  /// the strap's clock state.
+  int? get recordFrontierTs => _sync.lastRecTs;
+
+  /// Records were banked but their timestamp is unusable (a never-set strap
+  /// RTC), so "last data" is neither a date nor "nothing banked yet". Two
+  /// shapes: a sub-floor `rec_ts_hw` left by older builds, or (today) records
+  /// the gate archived without ever moving the frontier.
+  bool get bandRecordTimeUnknown =>
+      lastRecordAt == null &&
+      (recordTimestampUntrusted(recordFrontierTs) || _bandUntimedArchive);
 
   /// A derive job is running RIGHT NOW — the backlog just landed and the
   /// pipeline is computing what it means. Surfaced so a screen sitting on

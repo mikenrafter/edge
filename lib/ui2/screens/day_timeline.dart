@@ -86,6 +86,7 @@ import 'metric_detail.dart';
 
 
 
+import '../../data/triathlon_store.dart' show kTriathlonDoubleTapEventId;
 
 /// One thing that happened, at a time it is known to have happened at.
 @immutable
@@ -107,6 +108,7 @@ class Moment {
     this.wakeGroup,
     this.wakeKind,
     this.timelineKind,
+    this.members = const <int>[],
   });
 
   final DayTimelineKind? timelineKind;
@@ -154,6 +156,10 @@ class Moment {
   /// row belongs to a domain and none of them do.
   final Color? color;
 
+  /// Epoch seconds of each event folded into this line, in order, when it is a
+  /// run of the same band event (see [kEventRunGapSec]); empty for anything
+  /// that stands alone. [MomentRow] opens a run to these.
+  final List<int> members;
   /// The band event id this line came from, or NULL for anything else. Only
   /// equal non-null ids can be folded together by [groupRepeatedEvents].
   final int? eventId;
@@ -166,17 +172,12 @@ class MomentGroup {
   final List<Moment> moments;
   bool get isWake => first.annotationKind == AnnotationKind.wake;
   bool get mixed => moments.any((m) => m.title != moments.first.title);
-  int get count => moments.length;
+  int get count => moments.fold(
+      0, (count, m) => count + (m.members.isEmpty ? 1 : m.members.length));
   Moment get first => moments.first;
 }
 
-/// Folds each run of consecutive moments sharing one non-null [Moment.eventId]
-/// into a single group. Wake events group by epoch across intervening moments.
-/// Other moments without event ids stay separate. Group order follows the first
-/// member, and every moment is retained. Equal titles are not identity.
-bool _sameRun(Moment a, Moment b) => a.eventId == b.eventId ||
-    (a.eventGroup != null && a.eventGroup == b.eventGroup);
-
+/// [dayMoments] folds same-ID runs before merging in other timeline rows.
 List<MomentGroup> groupRepeatedEvents(List<Moment> sorted) {
   final out = <List<Moment>>[];
   final wakes = <int?, List<Moment>>{};
@@ -190,7 +191,10 @@ List<MomentGroup> groupRepeatedEvents(List<Moment> sorted) {
       } else {
         group.add(m);
       }
-    } else if (out.isNotEmpty && m.eventId != null && _sameRun(out.last.last, m)) {
+    } else if (out.isNotEmpty &&
+        m.eventGroup != null &&
+        m.eventGroup == out.last.last.eventGroup &&
+        m.eventId != out.last.last.eventId) {
       out.last.add(m);
     } else {
       out.add([m]);
@@ -214,7 +218,7 @@ class DayNote {
 Map<int, (String, IconData)> _events(AppLocalizations? l) => {
   7: (l?.dayTimelineChargerOn ?? 'On the charger', LucideIcons.plugZap),
   8: (l?.dayTimelineChargerOff ?? 'Off the charger', LucideIcons.unplug),
-  14: (l?.dayTimelineDoubleTap ?? 'You double-tapped the band', LucideIcons.hand),
+  kTriathlonDoubleTapEventId: (l?.dayTimelineDoubleTap ?? 'You double-tapped the band', LucideIcons.hand),
   15: (l?.dayTimelineRestarted ?? 'The band restarted', LucideIcons.rotateCw),
   21: (l?.dayTimelineBatteryPackAttached ?? 'Battery pack attached',
       LucideIcons.batteryPlus),
@@ -238,6 +242,10 @@ IconData momentChoiceIcon(MomentChoice? c) => switch (c) {
       MomentChoice.water => LucideIcons.glassWater,
       MomentChoice.other || null => LucideIcons.bookmark,
     };
+
+/// The same band event closer to the last one than this is one run on the
+/// timeline (double-taps, restarts, an alarm's snoozes).
+const int kEventRunGapSec = 10 * 60;
 
 /// An off-wrist gap shorter than this is a dropout, not an event in a day.
 /// Listing every one of them would bury the four that mean something under
@@ -412,19 +420,53 @@ List<Moment> dayMoments({
   // times, and a day with the charger on it should not read as four chargers.
   final seen = <String>{};
   final events = _events(l);
+  final stream = <(int, int)>[]; // (ts, event id)
   for (final e in (timeline['events'] as List?) ?? const []) {
     if (e is! Map) continue;
     final id = asInt(e['event_id']), t = asInt(e['ts']);
     final def = id == null ? null : events[id];
     if (def == null || t == null || !seen.add('$id/$t')) continue;
+    stream.add((t, id!));
+  }
+  // The same band event again and again (a ball sport sets the firmware's tap
+  // detector off on every contact; a boot loop restarts it) is one span
+  // carrying the band's own count, not one line per event burying the day.
+  // A run is consecutive events of one kind, each under [kEventRunGapSec]
+  // after the last; a different visible band event ends it, even at the same
+  // second, so a charger that goes on and off is still told in order.
+  stream.sort((a, b) {
+    final c = a.$1.compareTo(b.$1);
+    return c != 0 ? c : a.$2.compareTo(b.$2);
+  });
+  final simultaneous = <int, Set<int>>{};
+  for (final e in stream) {
+    (simultaneous[e.$1] ??= <int>{}).add(e.$2);
+  }
+  for (var i = 0; i < stream.length;) {
+    final id = stream[i].$2;
+    var j = i;
+    while (j + 1 < stream.length &&
+        stream[j + 1].$2 == id &&
+        simultaneous[stream[j].$1]!.length == 1 &&
+        simultaneous[stream[j + 1].$1]!.length == 1 &&
+        stream[j + 1].$1 - stream[j].$1 < kEventRunGapSec) {
+      j++;
+    }
+    final n = j - i + 1, from = stream[i].$1, to = stream[j].$1;
+    final def = events[id]!;
     out.add(Moment(
-      at: t,
+      at: from,
+      until: n > 1 ? to : null,
       title: def.$1,
-      detail: '',
+      detail: n > 1
+          ? '${clockOfTs(from)}–${clockOfTs(to)} · $n×'
+          : clockOfTs(from),
       icon: def.$2,
+      members: n > 1 ? [for (var k = i; k <= j; k++) stream[k].$1] : const [],
       eventId: id,
       eventGroup: _chargerEvents.contains(id) ? 'charger' : null,
     ));
+    i = j + 1;
   }
 
   // A confirmed meal moment can describe an existing timed food entry. Join
@@ -1559,8 +1601,14 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     final out = <Widget>[];
     for (final g in groupRepeatedEvents([for (final r in rows) r.moment])) {
       final row = rows.firstWhere((r) => identical(r.moment, g.first));
-      if (g.count > 1 || g.isWake) {
+      if (g.moments.length > 1 || g.isWake) {
         out.add(MomentGroupRow(g, key: _rowKeys.putIfAbsent(row.id, GlobalKey.new)));
+        continue;
+      }
+      if (g.first.members.isNotEmpty) {
+        out.add(MomentRow(g.first,
+            key: _rowKeys.putIfAbsent(row.id, GlobalKey.new),
+            displayTitle: _repeatTitle(AppLocalizations.of(context), g)));
         continue;
       }
       out.add(Semantics(selected:_highlight==row.id,
@@ -2056,7 +2104,13 @@ List<Widget> timelineBody(BuildContext c, TimelineData d,
             child: Column(
               children: [
                 for (final g in groupRepeatedEvents(d.moments))
-                  g.count > 1 || g.isWake ? MomentGroupRow(g) : MomentRow(g.first),
+                  g.moments.length > 1 || g.isWake
+                      ? MomentGroupRow(g, key: ValueKey((g.first.title, g.first.at)))
+                      : MomentRow(g.first,
+                          key: g.first.members.isEmpty
+                              ? null
+                              : ValueKey((g.first.eventId, g.first.at)),
+                          displayTitle: g.count > 1 ? _repeatTitle(l, g) : null),
               ],
             ),
           ),
@@ -2113,67 +2167,118 @@ Widget alsoLoggedSection(BuildContext c, List<DayNote> notes) {
 /// One line of the day. The time is the left column and everything aligns to
 /// it, because the ONE thing this page is ordered by should be the one thing
 /// you can scan.
-class MomentRow extends StatelessWidget {
-  const MomentRow(this.m, {super.key, this.below});
+class MomentRow extends StatefulWidget {
+  const MomentRow(this.m, {super.key, this.below, this.displayTitle});
+  final String? displayTitle;
   final Moment m;
 
   /// Under the line, outside its (excluded) semantics: the row's buttons.
   final Widget? below;
 
   @override
+  State<MomentRow> createState() => _MomentRowState();
+}
+
+class _MomentRowState extends State<MomentRow> {
+  bool _open = false;
+
+  void _toggle() => setState(() => _open = !_open);
+
+  @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
-    final row = Semantics(
-      label: '${clockOfTs(m.at)}, ${m.title}. ${m.detail}',
-      excludeSemantics: true,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: S.x3),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Scaled with the text, not fixed: the column exists so the times
-            // line up, and a hard 62 px is a clipped clock at 3.1x on exactly
-            // the phones whose owners chose 3.1x.
-            SizedBox(
-              width: MediaQuery.textScalerOf(c).scale(58),
-              child: Text(clockOfTs(m.at), style: F.n17.copyWith(color: p.ink3)),
+    final m = widget.m, p = P.of(c);
+    final row = Padding(
+      padding: const EdgeInsets.symmetric(vertical: S.x3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Scaled with the text, not fixed: the column exists so the times
+          // line up, and a hard 62 px is a clipped clock at 3.1x on exactly
+          // the phones whose owners chose 3.1x.
+          SizedBox(
+            width: MediaQuery.textScalerOf(c).scale(58),
+            child: Text(clockOfTs(m.at), style: F.n17.copyWith(color: p.ink3)),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(m.icon,
+                size: 17, color: m.color == null ? p.ink3 : p.on(m.color!)),
+          ),
+          const SizedBox(width: S.x3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.displayTitle ?? m.title,
+                  maxLines: m.fixedLines ? 1 : null,
+                  overflow: m.fixedLines ? TextOverflow.ellipsis : null,
+                  style: F.body
+                      .copyWith(color: p.ink, fontWeight: FontWeight.w600),
+                ),
+                if (m.fixedLines)
+                  Text(m.detail.isEmpty ? ' ' : m.detail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: F.cap.copyWith(color: p.ink2, height: 1.4))
+                else if (m.detail.isNotEmpty)
+                  Text(m.detail,
+                      style: F.cap.copyWith(color: p.ink2, height: 1.4)),
+              ],
             ),
+          ),
+          if (m.members.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Icon(m.icon,
-                  size: 17, color: m.color == null ? p.ink3 : p.on(m.color!)),
+              child: Icon(
+                  _open ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                  size: 17,
+                  color: p.ink3),
             ),
-            const SizedBox(width: S.x3),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    m.title,
-                    maxLines: m.fixedLines ? 1 : null,
-                    overflow: m.fixedLines ? TextOverflow.ellipsis : null,
-                    style: F.body
-                        .copyWith(color: p.ink, fontWeight: FontWeight.w600),
-                  ),
-                  if (m.fixedLines)
-                    Text(m.detail.isEmpty ? ' ' : m.detail,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: F.cap.copyWith(color: p.ink2, height: 1.4))
-                  else if (m.detail.isNotEmpty)
-                    Text(m.detail,
-                        style: F.cap.copyWith(color: p.ink2, height: 1.4)),
-                ],
-              ),
-            ),
-          ],
-        ),
+        ],
       ),
     );
-    if (below == null) return row;
-    return Column(
+    final label = '${clockOfTs(m.at)}, ${m.title}. ${m.detail}';
+    // A lone event is exactly the line it always was; only a run opens.
+    if (m.members.isEmpty) {
+      final line = Semantics(label: label, excludeSemantics: true, child: row);
+      final below = widget.below;
+      if (below == null) return line;
+      return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [row, below!]);
+        children: [line, below],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Semantics(
+          label: label,
+          button: true,
+          expanded: _open,
+          onTap: _toggle,
+          excludeSemantics: true,
+          child: InkWell(
+            onTap: _toggle,
+            child: row,
+          ),
+        ),
+        if (_open)
+          Padding(
+            padding: EdgeInsets.only(
+                left: MediaQuery.textScalerOf(c).scale(58),
+                bottom: S.x3),
+            child: Wrap(
+              spacing: S.x4,
+              runSpacing: S.x1,
+              children: [
+                for (final t in m.members)
+                  Text(clockOfTs(t), style: F.n17.copyWith(color: p.ink2)),
+              ],
+            ),
+          ),
+      ],
+    );
   }
 }
 
@@ -2191,6 +2296,10 @@ List<DeviceOption> _anyHrCandidates(BuildContext c, AppState app) {
               orElse: () => o),
   ];
 }
+
+String _repeatTitle(AppLocalizations? l, MomentGroup group) =>
+    l?.dayTimelineRepeatedGroup(group.first.title, group.count) ??
+    '${group.first.title} · ${group.count} times';
 
 /// A run of the same band event as one line, "<title> · N times", that opens
 /// to the individual times. Collapsed by default: five double taps in a row is
@@ -2242,8 +2351,7 @@ class _MomentGroupRowState extends State<MomentGroupRow> {
         : g.mixed
         ? (l?.dayTimelineBandEventsGroup(g.count) ??
               'Charger and battery · ${g.count} events')
-        : (l?.dayTimelineRepeatedGroup(f.title, g.count) ??
-              '${f.title} · ${g.count} times');
+        : _repeatTitle(l, g);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2283,10 +2391,11 @@ class _MomentGroupRowState extends State<MomentGroupRow> {
               runSpacing: S.x1,
               children: [
                 for (final m in g.moments)
-                  Text(
+                  for (final at in m.members.isEmpty ? [m.at] : m.members)
+                    Text(
                       g.mixed
-                          ? '${clockOfTs(m.at)}  ${m.title}'
-                          : clockOfTs(m.at),
+                          ? '${clockOfTs(at)}  ${m.title}'
+                          : clockOfTs(at),
                       style: F.n17.copyWith(color: p.ink3)),
               ],
             ),

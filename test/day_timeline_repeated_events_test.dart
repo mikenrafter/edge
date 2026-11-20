@@ -68,7 +68,7 @@ void main() {
           _moments([for (var i = 0; i < 5; i++) _ev(14, i)]));
       expect(groups, hasLength(1));
       expect(groups.single.count, 5);
-      expect(groups.single.moments.map((m) => m.at),
+      expect(groups.single.first.members,
           [for (var i = 0; i < 5; i++) _ts(i)]);
       expect(groups.single.first.at, _ts(0));
     });

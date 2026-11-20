@@ -285,6 +285,16 @@ DateTime? lastDataAtOf(BuildContext c) {
   }
 }
 
+/// Records banked but their time untrusted (a never-set strap RTC) — distinct
+/// from no data at all. Drives the "clock not set" variant of the sync line.
+bool bandRecordTimeUnknownOf(BuildContext c) {
+  try {
+    return c.select<AppState, bool>((a) => a.bandRecordTimeUnknown);
+  } catch (_) {
+    return false;
+  }
+}
+
 /// "Synced through 11:06" — the one line that answers "how far are we?".
 ///
 /// It reads the BAND's clock, so it says how far the DATA reaches. That is a
@@ -304,18 +314,22 @@ DateTime? lastDataAtOf(BuildContext c) {
 /// otherwise — a lone "07:12" against a strap not worn since Friday is the
 /// most misleading thing this line could say.
 String syncedThroughLabel(DateTime? at, String? todayId,
-    [AppLocalizations? l]) {
+    [AppLocalizations? l, bool timeUnknown = false]) {
   final when = _throughWhen(at, todayId, l);
-  if (when == null) return l?.homeSyncedNever ?? 'No band data yet';
+  if (when == null) {
+    return timeUnknown
+        ? (l?.homeSyncedTimeUnknown ?? 'Band data, clock not set')
+        : (l?.homeSyncedNever ?? 'No band data yet');
+  }
   return l?.homeSyncedThrough(when) ?? 'Synced through $when';
 }
 
 /// "Through 11:06": the same fact in less width, for a header line that has
 /// other things to carry. Only the lead word goes; the time never does.
 String syncedThroughShortLabel(DateTime? at, String? todayId,
-    [AppLocalizations? l]) {
+    [AppLocalizations? l, bool timeUnknown = false]) {
   final when = _throughWhen(at, todayId, l);
-  if (when == null) return l?.homeSyncedNever ?? 'No band data yet';
+  if (when == null) return syncedThroughLabel(at, todayId, l, timeUnknown);
   return 'Through $when';
 }
 
@@ -811,6 +825,16 @@ String hm(num? minutes) {
           (m % 60).toString().padLeft(2, '0'),
         );
 }
+
+/// Binds a run so it cannot wrap internally, in any script. A duration like
+/// "2 Std. 34 Min." is one reading; left breakable, a range value such as a
+/// sleep stage ("1 Std. 34 Min.-2 Std. 54 Min.") dropped a lone "Min." onto its
+/// own line. A word joiner (U+2060) between every character forbids a break at
+/// each boundary — including the spaceless ones in CJK units like "分钟", which
+/// an ASCII-space guard could not reach (#757). Zero-width, so the text renders
+/// unchanged; the dash joining two durations is left un-glued and stays the one
+/// place a range may wrap.
+String nbsp(String s) => s.runes.map(String.fromCharCode).join('\u2060');
 
 String _compactHm(num? minutes, AppLocalizations? l) {
   if (minutes == null) return '';

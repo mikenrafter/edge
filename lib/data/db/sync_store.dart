@@ -2011,7 +2011,6 @@ Future<int> _ldbPruneDecodedBeforeRecTs(int cutoffSec, {required String? cursorN
       final archived = await SubstrateArchive.archiveAndDeleteBefore(
         db,
         cutoffSec,
-        hardFloorSec: hardFloorSec,
         log: log,
         shouldYield: shouldYield,
         maxBuckets: maxArchiveBuckets,

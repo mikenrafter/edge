@@ -672,8 +672,11 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
     }
   }
 
-  void _say(String msg) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  void _say(String msg) {
+    final messenger = ScaffoldMessenger.of(context);
+    if (ModalRoute.of(context)?.isCurrent ?? true) messenger.clearSnackBars();
+    messenger.showSnackBar(SnackBar(content: Text(msg)));
+  }
 
   // ── build ──────────────────────────────────────────────────────────────────
 
@@ -827,7 +830,7 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
                                 ? () => _run(
                                     w.onTest,
                                     l?.alarmBuzzingTheBand ??
-                                        'Buzzing the band',
+                                        'Buzz sent to the band',
                                   )
                                 : null,
                           ),

@@ -20,6 +20,7 @@ import '../sync/sync_policy.dart'
         ReconnectSupervisorAction,
         ResumeLinkAction,
         kIosBackgroundPromptIntervalSeconds,
+        plausibleRecordInstant,
         resumeLinkAction,
         superviseReconnect;
 import 'control_operations.dart';
@@ -1490,9 +1491,7 @@ class SyncController {
   /// NOT when the BLE frame arrived. This is what "last data: …" displays — a
   /// flash backfill arrives "now" but carries hours-old records. `null` until any
   /// record exists.
-  DateTime? get lastRecordAt => lastRecTs == null
-      ? null
-      : DateTime.fromMillisecondsSinceEpoch(lastRecTs! * 1000);
+  DateTime? get lastRecordAt => plausibleRecordInstant(lastRecTs);
 
   void _setBusy(bool b) {
     busy = b;

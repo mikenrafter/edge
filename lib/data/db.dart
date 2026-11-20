@@ -8091,8 +8091,7 @@ class LocalDb {
   /// through [SubstrateArchive.archiveAndDeleteBefore] first: one transaction
   /// per (device_id, utc_day) bucket, deleted only once its compressed copy
   /// has been written and read back. A bucket that fails stays live for the
-  /// next pass unless it lies wholly behind [hardFloorSec] (the end of the
-  /// bounded raw hold), where it is deleted unarchived as before. Rows with
+  /// next pass, whatever its age. Rows with
   /// `rec_ts <= 0` cannot be placed on any day and are deleted unarchived.
   /// [log] receives the per-bucket failures (this file has no logger).
   /// [shouldYield] stops the archive step for this pass (see
@@ -8108,6 +8107,7 @@ class LocalDb {
   /// value: checked before the archive step and again INSIDE the delete
   /// transaction. Otherwise -1 is returned (a record landed after the caller
   /// last looked; the next pass retries). Without it behaviour is unchanged.
+  /// [hardFloorSec] bounds the hold for unconsumed pulse admissions.
   static Future<int> pruneDecodedBeforeRecTs(
     int cutoffSec, {
     String? cursorName,
@@ -9002,6 +9002,19 @@ class LocalDb {
   static Future<int?> getRecordFrontier() async {
     final v = await getCursorInt('rec_ts_hw');
     return (v == null || v <= 0) ? null : v;
+  }
+
+  /// The primary band banked records the ingest gate refused for their time
+  /// (archived, never decoded, so `rec_ts_hw` never moved): data exists, its
+  /// timestamp does not. What a strap with a never-set clock leaves behind.
+  static Future<bool> hasGateDroppedArchive() async {
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT 1 FROM $rawArchiveView WHERE reason = ? AND device_id = ? '
+      'LIMIT 1',
+      [kGateDroppedReason, kPrimaryDeviceId],
+    );
+    return rows.isNotEmpty;
   }
 
   /// Replace the sets of one strength session, in log order. Deletes any
