@@ -954,12 +954,14 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
             if (hasStatus)
               Pressable(
                 onTap: () => showSyncDetails(c, c.read<AppState>()),
-                child: Text(_detailsLabel(c, AppLocalizations.of(c)), style: link),
+                child: Text(_detailsLabel(c, AppLocalizations.of(c)), style: link,
+                    maxLines: 1, softWrap: false, overflow: TextOverflow.ellipsis),
               ),
             if (!s.busy)
               Pressable(
                 onTap: () => c.read<AppState>().syncNow(),
-                child: Text(action, style: link),
+                child: Text(action, style: link,
+                    maxLines: 1, softWrap: false, overflow: TextOverflow.ellipsis),
               ),
           ];
       final trail = <Widget>[
@@ -1007,7 +1009,12 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
         if (widget.actionLines == 1)
           SizedBox(
             height: S.tap,
-            child: Row(mainAxisAlignment: MainAxisAlignment.end, children: own),
+            // An action wider than the line (a long German or French label at a
+            // large text scale on a narrow phone) shrinks to its ellipsis rather
+            // than overflowing the row.
+            child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [for (final a in own) Flexible(child: a)]),
           )
         else
           for (var i = 0; i < 2; i++)
@@ -1015,7 +1022,7 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
               height: S.tap,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
-                children: [if (i < own.length) own[i]],
+                children: [if (i < own.length) Flexible(child: own[i])],
               ),
             ),
       ]);

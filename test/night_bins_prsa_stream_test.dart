@@ -264,8 +264,10 @@ void main() {
     expect(perBin[1], isNotNull);
     expect(perBin[1]!, lessThan(60), reason: 'a thin bin');
     expect(perBin[2], isNull, reason: 'an empty bin');
+    // The analytics repin (6c45f3b0, 2026-11-18: RSA v3, RR clock refusals) leaves
+    // one breathing window in the gappy night where the fixture had two.
     expect(_refRespPerWindow(want.nn, want.nnTimesMs).length,
-        greaterThanOrEqualTo(2));
+        greaterThanOrEqualTo(1));
     final l = _beats(long);
     final lw = correctRr(l.rr, rrTsMs: l.ts);
     expect(_refRespPerWindow(lw.nn, lw.nnTimesMs).length,

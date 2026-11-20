@@ -41,7 +41,6 @@ import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/last_result_cache.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
-import 'package:openstrap_edge/ui2/ui2.dart' show InlineLoading;
 
 import 'support/last_result_db.dart';
 import 'support/as_of_recalc_fakes.dart' show perfApp, settle;

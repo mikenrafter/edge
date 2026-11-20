@@ -413,7 +413,11 @@ extension _EngineDayCompute on DerivationEngine {
     // runs. Recalculate must preserve its measured window too (R3-1).
     if (nightInputMissing && fence != null &&
         await SleepEditStore.reuseMeasuredNightIfCurrent(day.date, fence, algoVersion: kAlgoVersion)) {
-      _declineReasons[day.date] = 'measured_window_matches_assertion';
+      // The reuse also holds a measured night nobody asserted (no override row):
+      // that decline is the pruned-night one, not "matches the assertion".
+      _declineReasons[day.date] = await LocalDb.getSleepOverride(day.date) == null
+          ? 'night_substrate_pruned'
+          : 'measured_window_matches_assertion';
       return DayDerive.reused;
     }
     // A new assertion cannot inherit measurements from an unproven window.
