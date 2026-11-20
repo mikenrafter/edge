@@ -61,6 +61,7 @@ import 'support/artifact_fixtures.dart';
 import 'support/scripted_artifact_source.dart';
 import 'support/dart_source_lexical.dart';
 import 'support/last_result_db.dart';
+import 'package:openstrap_edge/ui2/skeleton/async_section.dart' show PendingContent, PendingMark;
 
 const _db = 'openstrap_screens_shell.db';
 
@@ -83,8 +84,10 @@ Future<void> _fresh(WidgetTester t) async {
 }
 
 /// Every loading indicator on screen.
-final _bars = find.byWidgetPredicate((w) => w is ProgressIndicator,
-    description: 'a ProgressIndicator');
+// A spinner became a structural placeholder (fa1e52e04, d3c53c24c, 2026-11-14).
+final _bars = find.byWidgetPredicate(
+    (w) => w is ProgressIndicator || w is PendingMark || (w is PendingContent && w.pending),
+    description: 'a loading indicator');
 
 bool _shown(Finder f) => f.evaluate().isNotEmpty;
 

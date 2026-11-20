@@ -22,6 +22,7 @@ import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+import 'support/pending_finders.dart';
 
 const _day = '2026-08-16';
 
@@ -105,7 +106,8 @@ void main() {
     repo.hold = parked;
     await t.tap(find.text('Vitals'));
     await _settle(t);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget,
+    // A pending section, not a spinner (fa1e52e04, d3c53c24c, 2026-11-14).
+    expect(pendingSection, findsWidgets,
         reason: 'the sub-tab should still be loading — nothing to race yet');
 
     final before = t.state(find.byType(HealthScreen));

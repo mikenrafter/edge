@@ -45,6 +45,7 @@ import 'package:openstrap_edge/ui2/ui2.dart' show InlineLoading;
 
 import 'support/last_result_db.dart';
 import 'support/as_of_recalc_fakes.dart' show perfApp, settle;
+import 'support/pending_finders.dart';
 
 const _db = 'circadian_cache_first_test.db';
 const _key = 'circadian';
@@ -204,7 +205,8 @@ void main() {
     // First frames: nothing stored, the warm not landed yet.
     await t.pump();
     expect(find.text('Body clock'), findsOneWidget);
-    expect(find.byType(InlineLoading), findsOneWidget);
+    // The cold page shows a pending section (PendingContent), fa1e52e04/d3c53c24c.
+    expect(pendingSection, findsWidgets);
     expect(find.text('No nights to plot yet'), findsNothing,
         reason: 'waiting is not an empty state');
 
@@ -212,7 +214,7 @@ void main() {
     expect(await warmedFresh(t, repo), isTrue,
         reason: 'the screen enqueued the warm; the warmer stored it');
     await settle(t, n: 10);
-    expect(find.byType(InlineLoading), findsNothing);
+    expect(pendingSection, findsNothing);
     expect(find.text('Body clock'), findsOneWidget);
     expect(find.text('No nights to plot yet'), findsNothing,
         reason: 'the ten seeded nights are drawn from the warmed artifact');
@@ -247,7 +249,7 @@ void main() {
     expect(await warmedFresh(t, repo), isTrue,
         reason: 'a signature that no longer matches means the inputs moved: '
             'the warm was requested and replaced it');
-    expect(find.byType(InlineLoading), findsNothing);
+    expect(pendingSection, findsNothing);
     expect(find.text('No nights to plot yet'), findsNothing);
     expect(find.byKey(const ValueKey('as-of-label')), findsNothing,
         reason: 'the fresh result carries no stale label');

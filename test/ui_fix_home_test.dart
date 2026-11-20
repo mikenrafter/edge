@@ -26,6 +26,7 @@ import 'backup/backup_support.dart';
 import 'support/apk1_harness.dart';
 import 'support/as_of_recalc_fakes.dart';
 import 'support/pin_tz.dart';
+import 'package:openstrap_edge/ui2/skeleton/async_section.dart' show PendingMark;
 
 final _card = find.byKey(const ValueKey<String>('card:detected'));
 
@@ -210,7 +211,7 @@ void main() {
       await _pumpRings(t, const HomeData(),
           help: const RingHelp.busy('Reading your night'));
       expect(find.descendant(of: find.byKey(const ValueKey('home-note:status')),
-          matching: find.byType(CircularProgressIndicator)), findsOneWidget);
+          matching: find.byType(PendingMark)), findsOneWidget); // fa1e52e04, d3c53c24c
     });
   });
 
