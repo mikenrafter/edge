@@ -59,14 +59,44 @@ Future<String> _ldbExportCopy({required bool includeSubstrateArchive, required B
         return privateWrite.file.path;
       }
       final batch = privateWrite.file.read.batch();
-      for (final operation in privateWrite.operations) {
-        switch (operation) {
+      for (var index = 0; index < operations.length; index++) {
+        switch (operations[index]) {
           case ExportFileSync():
             throw StateError('Scratch sync must be a separate operation');
           case ExportFileStatement(:final sql,:final arguments):
             batch.execute(sql,arguments);
           case ExportFileRow(:final table,:final row):
-            batch.insert(table,row);
+            final columns = row.keys.toList();
+            // Prepare one INSERT for adjacent rows of the same shape. Older
+            // Android SQLite builds support 999 bound variables per statement.
+            final maxRows = columns.isEmpty ? 1 : 999 ~/ columns.length;
+            var end = index + 1;
+            for (; end < operations.length && end - index < maxRows; end++) {
+              final next = operations[end];
+              if (next is! ExportFileRow ||
+                  next.table != table ||
+                  next.row.length != columns.length ||
+                  !columns.every(next.row.containsKey)) {
+                break;
+              }
+            }
+            if (end == index + 1) {
+              batch.insert(table, row);
+              break;
+            }
+            String quote(String name) => '"${name.replaceAll('"', '""')}"';
+            final names = columns.map(quote).join(',');
+            final group = '(${List.filled(columns.length, '?').join(',')})';
+            batch.execute(
+              'INSERT INTO ${quote(table)} ($names) VALUES '
+              '${List.filled(end - index, group).join(',')}',
+              [
+                for (var i = index; i < end; i++)
+                  for (final column in columns)
+                    (operations[i] as ExportFileRow).row[column],
+              ],
+            );
+            index = end - 1;
         }
       }
       await batch.commit(noResult: true);

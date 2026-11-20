@@ -69,6 +69,21 @@ void main() {
   expect(await digest(asInt),isNot(await digest(asReal)));
   expect(await digest(asInt),await digest(_encode([parent(100,72)],const [])),reason:'equal content hashes equal');
  });
+ // WHY: column sort order, nested JSON escaping and the typed tie-break
+ // are part of the existing claim digest even when checked only in scratch.
+ test('claim digest preserves canonical bytes for escaped values and tied beats',() async {
+  final e=_encode([
+    {...parent(100,72.0),'instrument"\\\n':'name"\\\n©','missing':null,'blob':Uint8List.fromList([0,255])},
+  ],[
+    {...beat(100,0),'rr_ms':801},
+    beat(100,0),
+  ]);
+  final out=await runMappingWorker(MappingInput('archive','',const [],blob:e.blob,fingerprint:e.fp));
+  expect(out.rows.single['beats'],2);
+  // SHA-256 of the prior mapper's typed JSON, including the 800-before-801
+  // order for two beats with the same index and the escaped column name.
+  expect(out.rows.single['digest'],'2cb0ba60ae89dda996897fd31e3b08fca8656f60c5c054d0b7db1e5358b31f8c');
+ });
  test('equal hashes are deduplicated only after an exact re-read compare (the hash is never trusted)',() async {
   final same1=_encode([parent(100,70)],[beat(100,0)]),same2=_encode([parent(100,70)],[beat(100,0)]);
   final other=_encode([parent(100,70)],[beat(100,1)]);
