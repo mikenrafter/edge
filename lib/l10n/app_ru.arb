@@ -357,6 +357,8 @@
   "devicesSensorExperimentalSub": "Данные декодируются по протоколу, но не проверены на реальном устройстве — ни у кого из участников проекта его нет.",
   "devicesWhatItDoes": "Возможности",
   "devicesLastData": "Последние данные",
+  "devicesTimeUnknown": "Время неизвестно",
+  "devicesClockNotSetSub": "Браслет записал данные, но его часы не настроены",
   "devicesNothingBankedYet": "Пока нет сохранённых данных",
   "devicesSyncNow": "Синхронизировать",
   "devicesSyncNowSub": "Загрузить накопленные данные",
@@ -3568,6 +3570,7 @@
       }
     }
   },
+  "homeSyncedTimeUnknown": "Данные браслета, часы не настроены",
   "homeSyncedNever": "Данных браслета пока нет",
   "homeSyncingTitle": "Синхронизация с браслетом",
   "homeSyncingBody": "Загрузка данных. Если накопилось много записей, это может занять несколько минут.",
