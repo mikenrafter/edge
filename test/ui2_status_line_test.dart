@@ -85,7 +85,7 @@ void main() {
     addTearDown(app.dispose);
     app.derive.value = const DeriveProgress(dayIndex: 3, dayTotal: 12);
     await t.pumpWidget(_host(app));
-    expect(_text(t), 'Calculating sleep, recovery and strain · day 3 of 12');
+    expect(_text(t), 'Calculating sleep, recovery and strain · day 4 of 12');
   });
 
   // WHY: a save queued behind the one-time index waits silently on its own

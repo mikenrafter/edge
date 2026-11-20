@@ -8,12 +8,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/pilot/pilot_flags.dart';
 import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/state/derive_progress.dart';
+import 'package:openstrap_edge/state/recalc_state.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart';
 import 'package:openstrap_edge/ui2/grammar.dart' show Pressable;
 import 'package:openstrap_edge/ui2/home_header.dart';
 import 'package:openstrap_edge/ui2/profile/home_header_settings.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
 
+import 'support/bundled_fonts.dart';
 import 'support/header_rows_fakes.dart';
 import 'support/home_header_pilot_fakes.dart';
 import 'support/tabs_consistency_fakes.dart';
@@ -72,6 +74,7 @@ Future<void> _motion(WidgetTester t) async {
 }
 
 void main() {
+  setUpAll(loadFonts);
   setUp(pilotPrefs);
   setUp(h24);
   tearDown(ClockFormatController.debugReset);
@@ -110,19 +113,13 @@ void main() {
       expect(_under(_pillKey, find.text('14:48 → 22:49')), findsOneWidget);
       expect(_under(_pillKey, find.byIcon(LucideIcons.download)), findsOneWidget);
 
-      app.derive.value = const DeriveProgress(dayIndex: 2, dayTotal: 3);
+      app.derive.value = const DeriveProgress(dayIndex: 1, dayTotal: 3);
       app.setPres(pilotSync('deriving'));
       await _motion(t);
       expect(_under(_pillKey, find.text('Day 2 of 3')), findsOneWidget);
-      final calc = _under(_pillKey, find.byIcon(LucideIcons.moon));
-      expect(find.ancestor(of: calc, matching: find.byType(Opacity)), findsWidgets);
       expect(t.getSize(find.byKey(_downloadKey)).width, t.getSize(find.byKey(_barKey)).width);
       expect(t.getSize(find.byKey(_calculateKey)).width,
-          closeTo(t.getSize(find.byKey(_barKey)).width * 2 / 3, .01));
-
-      app.derive.value = const DeriveProgress(dayIndex: 3, dayTotal: 3);
-      await _motion(t);
-      expect(find.ancestor(of: calc, matching: find.byType(Opacity)), findsNothing);
+          closeTo(t.getSize(find.byKey(_barKey)).width * 1 / 3, .01));
 
       app.derive.value = null;
       app.setPres(pilotIdle());
@@ -139,6 +136,92 @@ void main() {
       await t.pumpWidget(const SizedBox());
     });
   });
+
+  testWidgets('calculation shows the earliest unfinished cycle and follows the next day', (t) async {
+    pilotSurface(t, width: 340);
+    final repo = PilotWakeRepo();
+    final app = PilotHeaderApp(pres: pilotSync('deriving'))
+      ..repo = repo
+      ..derive.value = const DeriveProgress(dayIndex: 1, dayTotal: 3)
+      ..calculationScope.value = RecalcState(
+        days: const {'2026-11-18', '2026-11-17'}, passStartedAt: pilotNow,
+      );
+    await withClock(Clock.fixed(pilotNow), () async {
+      await _mountHeader(t, app);
+      expect(_under(_pillKey, find.text('06:52 → 07:10')), findsOneWidget);
+      final day = _under(_pillKey, find.text('Day 2 of 3'));
+      expect(t.renderObject<RenderParagraph>(day).didExceedMaxLines, isFalse);
+      expect(repo.windowReads, [(2, '2026-11-19')]);
+      app.calculationScope.value =
+          app.calculationScope.value.copyWith(days: const {'2026-11-18'});
+      app.derive.value = const DeriveProgress(dayIndex: 2, dayTotal: 3);
+      await _motion(t);
+      expect(_under(_pillKey, find.text('07:10 → 06:41')), findsOneWidget);
+      expect(repo.windowReads, [(2, '2026-11-19'), (2, '2026-11-20')]);
+      await t.tapAt(t.getTopLeft(find.byKey(_pillKey)) + const Offset(52, 22));
+      await _motion(t);
+      expect(_under(_detailKey, find.text('07:10 → 06:41')), findsOneWidget);
+      await t.pumpWidget(const SizedBox());
+    });
+  });
+
+  testWidgets('a missing wake shows the covered dates and neutral battery stays primary', (t) async {
+    final app = PilotHeaderApp(pres: pilotSync('deriving'), battery: 50)
+      ..repo = PilotWakeRepo(includeFollowingWake: false)
+      ..derive.value = const DeriveProgress(dayIndex: 2, dayTotal: 3)
+      ..calculationScope.value = pilotCalculationScope();
+    await withClock(Clock.fixed(pilotNow), () async {
+      await _mountHeader(t, app);
+      expect(_under(_pillKey, find.text('Nov 17 → Nov 20')), findsOneWidget);
+      await t.tapAt(t.getTopLeft(find.byKey(_pillKey)) + const Offset(52, 22));
+      await _motion(t);
+      expect(_under(_detailKey, find.text('Nov 17 → Nov 20')), findsOneWidget);
+      expect(t.widget<Text>(_under(_detailKey, find.text('50%'))).style?.color,
+          const P(true).ink);
+      await t.pumpWidget(const SizedBox());
+    });
+  });
+
+  for (final compact in [false, true]) {
+    testWidgets('day in progress and linear metric colours at two pass lengths (compact=$compact)',
+        (t) async {
+      await pilotPrefs(compact: compact);
+      pilotSurface(t, width: 360);
+      final app = PilotHeaderApp(pres: pilotSync('deriving'));
+      await withClock(Clock.fixed(pilotNow), () async {
+        await _mountHeader(t, app, scale: 1.3);
+        final root = compact ? _barKey : _pillKey;
+        for (final total in [3, 7]) {
+          for (final (done, current) in [(0, 1), (1, 2), (total - 1, total), (total, total)]) {
+            app.derive.value = DeriveProgress(dayIndex: done, dayTotal: total);
+            await t.pump();
+            final label = compact ? '$current/$total' : 'Day $current of $total';
+            expect(_under(root, find.text(label)), findsOneWidget);
+            final expected = Color.lerp(const Color(0xff465264), const Color(0xff8b8cf6), done / total);
+            for (final metric in [LucideIcons.moon, LucideIcons.batteryCharging, LucideIcons.zap]) {
+              final icon = _under(root, find.byIcon(metric));
+              expect(t.widget<Icon>(icon).color, expected);
+              expect(find.ancestor(of: icon, matching: find.byType(Opacity)), findsNothing);
+            }
+          }
+        }
+        app.derive.value = const DeriveProgress(dayIndex: 1, dayTotal: 3);
+        await t.pump();
+        if (compact) {
+          await t.longPress(find.byKey(_chooserKey));
+        } else {
+          await t.tapAt(t.getTopLeft(find.byKey(_pillKey)) + const Offset(52, 22));
+        }
+        await _motion(t);
+        expect(_under(_detailKey, find.text('2 / 3')), findsOneWidget);
+        final calculateTime = _under(_detailKey, find.text('22:47 → 22:49'));
+        expect(t.renderObject<RenderParagraph>(calculateTime).didExceedMaxLines, isFalse);
+        expect(t.widget<Icon>(_under(_detailKey, find.byIcon(LucideIcons.moon))).color,
+            Color.lerp(const Color(0xff465264), const Color(0xff8b8cf6), 1/3));
+        await t.pumpWidget(const SizedBox());
+      });
+    });
+  }
 
   testWidgets('download fill uses elapsed band time, then the reported target', (t) async {
     final app = PilotHeaderApp(
@@ -263,8 +346,9 @@ void main() {
       (t) async {
     pilotSurface(t);
     final app = PilotHeaderApp(pres: pilotSync('deriving'), startEdge: pilotStartEdge)
-      ..derive.value = const DeriveProgress(dayIndex: 2, dayTotal: 3)
-      ..repo = EmptyTabsRepo();
+      ..derive.value = const DeriveProgress(dayIndex: 1, dayTotal: 3)
+      ..repo = PilotWakeRepo()
+      ..calculationScope.value = pilotCalculationScope();
     addTearDown(app.dispose);
     await withClock(Clock.fixed(pilotNow), () async {
       await t.pumpWidget(pilotApp(app, HomeHeaderOpening(child: AppShell(
@@ -281,8 +365,12 @@ void main() {
           await t.pump();
         }
         expect((t.getRect(find.byKey(_pillKey)), t.getRect(find.byKey(_barKey))), reference);
-        expect(_under(_barKey, find.text(label)), findsOneWidget);
+        final dayLabel = _under(_barKey, find.text(label));
+        expect(dayLabel, findsOneWidget);
+        expect(t.widget<Text>(dayLabel).textAlign, TextAlign.center);
+        expect(t.getCenter(dayLabel).dx, t.getCenter(find.byKey(_barKey)).dx);
         expect(_under(_pillKey, find.text('Day 2 of 3')), findsOneWidget);
+        expect(_under(_pillKey, find.text('07:10 → 06:41')), findsOneWidget);
       }
       await t.pumpWidget(const SizedBox());
     });

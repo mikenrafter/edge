@@ -3,8 +3,8 @@
 // calculated.
 //
 // Contracts the brief leaves open:
-//  - dayIndex 0 with a known total reads 'Calculating sleep, recovery and strain', the same rule as
-//    syncStatusLine (a count appears once a day has finished).
+// A known scope starts at day 1. The finished-day counter advances the
+// displayed ordinal until the last day.
 //  - waiting is 'Waiting to calculate sleep, recovery and strain' (no download fallback;
 //    that belongs to the sync sheet's sentence, not a screen's detail).
 
@@ -29,19 +29,19 @@ SyncPresentationState _state(String phase, SyncCalculateDetail? calc) =>
     );
 
 void main() {
-  test('deriving with counts and the day', () {
+  test('deriving labels the active ordinal without the previous date', () {
     expect(
         calcProgressLine(_state('deriving',
             const SyncCalculateDetail(
                 dayIndex: 3, dayTotal: 12, day: '2026-03-14'))),
-        'Calculating sleep, recovery and strain · day 3 of 12 · 2026-03-14');
+        'Calculating sleep, recovery and strain · day 4 of 12');
   });
 
   test('deriving with counts, no day', () {
     expect(
         calcProgressLine(_state(
             'deriving', const SyncCalculateDetail(dayIndex: 3, dayTotal: 12))),
-        'Calculating sleep, recovery and strain · day 3 of 12');
+        'Calculating sleep, recovery and strain · day 4 of 12');
   });
 
   test('deriving before any count', () {
@@ -51,7 +51,18 @@ void main() {
     expect(
         calcProgressLine(_state(
             'deriving', const SyncCalculateDetail(dayIndex: 0, dayTotal: 12))),
-        'Calculating sleep, recovery and strain');
+        'Calculating sleep, recovery and strain · day 1 of 12');
+  });
+
+  test('the sync sheet caps the active ordinal at the last day', () {
+    final now = DateTime(2026, 11, 19);
+    for (final total in [3, 7]) {
+      for (final (done, current) in [(0, 1), (1, 2), (total - 1, total), (total, total)]) {
+        final state = _state('deriving', SyncCalculateDetail(dayIndex: done, dayTotal: total));
+        expect(syncStatusLine(state, now),
+            'Calculating sleep, recovery and strain · day $current of $total');
+      }
+    }
   });
 
   test('waiting for the lock', () {
@@ -88,21 +99,21 @@ void main() {
     test('no pass running => null', () {
       expect(deriveProgressLine(null), isNull);
     });
-    test('day count with the last finished day', () {
+    test('a finished date does not label the active ordinal', () {
       expect(
           deriveProgressLine(const DeriveProgress(
               dayIndex: 3, dayTotal: 12, day: '2026-03-14')),
-          'Calculating sleep, recovery and strain · day 3 of 12 · 2026-03-14');
+          'Calculating sleep, recovery and strain · day 4 of 12');
     });
     test('day count without a day', () {
       expect(
           deriveProgressLine(const DeriveProgress(dayIndex: 3, dayTotal: 12)),
-          'Calculating sleep, recovery and strain · day 3 of 12');
+          'Calculating sleep, recovery and strain · day 4 of 12');
     });
-    test('no finished day yet, or no count => Calculating sleep, recovery and strain', () {
+    test('a known scope starts at day 1 and an unknown scope has no ordinal', () {
       expect(
           deriveProgressLine(const DeriveProgress(dayIndex: 0, dayTotal: 12)),
-          'Calculating sleep, recovery and strain');
+          'Calculating sleep, recovery and strain · day 1 of 12');
       expect(deriveProgressLine(const DeriveProgress()), 'Calculating sleep, recovery and strain');
     });
     test('waiting', () {

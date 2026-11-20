@@ -105,7 +105,9 @@ void main() {
         battery: failed ? 25 : 50,
       );
       if (frame.phase == 'deriving') {
-        app.derive.value = const DeriveProgress(dayIndex: 2, dayTotal: 3);
+        app.derive.value = const DeriveProgress(dayIndex: 1, dayTotal: 3);
+        app.repo = PilotWakeRepo();
+        app.calculationScope.value = pilotCalculationScope();
       }
       addTearDown(app.dispose);
       await withClock(Clock.fixed(pilotNow), () async {
@@ -144,7 +146,9 @@ void main() {
     await pilotPrefs(sleepSummary: true);
     final app = PilotHeaderApp(
       pres: pilotSync('deriving'), startEdge: pilotStartEdge,
-    )..derive.value = const DeriveProgress(dayIndex: 2, dayTotal: 3);
+    )..derive.value = const DeriveProgress(dayIndex: 1, dayTotal: 3)
+      ..repo = PilotWakeRepo()
+      ..calculationScope.value = pilotCalculationScope();
     addTearDown(app.dispose);
     await withClock(Clock.fixed(pilotNow), () async {
       final key = GlobalKey();

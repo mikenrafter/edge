@@ -285,7 +285,7 @@ void main() {
     _tw('deriving, day known', (t) async {
       await t.pumpWidget(_control(_deriving(const SyncCalculateDetail(
           dayIndex: 3, dayTotal: 7, day: '2026-09-29'))));
-      _expectLine(t, 'Calculating sleep, recovery and strain · day 3 of 7', spinner: true);
+      _expectLine(t, 'Calculating sleep, recovery and strain · day 4 of 7', spinner: true);
     });
 
     _tw('deriving, day not known: "Calculating" and no day number', (t) async {

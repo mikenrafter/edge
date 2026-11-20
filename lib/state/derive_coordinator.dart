@@ -311,8 +311,11 @@ class DeriveCoordinator {
   void _recalcScope(int owner, List<String> days) {
     if (days.isEmpty) return;
     _recalcOwner = owner;
-    _recalcScopeSize = days.toSet().length;
-    _setRecalc(RecalcState(days: {...days}, passStartedAt: DateTime.now()));
+    final scope = Set<String>.unmodifiable(days);
+    _recalcScopeSize = scope.length;
+    _setRecalc(RecalcState(
+      days: scope, coveredDays: scope, passStartedAt: DateTime.now(),
+    ));
     _setProgress(owner, DeriveProgress(dayIndex: 0, dayTotal: _recalcScopeSize));
   }
 

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/prefs.dart';
+import 'package:openstrap_edge/state/recalc_state.dart';
 import 'package:openstrap_edge/state/units_controller.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart';
 import 'package:openstrap_edge/ui2/home_header.dart';
@@ -15,6 +17,7 @@ import 'package:openstrap_edge/ui2/screens/workout_screen.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
 
 import 'header_rows_fakes.dart';
+import 'tabs_consistency_fakes.dart';
 
 final pilotNow = DateTime(2026, 11, 19, 22, 49);
 final pilotStartEdge = DateTime(2026, 11, 19, 13, 23);
@@ -28,6 +31,16 @@ class PilotHeaderApp extends HeaderApp {
     this.startEdge,
   });
   final DateTime? startEdge;
+  final calculationScope = ValueNotifier<RecalcState>(RecalcState.idle);
+
+  @override
+  ValueListenable<RecalcState> get recalc => calculationScope;
+
+  @override
+  void dispose() {
+    calculationScope.dispose();
+    super.dispose();
+  }
 
   @override
   DateTime? get headerSyncedThrough => startEdge;
@@ -35,6 +48,34 @@ class PilotHeaderApp extends HeaderApp {
   @override
   Map<String, dynamic> get user => const {'name': 'T'};
 }
+
+class PilotWakeRepo extends EmptyTabsRepo {
+  PilotWakeRepo({this.includeFollowingWake = true});
+  final bool includeFollowingWake;
+  final windowReads = <(int, String?)>[];
+
+  @override
+  Future<List<Map<String, dynamic>>> sleepWindows({int days = 60, String? before}) async {
+    windowReads.add((days, before));
+    Map<String, dynamic> night(String day, DateTime start, DateTime wake) => {
+      'date': day,
+      'onset_ts': start.millisecondsSinceEpoch ~/ 1000,
+      'wake_ts': wake.millisecondsSinceEpoch ~/ 1000,
+    };
+    return [
+      if (includeFollowingWake)
+        night('2026-11-19', DateTime(2026, 11, 18, 23), DateTime(2026, 11, 19, 6, 41)),
+      night('2026-11-18', DateTime(2026, 11, 17, 23), DateTime(2026, 11, 18, 7, 10)),
+      night('2026-11-17', DateTime(2026, 11, 16, 23), DateTime(2026, 11, 17, 6, 52)),
+    ];
+  }
+}
+
+RecalcState pilotCalculationScope() => RecalcState(
+  days: const {'2026-11-18', '2026-11-19'},
+  coveredDays: const {'2026-11-17', '2026-11-18', '2026-11-19'},
+  passStartedAt: pilotNow,
+);
 
 SyncPresentationState pilotIdle({DateTime? lastSync}) =>
     SyncPresentationState(phase: 'idle', lastSuccess: lastSync ?? _lastSync);
@@ -75,6 +116,7 @@ SyncPresentationState pilotSync(
       SyncStep(
         id: SyncStepId.calculate,
         status: calculating ? SyncStepStatus.running : SyncStepStatus.waiting,
+        startedAt: calculating ? DateTime(2026, 11, 19, 22, 47) : null,
         calculate: dayTotal == null ? null
             : SyncCalculateDetail(dayIndex: dayIndex, dayTotal: dayTotal),
       ),

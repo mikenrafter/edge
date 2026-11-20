@@ -2,11 +2,14 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:clock/clock.dart';
+import 'package:flutter/foundation.dart' show SynchronousFuture;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../data/day_label.dart';
 import '../data/import_progress.dart';
+import '../data/local_repository.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/date_text.dart' show localizedDate;
 import '../notify/notification_prefs.dart';
@@ -14,10 +17,13 @@ import '../pilot/pilot_flags.dart';
 import '../settings/settings_repository.dart';
 import '../state/app_state.dart';
 import '../state/clock_format.dart';
+import '../state/derive_progress.dart' show calculationDayInProgress;
 import '../state/prefs.dart';
+import '../state/recalc_state.dart';
 import 'calendar_day.dart';
 import 'day_navigation.dart';
 import 'grammar.dart' show Pressable;
+import 'personal_day_inputs.dart' show mainSleepsOf;
 import 'profile/profile.dart' show ProfileAvatar;
 import 'status_line.dart';
 import 'sync_control.dart';
@@ -54,6 +60,7 @@ class _HomeHeaderOpeningState extends State<HomeHeaderOpening>
     with SingleTickerProviderStateMixin {
   late final _opening = AnimationController(vsync: this, duration: Motion.syncOpening);
   final _downloadWindow = _DownloadWindow();
+  final _calculationWindows = _CalculationWindows();
   final _preferenceChanges = Listenable.merge([
     PilotFlags.revision, settingsRestoredSignal, Prefs.personalDayRevision,
   ]);
@@ -83,6 +90,7 @@ class _HomeHeaderOpeningState extends State<HomeHeaderOpening>
     animation: _opening,
     openedAt: _openedAt,
     downloadWindow: _downloadWindow,
+    calculationWindows: _calculationWindows,
     opensOn: _opensOn,
     child: _HeaderPilotRevision(
       notifier: _preferenceChanges,
@@ -100,12 +108,14 @@ class _Opening extends InheritedWidget {
     required this.animation,
     required this.openedAt,
     required this.downloadWindow,
+    required this.calculationWindows,
     required this.opensOn,
     required super.child,
   });
   final Animation<double> animation;
   final DateTime openedAt;
   final _DownloadWindow downloadWindow;
+  final _CalculationWindows calculationWindows;
   final bool Function(HomeHeaderTab) opensOn;
 
   static _Opening? of(BuildContext context) =>
@@ -180,6 +190,7 @@ class _HomeHeaderState extends State<HomeHeader> with SingleTickerProviderStateM
   );
   bool _expanded = false;
   final _standaloneDownloadWindow = _DownloadWindow();
+  final _standaloneCalculationWindows = _CalculationWindows();
   Timer? _downloadClock;
   late final _alertChanges =
       SettingsRepository.instance.changes.where((change) => change.alerts != null);
@@ -217,7 +228,7 @@ class _HomeHeaderState extends State<HomeHeader> with SingleTickerProviderStateM
     final app = c.read<AppState?>();
     final band = c.select<AppState?, _Band>(_readBand);
     final listeners = Listenable.merge([
-      app?.deriveProgress, app?.importProgress, app?.indexMaintenanceActive,
+      app?.deriveProgress, app?.recalc, app?.importProgress, app?.indexMaintenanceActive,
       HomeHeader.compactRevision, Prefs.settingsAsTabRevision, settingsRestoredSignal, CalendarDay.instance,
     ]);
     return StreamBuilder<SettingsChange>(
@@ -256,15 +267,23 @@ class _HomeHeaderState extends State<HomeHeader> with SingleTickerProviderStateM
     };
     final motion = Motion.enabled(c);
     final visible = TickerMode.valuesOf(c).enabled;
-    Motion.configureSyncPulse(_pulse, enabled: motion && visible &&
-        (phase == _Phase.download || phase == _Phase.calculate));
+    Motion.configureSyncPulse(_pulse, enabled: motion && visible && phase == _Phase.download);
     _tickDownload(visible && phase == _Phase.download && widget.now == null);
     final calculated = derive == null ? s.calculate?.dayIndex : derive.dayIndex;
     final dayTotal = derive == null ? s.calculate?.dayTotal : derive.dayTotal;
-    final dayActive = phase == _Phase.calculate &&
-        (dayTotal == null || (calculated ?? 0) < dayTotal);
-    final calcProgress = calculated == null || dayTotal == null || dayTotal <= 0
-        ? null : (calculated / dayTotal).clamp(0.0, 1.0);
+    final calcProgress = _fractionDone(calculated, dayTotal);
+    final displayDay = phase == _Phase.calculate
+        ? calculationDayInProgress(calculated, dayTotal) : calculated;
+    final scope = app?.recalc.value ?? RecalcState.idle;
+    final calculating = phase == _Phase.calculate;
+    final showCalculationWindow = calculating || (derive != null && !derive.waiting);
+    final fallback = showCalculationWindow
+        ? _coveredRange(scope, l)
+            ?? _window(s.step(SyncStepId.calculate).startedAt ?? scope.passStartedAt, now)
+            ?? l?.syncStatusCalculating ?? 'Calculating…'
+        : null;
+    final windows = opening?.calculationWindows ?? _standaloneCalculationWindows;
+    final wakeWindow = calculating ? windows.read(app?.repo, scope) : null;
     final end = downloadStep.endedAt ?? (s.busy ? now : s.finishedAt);
     final downloadFinished = downloadStep.status == SyncStepStatus.done;
     final downloadComplete = downloadFinished && downloadStep.noteCode != SyncNote.moreRemains;
@@ -274,33 +293,47 @@ class _HomeHeaderState extends State<HomeHeader> with SingleTickerProviderStateM
     final lastSync = syncAt == null
         ? l?.syncStatusNotYet ?? 'Not synced yet'
         : '${l?.syncStatusSyncedLower == null ? 'Synced' : _capitalize(l!.syncStatusSyncedLower)} ${formatClockOf(syncAt.toLocal())}';
-    final details = _HeaderStatus(
-      phase: phase,
-      battery: band.battery,
-      connected: band.connected,
-      batteryColor: band.battery == null
-          ? _inkSecondary(c)
-          : headerBatteryColor(band.battery!, Prefs.getInt(NotificationPrefs.batteryPctPrefKey, 20)
-              .clamp(NotificationPrefs.batteryPctMin, NotificationPrefs.batteryPctMax)),
-      records: download?.records,
-      downloadProgress: downloadProgress,
-      downloadFinishedThisSync: s.busy && downloadFinished,
-      downloadTime: time,
-      day: calculated,
-      total: dayTotal,
-      calculateProgress: calcProgress,
-
-      dayActive: dayActive,
-      lastSync: lastSync,
-      message: phase == _Phase.error
-          ? problem?.text ?? l?.syncStatusFailed ?? 'Sync failed'
-          : maintainingIndex
-              ? l?.statusLineUpdatingDatabaseIndex ?? 'Updating the database index (one time)'
-              : importing
-                  ? StatusLine.importLine(l, import)
-                  : deriveProgressLine(derive, l) ?? syncStatusHeadline(s, now, l),
+    Widget render(String? calculateTime) {
+      final details = _HeaderStatus(
+        phase: phase,
+        battery: band.battery,
+        connected: band.connected,
+        batteryColor: band.battery == null
+            ? _inkSecondary(c)
+            : headerBatteryColor(band.battery!, Prefs.getInt(NotificationPrefs.batteryPctPrefKey, 20)
+                .clamp(NotificationPrefs.batteryPctMin, NotificationPrefs.batteryPctMax)),
+        records: download?.records,
+        downloadProgress: downloadProgress,
+        downloadFinishedThisSync: s.busy && downloadFinished,
+        downloadTime: time,
+        day: displayDay,
+        total: dayTotal,
+        calculateProgress: calcProgress,
+        calculateTime: calculateTime,
+        metricDaysDone: (sleep: calculated, recovery: calculated, strain: calculated),
+        lastSync: lastSync,
+        message: phase == _Phase.error
+            ? problem?.text ?? l?.syncStatusFailed ?? 'Sync failed'
+            : maintainingIndex
+                ? l?.statusLineUpdatingDatabaseIndex ?? 'Updating the database index (one time)'
+                : importing
+                    ? StatusLine.importLine(l, import)
+                    : deriveProgressLine(derive, l) ?? syncStatusHeadline(s, now, l),
+      );
+      return _renderHeader(c, details, openingHere, now, l);
+    }
+    if (wakeWindow == null) return render(fallback);
+    return FutureBuilder<_WakeWindow?>(
+      future: wakeWindow,
+      builder: (c, snapshot) {
+        final span = snapshot.connectionState == ConnectionState.done ? snapshot.data : null;
+        return render(_window(span?.start, span?.end) ?? fallback);
+      },
     );
+  }
 
+  Widget _renderHeader(BuildContext c, _HeaderStatus details, _Opening? openingHere,
+      DateTime now, AppLocalizations? l) {
     final compact = HomeHeader.compact;
     final showAvatar = !Prefs.settingsAsTabOn;
     final date = DateTime.tryParse(widget.dateLabel ?? widget.day ?? '') ?? now;
@@ -410,7 +443,10 @@ class _HomeHeaderState extends State<HomeHeader> with SingleTickerProviderStateM
   }
 
   Widget _dayTitle(BuildContext c, _Opening? opening, String label, String greeting) {
-    Widget title(String text) => _text(c, text, style: F.syncDate);
+    Widget title(String text) => SizedBox(
+      width: double.infinity,
+      child: _text(c, text, style: F.syncDate, textAlign: TextAlign.center),
+    );
     if (opening == null || !Motion.enabled(c)) return title(label);
     return AnimatedBuilder(animation: opening.animation, builder: (c, _) {
       final ms = opening.animation.value * Motion.syncOpening.inMilliseconds;
@@ -482,11 +518,15 @@ class _HomeHeaderState extends State<HomeHeader> with SingleTickerProviderStateM
         children.add(Flexible(child: _text(c, text, style: style, color: compact ? muted : null)));
         trailing = s.downloadTime;
       case _Phase.calculate:
+        final metrics = [
+          (LucideIcons.moon, s.metricDaysDone.sleep),
+          (LucideIcons.batteryCharging, s.metricDaysDone.recovery),
+          (LucideIcons.zap, s.metricDaysDone.strain),
+        ];
         children.add(Row(mainAxisSize: MainAxisSize.min, children: [
-          for (final (index, icon) in _metricIcons.indexed) ...[
+          for (final (index, (icon, done)) in metrics.indexed) ...[
             if (index != 0) const SizedBox(width: 2),
-            _icon(icon, s.dayActive || s.calculateProgress == 1 ? C.syncCalculate : C.syncQueued,
-                size: iconSize, pulse: s.dayActive),
+            _icon(icon, _metricInk(done, s.total), size: iconSize),
           ],
         ]));
         final day = s.day;
@@ -497,7 +537,7 @@ class _HomeHeaderState extends State<HomeHeader> with SingleTickerProviderStateM
               : (compact ? '$day/$total' : l?.syncLineDay('$day', '$total', '') ?? 'Day $day of $total'),
           style: style, color: compact ? muted : null,
         )));
-
+        trailing = s.calculateTime;
       case _Phase.idle:
         if (!compact && !_expanded && s.connected != null) {
           children.add(Semantics(
@@ -513,9 +553,10 @@ class _HomeHeaderState extends State<HomeHeader> with SingleTickerProviderStateM
           ));
         }
         if (s.battery != null) {
-          final color = s.connected == false ? _inkMuted(c) : _batteryInk(c, s.batteryColor);
-          children.add(_icon(LucideIcons.batteryMedium, color, size: iconSize));
-          children.add(Flexible(child: _text(c, '${s.battery}%', style: style, color: color)));
+          final iconColor = s.connected == false ? _inkMuted(c) : _batteryIconInk(c, s.batteryColor);
+          final percentColor = s.connected == false ? _inkMuted(c) : _batteryTextInk(c, s.batteryColor);
+          children.add(_batteryIcon(iconColor, iconSize));
+          children.add(Flexible(child: _text(c, '${s.battery}%', style: style, color: percentColor)));
         }
         trailing = s.lastSync;
       case _Phase.error:
@@ -528,26 +569,21 @@ class _HomeHeaderState extends State<HomeHeader> with SingleTickerProviderStateM
         children.add(Flexible(child: _text(c, s.message, style: style, color: muted)));
     }
 
-    return Row(
-      mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
-      mainAxisAlignment: compact ? MainAxisAlignment.end : MainAxisAlignment.start,
-      children: [
-        if (!compact && !_expanded && trailing != null)
-          Expanded(child: Row(children: _spaced(children, 8)))
-        else
-          ..._spaced(children, compact ? 4 : 8),
-        if (!compact && !_expanded && trailing != null) ...[
-          if (children.isNotEmpty) _gap,
-          Flexible(
-            flex: children.isEmpty ? 2 : 1,
-            child: Align(
-              alignment: AlignmentDirectional.centerEnd,
-              child: _text(c, trailing, style: style, color: muted),
-            ),
-          ),
-        ],
-      ],
-    );
+    final end = trailing;
+    if (compact || _expanded || end == null) {
+      return Row(
+        mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+        children: _spaced(children, compact ? 4 : 8),
+      );
+    }
+    return LayoutBuilder(builder: (c, box) => Row(children: [
+      Expanded(child: Row(children: _spaced(children, 8))),
+      if (children.isNotEmpty) _gap,
+      ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: box.maxWidth * .45),
+        child: _text(c, end, style: style, color: muted),
+      ),
+    ]));
   }
 
   Widget _animatedDetails(BuildContext c, _HeaderStatus status, {required bool compact}) =>
@@ -613,18 +649,16 @@ class _HomeHeaderState extends State<HomeHeader> with SingleTickerProviderStateM
               color: C.green, progress: s.downloadProgress,
               countIcon: LucideIcons.package, count: s.records?.toString(), time: s.downloadTime),
           const TableRow(children: [SizedBox(height: 6), SizedBox(), SizedBox(), SizedBox()]),
-          row(icon: _icon(LucideIcons.moon,
-                  s.dayActive || s.calculateProgress == 1 ? C.syncCalculate : C.syncQueued,
-                  size: 18, pulse: s.dayActive),
+          row(icon: _icon(LucideIcons.moon, _metricInk(s.metricDaysDone.sleep, s.total), size: 18),
               color: C.syncCalculate, progress: s.calculateProgress,
               countIcon: LucideIcons.calendarDays,
               count: s.day == null || s.total == null ? null : '${s.day} / ${s.total}',
-              ),
+              time: s.calculateTime),
           const TableRow(children: [SizedBox(height: 6), SizedBox(), SizedBox(), SizedBox()]),
-          row(icon: _icon(LucideIcons.batteryMedium, _batteryInk(c, s.batteryColor), size: 18),
+          row(icon: _batteryIcon(_batteryIconInk(c, s.batteryColor), 18),
               color: s.batteryColor, progress: battery == null ? null : battery / 100,
               count: battery == null ? null : '$battery%', time: s.lastSync,
-              countColor: _batteryInk(c, s.batteryColor)),
+              countColor: _batteryTextInk(c, s.batteryColor)),
         ],
       );
     });
@@ -683,9 +717,71 @@ class _DownloadWindow {
   }
 }
 
+typedef _WakeWindow = ({DateTime start, DateTime end});
+
+class _CalculationWindows {
+  (LocalRepository, DateTime?, String)? _request;
+  Future<_WakeWindow?>? _pending;
+
+  Future<_WakeWindow?>? read(LocalRepository? repo, RecalcState scope) {
+    if (repo == null || scope.days.isEmpty) return null;
+    final day = scope.days.reduce((a, b) => a.compareTo(b) < 0 ? a : b);
+    final key = (repo, scope.passStartedAt, day);
+    if (key != _request) {
+      _request = key;
+      _pending = _readPair(repo, day).then((span) {
+        if (_request == key) _pending = SynchronousFuture(span);
+        return span;
+      });
+    }
+    return _pending;
+  }
+
+  Future<_WakeWindow?> _readPair(LocalRepository repo, String day) async {
+    final next = dayLabelBefore(day, -1);
+    if (next == null) return null;
+    try {
+      // The exclusive bound includes the next night's wake. A missing or
+      // skipped night must not be replaced by an older wake returned by LIMIT.
+      final rows = await repo.sleepWindows(days: 2, before: dayLabelBefore(next, -1));
+      DateTime? wake(String date) =>
+          mainSleepsOf(rows.where((row) => row['date'] == date).toList()).firstOrNull?.wake;
+      final start = wake(day);
+      final end = wake(next);
+      return start != null && end != null && end.isAfter(start) ? (start: start, end: end) : null;
+    } on Object {
+      return null;
+    }
+  }
+}
+
+String? _coveredRange(RecalcState scope, AppLocalizations? l) {
+  final days = scope.coveredDays.isEmpty ? scope.days : scope.coveredDays;
+  if (days.isEmpty) return null;
+  var first = days.first;
+  var last = first;
+  for (final day in days) {
+    if (day.compareTo(first) < 0) first = day;
+    if (day.compareTo(last) > 0) last = day;
+  }
+  final start = localDayStartSec(first);
+  final end = localDayEndSec(last);
+  if (start == null || end == null) return null;
+  String date(int seconds) => localizedDate(
+    DateTime.fromMillisecondsSinceEpoch(seconds * 1000),
+    l?.localeName ?? 'en',
+    pattern: 'MMMd',
+  );
+  return '${date(start)} → ${date(end)}';
+}
+
 enum _Phase { download, calculate, idle, error, other }
 
-const _metricIcons = [LucideIcons.moon, LucideIcons.batteryCharging, LucideIcons.zap];
+double? _fractionDone(int? done, int? total) => done == null || total == null || total <= 0
+    ? null : (done / total).clamp(0.0, 1.0);
+
+Color _metricInk(int? done, int? total) =>
+    Color.lerp(C.syncQueued, C.syncCalculate, _fractionDone(done, total) ?? 0)!;
 
 class _HeaderStatus {
   const _HeaderStatus({
@@ -693,17 +789,18 @@ class _HeaderStatus {
     required this.batteryColor, required this.records, required this.downloadProgress,
     required this.downloadFinishedThisSync,
     required this.downloadTime, required this.day, required this.total,
-    required this.calculateProgress, required this.dayActive,
+    required this.calculateProgress, required this.calculateTime, required this.metricDaysDone,
     required this.lastSync, required this.message,
   });
 
   final _Phase phase;
   final int? battery, records, day, total;
   final bool? connected;
-  final bool dayActive, downloadFinishedThisSync;
+  final bool downloadFinishedThisSync;
   final Color batteryColor;
   final double? downloadProgress, calculateProgress;
-  final String? downloadTime;
+  final String? downloadTime, calculateTime;
+  final ({int? sleep, int? recovery, int? strain}) metricDaysDone;
   final String lastSync, message;
 }
 
@@ -729,6 +826,20 @@ Color _batteryInk(BuildContext c, Color color) {
   return p.dark ? color : p.on(color);
 }
 
+Color _batteryTextInk(BuildContext c, Color color) =>
+    color == C.batteryGrey ? P.of(c).ink : _batteryInk(c, color);
+
+Color _batteryIconInk(BuildContext c, Color color) =>
+    color == C.batteryGrey ? P.of(c).ink2 : _batteryInk(c, color);
+
+Widget _batteryIcon(Color color, double size) => Stack(children: [
+  Icon(LucideIcons.battery, color: color, size: size),
+  Positioned(
+    left: size * .20, top: size * .38,
+    child: SizedBox(width: size * .26, height: size * .24, child: ColoredBox(color: color)),
+  ),
+]);
+
 Widget _box(BuildContext c, {required BorderRadius radius, required Widget child}) =>
     Material(
       color: P.of(c).card2,
@@ -738,9 +849,10 @@ Widget _box(BuildContext c, {required BorderRadius radius, required Widget child
     );
 
 Widget _text(BuildContext c, String text, {
-  required TextStyle style, Color? color,
+  required TextStyle style, Color? color, TextAlign? textAlign,
 }) => Text(
   text,
+  textAlign: textAlign,
   maxLines: 1,
   softWrap: false,
   overflow: TextOverflow.ellipsis,

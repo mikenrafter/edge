@@ -458,7 +458,7 @@ void main() {
     expect(find.text('Syncing with your band'), findsNothing);
   });
   screenStructure('sync_calculating', fixtures['sync_calculating']!.$2, () {
-    expect(find.text('Calculating sleep, recovery and strain · day 2 of 5'), findsOneWidget);
+    expect(find.text('Calculating sleep, recovery and strain · day 3 of 5'), findsOneWidget);
     expect(find.text('1:15'), findsOneWidget);
     expectNoAction();
     syncStepsCollapsed();
@@ -531,8 +531,8 @@ void main() {
     expect(find.text('12,400 records · 31 chunks'), findsOneWidget);
     expect(find.text('Band time still to fetch: 10 h 30 min'), findsOneWidget);
   });
-  expandedSyncStructure('sync_calculating', 'Calculating sleep, recovery and strain · day 2 of 5', () {
-    expect(find.text('Day 2 of 5 · 2026-09-29'), findsOneWidget);
+  expandedSyncStructure('sync_calculating', 'Calculating sleep, recovery and strain · day 3 of 5', () {
+    expect(find.text('Day 3 of 5'), findsOneWidget);
     expect(find.text('Already connected'), findsOneWidget);
   });
   expandedSyncStructure('sync_failed',

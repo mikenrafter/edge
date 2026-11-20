@@ -3,12 +3,16 @@
 class RecalcState {
   const RecalcState({
     this.days = const <String>{},
+    this.coveredDays = const <String>{},
     this.passStartedAt,
     this.crossDay = false,
   });
 
   /// Local day labels still being recalculated.
   final Set<String> days;
+
+  /// The original scope, including days the pass already finished.
+  final Set<String> coveredDays;
 
   /// When the scope became known; null when no pass is in progress.
   final DateTime? passStartedAt;
@@ -25,6 +29,7 @@ class RecalcState {
   }) =>
       RecalcState(
         days: days ?? this.days,
+        coveredDays: coveredDays,
         passStartedAt: passStartedAt ?? this.passStartedAt,
         crossDay: crossDay ?? this.crossDay,
       );
@@ -37,10 +42,12 @@ class RecalcState {
       other.passStartedAt == passStartedAt &&
       other.crossDay == crossDay &&
       other.days.length == days.length &&
-      other.days.containsAll(days);
+      other.days.containsAll(days) &&
+      other.coveredDays.length == coveredDays.length &&
+      other.coveredDays.containsAll(coveredDays);
 
   @override
-  int get hashCode => Object.hash(passStartedAt, crossDay, days.length);
+  int get hashCode => Object.hash(passStartedAt, crossDay, days.length, coveredDays.length);
 }
 
 /// The time to print as "As of", or null for no label. Non-null only when the

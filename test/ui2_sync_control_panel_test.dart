@@ -212,8 +212,8 @@ void main() {
       _host(SyncControl(state: days, onSync: () {}, clock: clock)),
     );
     await _open(t, days, clock());
-    expect(find.textContaining('Day 2 of 5'), findsOneWidget);
-    expect(find.textContaining('2026-10-01'), findsOneWidget);
+    expect(find.text('Day 3 of 5'), findsOneWidget);
+    expect(find.textContaining('2026-10-01'), findsNothing);
     expect(find.text('Already connected'), findsOneWidget);
 
     await t.pumpWidget(
@@ -425,10 +425,9 @@ void main() {
     await t.pumpWidget(
       _host(SyncControl(state: state, onSync: () {}, clock: () => _t0)),
     );
-    // Nothing has finished yet, so the sentence does not name a day.
-    expect(find.text('Calculating sleep, recovery and strain'), findsOneWidget);
+    expect(find.text('Calculating sleep, recovery and strain · day 1 of 3'), findsOneWidget);
     await _open(t, state, _t0);
-    expect(find.text('Day 0 of 3'), findsOneWidget);
+    expect(find.text('Day 1 of 3'), findsOneWidget);
   });
 
   testWidgets('3.1x text scale does not overflow', (t) async {

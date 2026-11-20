@@ -24,3 +24,9 @@ class DeriveProgress {
     this.crossDay = false,
   });
 }
+
+/// The ordinal shown while a pass runs. The engine publishes finished days.
+int? calculationDayInProgress(int? done, int? total) {
+  if (done == null || total == null || total <= 0) return null;
+  return (done + 1).clamp(1, total);
+}

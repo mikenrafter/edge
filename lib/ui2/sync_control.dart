@@ -389,10 +389,8 @@ String syncStatusLine(SyncPresentationState s, DateTime now, [AppLocalizations? 
         return _downloadLine(s, l) ??
             (l?.deriveWaitingDailyLabel ?? 'Waiting to calculate sleep, recovery and strain');
       }
-      final i = calc?.dayIndex, total = calc?.dayTotal;
-      return i != null && total != null && i > 0
-          ? (l?.deriveDailyProgress('$i', '$total') ?? 'Calculating sleep, recovery and strain · day $i of $total')
-          : (l?.deriveDailyLabel ?? 'Calculating sleep, recovery and strain');
+      return _calcLine(l, waiting: false,
+          daysDone: calc?.dayIndex, total: calc?.dayTotal);
     case 'completed':
       if (s.partial) return l?.syncStatusPartial ?? 'Synced, but some days need another pass';
       final done = s.finishedAt;
@@ -422,7 +420,7 @@ String _activeStepLine(SyncStep step, AppLocalizations? l) {
     SyncStepId.download => _downloadLineForStep(step, l) ??
         (l?.syncStatusDownloading ?? 'Downloading…'),
     SyncStepId.calculate => _calcLine(l, waiting: false,
-        i: step.calculate?.dayIndex, total: step.calculate?.dayTotal),
+        daysDone: step.calculate?.dayIndex, total: step.calculate?.dayTotal),
     // Done has not completed (the coordinator is still busy), so the headline
     // cannot say the sync finished; it agrees with the Done row.
     SyncStepId.done => l?.syncStatusFinishing ?? 'Finishing up…',
@@ -449,18 +447,17 @@ String? calcProgressLine(SyncPresentationState s, [AppLocalizations? l]) {
   final calc = s.calculate;
   return _calcLine(l,
       waiting: calc != null && calc.waiting,
-      i: calc?.dayIndex,
-      total: calc?.dayTotal,
-      day: calc?.day);
+      daysDone: calc?.dayIndex,
+      total: calc?.dayTotal);
 }
 
 String _calcLine(AppLocalizations? l,
-    {required bool waiting, int? i, int? total, String? day}) {
+    {required bool waiting, int? daysDone, int? total}) {
   if (waiting) return l?.deriveWaitingDailyLabel ?? 'Waiting to calculate sleep, recovery and strain';
-  if (i == null || total == null || i <= 0) return l?.deriveDailyLabel ?? 'Calculating sleep, recovery and strain';
-  return day == null
-    ? (l?.deriveDailyProgress('$i', '$total') ?? 'Calculating sleep, recovery and strain · day $i of $total')
-    : (l?.deriveDailyProgressOn('$i', '$total', day) ?? 'Calculating sleep, recovery and strain · day $i of $total · $day');
+  final current = calculationDayInProgress(daysDone, total);
+  if (current == null) return l?.deriveDailyLabel ?? 'Calculating sleep, recovery and strain';
+  return l?.deriveDailyProgress('$current', '$total') ??
+      'Calculating sleep, recovery and strain · day $current of $total';
 }
 
 /// [calcProgressLine] for any derive pass, sync or not, from
@@ -470,7 +467,7 @@ String? deriveProgressLine(DeriveProgress? p, [AppLocalizations? l]) {
   if (p == null) return null;
   if (p.crossDay) return l?.deriveTrendsLabel ?? 'Rebuilding trends';
   return _calcLine(l,
-      waiting: p.waiting, i: p.dayIndex, total: p.dayTotal, day: p.day);
+      waiting: p.waiting, daysDone: p.dayIndex, total: p.dayTotal);
 }
 
 /// An [InlineLoading] for data that waits on a calculation: its detail line
@@ -612,11 +609,14 @@ class _StepRow extends StatelessWidget {
         if (d != null && d.waiting) {
           return [l?.syncStepWaitingCalculation ?? 'Waiting for another calculation to finish'];
         }
-        if (d?.dayIndex case final i? when d?.dayTotal != null) {
-          final day = d!.day;
-          return [
-            l?.syncLineDay('$i', '${d.dayTotal}', day == null ? '' : ' · $day') ?? 'Day $i of ${d.dayTotal}${day == null ? '' : ' · $day'}',
-          ];
+        final dayTotal = d?.dayTotal;
+        final dayIndex = running
+            ? calculationDayInProgress(d?.dayIndex, dayTotal) : d?.dayIndex;
+        if (dayIndex != null && dayTotal != null) {
+          final date = running ? null : d?.day;
+          final suffix = date == null ? '' : ' · $date';
+          return [l?.syncLineDay('$dayIndex', '$dayTotal', suffix) ??
+              'Day $dayIndex of $dayTotal$suffix'];
         }
         return [running ? (l?.syncLineWorking ?? 'Working it out…') : (l?.syncLineFinished ?? 'Finished')];
       case SyncStepId.done:
