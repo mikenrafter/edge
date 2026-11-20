@@ -1,4 +1,5 @@
 import '../../data/activity_store.dart';
+import '../../data/sleep_editor.dart';
 import '../../pilot/pilot_flags.dart';
 import '../../pilot/sleep_editor.dart';
 import '../personal_day.dart';
@@ -206,6 +207,9 @@ class DayReviewController extends ChangeNotifier {
   bool loading = true, loadFailed = false, saveFailed = false;
   bool followUpFailed = false, busy = false, _disposed = false;
   ManualWindowError? saveRefusal;
+  String? saveMessage;
+  SleepMergeRequiredException? saveMerge;
+  final Map<String, SleepMergeAuthorization> _mergeApprovals = {};
   int _generation = 0;
   bool get hasChanges => _choices.isNotEmpty||_pilotRestores.isNotEmpty;
   /// Items with a staged answer (a pair's two moments count once).
@@ -378,6 +382,8 @@ class DayReviewController extends ChangeNotifier {
   ];
   void choose(String id, bool keep) {
     if (!canEdit || !needsReview(id)) return;
+    _mergeApprovals.clear();
+    saveMerge = null;
     if (id.startsWith('range:')) {
       if (!keep) return;
       final r = _ranges.singleWhere((r) => ReviewKey.range(r) == id);
@@ -416,9 +422,16 @@ class DayReviewController extends ChangeNotifier {
     });
     _choices.clear();
     _pilotRestores.clear();
+    _mergeApprovals.clear();
+    saveFailed = false;
+    saveMessage = null;
+    saveMerge = null;
+    _changed();
   }
   Future<void> editActivity(BuildContext c, String id) async {
     if (!canEdit) return;
+    _mergeApprovals.clear();
+    saveMerge = null;
     final s = _activities.singleWhere((s) => 'activity:${s.id}' == id);
     ActivityDecision? edit;
     if (s.kind == ActivityKind.track && s.isPrompt) return; // nothing to edit
@@ -514,11 +527,21 @@ class DayReviewController extends ChangeNotifier {
       local.dispose();
     }
   }
+  Future<void> mergeAndSave(BuildContext c) async {
+    final refusal = saveMerge;
+    if (!canEdit || refusal == null || refusal.suggestionId == null) return;
+    _mergeApprovals[refusal.suggestionId!] = refusal.proposal.authorization;
+    await save(c);
+  }
+
   Future<void> save(BuildContext c) async {
     if (!canEdit || !hasChanges) return;
     busy = true;
+    followUpFailed = false;
     saveFailed = false;
     saveRefusal = null;
+    saveMessage = null;
+    saveMerge = null;
     _changed();
     final staged = Map.of(_choices);
     final savedAtMs = pc.clock.now().millisecondsSinceEpoch;
@@ -543,8 +566,12 @@ class DayReviewController extends ChangeNotifier {
       final receipt = await service.commitDay(_SaveDay(repo,
         activities: [for(final item in _pilotRestores.values)ActivityDecision(item,keep:true,restore:true),for (final s in _activities)
           if (staged['activity:${s.id}'] case final keep?)
-            keep ? (_activityEdits['activity:${s.id}'] ?? ActivityDecision(s,
-                keep: true, workoutType: activityByName(s.sport)?.typeKey ?? 'other'))
+            keep ? ActivityDecision(s, keep: true,
+                startTs: _activityEdits['activity:${s.id}']?.startTs,
+                endTs: _activityEdits['activity:${s.id}']?.endTs,
+                workoutType: _activityEdits['activity:${s.id}']?.workoutType ??
+                    activityByName(s.sport)?.typeKey ?? 'other',
+                merge: _mergeApprovals[s.id])
               : ActivityDecision(s, keep: false)],
         moments: marks, ranges: selectedRanges,
         workouts: [for (final m in marks)
@@ -586,13 +613,16 @@ class DayReviewController extends ChangeNotifier {
       _drafts.removeWhere((key, _) => staged.containsKey(key));
       _choices.clear();
       _pilotRestores.clear();
+      _mergeApprovals.clear();
       savedRevision++;
       if (c.mounted) bumpInsights(c);
     } catch (error) {
-      if (error is ActivityReviewException && !_disposed) await load();
+      if (error is ActivityReviewException && error is! SleepMergeRequiredException && !_disposed) await load();
       if (!_disposed) {
         saveFailed = true;
         saveRefusal = error is ManualWindowException ? error.error : null;
+        saveMessage = error is ActivityReviewException ? error.message : null;
+        saveMerge = error is SleepMergeRequiredException ? error : null;
       }
     } finally {
       busy = false;
@@ -744,6 +774,19 @@ class DayReviewNotices extends StatelessWidget {
     final l = AppLocalizations.of(c), r = controller, p = P.of(c);
     if (r == null || r.loading) return const SizedBox.shrink();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (r.saveFailed) ...[
+        Text(r.saveRefusal?.message ?? r.saveMessage ??
+            l?.momentFollowUpSaveFailed ?? 'Could not save that answer. Try again.',
+          key: const ValueKey('apk2-review-save-error'),
+          style: F.cap.copyWith(color: p.ink)),
+        if (r.saveMerge?.suggestionId != null) ...[
+          Text('${MaterialLocalizations.of(c).formatMediumDate(DateTime.fromMillisecondsSinceEpoch(r.saveMerge!.proposal.startTs * 1000))} '
+              '${clockOfTs(r.saveMerge!.proposal.startTs)}–${clockOfTs(r.saveMerge!.proposal.endTs)}',
+              style: F.cap.copyWith(color: p.ink)),
+          reviewButton(c, 'day-review-merge', l?.pilotMerge ?? 'Merge blocks',
+              r.canEdit ? () => r.mergeAndSave(c) : null),
+        ],
+      ],
       if (r.loadFailed || r.reloadFailed) ...[
         Text(l?.activityLoadFailed ?? 'Could not load activities. Try again.',
           key: const ValueKey('apk2-review-load-error'),
@@ -782,15 +825,10 @@ class DayReviewSaveBar extends StatelessWidget {
             Text(l?.dayReviewStaged(n) ?? '$n staged',
               key: const ValueKey('apk2-review-staged'),
               style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
-            if (r.saveFailed)
-              Text(r.saveRefusal?.message ?? l?.momentFollowUpSaveFailed ??
-                  'Could not save that answer. Try again.',
-                key: const ValueKey('apk2-review-save-error'),
-                style: F.cap.copyWith(color: p.ink)),
           ])),
         const SizedBox(width: S.x3),
         SizedBox(width: 140, child: reviewButton(c, 'apk2-review-save',
-          l?.dayReviewSave ?? 'Save',
+          r.busy ? (l?.activitySummarySaving ?? 'Saving') : (l?.dayReviewSave ?? 'Save'),
           r.canEdit && r.hasChanges ? () => r.save(c) : null,
           primary: true, glyph: LucideIcons.save)),
       ]),

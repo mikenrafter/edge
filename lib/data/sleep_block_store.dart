@@ -266,6 +266,10 @@ abstract final class SleepBlockStore {
           final w=await add(SleepBlockKind.nap,SleepOwnership.dayOf(SleepBlockKind.nap,c.startTs,c.endTs),c.startTs,c.endTs,c.source,payload:c.payload);
           // An edited Keep still owns the original detected interval's suppression.
           if(suggestion!=null) {
+            // A day Save can roll back an earlier Keep when a later Keep asks
+            // to merge. Its approval must still name the same block on retry
+            // [apk2_review_list_test: nearby kept naps].
+            w.row['id']='suggestion:${c.suggestionId}:${suggestion['revision']}';
             w.row['history']='known';w.row['detected_start']=suggestion['start_ts'];
             w.row['detected_end']=suggestion['end_ts'];w.row['detected_day']=suggestion['day_id'];
             p.mergedNapDays.add(suggestion['day_id'] as String);

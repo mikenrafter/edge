@@ -3,15 +3,17 @@
 import '../gestures/moment_follow_ups.dart';
 import '../gestures/moment_review_queue.dart';
 import '../models/activity_suggestion.dart';
+import 'sleep_editor.dart';
 
 class ActivityDecision {
   const ActivityDecision(this.suggestion, {required this.keep, this.startTs,
-      this.endTs, this.workoutType,this.restore=false});
+      this.endTs, this.workoutType,this.restore=false, this.merge});
   final int? startTs, endTs;
   final String? workoutType;
   final ActivitySuggestion suggestion;
   final bool keep;
   final bool restore;
+  final SleepMergeAuthorization? merge;
 }
 
 class MomentDecision {
