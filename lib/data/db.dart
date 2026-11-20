@@ -130,6 +130,21 @@ part 'db/feature_store.dart';
 part 'db_input_revisions.dart';
 part 'db_session_ceiling_revisions.dart';
 
+/// The database on disk carries a schema stamp newer than this build knows.
+/// Opening it would let sqflite rewind `user_version`, and the newer build would
+/// then skip rungs it already ran (sleep_block stayed stale). Opening must expose
+/// this failure: it is not a corrupt file, so it is never quarantined or rebuilt.
+class DbNewerThanBuild implements Exception {
+  const DbNewerThanBuild({required this.found, required this.supported});
+  final int found;
+  final int supported;
+  @override
+  String toString() =>
+      'This database is from a newer OpenStrap Edge (schema $found; this build '
+      'supports up to $supported). It is newer than this app, so it was left '
+      'untouched. Install the newer build to open it.';
+}
+
 /// The outcome of a database rebuild: why the old file would not open, where it
 /// was parked, and how many rows came back per table.
 typedef DbRebuild = ({

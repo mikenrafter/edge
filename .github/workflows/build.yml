@@ -294,7 +294,11 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: flutter build apk --release --target-platform ${{ matrix.target-platform }} --dart-define-from-file=.env
+          # Provenance the app exports (official_export/mapper.dart). The
+          # builder fails the job if either is missing or "unknown".
+          OPENSTRAP_SOURCE_SHA: ${{ github.sha }}
+          OPENSTRAP_SOURCE_TAG: ${{ github.ref_name }}
+        run: tool/build_release.sh apk --target-platform ${{ matrix.target-platform }} --dart-define-from-file=.env
 
       - name: Verify release APK
         env:
@@ -437,7 +441,10 @@ jobs:
           echo "$FIREBASE_OPTIONS_DART_B64" | base64 -d > lib/firebase_options.dart
 
       - name: Build unsigned iOS app
-        run: flutter build ios --release --no-codesign --dart-define-from-file=.env
+        env:
+          OPENSTRAP_SOURCE_SHA: ${{ github.sha }}
+          OPENSTRAP_SOURCE_TAG: ${{ github.ref_name }}
+        run: tool/build_release.sh ios --no-codesign --dart-define-from-file=.env
 
       # The Xcode gate above checks the toolchain; this checks what the app
       # was actually built against, so an older SDK can't slip through.

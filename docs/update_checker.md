@@ -112,14 +112,26 @@ host with the Android SDK available. Supply that APK's exact source head, varian
 and Gradle merged-manifest directory:
 
 ```sh
-tool/check_update_apk.sh --apk /path/to/edge.apk \
-  --merged-manifest /path/to/merged-manifest-dir \
-  --head FULL_COMMIT_SHA --variant devProfile --output /path/to/evidence
+tool/check_update_apk.sh --apk /path/to/edge.apk
+# optional: --merged-manifest DIR (default build/app/intermediates/merged_manifests/*elease*),
+#           --head FULL_COMMIT_SHA (default HEAD), --variant NAME (default release), --output DIR
 ```
 
-The script requires nonempty inputs, dumps the packaged manifest with `aapt`,
-and runs `test/guards` against both that dump and the merged manifest. Evidence
-contains the head, variant, input hashes and guard log. `PASS` is written only
-after all guards succeed. Missing inputs, a failed dump or a banned installer
+The script requires nonempty inputs, dumps the packaged manifest with `aapt2`
+(or `aapt`), scans it and every merged manifest with `tool/scan_manifest.dart`
+(the one install-capability scanner), then runs `test/guards` against the same
+files (the `EDGE_MERGED_MANIFEST` and `EDGE_APK_MANIFEST_DUMP` groups). Evidence
+contains the head, variant, input hashes and logs. `PASS` is written only after
+every step succeeds. Missing inputs, a failed dump or a banned installer
 capability fail the gate. This command inspects an existing APK and never installs
-it. `AAPT` and `FLUTTER` can name the build host's tool executables.
+it. `AAPT2`, `AAPT`, `DART` and `FLUTTER` can name the build host's tools;
+otherwise PATH, then `$ANDROID_HOME/build-tools`, is searched.
+
+## Release build provenance
+
+Release builds go through `tool/build_release.sh` (CI and `make build`). It sets
+`OPENSTRAP_SOURCE_SHA` (default: `git rev-parse HEAD`, which it must equal) and
+`OPENSTRAP_SOURCE_TAG` (default: the tag on HEAD) as `--dart-define`s, which
+`lib/data/official_export/mapper.dart` exports, and fails before building when
+either is missing, `unknown`, or malformed (`tool/check_release_provenance.sh`).
+Example: `OPENSTRAP_SOURCE_TAG=pilot-1 tool/build_release.sh apk --target-platform android-arm64`.

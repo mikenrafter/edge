@@ -7,6 +7,11 @@ Future<Database> _ldbPrivOpenOrRebuild() async {
       // CLAIM(pulse-upgrade-membership): capture failures are not recoverable
       // by replacing the store [spec 4.4; R2 opener regression test].
       rethrow;
+    } on DbNewerThanBuild {
+      // CLAIM(db-downgrade-refused): a newer file is not corrupt. Quarantining
+      // it would move the owner's only copy aside and start an empty database
+      // [db_downgrade_guard_test].
+      rethrow;
     } catch (e) {
       final dir = await getDatabasesPath();
       final path = p.join(dir, LocalDb.dbName);
@@ -148,8 +153,18 @@ Future<Database> _ldbPrivOpen() async {
       onConfigure: (db) async {
         // Bound waits for other SQLite connections. Index maintenance instead
         // shares this writer queue so UI/live writes wait without contention.
+        // Set before the stamp read below, so a briefly locked file waits
+        // instead of failing into quarantine.
         // CLAIM(index-derive-exclusion) [finalized_day_ids_index_test].
         await db.rawQuery('PRAGMA busy_timeout=30000');
+        // Before any other pragma: a file stamped newer than this build is
+        // refused untouched. sqflite would otherwise run no callback for a
+        // downgrade and then stamp `user_version` back to ours, so the next
+        // newer build skipped rungs it had already run (stale sleep_block).
+        final stamped = Sqflite.firstIntValue(await db.rawQuery('PRAGMA user_version')) ?? 0;
+        if (stamped > LocalDb.schemaVersion) {
+          throw DbNewerThanBuild(found: stamped, supported: LocalDb.schemaVersion);
+        }
         // WRITE PERFORMANCE. The default rollback journal (journal_mode=delete)
         // with synchronous=FULL fsyncs the whole DB on every commit — brutal for
         // the high-volume sync-ingest and the raw re-decode migration on a large
@@ -181,6 +196,10 @@ Future<Database> _ldbPrivOpen() async {
         } catch (_) {
           /* non-fatal */
         }
+      },
+      // Belt for onConfigure's check: never let a downgrade proceed to a stamp.
+      onDowngrade: (db, oldVersion, newVersion) async {
+        throw DbNewerThanBuild(found: oldVersion, supported: newVersion);
       },
       onCreate: (db, version) async {
         await LocalDb._createSamples(db);
