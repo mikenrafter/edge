@@ -255,6 +255,9 @@ const _notComponents = {
   // Composes the tab title's status line with the data-edge and device rows;
   // it is rendered by the tab roots rather than as a standalone component.
   'HeaderRows',
+  // The pilot header and Appearance choice are exercised with live state and
+  // captured through test/ui2_home_header_pilot_shots_test.dart.
+  'HomeHeaderOpening', 'HomeHeader', 'HomeHeaderAppearance', 'HomeHeaderChoice',
   // WHOOP MG ECG routes: the Heart Screener entry reads the database and
   // pushes; the capture screen owns a live BLE reading (a gallery case would
   // start one); the detail screen reads and deletes a reading and routes to

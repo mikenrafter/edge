@@ -817,6 +817,8 @@ const Map<String, String> kPrefTypes = {
   'pilot.wake_methods': 'bool',
   'pilot.timelines': 'bool',
   'pilot.sync_strip': 'bool',
+  'labs.home_header': 'bool',
+  'ui.home_header_compact': 'bool',
   'ui.full_width_tabs': 'bool',
   'pilot.alarms.v1': 'string',
   'workout.stop_pending': 'string',

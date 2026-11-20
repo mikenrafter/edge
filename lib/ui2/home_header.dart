@@ -54,6 +54,9 @@ class _HomeHeaderOpeningState extends State<HomeHeaderOpening>
     with SingleTickerProviderStateMixin {
   late final _opening = AnimationController(vsync: this, duration: Motion.syncOpening);
   final _downloadWindow = _DownloadWindow();
+  final _preferenceChanges = Listenable.merge([
+    PilotFlags.revision, settingsRestoredSignal, Prefs.personalDayRevision,
+  ]);
   HomeHeaderTab? _firstTab;
 
   bool _opensOn(HomeHeaderTab tab) => (_firstTab ??= tab) == tab;
@@ -82,13 +85,13 @@ class _HomeHeaderOpeningState extends State<HomeHeaderOpening>
     downloadWindow: _downloadWindow,
     opensOn: _opensOn,
     child: _HeaderPilotRevision(
-      notifier: PilotFlags.revision,
+      notifier: _preferenceChanges,
       child: widget.child,
     ),
   );
 }
 
-class _HeaderPilotRevision extends InheritedNotifier<ValueNotifier<int>> {
+class _HeaderPilotRevision extends InheritedNotifier<Listenable> {
   const _HeaderPilotRevision({required super.notifier, required super.child});
 }
 
@@ -306,7 +309,7 @@ class _HomeHeaderState extends State<HomeHeader> with SingleTickerProviderStateM
     final weekdayDate = localizedDate(date, locale, pattern: 'MMMEd');
     final label = compact ? weekdayDate : switch (widget.tab) {
       HomeHeaderTab.today => 'Cycle of $shortDate',
-      HomeHeaderTab.sleep => 'Night of $shortDate',
+      HomeHeaderTab.sleep => l?.healthNightOf(shortDate) ?? 'Night of $shortDate',
       HomeHeaderTab.activity => weekdayDate,
     };
     final dayBar = DayNav(
