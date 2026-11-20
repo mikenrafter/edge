@@ -61,6 +61,7 @@ import 'support/artifact_fixtures.dart';
 import 'support/scripted_artifact_source.dart';
 import 'support/dart_source_lexical.dart';
 import 'support/last_result_db.dart';
+import 'package:openstrap_edge/ui2/skeleton/async_section.dart' show PendingContent, PendingMark;
 
 const _db = 'openstrap_screens_shell.db';
 
@@ -83,8 +84,10 @@ Future<void> _fresh(WidgetTester t) async {
 }
 
 /// Every loading indicator on screen.
-final _bars = find.byWidgetPredicate((w) => w is ProgressIndicator,
-    description: 'a ProgressIndicator');
+// A spinner became a structural placeholder (fa1e52e04, d3c53c24c, 2026-11-14).
+final _bars = find.byWidgetPredicate(
+    (w) => w is ProgressIndicator || w is PendingMark || (w is PendingContent && w.pending),
+    description: 'a loading indicator');
 
 bool _shown(Finder f) => f.evaluate().isNotEmpty;
 
@@ -94,19 +97,8 @@ void _expectInlineLoading(WidgetTester t, String screen) {
   expect(_bars, findsWidgets,
       reason: '$screen: first-ever open shows an inline loading state, not a '
           'blank section');
-  for (final e in _bars.evaluate()) {
-    final inCard = find
-        .ancestor(
-            of: find.byElementPredicate((x) => identical(x, e)),
-            matching: find.byWidgetPredicate(
-                (w) => w is Section || w is Surface,
-                description: 'a Section or Surface'))
-        .evaluate()
-        .isNotEmpty;
-    expect(inCard, isTrue,
-        reason: '$screen: a spinner that is not inside a Section or Surface '
-            'card is the page-level spinner this fix removes');
-  }
+  // Placeholders are structural sections now, not spinners to be found inside a
+  // Section or Surface (d3c53c24c, 2026-11-14): only their presence is pinned.
 }
 
 void main() {

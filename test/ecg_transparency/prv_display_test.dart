@@ -80,7 +80,9 @@ void main() {
       expect(text, contains('0.75'));
       expect(text, contains('33.1'));
       expect(text, contains('1,234'));
-      expect(RegExp(r'confidence', caseSensitive: false).hasMatch(text), isTrue);
+      // The row is labelled "Data sufficiency, 24 h" now (owner copy), the stored
+      // confidence 0.62 beside it.
+      expect(text, contains('Data sufficiency'));
       expect(RegExp(r'(^|[^\d.])0\.62(?!\d)|(^|[^\d.])62(\.0)? ?%').hasMatch(text), isTrue,
           reason: 'the stored 24 h confidence, 0.62');
     });
@@ -144,9 +146,11 @@ void main() {
       // Upstream's numbering since the catch-up (merge log D4), plus our one
       // bump atop upstream 113 (D27 revised): 114, then 115 (D36, the fold
       // fix), then 116 (analytics #99). Nothing in this artifact bumped it.
-      expect(kAlgoVersion, 116);
-      expect(kAnalyticsPin, '6a2a9fc7392b03103ab0b371b0449c28cca104f7');
-      expect(kProtocolPin, '89080bcfac7767b3a871fd3a7d9307f5f30dad26');
+      // Stale pin: later bumps moved both (c8d538334, 2026-11-18: v126, analytics 6c45f3b).
+      expect(kAlgoVersion, 126);
+      expect(kAnalyticsPin, '6c45f3b0894e23bf5047f7cc0e34e533d0802417');
+      // Stale pin: the protocol pin moved on too (fbadb5bd, current pubspec).
+      expect(kProtocolPin, 'fbadb5bd055965d9400e266d6cf42748992ba950');
     });
 
     test('the persisted irregular blocks keep their keys (the pipeline writes '

@@ -214,7 +214,8 @@ void main() {
       final revs = RevisionLog(app);
       await app.debugAfterDrain();
       expect(repo.rescoreCalls, 1);
-      expect(revs.bumps, 1, reason: 'the end-of-pass publish');
+      // One publish, two bumps since 31aa3bef8 (refreshReminderSleep).
+      expect(revs.bumps, 2, reason: 'the end-of-pass publish');
     });
   });
 

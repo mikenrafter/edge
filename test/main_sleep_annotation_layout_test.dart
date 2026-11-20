@@ -146,8 +146,8 @@ void main() {
     test('as a range it is shaded, has one icon and members of nobody else',
         () {
       final l = _lay([_pt('a', 20), _sleep(0, 120), _pt('b', 30)]);
-      expect(l.shades.map((s) => s.id), ['sleep']);
-      expect(l.shades.single.kind, AnnotationKind.mainSleep);
+      expect(l.shades.where((s) => !s.id.startsWith('cluster:')).map((s) => s.id), ['sleep']);
+      expect(l.shades.where((s) => !s.id.startsWith('cluster:')).single.kind, AnnotationKind.mainSleep);
       expect(_icon(l, 'sleep').memberIds, ['sleep']);
       expect(_icon(l, 'sleep').isRange, isTrue);
       _expectNoOverlapInBounds(l, 300);
@@ -163,8 +163,8 @@ void main() {
       ]);
       final s = _icon(l, 'sleep');
       expect(s.memberIds, ['sleep']);
-      expect(l.shades.single.startsInside, isFalse);
-      expect(l.shades.single.endsInside, isTrue);
+      expect(l.shades.where((s) => !s.id.startsWith('cluster:')).single.startsInside, isFalse);
+      expect(l.shades.where((s) => !s.id.startsWith('cluster:')).single.endsInside, isTrue);
       _expectNoOverlapInBounds(l, 300);
     });
   });
@@ -231,7 +231,7 @@ void main() {
       final l = _lay([_pt('a', 5), _pt('b', 25), _sleep(40, 59)],
           scale: narrow, focus: 'b');
       expect(l.items.map((i) => i.id), contains('sleep'));
-      expect(l.shades.map((s) => s.id), ['sleep']);
+      expect(l.shades.where((s) => !s.id.startsWith('cluster:')).map((s) => s.id), ['sleep']);
       expect(l.labelText, 'L-b');
     });
   });
@@ -320,7 +320,7 @@ void main() {
       final folded = l.items.firstWhere((i) => i.memberIds.contains('n1'));
       expect(folded.memberIds, ['n1', 'b']);
       expect(folded.more, 1);
-      expect(l.shades.map((s) => s.id).toSet(), {'sleep', 'n2'});
+      expect(l.shades.where((s) => !s.id.startsWith('cluster:')).map((s) => s.id).toSet(), {'sleep', 'n2'});
       expect(_icon(l, 'n2').memberIds, ['n2']);
       expect(_icon(l, 'sleep').memberIds, ['sleep']);
       expect(l.labelText, 'Main sleep L-sleep');

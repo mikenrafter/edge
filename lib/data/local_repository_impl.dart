@@ -2922,10 +2922,14 @@ class LocalRepositoryImpl extends LocalRepository {
       heldDay: heldDay,
       coverageRecording: signals.isEmpty || distinctDevices.length < 2
           ? const <String, List<String>>{}
-          : await LocalDb.coverageDevicesByDay(
-              signals: signals.toList(),
-              fromSec: oldestDaySec,
-              toSec: _nowSec(),
+          : await LocalDb.readerRun(
+              (db) => LocalDb.coverageDevicesByDay(
+                signals: signals.toList(),
+                fromSec: oldestDaySec,
+                toSec: _nowSec(),
+                executor: db,
+              ),
+              name: 'coverage devices',
             ),
     );
   });

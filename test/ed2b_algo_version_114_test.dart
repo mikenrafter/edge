@@ -8,14 +8,18 @@ void main() {
   // without claiming main's deferred analytics fixes already run on the fork.
   test('the merge version names shipped changes and the retained analytics pin', () {
     expect(kAlgoVersion, 126);
-    expect(kAnalyticsPin, 'd876c427ce59eed95b5e54411e3b69253f294ae6');
+    // Stale pin: the pin moved on (c8d538334, 2026-11-18: analytics 6c45f3b); the 122-125 entry below still names d876c42.
+    expect(kAnalyticsPin, '6c45f3b0894e23bf5047f7cc0e34e533d0802417');
     final src = File('lib/compute/derivation_engine.dart').readAsStringSync();
     final at = src.indexOf('// 122 → 125');
     expect(at, isNonNegative);
     final entry = src.substring(at, src.indexOf('const int kAlgoVersion', at));
-    for (final change in ['0.12.2', 'HMM', 'd876c42', 'night_checkpoint',
-      'DAY format is unchanged', 'IncrementalMinuteMetrics', 'input order',
-      '#102-#110', 'deferred']) {
+    // The entry was rewritten by the merge repairs and the 126 Pulse repin
+    // (c8d538334, 2026-11-18); these name what it still has to say: the merge,
+    // the sibling pins, and that the day format is unchanged.
+    for (final change in ['0.12.2', 'HMM', 'd876c42', 'a438df40',
+      'night_checkpoint', 'the fork DAY format is unchanged', '6b2f6869',
+      '6c45f3b0', 'PRSA/CVHR honesty']) {
       expect(entry, contains(change));
     }
   });

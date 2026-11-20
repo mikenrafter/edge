@@ -13,6 +13,7 @@ import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:openstrap_edge/ui2/skeleton/async_section.dart' show PendingMark;
 
 const _garmin = 'garmin-1', _oura = 'oura-1', _strap = 'strap-1';
 const _scale = 'scale-1', _thermo = 'thermo-1', _coros = 'coros-1';
@@ -178,7 +179,8 @@ void main() {
     addTearDown(() => WearableDisplay.instance.busy = false);
     await t.runAsync(WearableDisplay.instance.loadDevices);
     await t.pump();
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    // The busy spinner is a PendingMark now (fa1e52e04, d3c53c24c, 2026-11-14).
+    expect(find.byType(PendingMark), findsOneWidget);
     expect(find.text('Updating your days…'), findsOneWidget);
   });
 }

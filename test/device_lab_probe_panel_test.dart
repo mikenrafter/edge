@@ -71,6 +71,8 @@ void main() {
     expect(sent, hasLength(3));
     await t.tap(find.byKey(const ValueKey('probe-felt-2')));
     await t.pump();
+    // The answer is written after the trial's rest (2000 ms, the probe's pacing).
+    await t.pump(const Duration(seconds: 3));
     expect(lab.steps.join('\n'), contains('felt 2.'));
     await t.tap(find.byKey(const ValueKey('probe-stop')));
     await t.pump(const Duration(seconds: 10));

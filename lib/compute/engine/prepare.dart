@@ -923,6 +923,10 @@ extension _EnginePrepare on DerivationEngine {
         while (_unions.length > 2) {
           _unions.removeAt(0);
         }
+        // The zone the retained loads belong to is set here too: left null, the
+        // day load's zone check right after read a cold pass's own union as a
+        // stale-zone entry, dropped it and counted a full reload.
+        _retainedZone ??= DerivationEngine._zoneKey();
         _retained[DerivationEngine._retainedKey(dayId, 'union')] = union;
         _boundRetained();
       }

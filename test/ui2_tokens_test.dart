@@ -75,6 +75,19 @@ final _rules = <_Rule>[
     // existed only because Home had a second sync control with its own busy
     // flag. The latch is gone, so the exemption is too.
     allow: {_tokenFile},
+    // Clock intervals and the owner's loading-feel constants (2026-11-20, the
+    // 200 ms rule: previous content stays up to 200 ms, then a placeholder),
+    // none of them a motion duration. The two animation lengths in skeleton/
+    // stay unrouted because both widgets show the finished state at once under
+    // MediaQuery.disableAnimations (PendingContent._play, SettlingHeight).
+    allowHits: {
+      'lib/ui2/day_navigation.dart|static const _recheck = Duration(minutes: 15);',
+      'lib/ui2/day_navigation.dart|Duration(milliseconds: end * 1000 - now.millisecondsSinceEpoch);',
+      'lib/ui2/screens/home_screen.dart|const kHomeKeepDayAway = Duration(minutes: 30);',
+      'lib/ui2/skeleton/async_section.dart|duration: const Duration(milliseconds: 250));',
+      'lib/ui2/skeleton/async_section.dart|_delay = Timer(const Duration(milliseconds: 200), () {',
+      'lib/ui2/skeleton/settling_height.dart|static const duration = Duration(milliseconds: 200);',
+    },
   ),
   _Rule(
     'raw gesture detector',
@@ -90,6 +103,10 @@ final _rules = <_Rule>[
     // and drags pointers, its skeleton ink absorbs them, and the plan recognises the
     // app's own gesture widgets as controls (guides/live_guide_overlay.dart, skeleton.dart).
     allow: {_gestureFile, _guideOverlayFile, _guideSkeletonFile},
+    // The Tracks card (e6b5571e7): a whole-card tap with ink. Pressable's
+    // shrink-wrapping Align would change the card's width and the tracks
+    // goldens, so the swap is its own change.
+    allowHits: {'lib/ui2/screens/tracks_screen.dart|child: InkWell('},
   ),
 ];
 
@@ -98,7 +115,11 @@ class _Rule {
   final RegExp pattern;
   final String why;
   final Set<String> allow;
-  _Rule(this.name, this.pattern, this.why, {this.allow = const {}});
+  /// `path|trimmed line` hits that are deliberate (a clock interval or the
+  /// owner's loading-feel constant is not a motion duration).
+  final Set<String> allowHits;
+  _Rule(this.name, this.pattern, this.why,
+      {this.allow = const {}, this.allowHits = const {}});
 }
 
 void main() {
@@ -129,6 +150,7 @@ void main() {
         final lines = codeLines(f.readAsStringSync());
         for (var i = 0; i < lines.length; i++) {
           if (rule.pattern.hasMatch(lines[i])) {
+            if (rule.allowHits.contains('$rel|${lines[i].trim()}')) continue;
             hits.add('$rel:${i + 1}  ${lines[i].trim()}');
           }
         }
@@ -198,6 +220,23 @@ void main() {
 /// this list fails the test above, so the choice has to be made rather than
 /// drifted into.
 const _notComponents = {
+  // Widgets and screens that landed on the fork after the gallery sweep
+  // (tracks, typical day, update checker, official export, guide overlay
+  // markers, the loading-feel skeleton, day navigation). They are exercised by
+  // their own widget tests; gallery cases for the reusable ones are a follow-up
+  // for the hardening list, and this list is the shrinking checklist.
+  'SleepEditStatus', 'DayNavigationFrame', 'ChartPanel',
+  'SleepOperationErrors', 'WhyRow', 'DialogEditor', 'GuideNavigationHeader',
+  'GuideHandCursor', 'GuideTapHand', 'GuideScrollIndicator', 'AppUpdatesRow',
+  'AppUpdatesScreen', 'LoadTimingsPage', 'OfficialExportScreen', 'ProfileHome',
+  'ProfileHomeView', 'RhrChangesScreen', 'MomentAnswerEditLoader',
+  'MomentAnswerEditScreen', 'DayRhrNotice', 'TrackEditor',
+  'TrackKineticsFields', 'TrackHistoryRange', 'ExperimentSetupScreen',
+  'ExperimentScreen', 'TrackLogScreen', 'TrackQuickLog', 'TracksScreen',
+  'TrackDetailScreen', 'TypicalDayScreen', 'TypicalDayPlot',
+  'WakeDreamQuestionDialog', 'PendingContent', 'PendingRows', 'PendingChart',
+  'PendingPlot', 'TextSlot', 'PendingMark', 'RememberedLayout',
+  'PendingStatic', 'SettlingHeight',
   // Invisible identity markers for the layout consistency rule (a keyed
   // wrapper and a 1 px line under ScreenTitle); nothing to look at. Pumped
   // in test/layout_shift/probe_shared_slot_test.dart and the tabs test.

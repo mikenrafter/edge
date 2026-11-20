@@ -66,7 +66,11 @@ Future<T> _within<T>(Future<T> f) =>
 Future<void> _gotPastToday(Future<Object?> f) async {
   try {
     await _within(f);
-  } on UnimplementedError {/* reached a later read */}
+  } on UnimplementedError {/* reached a later read */
+  } on ParallelWaitError<Object?, Object?> {
+    // The timeline loader joins its reads with `.wait`, which wraps the fake's
+    // UnimplementedError in a ParallelWaitError: still "reached a later read".
+  }
 }
 
 void main() {

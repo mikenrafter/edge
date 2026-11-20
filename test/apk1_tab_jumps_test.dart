@@ -60,18 +60,22 @@ void main() {
       await _jump(t, find.byKey(const ValueKey<String>('home-why:sleep')), routes);
     });
 
-    apk1Test('sleep-plan recommendation reuses the selected Sleep tab at $scale', (t) async {
+    apk1Test('"See what last night cost you" opens its own insight route at $scale', (t) async {
       final routes = Apk1Routes();
       await apk1Mount(t, routes: routes, scale: scale, initial: ShellDomain.sleep);
-      // Real WellnessScreen(sleepPlanOnly: true) inside the real SleepTab.
+      // The plan accordion became the "What stood out" card (ea89d4d4e,
+      // 2026-11-15: the Sleep tab's five approved cards), and its link opens the
+      // readiness insight screen (Investigate), a pushed route of its own, not
+      // another Sleep tab, so the tab-reuse contract of `_jump` does not apply.
       final link = find.text('See what last night cost you');
-      // The plan reads its data only while built, and the lazy list drops it
-      // once it scrolls off: bring its accordion header into view and let the
-      // read land before walking to the link.
-      await apk1Reveal(t, find.text('Your sleep plan'));
+      await apk1Reveal(t, find.text('What stood out'));
       await apk1Settle(t);
       await apk1Reveal(t, link);
-      await _jump(t, link, routes);
+      final depth = routes.routes.length;
+      await t.tap(link);
+      await apk1Settle(t);
+      expect(find.byType(Investigate), findsOneWidget);
+      expect(routes.routes, hasLength(depth + 1), reason: 'one route, once');
     });
 
     apk1Test('a selected sleep-metric day opens in the Sleep tab without a push at $scale', (t) async {

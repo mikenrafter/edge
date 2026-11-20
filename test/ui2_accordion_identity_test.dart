@@ -29,12 +29,10 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/settings/settings_repository.dart';
 import 'package:openstrap_edge/state/alarm_schedule.dart';
 import 'package:openstrap_edge/ui2/profile/alarm.dart';
 import 'package:openstrap_edge/ui2/profile/band_notifications.dart';
-import 'package:openstrap_edge/ui2/profile/gestures.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart';
 import 'package:openstrap_edge/ui2/profile/settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -184,36 +182,10 @@ void main() {
           reason: 'the stored answers map to the right sections after reopen');
     });
 
-    testWidgets('Gestures: the extra-taps choice going and coming back keeps '
-        'its own answer', (t) async {
-      final flag = ValueNotifier<bool>(true);
-      addTearDown(flag.dispose);
-      g123View(t, height: 30000);
-      await t.pumpWidget(g123App(ValueListenableBuilder<bool>(
-        valueListenable: flag,
-        builder: (_, extra, _) => BandGesturesView(
-          chosen: const {DeviceAction.markMoment},
-          supported: const {
-            DeviceAction.none,
-            DeviceAction.markMoment,
-            DeviceAction.torch
-          },
-          extraTaps: extra,
-          devMode: true,
-        ),
-      )));
-      await g123Settle(t);
-      expect(openStates(t), {'gestures_extra_taps': true});
-      await toggleAccordion(t, 'gestures_extra_taps');
-      expect(openStates(t)['gestures_extra_taps'], isFalse);
-      flag.value = false; // the only accordion on the screen goes
-      await g123Settle(t);
-      expect(openStates(t), isEmpty);
-      flag.value = true;
-      await g123Settle(t);
-      expect(openStates(t), {'gestures_extra_taps': false},
-          reason: 'still folded: the answer belongs to the section');
-    });
+    // "Gestures: the extra-taps choice going and coming back keeps its own answer"
+    // went with its subject: 1942e844b (2026-11-18) removed ECG touch counting and
+    // the `gestures_extra_taps` accordion, the only conditional sibling it used.
+    // Id-keyed state is still pinned by the tests around it.
   });
 
   group('didUpdateWidget: a State follows its id', () {

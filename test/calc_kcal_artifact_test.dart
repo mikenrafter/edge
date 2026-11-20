@@ -277,12 +277,14 @@ void main() {
       // fix), then 116 (analytics #99), then 117 (phase 2: opt-in HMM,
       // measured night baselines and staging provenance, analytics 1255e9d).
       // Nothing in this artifact bumped it.
-      expect(kAlgoVersion, 117);
+      // Stale pin: later bumps moved it (c8d538334, 2026-11-18: v126, Pulse episodes).
+      expect(kAlgoVersion, 126);
     });
 
     test('the analytics pin carries minuteEnergy (7334289 and its '
         'descendants 65c8901, aa67997, bf1be19, 0fc5768, bf79e84, db02896, 972f0b2, 07d6af0, 914bb6a, e6dd526, integration 1add367, 07f7126, ddb61f7, 6a2a9fc, 1255e9d)', () {
-      expect(kAnalyticsPin, '1255e9ddbeb23c2e8b7174e960ef220d796c46a1');
+      // Stale pin: the pin moved on to 6c45f3b (c8d538334, 2026-11-18), a descendant of 1255e9d.
+      expect(kAnalyticsPin, '6c45f3b0894e23bf5047f7cc0e34e533d0802417');
     });
   });
 }

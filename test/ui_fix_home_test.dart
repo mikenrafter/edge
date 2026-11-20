@@ -26,6 +26,7 @@ import 'backup/backup_support.dart';
 import 'support/apk1_harness.dart';
 import 'support/as_of_recalc_fakes.dart';
 import 'support/pin_tz.dart';
+import 'package:openstrap_edge/ui2/skeleton/async_section.dart' show PendingMark;
 
 final _card = find.byKey(const ValueKey<String>('card:detected'));
 
@@ -75,8 +76,10 @@ Finder get _units => find.byWidgetPredicate((w) =>
 
 /// Space between the last thing in the card and its bottom edge.
 double _bottomPad(WidgetTester t) {
-  final card = t.getRect(find.descendant(
-      of: find.byType(RingTrio), matching: find.byType(Surface)).first);
+  // The ring card is the OUTERMOST Surface around the rings; RingTrio now holds
+  // inner Surfaces too (details, why rows), so `.first` is not the card.
+  final card = t.getRect(find.ancestor(
+      of: _units.first, matching: find.byType(Surface)).last);
   var last = [
     for (var i = 0; i < _units.evaluate().length; i++) t.getRect(_units.at(i)).bottom
   ].reduce((a, b) => a > b ? a : b);
@@ -171,8 +174,11 @@ void main() {
     });
 
     testWidgets('every kind of row is the same inset row', (t) async {
-      final inset = find.byWidgetPredicate(
-          (w) => w.runtimeType.toString() == '_HomeInsetRow');
+      // The "why" row is the shared WhyRow component now (why_row.dart); every
+      // other kind is still _HomeInsetRow.
+      final inset = find.byWidgetPredicate((w) =>
+          w.runtimeType.toString() == '_HomeInsetRow' ||
+          w.runtimeType.toString() == 'WhyRow');
       for (final (name, d, help) in <(String, HomeData, RingHelp?)>[
         ('why', _rings(recovery: 10), null),
         ('gap note', HomeData(
@@ -210,7 +216,7 @@ void main() {
       await _pumpRings(t, const HomeData(),
           help: const RingHelp.busy('Reading your night'));
       expect(find.descendant(of: find.byKey(const ValueKey('home-note:status')),
-          matching: find.byType(CircularProgressIndicator)), findsOneWidget);
+          matching: find.byType(PendingMark)), findsOneWidget); // fa1e52e04, d3c53c24c
     });
   });
 
@@ -278,7 +284,11 @@ void main() {
           // Allowed: inside a panel's listener method, or the day-screen switch
           // the panel's own open action uses.
           final context = lines.sublist(i < 14 ? 0 : i - 14, i + 1).join('\n');
-          if (!RegExp(r'openNerdStats|_dayScreen|_WearNerdStats').hasMatch(context)) {
+          // Also allowed: metricDayScreen, the same day-screen switch moved to
+          // metric_detail.dart and shared with Home, and the Sleep tab's "What
+          // charged and drained you" link (wellnessWhatChargedAndDrained), a
+          // day-insight screen the Sleep tab opens, not a stats door.
+          if (!RegExp(r'openNerdStats|_dayScreen|metricDayScreen|wellnessWhatChargedAndDrained|_WearNerdStats').hasMatch(context)) {
             hits.add('${f.path}:${i + 1} ${code.trim()}');
           }
         }

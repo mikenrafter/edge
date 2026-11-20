@@ -18,6 +18,7 @@ import '../../l10n/app_localizations.dart';
 import '../activity/share.dart' show shareOrigin;
 import '../onboarding/welcome.dart' show askBackupPassphrase,PassphraseCancelled;
 import '../ui2.dart';
+import 'profile.dart' show SettingsAccordion;
 
 final officialExportCoordinator=OfficialExportCoordinator();
 bool _routeOpen=false;
@@ -182,7 +183,7 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
         const SizedBox(height:12),Text(widget.newerOfficialAvailable?l.officialExportNewer:widget.checkedAt!=null?l.officialExportNoNewer:l.officialExportOffline),
         if(widget.checkedAt!=null)Text('${l.officialExportChecked} ${MaterialLocalizations.of(context).formatMediumDate(widget.checkedAt!)}'),
         const SizedBox(height:12),Text(l.officialExportIntro),
-        ExpansionTile(title:Text(l.officialExportChecklist.split('\n').first),children:[
+        SettingsAccordion(l.officialExportChecklist.split('\n').first,id:'official_export_checklist',children:[
           Padding(padding:const EdgeInsets.all(16),child:Text(l.officialExportChecklist)),
           Padding(padding:const EdgeInsets.all(16),child:Text(l.officialExportPrune)),
         ]),

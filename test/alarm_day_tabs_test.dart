@@ -21,6 +21,7 @@ import 'package:openstrap_edge/ui2/profile/profile.dart' show SettingsAccordion;
 import 'package:openstrap_edge/ui2/ui2.dart';
 
 import 'support/settings_sections.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 const _day = 'Alarm and wake';
 const _timeline = 'Timeline and status';
@@ -85,6 +86,9 @@ bool _applyLive(WidgetTester t) =>
 void main() {
   // Times are asserted as 24-hour; the format follows the OS otherwise.
   setUp(() => ClockFormatController.seed(ClockFormat.h24));
+  // Accordion state persists through the (now mocked) SharedPreferences, so a
+  // test that folds a section must not leave it folded for the next one.
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   tearDown(ClockFormatController.debugReset);
   group('day tabs', () {
     testWidgets('one SubTabs, one tab per weekday, above every accordion', (

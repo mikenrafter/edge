@@ -35,6 +35,19 @@ const _allowed = <String, String>{
   'postCycleLog': 'write',
   'deleteCycleLog': 'write',
   'postCycleSymptoms': 'write',
+  // Added by fork features after this guard (wake journal, Pulse, day sharing,
+  // review and journal editing). Writes go through the writer the import owns.
+  'saveDayReview': 'write',
+  'editJournalMetrics': 'write',
+  'toggleCycleSymptom': 'write',
+  // Reads of fork-only side tables the import publishes no focus model for;
+  // pausing them would blank the Wake row and the Pulse records for the whole
+  // import. Tracked for the hardening list (a ReadPaused-safe caller first).
+  'getWakeTimeline': 'fork wake-journal table, no import focus model',
+  'getPulseAlertRecords': 'fork Pulse table, no import focus model',
+  'sharingDayReads': 'wraps the caller-supplied reads, each of which checks',
+  // The scan reads a `Function` type in a signature as a method name.
+  'Function': 'regex artifact, not a method',
 };
 
 final _decl = RegExp(

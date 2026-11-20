@@ -389,7 +389,9 @@ void main() {
           await tester.pumpAndSettle();
           // Read from the ARB: the ECG wording is design 04's (no diagnosis
           // vocabulary), not a literal pinned here.
-          expect(find.text(ru.ecgCategorySinus), findsOneWidget);
+          // The category now prints in the title, the summary and the outcome row
+          // (three places), so it is found, not found once.
+          expect(find.text(ru.ecgCategorySinus), findsWidgets);
           expect(find.textContaining(ru.ecgNotDiagnosis), findsOneWidget);
           final explanation = find.text(ru.ecgWaveformLabel);
           expect(explanation, findsOneWidget);

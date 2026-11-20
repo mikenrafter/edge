@@ -210,9 +210,11 @@ void main() {
       await t.pump(const Duration(milliseconds: 400));
     }
 
+    // The wording moved to deriveWaitingDailyLabel with the structural loading
+    // placeholders (d3c53c24c, 2026-11-14); the rule pinned here is unchanged:
+    // the headline names the active (Calculate) step and what it waits for.
     final waitingHeadline =
-        RegExp(r'^calculating\b.*waiting for another calculation',
-            caseSensitive: false);
+        RegExp(r'^waiting to calculate\b', caseSensitive: false);
 
     test('the sentence itself (pure)', () {
       final line = syncStatusLine(_calcWaiting(), _now);
@@ -235,9 +237,10 @@ void main() {
       expect(_texts(t).where((s) => s.contains('synced through')), isEmpty,
           reason: '"synced through" belongs to a finished sync');
       // The step list still shows the same fact: headline and row agree.
-      expect(find.textContaining('aiting for another calculation'),
-          findsNWidgets(2),
-          reason: 'headline + Calculate row, both from the active step');
+      expect(find.textContaining('aiting to calculate'), findsOneWidget,
+          reason: 'the headline, from the active step');
+      expect(find.textContaining('aiting for another calculation'), findsOneWidget,
+          reason: 'the Calculate row says the same fact in its own words');
       await t.pumpWidget(const SizedBox());
     });
 

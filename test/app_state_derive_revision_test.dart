@@ -75,7 +75,9 @@ void main() {
     app.bumpInsights();
     await app.debugAfterDrain();
     app.bumpInsights();
-    expect(heard, [1, 2, 3]);
+    // The pass publishes once and moves the revision twice since 31aa3bef8
+    // (refreshReminderSleep bumps beside the publish gate).
+    expect(heard, [1, 2, 3, 4]);
   });
 
   test('dispose disposes the notifier; a pass that finishes afterwards does '

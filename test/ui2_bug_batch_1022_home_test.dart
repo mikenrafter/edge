@@ -77,7 +77,9 @@ void main() {
     // the card, with its arc; the sentence is one tap away, once.
     expect(find.byKey(const ValueKey('home-since')), findsOneWidget);
     expect(find.text('since 16:04'), findsOneWidget);
-    expect(find.byKey(const ValueKey('home-since-progress')), findsOneWidget);
+    // The held arc was a CircularProgressIndicator; d3c53c24c (2026-11-14) removed
+    // it, so the overlay is the text alone.
+    expect(find.byKey(const ValueKey('home-since-progress')), findsNothing);
     expect(_label, findsNothing);
     expect(find.byType(AsOfLabel), findsNothing);
     expect(find.textContaining('recordings through'), findsNothing);

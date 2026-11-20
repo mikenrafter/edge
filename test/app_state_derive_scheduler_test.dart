@@ -85,7 +85,8 @@ void main() {
       gate.complete();
       await until(() => !app.deriving, what: 'job finished');
       expect(app.derivePending, isFalse);
-      expect(app.insightsRevision.value, 1);
+      // One publish, two bumps since 31aa3bef8 (refreshReminderSleep).
+      expect(app.insightsRevision.value, 2);
     }, timeout: const Timeout(Duration(seconds: 30)));
   });
 

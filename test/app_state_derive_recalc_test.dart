@@ -171,7 +171,9 @@ void main() {
       final cleanRevs = RevisionLog(clean);
       await clean.debugAfterDrain();
       await settleMs();
-      expect(cleanRevs.bumps, 2,
+      // Two publishes (day, end of pass), each bumping twice since 31aa3bef8
+      // (refreshReminderSleep bumps beside the publish gate); no clear bump.
+      expect(cleanRevs.bumps, 4,
           reason: 'day publish + end-of-pass publish, no clear bump');
     });
 

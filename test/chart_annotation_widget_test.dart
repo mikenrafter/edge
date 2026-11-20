@@ -142,7 +142,12 @@ void main() {
       await _pumpLane(t, const []);
       expect(find.byType(AnnotationIcon), findsNothing);
       expect(find.byKey(ChartAnnotationLane.labelKey), findsNothing);
-      expect(find.byKey(ChartAnnotationLane.linesKey), findsNothing,
+      // The lines layer is always mounted now (clusters and shades share it);
+      // what matters is that it holds no lines.
+      expect(
+          find.byKey(ChartAnnotationLane.linesKey).evaluate().isEmpty ||
+              _lines(t).isEmpty,
+          isTrue,
           reason: 'a lane with nothing in it has no lines to paint');
     });
 
@@ -727,7 +732,10 @@ void _dailyRangeTests() {
       ]));
       await t.pump();
       expect(find.byKey(ChartAnnotationLane.shadeKey('trip')), findsOneWidget);
-      expect(find.byKey(ChartAnnotationLane.linesKey), findsNothing,
+      expect(
+          find.byKey(ChartAnnotationLane.linesKey).evaluate().isEmpty ||
+              _lines(t).isEmpty,
+          isTrue,
           reason: 'no edge is on the plot, so there is nothing to dash');
     });
   });

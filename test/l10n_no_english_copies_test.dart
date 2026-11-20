@@ -31,7 +31,21 @@ final _sameOnPurpose = <String>{
   for (final code in ['de', 'es', 'hi', 'ru', 'th'])
     '$code:slotCapabilityStatus',
   'es:flashFileInfo',
+  // Placeholder-only patterns (no words of their own): a screen-reader line
+  // and a count suffix.
+  for (final code in ['de', 'es', 'fr', 'hi', 'ru', 'th', 'zh']) ...[
+    '$code:hapticScoreSemantics',
+    '$code:hapticsRowSemantics',
+    '$code:wakeJournalCount',
+  ],
+  // Spelled the same: "Version {version}".
+  for (final code in ['de', 'fr']) '$code:homeOlderVersion',
   // Units and abbreviations.
+  for (final code in ['es', 'fr']) ...['$code:syncDurationMinutes', '$code:syncDurationHours'],
+  // Spelled the same in French (cortisol / stress, "cycles", "notes").
+  'fr:tracksStress',
+  'fr:sleepDetailTapDragCycles',
+  'fr:hapticScoreNotes',
   for (final code in ['de', 'fr', 'hi', 'th']) '$code:zoneRowsRange',
   for (final code in ['es', 'fr']) '$code:zoneRowsMinutes',
   for (final code in ['es', 'fr']) '$code:activityLengthMinutes',
@@ -60,6 +74,12 @@ void main() {
           if (m[1] != 'en') m[1]!,
     ]..sort();
     expect(codes, containsAll(['de', 'es', 'fr', 'hi', 'ru', 'th', 'zh']));
+    final thDebt = {
+      for (final l in File('test/fixtures/l10n_th_untranslated_baseline.txt')
+          .readAsLinesSync())
+        if (l.trim().isNotEmpty && !l.startsWith('#')) l.trim(),
+    };
+    final thStillEnglish = <String>{};
     final copies = <String>[];
     for (final code in codes) {
       final arb = _arb(code);
@@ -70,9 +90,18 @@ void main() {
         if (!english.contains(' ')) continue;
         if (arb[key] != english) continue;
         if (_sameOnPurpose.contains('$code:$key')) continue;
+        if (code == 'th' && thDebt.contains(key)) {
+          thStillEnglish.add(key);
+          continue;
+        }
         copies.add('$code:$key = $english');
       }
     }
     expect(copies, isEmpty);
+    // The Thai debt is a ratchet: a listed key that is no longer English has to
+    // leave the list, so it can only shrink.
+    expect(thDebt.difference(thStillEnglish), isEmpty,
+        reason: 'translated Thai keys still listed in '
+            'test/fixtures/l10n_th_untranslated_baseline.txt');
   });
 }

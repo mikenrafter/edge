@@ -95,7 +95,7 @@ void main() {
 /// aroused second half must re-stage (the decoder actually ran on epoch-aligned
 /// beats), and a second the band did not watch stays unobserved.
 void hmmPipelineMain() {
-  test('opt-in HMM re-stages a measured night and keeps unobserved seconds', () {
+  test('the legacy useHmmStages flag re-stages nothing and keeps unobserved seconds', () {
     const t0 = 1780000000;
     const n = 4 * 3600;
     final tsSec = [for (var s = 0; s < n; s++) t0 + s];
@@ -138,9 +138,13 @@ void hmmPipelineMain() {
             s['stage'] as String,
         ];
     expect(seq(run(false)).toSet(), {'light', 'unobserved'});
+    // `useHmmStages` is a legacy serialized input that the day bundle ignores: the
+    // coordinator's hypnoStages are authoritative and HMM selection belongs to
+    // StagingMethod.hmm628 (CLAIM(day-bundle-stage-owner), day_bundle_stage_owner_test).
+    // So the flag re-stages nothing here and the unobserved seconds are kept.
     final on = seq(run(true));
     expect(on, contains('unobserved'));
-    expect(on.toSet().difference({'light', 'unobserved'}), isNotEmpty);
+    expect(on, seq(run(false)), reason: 'the legacy flag changes nothing');
   });
 }
 
@@ -230,25 +234,19 @@ void reviewFixesMain() {
       expect((b['sleep'] as Map).containsKey('stager_source'), isFalse);
     });
 
-    test('a gap in the substrate is placed by clock, and its epochs abstain',
+    test('a gap in the substrate does not change the labels the coordinator gave',
         () {
       // 20 minutes with no rows inside the quiet half. Paired by row index the
       // lengths no longer matched and the night was silently never re-staged.
       final b = deriveDayBundle(_night(gap: (1800, 3000)).toJson());
       final l = _labels(b);
-      expect(l.toSet().difference({'light'}), isNotEmpty,
-          reason: 'a sparse night is re-staged');
-      // No heart rate, no beats: those epochs keep the shipped label.
-      for (var s = 1830; s < 2970; s++) {
-        expect(l[s], 'light', reason: 'second $s has no observation');
-      }
-      // And the aroused half is still where the clock says it is.
-      expect(l.sublist(_n ~/ 2 + 600).where((x) => x == 'wake').length,
-          greaterThan((_n ~/ 2 - 600) * 0.8));
-      expect(l.sublist(600, 1800).where((x) => x == 'wake'), isEmpty);
+      // The pipeline no longer re-stages on the legacy flag (see above): a sparse
+      // night keeps the coordinator's labels, gap or not.
+      expect(l.toSet(), {'light'}, reason: 'a sparse night keeps its labels');
+      expect((b['sleep'] as Map).containsKey('stager_source'), isFalse);
     });
 
-    test('the night\'s accounting comes from the new labels, tagged hmm', () {
+    test('the night\'s accounting stays the coordinator\'s, untagged', () {
       final stages = List<String>.filled(_n, 'light');
       for (var s = 100; s < 160; s++) {
         stages[s] = 'unobserved';
@@ -271,7 +269,9 @@ void reviewFixesMain() {
         },
       ).toJson());
       final sleep = b['sleep'] as Map;
-      expect(sleep['stager_source'], 'hmm');
+      // The legacy flag re-stages nothing (see above), so no `hmm` tag and the
+      // accounting is the coordinator's own.
+      expect(sleep.containsKey('stager_source'), isFalse);
       final acc = (sleep['accounting'] as Map)['value'] as Map;
       final l = _labels(b);
       int count(Set<String> s) => l.where(s.contains).length;
@@ -279,9 +279,6 @@ void reviewFixesMain() {
       expect(acc['tst_sec'], tst);
       expect(acc['wake_sec'], count({'wake'}));
       expect(acc['light_sec'] + acc['deep_sec'] + acc['rem_sec'], tst);
-      expect(acc['efficiency_pct'], closeTo(100.0 * tst / (_n - 60), 1e-9),
-          reason: 'not the original stager\'s 100 %');
-      expect(acc['efficiency_pct'], lessThan(100.0));
     });
 
     test('switch off: the bundle is exactly what it was', () {

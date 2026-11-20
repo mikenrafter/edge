@@ -27,6 +27,7 @@ import 'package:openstrap_edge/ui2/profile/profile.dart' show ProfileAvatar;
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:provider/provider.dart';
+import 'support/finite_settle.dart';
 
 /// A [CoachConfig] that just answers the one question Home asks it, without a
 /// keychain or a prefs store behind it.
@@ -296,7 +297,7 @@ void main() {
         theme: buildTheme(Brightness.light),
         home: Scaffold(body: HealthScreen(data: d, tab: 2)),
       ));
-      await t.pumpAndSettle();
+      await settleFinite(t);
       // Both cards read below: bad news for HRV, good news for resting HR.
       expect(find.text('Below usual'), findsNWidgets(2));
       expect(find.text('· −10 ms from your usual 60 ms'), findsOneWidget);
@@ -334,7 +335,7 @@ void main() {
         // Trends. Explore was inserted at index 1, so Trends moved to 2.
         home: Scaffold(body: HealthScreen(data: d, tab: 2)),
       ));
-      await t.pumpAndSettle();
+      await settleFinite(t);
     }
 
     testWidgets('with no sleep need, the verdict is against your usual range',
@@ -364,9 +365,9 @@ void main() {
           sleepFixture(
               need: const Metric(
                   value: 462, unit: 'min', confidence: .7, tier: MetricTier.estimate)));
-      expect(find.text('42m'), findsOneWidget);
-      expect(find.text('20m'), findsNothing);
-      expect(find.text('vs your 7h 42m need'), findsOneWidget);
+      // One line now, with an explicit minus: the shortfall against the need.
+      expect(find.text('\u221242m vs your 7h 42m need'), findsOneWidget);
+      expect(find.textContaining('20m'), findsNothing);
     });
 
     testWidgets('under two weeks it abstains and says how many days it has',
@@ -589,7 +590,7 @@ void main() {
           ),
         ),
       ));
-      await t.pumpAndSettle();
+      await settleFinite(t);
     }
 
     testWidgets('a red night yesterday shows', (t) async {
@@ -673,7 +674,7 @@ void main() {
       addTearDown(t.view.reset);
       await t.pumpWidget(MaterialApp(
           theme: buildTheme(Brightness.light), home: Scaffold(body: w)));
-      await t.pumpAndSettle();
+      await settleFinite(t);
     }
 
     testWidgets('the empty hero on Home is a door, not a dead end', (t) async {
@@ -774,7 +775,7 @@ void main() {
       await t.pumpWidget(MaterialApp(
           theme: buildTheme(Brightness.light),
           home: Scaffold(body: MetricDetail('resting_hr', data: d))));
-      await t.pumpAndSettle();
+      await settleFinite(t);
     }
 
     testWidgets('says how much of the window was actually worn', (t) async {
@@ -789,7 +790,7 @@ void main() {
           ));
       // The screen opens on Today; the denominator is a long-range thing.
       await t.tap(find.text('30 days'));
-      await t.pumpAndSettle();
+      await settleFinite(t);
       expect(find.text('Worn'), findsOneWidget);
       expect(find.textContaining('12 of 30 days have wear data'),
           findsOneWidget);
@@ -805,7 +806,7 @@ void main() {
             wear: [for (var i = 11; i >= 0; i--) ChartPoint(t: _noon(i), v: 480.0)],
           ));
       await t.tap(find.text('7 days'));
-      await t.pumpAndSettle();
+      await settleFinite(t);
       expect(find.text('Worn'), findsNothing);
     });
   });
@@ -819,7 +820,7 @@ void main() {
       await t.pumpWidget(MaterialApp(
           theme: buildTheme(Brightness.light),
           home: Scaffold(body: MetricDetail(key, data: d))));
-      await t.pumpAndSettle();
+      await settleFinite(t);
     }
 
     // The old default was index 2, clamped to whatever the install could fill
@@ -847,7 +848,7 @@ void main() {
             series: [for (var i = 200; i >= 0; i--) ChartPoint(t: _noon(i), v: 54.0)],
           ));
       await t.tap(find.text('30 days'));
-      await t.pumpAndSettle();
+      await settleFinite(t);
       expect(find.textContaining('Daily average'), findsOneWidget);
     });
   });
@@ -906,7 +907,7 @@ void main() {
                       for (var i = 60; i >= 0; i--) ChartPoint(t: _noon(i), v: 8000.0),
                     ],
                   )))));
-      await t.pumpAndSettle();
+      await settleFinite(t);
     }
 
     testWidgets('it is there on today, and it is called Breakdown', (t) async {
@@ -919,7 +920,7 @@ void main() {
     testWidgets('it is gone on a wider range', (t) async {
       await pump(t);
       await t.tap(find.text('30 days'));
-      await t.pumpAndSettle();
+      await settleFinite(t);
       expect(find.text('Breakdown'), findsNothing);
     });
   });
@@ -939,7 +940,7 @@ void main() {
         theme: buildTheme(Brightness.light),
         home: Investigate('hrv', data: InvestigateData(day: _day(0))),
       ));
-      await t.pumpAndSettle();
+      await settleFinite(t);
       expect(find.text('NERD STATS'), findsOneWidget);
       expect(find.textContaining('INVESTIGATE'), findsNothing);
 
@@ -949,7 +950,7 @@ void main() {
           body: NerdStatsLink(listener: _NerdStatsDoor()),
         ),
       ));
-      await t.pumpAndSettle();
+      await settleFinite(t);
       expect(find.text('Nerd stats'), findsOneWidget);
       expect(find.text('Investigate'), findsNothing);
     });
@@ -980,7 +981,7 @@ void main() {
               },
             })),
       ));
-      await t.pumpAndSettle();
+      await settleFinite(t);
       expect(find.text('SDNN'), findsOneWidget, reason: 'the table rendered');
       expect(find.text('RMSSD'), findsNothing,
           reason: 'whole-night RMSSD is absent, so its row is dropped');
@@ -1013,7 +1014,7 @@ void main() {
               },
             })),
       ));
-      await t.pumpAndSettle();
+      await settleFinite(t);
       expect(find.text('RMSSD, nightly (mean of 5-min windows)'), findsNothing);
       expect(find.text('RMSSD, nightly (earlier estimate)'), findsOneWidget);
       expect(find.text('48.3 ms'), findsOneWidget);
@@ -1033,7 +1034,7 @@ void main() {
               for (var i = 9; i >= 0; i--) ChartPoint(t: _noon(i), v: i == 3 ? 1.0 : 0.0),
             ])),
       ));
-      await t.pumpAndSettle();
+      await settleFinite(t);
       expect(find.text('Irregular-rhythm screen'), findsOneWidget);
       expect(find.textContaining('Ran on 10 days, flagged on 1'),
           findsOneWidget);
@@ -1115,14 +1116,14 @@ void main() {
         theme: buildTheme(Brightness.light),
         home: CircadianDetail(data: data),
       ));
-      await t.pumpAndSettle();
+      await settleFinite(t);
       expect(find.textContaining('not stress'), findsNothing);
       expect(find.text('1h 30m later'), findsOneWidget);
       await t.pumpWidget(MaterialApp(
         theme: buildTheme(Brightness.light),
         home: CircadianDetail(data: data, advanced: true),
       ));
-      await t.pumpAndSettle();
+      await settleFinite(t);
       expect(find.textContaining('not stress'), findsOneWidget);
       // How deep each drawn hour is, not just a grand total.
       expect(find.textContaining('12 of 24 hours'), findsOneWidget);
@@ -1134,7 +1135,7 @@ void main() {
         theme: buildTheme(Brightness.light),
         home: CircadianDetail(data: data),
       ));
-      await t.pumpAndSettle();
+      await settleFinite(t);
       expect(find.text('1h 30m later'), findsOneWidget);
       expect(find.text('3 / 9'), findsOneWidget);
     });
@@ -1178,7 +1179,7 @@ void main() {
           home: CircadianDetail(data: d, advanced: advanced),
         ),
       ));
-      await t.pumpAndSettle();
+      await settleFinite(t);
     }
 
     testWidgets('no judged night, no forecast — and no explanation either',
@@ -1236,9 +1237,9 @@ void main() {
               rhythmV: {'IS': .62, 'IV': .81, 'RA': .74},
               cosinorV: {'acrophase_hours': 15.2}),
           advanced: false);
-      expect(find.text('Day-to-day stability'), findsNothing);
-      await t.tap(find.text('Show'));
-      await t.pumpAndSettle();
+      // The section is an accordion, open by default since f49bac5aa (2026-11-15).
+      expect(find.text('Day-to-day stability'), findsOneWidget);
+      await settleFinite(t);
       expect(find.text('Day-to-day stability'), findsOneWidget);
     });
   });
@@ -1269,7 +1270,7 @@ void main() {
               data: InvestigateData(day: _day(0), cvhrDist: m)),
         ),
       ));
-      await t.pumpAndSettle();
+      await settleFinite(t);
     }
 
     testWidgets('it names no condition, no number and no severity', (t) async {
@@ -1357,7 +1358,7 @@ void main() {
           home: CircadianDetail(data: d),
         ),
       ));
-      await t.pumpAndSettle();
+      await settleFinite(t);
     }
 
     test('the worst accepted pair leads, and a thin pair never gets here',
@@ -1390,10 +1391,10 @@ void main() {
       await pumpR(t, d);
       // Density 2 is unchanged until it is asked for.
       expect(find.text('Schedule consistency'), findsOneWidget);
-      expect(find.text('Nights least alike'), findsNothing);
+      expect(find.text('Nights least alike'), findsOneWidget);
 
-      await t.tap(find.text('Which nights'));
-      await t.pumpAndSettle();
+      // Expanded by default since f49bac5aa (2026-11-15): no "Which nights" tap.
+      await settleFinite(t);
       expect(find.text('12 Aug → 13 Aug'), findsOneWidget);
       expect(find.text('18 / 100'), findsOneWidget);
       // The pair that agreed MOST is not on screen — one row's worth of fact,
@@ -1428,8 +1429,8 @@ void main() {
         ),
         scale: 3.1,
       );
-      await t.tap(find.text('Which nights'));
-      await t.pumpAndSettle();
+      // Expanded by default since f49bac5aa (2026-11-15): no "Which nights" tap.
+      await settleFinite(t);
       expect(find.text('12 Aug → 13 Aug'), findsOneWidget);
     });
   });
@@ -1474,7 +1475,7 @@ void main() {
               data: InvestigateData(day: _day(0), hrv: hrv)),
         ),
       ));
-      await t.pumpAndSettle();
+      await settleFinite(t);
     }
 
     testWidgets('the night shape is numbers here; the chart is on Beats',
@@ -1551,7 +1552,7 @@ void main() {
           home: Investigate('resp_rate', data: d),
         ),
       ));
-      await t.pumpAndSettle();
+      await settleFinite(t);
     }
 
     testWidgets('the night is not the day — sleep windows are excluded',
@@ -1657,7 +1658,7 @@ void main() {
               'duration_min': 384,
             })),
       ));
-      await t.pumpAndSettle();
+      await settleFinite(t);
       expect(find.textContaining('301 min · shown as'), findsOneWidget);
       expect(find.textContaining('83 min · shown as'), findsOneWidget);
       expect(find.text('REM'), findsNothing);

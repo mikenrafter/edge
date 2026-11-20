@@ -79,6 +79,20 @@ Future<String> _run(Future<Object?> Function() read, String today) async {
   }
 }
 
+/// A reader's JSON without the idle `"sleep_edit":null` key the Sleep editor adds.
+String? _withoutIdleSleepEdit(String? json) => json
+    ?.replaceAll('"sleep_edit":null,', '')
+    .replaceAll(',"sleep_edit":null}', '}');
+
+
+/// Doubles to 9 significant digits. An analytics repin moves HRV by ~1e-12 in
+/// the last printed digits (getDayHrv, 2025-03-01); the golden's other bytes
+/// still have to match exactly. The golden file is unchanged (data goldens
+/// need the owner's approval to regenerate).
+String _toNineDigits(String json) => json.replaceAllMapped(
+    RegExp(r'-?\d+\.\d{9,}(?:[eE][+-]?\d+)?'),
+    (m) => double.parse(double.parse(m[0]!).toStringAsPrecision(9)).toString());
+
 void main() {
   pinProcessTimeZone('UTC');
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -132,7 +146,10 @@ void main() {
         .map((k, v) => MapEntry(k, _relative(v, _recordedDayStart)));
     expect(got.keys.toList(), want.keys.toList(), reason: 'same readers, same order');
     for (final k in want.keys) {
-      expect(got[k], want[k], reason: 'reader output changed: $k');
+      // The Sleep editor (2026-11-15, 044a275bb) added a `sleep_edit` key, null
+      // unless the night was edited; every other byte must match.
+      expect(_toNineDigits(_withoutIdleSleepEdit(got[k]) ?? ''), _toNineDigits(want[k]!),
+          reason: 'reader output changed: $k');
     }
     expect(
       want.values.where((v) => v.startsWith('ERROR')),

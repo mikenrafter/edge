@@ -13,6 +13,7 @@ import 'package:openstrap_edge/ui2/pairing/device_picker.dart';
 import 'package:openstrap_edge/ui2/profile/devices.dart' show kPairableSensors;
 import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:openstrap_edge/ui2/skeleton/async_section.dart' show PendingMark;
 
 BandCandidate _cand(String id, String entryId, {String? label, int rssi = -60}) =>
     (device: BluetoothDevice.fromId(id), label: label, rssi: rssi, entryId: entryId, alsoBand: null);
@@ -73,7 +74,8 @@ void main() {
     testWidgets('scanning shows a live row even with nothing found yet', (t) async {
       await _pump(t, _view(scanning: true), settle: false);
       expect(find.text('Scanning for devices nearby…'), findsOneWidget);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      // The scan spinner is a PendingMark now (fa1e52e04, d3c53c24c, 2026-11-14).
+      expect(find.byType(PendingMark), findsOneWidget);
     });
 
     testWidgets('a found Oura candidate and a found HRS candidate get distinct icons',

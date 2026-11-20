@@ -32,6 +32,7 @@ import 'package:openstrap_edge/state/units_controller.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+import 'package:openstrap_edge/state/app_state.dart';
 
 Map<String, dynamic> _env(num v, {String tier = 'ESTIMATE'}) => {
       'value': v,
@@ -133,6 +134,9 @@ Future<void> _pumpHealth(WidgetTester t, HealthData d,
           create: (_) =>
               ThemeController.seed(AppThemeChoice.light, Brightness.light)),
       ChangeNotifierProvider(create: (_) => LocaleController.seed(null)),
+      // MetricDetail reads AppState (the shared day navigation), so a pushed
+      // detail route needs it above the Navigator.
+      ChangeNotifierProvider<AppState>(create: (_) => AppState.forTesting()),
     ],
     child: MaterialApp(
       theme: buildTheme(Brightness.light),

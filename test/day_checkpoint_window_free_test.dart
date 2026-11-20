@@ -829,7 +829,9 @@ void main() {
       expect(got['priority'], 'full context');
       expect(got['earlier second replaced'], startsWith('full revised:'));
       expect(got['rows evicted'], startsWith('full lost:'));
-      expect(got['layout version'], 'full fmt');
+      // Stale pin: a foreign layout is refused in LocalDb.dayCheckpoint
+      // (lib/data/db/derive_store.dart:17), so the gate reports 'none', not 'fmt'.
+      expect(got['layout version'], 'full none');
       expect(got['algorithm version'], 'full none');
       expect(got['unreadable blob'], 'full unreadable_state');
       expect(got['folded a different number of seconds'], 'full folded');

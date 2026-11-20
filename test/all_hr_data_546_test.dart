@@ -101,7 +101,10 @@ void main() {
               body: ListView(
                   children: timelineBody(c, TimelineData(day: '2026-08-14', graph: g))))),
     ));
-    expect(find.byType(RangeSlider), findsOneWidget);
+    // The zoom is the shared day chart's own pan/zoom (_DayGraphZoom,
+    // 4c5e395ba 2026-11-18), no longer a RangeSlider under the chart.
+    expect(find.byWidgetPredicate((w) => w.runtimeType.toString() == '_DayGraphZoom'),
+        findsOneWidget);
     expect(find.textContaining('1-minute averages'), findsOneWidget);
   });
 }

@@ -313,7 +313,8 @@ void main() {
       // or (day, 104) row is never served as current. The fork entries stay in
       // the changelog as `// | vNNN` history lines.
       expect(v, greaterThan(104));
-      expect(kAnalyticsPin, '6a2a9fc7392b03103ab0b371b0449c28cca104f7');
+      // Stale pin: the pin moved on (c8d538334, 2026-11-18: analytics 6c45f3b).
+      expect(kAnalyticsPin, '6c45f3b0894e23bf5047f7cc0e34e533d0802417');
       final lines = src.substring(0, m.start).split('\n');
       final entry =
           lines.lastWhere((l) => RegExp(r'^//\s*\|?\s*v104\b').hasMatch(l));
@@ -342,7 +343,8 @@ void main() {
       // v103 history line. The current version is our single bump atop
       // upstream 113 (D27 revised), named in the entry that closes the block.
       // 115 (D36) and 116 (analytics #99) follow it.
-      expect(v, 116);
+      // Stale pin: later bumps followed 116 (now 126, c8d538334); the block still holds the 114 entry.
+      expect(v, greaterThanOrEqualTo(116));
       expect(block.join('\n'), contains('single bump atop upstream 113'),
           reason: 'the 114 entry names what it sits on');
       final from =

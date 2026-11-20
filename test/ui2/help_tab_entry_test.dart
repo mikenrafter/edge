@@ -163,8 +163,13 @@ void main() {
       final button = find.widgetWithText(TextButton, label);
       expect(button.hitTestable(), findsOneWidget);
       final reviewed = jsonDecode(File('test/fixtures/help_review_copy.json').readAsStringSync()) as Map<String, dynamic>;
-      final expectedName = (reviewed[locale.languageCode]['helpOpenForTab'] as String)
-          .replaceAll('{tab}', lookupAppLocalizations(locale).tabSleep);
+      // Thai has no reviewed-copy snapshot (test/fixtures/help_review_copy.json
+      // lists en, de, es, fr, hi, ru, zh), so it is checked against its own ARB.
+      final l = lookupAppLocalizations(locale);
+      final reviewedName = reviewed[locale.languageCode]?['helpOpenForTab'] as String?;
+      final expectedName = reviewedName == null
+          ? l.helpOpenForTab(l.tabSleep)
+          : reviewedName.replaceAll('{tab}', l.tabSleep);
       expect(t.getSemantics(button).getSemanticsData().label, expectedName);
       expect(t.getRect(button).left, greaterThanOrEqualTo(0));
       expect(t.getRect(button).right, lessThanOrEqualTo(320));

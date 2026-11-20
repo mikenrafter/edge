@@ -41,6 +41,7 @@ import 'package:openstrap_edge/ui2/profile/import_progress_view.dart';
 import 'package:openstrap_edge/ui2/ui2.dart' show buildTheme;
 
 import 'support/app_state_derive_harness.dart';
+import 'package:openstrap_edge/ui2/skeleton/async_section.dart' show PendingMark;
 
 const _keyLine = ValueKey('post-import-reentry-coach_api_key');
 const _deviceLine = ValueKey('post-import-device-only');
@@ -222,13 +223,20 @@ void main() {
     testWidgets('Your data shows kept notes on a fresh visit and can dismiss',
         (t) async {
       _tall(t);
+      // Taller still: every accordion opens by default now (f49bac5aa), so the
+      // notes at the end of the screen sit below 2000 logical px.
+      t.view.physicalSize = const Size(1170, 30000);
       var dismissed = 0;
       await t.pumpWidget(_app(DataScreenView(
           pendingReentry: const [kNeedsReentryCoachKey],
           onDismissNotes: () => dismissed++)));
       await t.pump();
+      // The notes sit at the end of a long screen (every accordion opens by
+      // default since f49bac5aa), beyond the lazy list's built range.
+      await t.scrollUntilVisible(find.byKey(_keyLine), 300);
       expect(find.byKey(_keyLine), findsOneWidget);
       expect(find.byKey(_deviceLine), findsOneWidget);
+      await t.ensureVisible(find.byKey(const ValueKey('post-import-dismiss')));
       await t.tap(find.byKey(const ValueKey('post-import-dismiss')));
       expect(dismissed, 1);
 
@@ -313,9 +321,10 @@ void main() {
           closeTo(0.25, 1e-9));
       await pump(t, const ImportCopying(ImportStage.heartRate, 0, 0, 1, 9));
       expect(find.textContaining('rows'), findsNothing);
-      expect(
-          t.widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator)).value,
-          isNull);
+      // Without a total the bar is the pending mark now, not an indeterminate
+      // LinearProgressIndicator (fa1e52e04, d3c53c24c, 2026-11-14).
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+      expect(find.byType(PendingMark), findsWidgets);
     });
   });
 

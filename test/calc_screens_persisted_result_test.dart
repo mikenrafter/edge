@@ -112,7 +112,7 @@ void main() {
       LastResultCache.instance.clock = () => computedAt;
       addTearDown(() => LastResultCache.instance.clock = null);
       await t.pumpWidget(perfApp(app, const MetricDetail('resting_hr')));
-      await settle(t);
+      await settle(t, n: 150); // the loading cascade reads section by section (2026-11-20)
       await _restart(t);
 
       final rows = await _rows(t, 'journal_insights');
@@ -133,7 +133,7 @@ void main() {
       expect(find.textContaining('As of'), findsWidgets);
 
       repo.insightsGate!.complete(second);
-      await settle(t);
+      await settle(t, n: 150); // the loading cascade reads section by section (2026-11-20)
       expect(_label, findsNothing, reason: 'fresh result clears the label');
       await t.runAsync(() => LastResultCache.instance.flush());
       final after = await _rows(t, 'journal_insights');
@@ -148,7 +148,7 @@ void main() {
       final repo = MetricRepo()..insightsThrow = true;
       final app = _app(repo);
       await t.pumpWidget(perfApp(app, const MetricDetail('resting_hr')));
-      await settle(t);
+      await settle(t, n: 150); // the loading cascade reads section by section (2026-11-20)
       await _restart(t);
       expect(await _rows(t, 'journal_insights'), isEmpty);
 
@@ -160,7 +160,7 @@ void main() {
       await settle(t, n: 20);
       expect(_label, findsNothing, reason: 'nothing stored, so no As-of');
       repo.insightsGate!.complete(const {'insights': []});
-      await settle(t);
+      await settle(t, n: 150); // the loading cascade reads section by section (2026-11-20)
     });
   });
 
@@ -174,7 +174,7 @@ void main() {
         ..insights = const {'numeric_insights': [], 'marker': 'w-first'};
       final app = _app(repo);
       await t.pumpWidget(perfApp(app, const JournalFindings()));
-      await settle(t);
+      await settle(t, n: 150); // the loading cascade reads section by section (2026-11-20)
       await _restart(t);
       final rows = await _rows(t, 'journal_insights');
       expect(rows, isNotEmpty);
@@ -190,7 +190,7 @@ void main() {
 
       repo.insightsGate!
           .complete(const {'numeric_insights': [], 'marker': 'w-second'});
-      await settle(t);
+      await settle(t, n: 150); // the loading cascade reads section by section (2026-11-20)
       expect(_label, findsNothing);
       await t.runAsync(() => LastResultCache.instance.flush());
       final after = await _rows(t, 'journal_insights');
@@ -204,7 +204,7 @@ void main() {
       final repo = WellnessRepo()..insightsThrow = true;
       final app = _app(repo);
       await t.pumpWidget(perfApp(app, const JournalFindings()));
-      await settle(t);
+      await settle(t, n: 150); // the loading cascade reads section by section (2026-11-20)
       await _restart(t);
       expect(await _rows(t, 'journal_insights'), isEmpty);
 
@@ -216,7 +216,7 @@ void main() {
       await settle(t, n: 20);
       expect(_label, findsNothing);
       repo.insightsGate!.complete(const {'numeric_insights': []});
-      await settle(t);
+      await settle(t, n: 150); // the loading cascade reads section by section (2026-11-20)
     });
   });
 
@@ -265,7 +265,7 @@ void main() {
       expect(_label, findsWidgets);
 
       src.gates[key]!.complete();
-      await settle(t);
+      await settle(t, n: 150); // the loading cascade reads section by section (2026-11-20)
       expect(_label, findsNothing);
       await t.runAsync(() => LastResultCache.instance.flush());
       final after = await _rows(t, 'beats');
@@ -295,7 +295,7 @@ void main() {
       await settle(t, n: 20);
       expect(_label, findsNothing);
       src.gates[key]!.complete();
-      await settle(t);
+      await settle(t, n: 150); // the loading cascade reads section by section (2026-11-20)
     });
   });
 }

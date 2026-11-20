@@ -147,7 +147,9 @@ void main() {
     }
     expect(lines.where((s) => s.startsWith('Importing')), isNotEmpty,
         reason: 'the line says so while the file is opened: $lines');
-    expect(lines.where((s) => s == 'Calculating…'), isNotEmpty,
+    // The line reads deriveDailyLabel ("Calculating sleep, recovery and strain")
+    // since d3c53c24c (2026-11-14), no longer the bare "Calculating…".
+    expect(lines.where((s) => s.startsWith('Calculating')), isNotEmpty,
         reason: 'once days derive the line says so, not "Importing · opening" '
             'for the whole run: $lines');
     // The pair that carries derive progress must not be hidden by an import.

@@ -17,6 +17,18 @@ import 'package:openstrap_edge/ui2/onboarding/welcome.dart';
 
 import 'backup_support.dart';
 
+/// A screen's DB read starts in the test's fake-async zone but finishes on the
+/// real event loop, so its lease on [LocalDb] is released only after alternating
+/// real time with a pump. A test that ends first leaves the lease held, and the
+/// next test's `env.wipe()` (a `LocalDb.close()`) waits on it forever (#58).
+Future<void> settleDbReads(WidgetTester tester) async {
+  for (var i = 0; i < 6; i++) {
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump();
+  }
+}
+
 void main() {
   late BackupEnv env;
   setUpAll(() async => env = await BackupEnv.create('bkx_presentation_test.db'));
@@ -79,7 +91,9 @@ void main() {
     final material = tester.widget<MaterialApp>(find.byType(MaterialApp));
     expect(material.locale, const Locale('es'));
     expect(material.themeMode, ThemeMode.dark);
+    await settleDbReads(tester);
     await tester.pumpWidget(const SizedBox.shrink());
+    await settleDbReads(tester);
   });
 
   testWidgets('a wrong-typed clock setting is refused; the other settings still apply',
@@ -162,7 +176,9 @@ void main() {
     final material = tester.widget<MaterialApp>(find.byType(MaterialApp));
     expect(material.locale, const Locale('es'));
     expect(material.themeMode, ThemeMode.dark);
+    await settleDbReads(tester);
     await tester.pumpWidget(const SizedBox.shrink());
+    await settleDbReads(tester);
   });
 
   for (final prefs in [0, 2]) {

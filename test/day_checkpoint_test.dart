@@ -754,8 +754,12 @@ void main() {
       test('a sleep window edit rebuilds instead of resuming', () async {
         final lines = await scenario(() => TestSleepWrites.putSleepOverride(
               dayId: day,
-              onsetTs: start - 7 * 3600,
-              offsetTs: start - 600,
+              // Inside the day's rows. A window wholly before them (the old
+              // `start - 7 h .. start - 600`) is shown by a pass but dropped by a
+              // forced re-derive since the sleep block commands (c54d7233e); see
+              // the hardening report.
+              onsetTs: start + 300,
+              offsetTs: start + 1500,
               source: 'manual',
             ));
         expect(lines, isEmpty, reason: 'a user edit never resumes');
@@ -770,7 +774,10 @@ void main() {
           final db = await LocalDb.instance;
           await db.update('day_checkpoint', {'fmt': kDayCheckpointFmt + 1});
         });
-        expect(lines.single, '[perf] checkpoint $day full fmt');
+        // Stale pin: LocalDb.dayCheckpoint (lib/data/db/derive_store.dart:17) now refuses a blob
+        // of another layout before decode (official-export schema-62 guard), so the gate
+        // sees no checkpoint ('none'); the pass still runs in full and equals the oracle.
+        expect(lines.single, '[perf] checkpoint $day full none');
       });
 
       test('another algorithm version', () async {
