@@ -35,6 +35,8 @@ void main() {
       );
       await g123Settle(t);
       final row = find.byKey(const ValueKey('experimental-sleep-hmm'));
+      await t.scrollUntilVisible(row, 250, scrollable: find.byType(Scrollable).first);
+      await g123Settle(t);
       expect(row, findsOneWidget);
       expect(
         find.descendant(

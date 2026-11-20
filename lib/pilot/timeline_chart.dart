@@ -49,13 +49,14 @@ class PilotTimelineChart extends StatefulWidget {
   const PilotTimelineChart({super.key,required this.controller,required this.graph,
     required this.interaction,this.annotations=const [],this.stages=const [],
     this.handles=const [],this.onHandle,this.onSelect,this.onScrub,this.onPan,
-    this.onTapTime,this.height=112,this.dimHrInsideSleep=true,this.overview=false,this.cut,this.selectedAnnotationId,this.showHeartRate=true,this.showHeader=true,this.syncStrip=false,this.backdrop=const [],this.focusId});
+    this.onTapTime,this.height=112,this.dimHrInsideSleep=true,this.overview=false,this.cut,this.selectedAnnotationId,this.showHeartRate=true,this.showHeader=true,this.syncStrip=false,this.backdrop=const [],this.focusId,this.focusColor});
   final TimelineController controller;
   /// Ranged events drawn as shading and edges only, without icons: the day
   /// timeline's other tabs (v16 draws every event's range).
   final List<ChartAnnotation> backdrop;
   /// The focused event (v16: its range at .26 and edges at full strength).
   final String? focusId;
+  final Color? focusColor;
   final bool syncStrip;
   final DayGraph graph;
   final TimelineInteraction interaction;
@@ -238,7 +239,7 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
                 child:ClipRect(child:Stack(children:[
                   Positioned(left:0,right:0,top:0,height:plotHeight,child:PendingStatic(child:DecoratedBox(key:const ValueKey('pilot-chart-frame'),decoration:BoxDecoration(color:p.card,borderRadius:BorderRadius.circular(10),border:Border.all(color:p.line))))),
                   Positioned(left:0,right:0,top:0,height:plotHeight,child:CustomPaint(painter:_PilotPainter(p:p,view:c.view,graph:visibleGraph,stages:widget.stages,
-                    annotations:visible,scrub:c.scrub,selection:c.selection,height:plotHeight,dimHrInsideSleep:widget.dimHrInsideSleep,cut:widget.cut,showHeartRate:widget.showHeartRate,bpmInPlot:!widget.showHeader,backdrop:widget.backdrop,focusId:widget.focusId))),
+                    annotations:visible,scrub:c.scrub,selection:c.selection,height:plotHeight,dimHrInsideSleep:widget.dimHrInsideSleep,cut:widget.cut,showHeartRate:widget.showHeartRate,bpmInPlot:!widget.showHeader,backdrop:widget.backdrop,focusId:widget.focusId,focusColor:widget.focusColor))),
                   if(c.selection==null)for(final h in widget.handles)if(h.at>=c.view.start&&h.at<=c.view.end)
                     Positioned(left:c.view.fraction(h.at)*_width-24,top:22,width:48,height:math.max(48,widget.height-24),
                       child:IgnorePointer(child:Center(child:Container(width:h.active?6:2,height:widget.height-28,decoration:BoxDecoration(color:h.color.withValues(alpha:h.active?1:.35),borderRadius:BorderRadius.circular(3))))),),
@@ -329,8 +330,9 @@ class _PilotTimeAxis extends StatelessWidget {
 class _PilotPainter extends CustomPainter implements GuidePlot {
   @override Color get guideLineColor=>p.on(C.red);
   _PilotPainter({required this.p,required this.view,required this.graph,required this.stages,
-    required this.annotations,required this.scrub,required this.selection,required this.height,required this.dimHrInsideSleep,this.cut,this.showHeartRate=true,this.bpmInPlot=false,this.backdrop=const [],this.focusId});
+    required this.annotations,required this.scrub,required this.selection,required this.height,required this.dimHrInsideSleep,this.cut,this.showHeartRate=true,this.bpmInPlot=false,this.backdrop=const [],this.focusId,this.focusColor});
   final List<ChartAnnotation> backdrop;final String? focusId;
+  final Color? focusColor;
   final P p; final TimelineView view; final DayGraph graph; final List<SleepStage?> stages;
   final List<ChartAnnotation> annotations;final double? scrub;final TimelineView? selection;final double height;
   final bool dimHrInsideSleep;final PilotTimelineCut? cut;final bool showHeartRate,bpmInPlot;
@@ -355,7 +357,8 @@ class _PilotPainter extends CustomPainter implements GuidePlot {
       // Day timeline, v16 exactly: every range shaded at .12 (.26 focused) over
       // the plot; start and end lines 1 px, dash 4 3, at .55 (1 focused).
       for(final a in [...backdrop,...annotations]){
-        final color=p.on(_pilotAnnotationColor(a)),focused=a.id==focusId;
+        final focused = a.id == focusId;
+        final color = p.on(focused ? focusColor ?? _pilotAnnotationColor(a) : _pilotAnnotationColor(a));
         if(a.until!=null)canvas.drawRect(Rect.fromLTRB(x(a.at),20,x(a.until!),height),Paint()..color=color.withValues(alpha:focused ? .26 : .12));
         final edge=Paint()..color=color.withValues(alpha:focused ? 1.0 : .55)..strokeWidth=1;
         for(final at in [a.at,if(a.until!=null)a.until!])dashed(at,18,edge);
@@ -412,7 +415,7 @@ class _PilotPainter extends CustomPainter implements GuidePlot {
       canvas.drawRect(Rect.fromLTRB(x(base+i*60),height-v.clamp(0,1)*(height-25)*.32,x(base+(i+1)*60),height),Paint()..color=p.on(C.purple).withValues(alpha:.75));
     }
     if(selection!=null)canvas.drawRect(Rect.fromLTRB(x(selection!.start),0,x(selection!.end),height),Paint()..color=p.on(C.blue).withValues(alpha:.2));
-    if(scrub!=null)canvas.drawLine(Offset(x(scrub!),0),Offset(x(scrub!),height),Paint()..color=p.ink..strokeWidth=1.4);
+    if(scrub!=null)canvas.drawLine(Offset(x(scrub!),0),Offset(x(scrub!),height),Paint()..color=(focusColor == null ? p.ink : p.on(focusColor!))..strokeWidth=1.4);
     canvas.restore();
     if(cut!=null)canvas.drawRect(Rect.fromLTWH(cut!.leftWidth(w),0,28,height),Paint()..color=p.card);
   }

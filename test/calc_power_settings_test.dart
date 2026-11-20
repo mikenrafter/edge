@@ -18,7 +18,7 @@
 //                       VoidCallback? onPickCalcPowerMode})
 //         A SetRow keyed ValueKey('calc-power-row'), title 'Calculations',
 //         value 'Maximum battery' | 'Balanced' | 'Eager', inside the
-//         "Data & privacy" accordion (id settings_data_privacy); tapping it
+//         "App behaviour" accordion (id settings_app_behaviour); tapping it
 //         calls onPickCalcPowerMode. (Existing tests that list that group's
 //         rows (settings_regroup_test, g2_settings_layout_test) get the row
 //         added alongside the implementation.)
@@ -136,7 +136,7 @@ void main() {
   });
 
   group('the row (MoreSettingsView)', () {
-    testWidgets('in Data & privacy, titled Calculations, saying the mode',
+    testWidgets('in App behaviour, titled Calculations, saying the mode',
         (t) async {
       _phone(t);
       for (final m in CalcPowerMode.values) {
@@ -147,9 +147,9 @@ void main() {
         expect(row, findsOneWidget, reason: m.name);
         expect(
             find.descendant(
-                of: accordionById('settings_data_privacy'), matching: row),
+                of: accordionById('settings_app_behaviour'), matching: row),
             findsOneWidget,
-            reason: 'Settings > Data & privacy');
+            reason: 'Settings > App behaviour');
         expect(find.descendant(of: row, matching: find.text('Calculations')),
             findsOneWidget);
         expect(find.descendant(of: row, matching: find.text(_titles[m]!)),

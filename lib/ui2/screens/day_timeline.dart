@@ -1180,7 +1180,8 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
   final _filter = TimelineFilter();
   TimelineController? _chart;
   List<({String id, Moment moment})> _visibleRows = const [];
-  bool _programmaticScroll = false;
+  Map<String, Moment> _annotatedRows = const {};
+  int _listReveals = 0;
   void _filterChanged() {
     setState(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1224,7 +1225,7 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
   // enforced by Pressable under SubTabs) and no longer lives on this screen.
   void _listScrolled() {
     if(PilotFlag.timelines.enabled && _pilotInteraction.handScrubbing)return;
-    if (_programmaticScroll || !_listController.hasClients ||
+    if (_listReveals > 0 || !_listController.hasClients ||
         _listController.position.userScrollDirection == ScrollDirection.idle) { return; }
     final viewport = _listController.position.context.storageContext.findRenderObject();
     if (viewport is! RenderBox || !viewport.hasSize) return;
@@ -1243,8 +1244,11 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
       if (_highlight != closest.id) setState(() => _highlight=closest!.id);
     }
   }
-  void _selectRow(String id, Moment m) {
-    _chart?.reveal(m.at.toDouble());
+  void _selectRow(String id, Moment moment) {
+    final at = moment.at.toDouble();
+    _chart?.zoomAt(at);
+    _chart?.setScrub(at);
+    if (PilotFlag.timelines.enabled) _pilotInteraction.focus(at);
     _reveal(id);
   }
   DayReviewController? _review;
@@ -1354,8 +1358,8 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
   /// from (two rows can share a minute).
   @override
   void annotationTapped(String id) {
-    final hit = _visibleRows.where((r) => r.id == id ||
-      dayAnnotations([r.moment]).any((a) => a.id == id)).firstOrNull;
+    final moment = _annotatedRows[id];
+    final hit = _visibleRows.where((r) => r.id == id || identical(r.moment, moment)).firstOrNull;
     if (hit == null) return;
     final group = groupRepeatedEvents([for (final row in _visibleRows) row.moment])
         .where((g) => g.moments.contains(hit.moment)).first;
@@ -1363,7 +1367,8 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
     final row = _visibleRows.firstWhere((r) => identical(r.moment,target));
     final state = _rowKeys[row.id]?.currentState;
     if (state is _MomentGroupRowState) state.expand();
-    _selectRow(row.id,row.moment);
+    _chart?.reveal(row.moment.at.toDouble());
+    _reveal(row.id);
   }
 
   /// Opens the editor of a saved row (a nap, a workout) and reloads after.
@@ -1407,10 +1412,10 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
     void scroll() {
       final row = _rowKeys[id]?.currentContext;
       if (row != null) {
-        _programmaticScroll = true;
+        _listReveals++;
         Scrollable.ensureVisible(row,
             duration: motion(context, Motion.slow), alignment: 0).whenComplete(() {
-          _programmaticScroll = false;
+          _listReveals--;
         });
       }
     }
@@ -1727,10 +1732,21 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
       DayReviewController? review) {
     final p = P.of(context);
     final out = <Widget>[];
-    for (final g in groupRepeatedEvents([for (final r in rows) r.moment])) {
-      final row = rows.firstWhere((r) => identical(r.moment, g.first));
+    final byMoment = {for (final row in rows) row.moment: row};
+    for (final g in groupRepeatedEvents(byMoment.keys.toList())) {
+      final row = byMoment[g.first]!;
       if (g.count > 1 || g.isWake) {
-        out.add(MomentGroupRow(g, key: _rowKeys.putIfAbsent(row.id, GlobalKey.new)));
+        final members = [for (final m in g.moments) byMoment[m]!];
+        out.add(MomentGroupRow(g,
+          key: _rowKeys.putIfAbsent(row.id, GlobalKey.new),
+          selectedIndex: members.indexWhere((member) => member.id == _highlight),
+          onSelect: (i) => _selectRow(members[i].id, members[i].moment),
+          memberKeys: [
+            null,
+            for (final member in members.skip(1))
+              _rowKeys.putIfAbsent(member.id, GlobalKey.new),
+          ],
+        ));
         continue;
       }
       out.add(Semantics(selected:_highlight==row.id,
@@ -1740,7 +1756,7 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
         key: _rowKeys.putIfAbsent(row.id, GlobalKey.new),
         child: Container(
           key: ValueKey('apk2-day-row:${row.id}'),
-          color: _highlight == row.id ? p.wash(C.domMind) : null,
+          color: _highlight == row.id ? p.wash(row.moment.color ?? C.n500) : null,
           child: PilotFlag.timelines.enabled&&row.moment.timelineKind==DayTimelineKind.discarded
               ? MomentRow(row.moment,below:Row(children:[Expanded(child:reviewButton(context,'pilot-restore:${row.id}',AppLocalizations.of(context)!.pilotRestore,
                 review?.canEdit==true?()=>review!.togglePilotRestore(row.id):null,selected:review?.pilotRestoreStaged(row.id)==true,glyph:LucideIcons.undo2)),const Spacer(),const Spacer()]))
@@ -1860,7 +1876,15 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
     final rows = [for (final e in ranked) if (visible(e.row.moment)) e.row];
     _visibleRows = rows;
     final chart = _chartFor(d.graph);
-    final annotations = [...dayAnnotations([for (final row in rows) row.moment]),...(!PilotFlag.timelines.enabled?d.rhrMarks:const <ChartAnnotation>[])];
+    final pairs = annotatedMoments([for (final row in rows) row.moment]);
+    _annotatedRows = {for (final (annotation, moment) in pairs) annotation.id: moment};
+    final annotations = [
+      for (final (annotation, _) in pairs) annotation,
+      if (!PilotFlag.timelines.enabled) ...d.rhrMarks,
+    ];
+    final focused = rows.where((row) => row.id == _highlight).firstOrNull?.moment;
+    final focusColor = focused == null ? null : focused.color ?? C.n500;
+    final focusId = pairs.where((pair) => identical(pair.$2, focused)).firstOrNull?.$1.id;
     final title = widget.reviewEntry
         ? (l?.homeReviewActivities ?? 'Review activities')
         : (l?.dayTimelineTitle ?? 'Breakdown of your day');
@@ -1880,7 +1904,8 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
         onCancel:()async{await review?.discardDraft();if(mounted)setState((){});},onSave:()=>review?.save(c)),DayReviewNotices(controller:review,reloader:this)]),
         pending:_loading,graph:d.graph,stages:_pilotStages,controller:chart,interaction:_pilotInteraction,tab:_pilotTab??PilotTimelineTab.pending,
         onTab:(value)=>setState(()=>_pilotTab=value),listController:_listController,
-        annotations:annotations,onAnnotation:annotationTapped,onScrub:_scrubRow,focusId:_highlight,
+        annotations:annotations,onAnnotation:annotationTapped,onScrub:_scrubRow,
+        focusId:focusId,focusColor:focusColor,
         // v16 shades every event's range whichever tab is open (m254/m255).
         backdrop:dayAnnotations([for(final e in ranked)if(!visible(e.row.moment))e.row.moment]).where((a)=>a.until!=null).toList(),
         onPan:(at){if(!_pilotInteraction.handScrubbing)_scrubRow(at);},
@@ -1979,7 +2004,7 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
                           fineDetail: _device == null,
                           owners: coverageFromJson(d.raw?['hr_owner']),
                           controller: chart, controls: TimelineFilterButton(filter:_filter),
-                          onScrub: _scrubRow, emphasis: review?.reviewing == true ? review!.ids.toSet() : null,
+                          onScrub: _scrubRow, scrubColor: focusColor, emphasis: review?.reviewing == true ? review!.ids.toSet() : null,
                           annotations: annotations,
                           listener: this,
                           nerdStats: this,
@@ -2142,13 +2167,14 @@ class _DayGraphZoom extends StatefulWidget {
       this.owners = const [],
       this.annotations = const [],
       this.listener,
-      this.nerdStats, this.controller, this.controls, this.onScrub, this.emphasis, this.pending=false, this.fineCurve, this.footnote});
+      this.nerdStats, this.controller, this.controls, this.onScrub, this.scrubColor, this.emphasis, this.pending=false, this.fineCurve, this.footnote});
 
   final bool pending;
   final List<double?>? fineCurve;
   final String? footnote;
   final TimelineController? controller;
   final Set<String>? emphasis;
+  final Color? scrubColor;
   final Widget? controls;
   final ValueChanged<double>? onScrub;
   final AnnotationListener? listener;
@@ -2233,7 +2259,8 @@ class _ZoomState extends State<_DayGraphZoom> {
         PendingContent(pending:widget.pending,child:SharedTimelineChart(controller:_controller,graph:widget.graph,syncStrip:true,
           fine:_fine??widget.fineCurve,fineStartSec:_fineStart??widget.graph.dayStart,nerdStats:widget.nerdStats,emphasis:widget.emphasis,
           annotations:widget.annotations.where((a)=>a.kind!=AnnotationKind.rhrShift).toList(),
-          onAnnotationSelected:(id)=>widget.listener?.annotationTapped(id),onScrub:widget.onScrub)),
+          onAnnotationSelected:(id)=>widget.listener?.annotationTapped(id),onScrub:widget.onScrub,
+          scrubColor:widget.scrubColor)),
         if(_fineFailed) TextButton(onPressed:_readFine,child:Text(l.homeTryAgain)),
         Text(_fineFailed ? l.wellnessLoadFailedTitle : _fine!=null ? l.dayTimelineZoomPerSecond :
           _fineMissing ? l.dayTimelineZoomPerMinuteOnly : l.dayTimelineZoomPerMinute,style:F.cap.copyWith(color:P.of(c).ink3)),
@@ -2437,8 +2464,14 @@ List<DeviceOption> _anyHrCandidates(BuildContext c, AppState app) {
 /// to the individual times. Collapsed by default: five double taps in a row is
 /// one thing that happened, not five.
 class MomentGroupRow extends StatefulWidget {
-  const MomentGroupRow(this.group, {super.key});
+  const MomentGroupRow(this.group, {
+    super.key, this.onSelect, this.selectedIndex = -1, this.memberKeys,
+  });
+
   final MomentGroup group;
+  final ValueChanged<int>? onSelect;
+  final int selectedIndex;
+  final List<Key?>? memberKeys;
 
   @override
   State<MomentGroupRow> createState() => _MomentGroupRowState();
@@ -2485,32 +2518,64 @@ class _MomentGroupRowState extends State<MomentGroupRow> {
               'Charger and battery · ${g.count} events')
         : (l?.dayTimelineRepeatedGroup(f.title, g.count) ??
               '${f.title} · ${g.count} times');
+    void toggle() => setState(() => _open = !_open);
+    final disclosureLabel =
+        '${f.title}, ${g.count} times, ${_open ? 'expanded' : 'collapsed'}';
+    final chevron = Icon(
+      _open ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+      size: 17, color: p.ink3,
+    );
+    final summary = MomentRow(Moment(
+      at: f.at,
+      title: groupTitle,
+      icon: f.icon,
+      color: f.color,
+    ));
+    final select = widget.onSelect;
+    Widget member(int index, Widget child) {
+      if (select == null) return child;
+      final selected = widget.selectedIndex == index;
+      return Semantics(
+        selected: selected,
+        child: Pressable(
+          key: widget.memberKeys?[index],
+          onTap: () => select(index),
+          child: ColoredBox(
+            color: selected ? p.wash(g.moments[index].color ?? C.n500) : Colors.transparent,
+            child: child,
+          ),
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Pressable(
-          onTap: () => setState(() => _open = !_open),
-          semanticLabel:
-              '${f.title}, ${g.count} times, ${_open ? 'expanded' : 'collapsed'}',
-          child: Row(
-            children: [
-              Expanded(
-                child: MomentRow(Moment(
-                  at: f.at,
-                  title: groupTitle,
-                  icon: f.icon,
-                  color: f.color,
-                )),
-              ),
-              Icon(_open ? LucideIcons.chevronUp : LucideIcons.chevronDown,
-                  size: 17, color: p.ink3),
-            ],
-          ),
-        ),
+        if (select == null)
+          Pressable(
+            onTap: toggle,
+            semanticLabel: disclosureLabel,
+            child: Row(children: [Expanded(child: summary), chevron]),
+          )
+        else
+          Row(children: [
+            Expanded(child: member(0, summary)),
+            Pressable(
+              onTap: toggle,
+              semanticLabel: disclosureLabel,
+              child: chevron,
+            ),
+          ]),
         if (_open && g.isWake)
           Padding(
             padding: const EdgeInsets.only(left: S.x4),
-            child: Column(children: [for (final m in g.moments) MomentRow(m)]),
+            child: Column(children: [
+              for (final (i, moment) in g.moments.indexed)
+                // The header already owns the first moment.
+                if (i == 0 && select != null)
+                  Pressable(onTap: () => select(i), child: MomentRow(moment))
+                else member(i, MomentRow(moment)),
+            ]),
           ),
         if (_open && !g.isWake)
           // The individual times sit under the title column, in the row's own
@@ -2523,12 +2588,13 @@ class _MomentGroupRowState extends State<MomentGroupRow> {
               spacing: S.x4,
               runSpacing: S.x1,
               children: [
-                for (final m in g.moments)
-                  Text(
-                      g.mixed
-                          ? '${clockOfTs(m.at)}  ${m.title}'
-                          : clockOfTs(m.at),
-                      style: F.n17.copyWith(color: p.ink3)),
+                for (final (i, moment) in g.moments.indexed)
+                  member(i, Text(
+                    g.mixed
+                        ? '${clockOfTs(moment.at)}  ${moment.title}'
+                        : clockOfTs(moment.at),
+                    style: F.n17.copyWith(color: p.ink3),
+                  )),
               ],
             ),
           ),

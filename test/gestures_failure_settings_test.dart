@@ -145,12 +145,14 @@ void main() {
           [for (final a in t.widgetList<SettingsAccordion>(
               find.byType(SettingsAccordion))) a.title],
           [
-            'You & preferences',
+            'You',
+            'App behaviour',
             'Hardware',
             'Alerts',
             'Data & privacy',
             'Community',
             'Connections',
+            'Labs',
             'About',
           ]);
       expect(t.widget<SettingsAccordion>(_section('Hardware')).id,

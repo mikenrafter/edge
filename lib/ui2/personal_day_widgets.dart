@@ -104,16 +104,19 @@ class _PersonalDaySettingsState extends State<PersonalDaySettings> {
         sub: Prefs.personalDayEnabled ? personalDayTitle(Prefs.personalDayMode, l)
           : (l?.personalDayCurrent ?? 'Current behaviour'),
         onTap: _saving ? null : () async {
-          final picked = await showModalBottomSheet<PersonalDayMode>(context: c,
+          final picked = await showModalBottomSheet<Future<bool> Function()>(context: c,
             builder: (c) => SafeArea(child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(padding: const EdgeInsets.all(S.x4), child: Text(l?.personalDayExplain ??
                   'Choose day boundaries for your timeline and history. Home always follows your current day.')),
+                ListTile(title: Text(l?.personalDayCurrent ?? 'Current behaviour'),
+                  selected: !Prefs.personalDayEnabled,
+                  onTap: () => Navigator.pop(c, () => Prefs.setPersonalDayEnabled(false))),
                 for (final mode in PersonalDayMode.values)
                 ListTile(title: Text(personalDayTitle(mode, l)),
                   selected: Prefs.personalDayEnabled && mode == Prefs.personalDayMode,
-                  onTap: () => Navigator.pop(c, mode))]))));
-          if (picked != null && mounted) await _save(() => Prefs.setPersonalDayMode(picked));
+                  onTap: () => Navigator.pop(c, () => Prefs.setPersonalDayMode(mode)))]))));
+          if (picked != null && mounted) await _save(picked);
         }),
       SetRow(LucideIcons.calendarDays, C.blue, l?.personalDayTotals ?? 'Daily scores and totals',
         sub: _totalsValue(l),

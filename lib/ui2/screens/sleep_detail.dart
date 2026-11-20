@@ -33,6 +33,7 @@ import '../../state/recalc_state.dart';
 import '../../models/metric.dart';
 import '../profile/devices.dart' show DeviceFilter;
 import '../profile/profile.dart';
+import '../pull_to_sync.dart';
 import '../ui2.dart';
 import 'investigate.dart';
 import 'home_screen.dart';
@@ -687,10 +688,10 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     final p = P.of(c);
     final pilotHeader = HomeHeaderOpening.enabledIn(c);
     final nav = body.whereType<DayNav>().firstOrNull;
-    return RefreshIndicator.noSpinner(
-      onRefresh: () => PendingUserAction.run(_load),
+    return PullToSync(
+      reload: _load,
       child: tabRootList(
-        physics: const AlwaysScrollableScrollPhysics(),
+        physics: PullToSync.physics,
         padding: kTabRootPad,
         children: [
           if (pilotHeader) ...[
@@ -782,7 +783,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   void initState() {
     super.initState();
     watchPausedRead();
-    Prefs.sleepWakeZoomRevision.addListener(_zoomChanged);
     PilotFlags.revision.addListener(_pilotChanged);
     _day = widget.day;
     if (widget.data != null) {
@@ -825,13 +825,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     if (widget.data == null) unawaited(_load());
   }
 
-  void _zoomChanged() {
-    if (mounted) setState(() => _scrub = null);
-  }
-
   @override
   void dispose() {
-    Prefs.sleepWakeZoomRevision.removeListener(_zoomChanged);
     PilotFlags.revision.removeListener(_pilotChanged);
     stopWatchingPausedRead();
     super.dispose();
@@ -2065,7 +2060,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     // that stretch unmeasured; never stretch a recorded stage into it.
     if (end != recordedEnd) n = {...n, 'wake_ts': end};
     var start = onset;
-    if (Prefs.sleepWakeZoomOn && onset != null && end != null && end > onset &&
+    if (onset != null && end != null && end > onset &&
         wakeMarks.length > 1) {
       final plotWidth = math.max(1.0, MediaQuery.sizeOf(c).width - 160);
       final ordered = [...wakeMarks]..sort((a, b) => a.at.compareTo(b.at));

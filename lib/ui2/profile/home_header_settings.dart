@@ -1,37 +1,43 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:provider/provider.dart';
 
-import '../../l10n/app_localizations.dart';
-import '../../theme/theme_controller.dart';
-import '../grammar.dart' show NavBar, Pressable;
+import '../grammar.dart' show NavBar;
 import '../home_header.dart';
 import '../theme.dart';
-import 'profile.dart' show SetRow;
 
 class HomeHeaderAppearance extends StatelessWidget {
   const HomeHeaderAppearance({super.key});
 
   @override
   Widget build(BuildContext c) {
-    final l = AppLocalizations.of(c);
-    final theme = c.watch<ThemeController>();
+    final p = P.of(c);
+    TextSpan bold(String value) => TextSpan(
+      text: value, style: TextStyle(color: p.ink, fontWeight: FontWeight.w600),
+    );
     return Scaffold(
-      backgroundColor: P.of(c).bg,
+      backgroundColor: p.bg,
       body: SafeArea(child: Column(children: [
-        NavBar(l?.settingsAppearanceRowTitle ?? 'Appearance'),
+        const NavBar('How Compact works'),
         Expanded(child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          padding: const EdgeInsets.fromLTRB(S.x4, S.x3, S.x4, S.x6),
           children: [
-            SetRow(LucideIcons.sun, C.yellow,
-              l?.settingsAppearanceRowTitle ?? 'Appearance',
-              value: theme.choice.label,
-              onTap: () => theme.setChoice(AppThemeChoice.values[
-                (theme.choice.index + 1) % AppThemeChoice.values.length
+            const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(child: _HeaderOption(compact: false)),
+              SizedBox(width: S.x3),
+              Expanded(child: _HeaderOption(compact: true)),
+            ]),
+            const SizedBox(height: S.x3),
+            Text.rich(
+              TextSpan(children: [
+                bold('‹ ›'), const TextSpan(text: ' change the day\n'),
+                bold('Long press'), const TextSpan(text: ' the bar for sync details\n'),
+                bold('Colour'), const TextSpan(text: ' behind the date\n'),
+                TextSpan(text: 'Green', style: TextStyle(color: p.on(C.green))),
+                const TextSpan(text: ' while downloading\n'),
+                TextSpan(text: 'Purple', style: TextStyle(color: p.on(C.syncCalculate))),
+                const TextSpan(text: ' while calculating'),
               ]),
+              style: F.cap.copyWith(height: 1.7, color: p.ink2),
             ),
-            const SizedBox(height: 20),
-            const HomeHeaderChoice(),
           ],
         )),
       ])),
@@ -67,102 +73,57 @@ class _HomeHeaderChoiceState extends State<HomeHeaderChoice> {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    final compact = HomeHeader.compact;
-    TextSpan bold(String value) => TextSpan(text: value,
-      style: TextStyle(color: p.ink, fontWeight: FontWeight.w600));
     return Column(
-      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Header', style: F.n17.copyWith(color: p.ink)),
-        const SizedBox(height: 12),
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(child: _HeaderOption(
-            compact: false, selected: !compact, onTap: _saving ? null : () => _choose(false),
-          )),
-          const SizedBox(width: 10),
-          Expanded(child: _HeaderOption(
-            compact: true, selected: compact, onTap: _saving ? null : () => _choose(true),
-          )),
-        ]),
-        if (compact) ...[
-          const SizedBox(height: 12),
-          DecoratedBox(
-            decoration: BoxDecoration(color: p.card, borderRadius: R.rMd),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Text.rich(
-                TextSpan(children: [
-                  bold('‹ ›'), const TextSpan(text: ' change the day, as before\n'),
-                  bold('Long press'), const TextSpan(text: ' the bar for sync details\n'),
-                  bold('Colour'), const TextSpan(text: ' behind the date: '),
-                  TextSpan(text: 'green', style: TextStyle(color: p.on(C.green))),
-                  const TextSpan(text: ' downloading, '),
-                  TextSpan(text: 'purple', style: TextStyle(color: p.on(C.syncCalculate))),
-                  const TextSpan(text: ' calculating'),
-                ]),
-                style: F.cap.copyWith(height: 1.7, color: p.ink2),
+        OverflowBar(
+          alignment: MainAxisAlignment.spaceBetween,
+          overflowAlignment: OverflowBarAlignment.start,
+          overflowSpacing: S.x1,
+          children: [
+            Text('Style', style: F.body.copyWith(color: p.ink)),
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('Standard')),
+                ButtonSegment(value: true, label: Text('Compact')),
+              ],
+              selected: {HomeHeader.compact},
+              showSelectedIcon: false,
+              style: SegmentedButton.styleFrom(
+                selectedBackgroundColor: p.wash(C.syncCalculate),
+                selectedForegroundColor: p.on(C.syncCalculate),
               ),
+              onSelectionChanged: _saving ? null : (values) => _choose(values.single),
             ),
-          ),
-        ],
-        if (_failed) ...[
-          const SizedBox(height: 12),
+          ],
+        ),
+        if (_failed)
           Text('Could not save your header choice.', style: F.cap.copyWith(color: p.on(C.red))),
-        ],
       ],
     );
   }
 }
 
 class _HeaderOption extends StatelessWidget {
-  const _HeaderOption({required this.compact, required this.selected, this.onTap});
-  final bool compact, selected;
-  final VoidCallback? onTap;
+  const _HeaderOption({required this.compact});
+  final bool compact;
 
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    final accent = p.on(C.syncCalculate);
-    return Semantics(
-      selected: selected,
-      inMutuallyExclusiveGroup: true,
-      child: Pressable(
-        onTap: onTap,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: p.card,
-            borderRadius: R.headerChoice,
-            border: Border.all(color: selected ? accent : Colors.transparent),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              _HeaderIllustration(compact: compact),
-              const SizedBox(height: 8),
-              Row(children: [
-                Container(
-                  width: 16, height: 16,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(width: 2, color: selected ? accent : p.ink3),
-                  ),
-                  alignment: Alignment.center,
-                  child: selected ? DecoratedBox(
-                    decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
-                    child: const SizedBox.square(dimension: 7),
-                  ) : null,
-                ),
-                const SizedBox(width: 8),
-                Expanded(child: Text(compact ? 'Compact' : 'Standard',
-                  style: F.headerChoice.copyWith(color: p.ink))),
-              ]),
-              const SizedBox(height: 4),
-              Text(compact ? 'Status inside the day bar.' : 'Status line above the day bar.',
-                style: F.headerChoiceHint.copyWith(color: p.ink3)),
-            ]),
-          ),
-        ),
+    return DecoratedBox(
+      decoration: BoxDecoration(color: p.card, borderRadius: R.headerChoice),
+      child: Padding(
+        padding: const EdgeInsets.all(S.x3),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _HeaderIllustration(compact: compact),
+          const SizedBox(height: S.x2),
+          Text(compact ? 'Compact' : 'Standard',
+              style: F.headerChoice.copyWith(color: p.ink)),
+          const SizedBox(height: S.x1),
+          Text(compact ? 'Status inside the day bar.' : 'Status line above the day bar.',
+              style: F.headerChoiceHint.copyWith(color: p.ink3)),
+        ]),
       ),
     );
   }

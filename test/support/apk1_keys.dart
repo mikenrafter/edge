@@ -2,7 +2,7 @@
 /// as recovery/sleep/strain, first when present, within `card:rings`.
 const apk1ObservationRow = 'home-why:observation';
 
-/// APK1: the Settings > You & preferences control labelled Settings as tab.
+/// APK1: the Settings > App behaviour control labelled Settings as tab.
 /// Put this on its tap target, not on an inert caption.
 const apk1SettingsToggle = 'apk1-settings-as-tab';
 

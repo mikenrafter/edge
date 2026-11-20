@@ -10,6 +10,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/layout_shift/layout_shift.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart';
+import 'package:openstrap_edge/ui2/pull_to_sync.dart';
 
 import '../../support/as_of_recalc_fakes.dart';
 import '../../support/bundled_fonts.dart';
@@ -168,7 +169,7 @@ void main() {
         (t) async {
       final repo = await shell(t);
       await goTab(t, d);
-      expect(find.byType(RefreshIndicator).hitTestable(), findsOneWidget,
+      expect(find.byType(PullToSync).hitTestable(), findsOneWidget,
           reason: '${d.label} has a pull-to-refresh');
       final before = repo.reads;
       await t.dragFrom(const Offset(60, 200), const Offset(0, 400));

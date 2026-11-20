@@ -1,6 +1,5 @@
 import '../../pilot/labs_section.dart';
 import '../../pilot/pilot_flags.dart';
-import 'home_header_settings.dart';
 import '../personal_day_widgets.dart';
 import 'step_calibration.dart' show StepCalibrationScreen;
 import '../../compute/profile.dart' show plausibleAgeYears, plausibleHeightCm, plausibleWeightKg;
@@ -113,8 +112,6 @@ class _MoreSettingsState extends State<MoreSettings> with WidgetsBindingObserver
   /// screen-local preference like the map basemap's, read straight off Prefs.
   bool _barcode = offLookupAllowed;
 
-  /// Home's pull-to-sync, read straight off Prefs like [_barcode].
-  bool _pullToSync = Prefs.pullToSyncOn;
   bool _reviveCommunityCards = Prefs.reviveCommunityCardsOn;
 
   String _version = '';
@@ -261,10 +258,6 @@ class _MoreSettingsState extends State<MoreSettings> with WidgetsBindingObserver
       onToggleExperimentalSleepHmm: () => setState(() {
         Prefs.setExperimentalSleepHmm(!Prefs.experimentalSleepHmm);
       }),
-      sleepWakeZoom: Prefs.sleepWakeZoomOn,
-      onToggleSleepWakeZoom: () => setState(() {
-        Prefs.setSleepWakeZoom(!Prefs.sleepWakeZoomOn);
-      }),
       clockFormat: clock.format,
       cycleTracking: app.cycleTrackingEnabled,
       backgroundExempt: _bgExempt,
@@ -275,15 +268,10 @@ class _MoreSettingsState extends State<MoreSettings> with WidgetsBindingObserver
       onPickIcon: _pickIcon,
       telemetry: app.telemetryConsent,
       barcodeLookup: _barcode,
-      pullToSync: _pullToSync,
       reviveCommunityCards: _reviveCommunityCards,
       onToggleReviveCommunityCards: () {
         Prefs.setReviveCommunityCards(!_reviveCommunityCards);
         setState(() => _reviveCommunityCards = !_reviveCommunityCards);
-      },
-      onTogglePullToSync: () {
-        Prefs.setBool(Prefs.pullToSync, !_pullToSync);
-        setState(() => _pullToSync = !_pullToSync);
       },
       // Shown when the build has the feature OR when this install already
       // consented under an older build. A consent that cannot be withdrawn is
@@ -323,14 +311,9 @@ class _MoreSettingsState extends State<MoreSettings> with WidgetsBindingObserver
       onCycleUnits: () => units.setSystem(units.isImperial
           ? UnitSystem.metric
           : UnitSystem.imperial),
-      onCycleAppearance: () {
-        if (PilotFlag.homeHeader.enabled) {
-          goto(c, const HomeHeaderAppearance());
-        } else {
-          theme.setChoice(AppThemeChoice.values[
-            (theme.choice.index + 1) % AppThemeChoice.values.length]);
-        }
-      },
+      onCycleAppearance: () => theme.setChoice(AppThemeChoice.values[
+        (theme.choice.index + 1) % AppThemeChoice.values.length
+      ]),
       // the wind-down body bakes the time in when it's armed, re-arm it now
       onCycleClockFormat: () async {
         try {
@@ -650,10 +633,8 @@ class MoreSettingsView extends StatelessWidget {
   final bool showOemAutostart;
   final VoidCallback? onRequestBackgroundExempt, onOpenOemAutostart;
   final bool embedded, settingsAsTab;
-  final bool sleepWakeZoom;
   final bool experimentalSleepHmm;
   final VoidCallback? onToggleExperimentalSleepHmm;
-  final VoidCallback? onToggleSleepWakeZoom;
   final VoidCallback? onToggleSettingsAsTab;
   final String units, appearance;
 
@@ -661,17 +642,13 @@ class MoreSettingsView extends StatelessWidget {
   final ClockFormat clockFormat;
   final bool telemetry, barcodeLookup, cycleTracking;
 
-  /// Home's pull down to sync. On by default.
-  final bool pullToSync;
-  final VoidCallback? onTogglePullToSync;
-
   /// The home-screen icon, or null where the OS will not change it — Android,
   /// and the managed iOS configurations that refuse. Null means the row is not
   /// drawn: a control that cannot do its one job is worse than no control.
   final AppIconChoice? appIcon;
   final ValueChanged<AppIconChoice>? onPickIcon;
 
-  /// Settings > Data & privacy > Calculations: when derive work and warming run.
+  /// Settings > App behaviour > Calculations: when derive work and warming run.
   final CalcPowerMode calcPowerMode;
   final VoidCallback? onPickCalcPowerMode;
 
@@ -759,16 +736,12 @@ class MoreSettingsView extends StatelessWidget {
     this.settingsAsTab = false,
     this.experimentalSleepHmm = false,
     this.onToggleExperimentalSleepHmm,
-    this.sleepWakeZoom = true,
-    this.onToggleSleepWakeZoom,
     this.onToggleSettingsAsTab,
     this.units = 'Metric',
     this.appearance = 'System',
     this.clockFormat = ClockFormat.system,
     this.appIcon,
     this.onPickIcon,
-    this.pullToSync = true,
-    this.onTogglePullToSync,
     this.calcPowerMode = CalcPowerMode.balanced,
     this.onPickCalcPowerMode,
     this.healthSync = false,
@@ -857,7 +830,7 @@ class MoreSettingsView extends StatelessWidget {
                 SetRow(LucideIcons.circleHelp, C.blue,
                     l?.profileHelpRow ?? 'Help',
                     onTap: onHelp),
-                SettingsAccordion('You & preferences',
+                SettingsAccordion('You',
                     id: 'settings_preferences',
                     children: [
                   SetRow(LucideIcons.userPen, C.purple,
@@ -870,41 +843,9 @@ class MoreSettingsView extends StatelessWidget {
                       AppLocalizations.of(c)?.profileLanguage ?? 'Language',
                       sub: _languageSub(c),
                       onTap: () => pickLanguage(c))),
-                  SetRow(LucideIcons.settings, C.domHome,
-                      l?.settingsAsTab ?? 'Settings as tab',
-                      key: const ValueKey('apk1-settings-as-tab'),
-                      value: settingsAsTab ? on : off,
-                      onTap: onToggleSettingsAsTab),
-                  SetRow(LucideIcons.ruler, C.blue,
-                      l?.settingsUnitsRowTitle ?? 'Units',
-                      value: units, onTap: onCycleUnits),
                   SetRow(LucideIcons.sun, C.yellow,
                       l?.settingsAppearanceRowTitle ?? 'Appearance',
-                      value: appearance, onTap: onCycleAppearance),
-                  const PersonalDaySettings(),
-                  SetRow(LucideIcons.zoomIn, C.indigo,
-                      l?.sleepWakeZoom ?? 'Zoom wake-up events',
-                      sub: l?.sleepWakeZoomDescription ??
-                          'Zoom the end of the sleep chart when wake-up events are crowded',
-                      value: sleepWakeZoom ? on : off,
-                      onTap: onToggleSleepWakeZoom),
-                  SetRow(LucideIcons.clock, C.teal,
-                      l?.settingsClockFormatRowTitle ?? 'Time format',
-                      value: switch (clockFormat) {
-                        ClockFormat.system =>
-                          l?.settingsClockFormatSystem ?? clockFormat.label,
-                        ClockFormat.h24 =>
-                          l?.settingsClockFormat24h ?? clockFormat.label,
-                        ClockFormat.h12 =>
-                          l?.settingsClockFormat12h ?? clockFormat.label,
-                      },
-                      onTap: onCycleClockFormat),
-                  // Home's pull-to-refresh. Off removes the gesture; the sync
-                  // status line on Home keeps its Sync now button either way.
-                  SetRow(LucideIcons.refreshCw, C.blue, 'Pull down to sync',
-                      sub: 'Pull Home down to sync with the band',
-                      value: pullToSync ? on : off,
-                      onTap: onTogglePullToSync),
+                      value: appearance, chevron: false, onTap: onCycleAppearance),
                   SetRow(LucideIcons.footprints, C.green,
                       l?.settingsStepCalibration ?? 'Step calibration',
                       sub: l?.settingsStepCalibrationSub ??
@@ -930,6 +871,41 @@ class MoreSettingsView extends StatelessWidget {
                           'Show Cycle in Health. Turning it off keeps your logs.',
                       value: cycleTracking ? on : off,
                       onTap: onToggleCycleTracking),
+                  const PersonalDaySettings(),
+                ]),
+                SettingsAccordion('App behaviour',
+                    id: 'settings_app_behaviour',
+                    children: [
+                  SetRow(LucideIcons.settings, C.domHome,
+                      l?.settingsAsTab ?? 'Settings as tab',
+                      key: const ValueKey('apk1-settings-as-tab'),
+                      value: settingsAsTab ? on : off,
+                      onTap: onToggleSettingsAsTab),
+                  SetRow(LucideIcons.ruler, C.blue,
+                      l?.settingsUnitsRowTitle ?? 'Units',
+                      value: units, onTap: onCycleUnits),
+                  SetRow(LucideIcons.clock, C.teal,
+                      l?.settingsClockFormatRowTitle ?? 'Time format',
+                      value: switch (clockFormat) {
+                        ClockFormat.system =>
+                          l?.settingsClockFormatSystem ?? clockFormat.label,
+                        ClockFormat.h24 =>
+                          l?.settingsClockFormat24h ?? clockFormat.label,
+                        ClockFormat.h12 =>
+                          l?.settingsClockFormat12h ?? clockFormat.label,
+                      },
+                      onTap: onCycleClockFormat),
+                  if (oemAutostartSupported)
+                    SetRow(LucideIcons.power, C.green,
+                        l?.settingsAutostartRowTitle ?? 'Allow auto-start',
+                        sub: l?.settingsAutostartRowSub ??
+                            'This phone’s maker needs one more setting before '
+                                'the app can keep syncing overnight',
+                        onTap: onOpenOemAutostart),
+                  SetRow(LucideIcons.batteryCharging, C.green, 'Calculations',
+                      key: const ValueKey('calc-power-row'),
+                      value: calcPowerLabels[calcPowerMode]!,
+                      onTap: onPickCalcPowerMode),
                 ]),
                 SettingsAccordion('Hardware', id: 'settings_band', children: [
                   // The band's battery rides the devices row: this is the
@@ -998,19 +974,7 @@ class MoreSettingsView extends StatelessWidget {
                         onTap: backgroundExempt!
                             ? null
                             : onRequestBackgroundExempt),
-                  if (oemAutostartSupported)
-                    SetRow(LucideIcons.power, C.green,
-                        l?.settingsAutostartRowTitle ?? 'Allow auto-start',
-                        sub: l?.settingsAutostartRowSub ??
-                            'This phone’s maker needs one more setting before '
-                                'the app can keep syncing overnight',
-                        onTap: onOpenOemAutostart),
                 ]),
-                LabsSection(hmm:experimentalSleepHmm,onHmm:onToggleExperimentalSleepHmm,
-                  onAlarmSourceChanged:() async {
-                    final app=c.read<AppState>();
-                    await app.refreshPilotAlarms(sourceChanged:true);
-                  }),
                 SettingsAccordion('Data & privacy',
                     id: 'settings_data_privacy',
                     children: [
@@ -1026,10 +990,6 @@ class MoreSettingsView extends StatelessWidget {
                       sub: l?.settingsExportBackupImportRowSub ??
                           'Export spreadsheets or a full copy, and import history',
                       onTap: onData),
-                  SetRow(LucideIcons.batteryCharging, C.green, 'Calculations',
-                      key: const ValueKey('calc-power-row'),
-                      value: calcPowerLabels[calcPowerMode]!,
-                      onTap: onPickCalcPowerMode),
                   // The row P1 was missing. Everything behind it — the
                   // permission request, the retry/backoff, the four gates —
                   // was already written and simply had no way to be switched
@@ -1125,6 +1085,14 @@ class MoreSettingsView extends StatelessWidget {
                       value: barcodeLookup ? on : off,
                       onTap: onToggleBarcodeLookup),
                 ]),
+                LabsSection(
+                  hmm: experimentalSleepHmm,
+                  onHmm: onToggleExperimentalSleepHmm,
+                  alarmNotices: const _AlarmNoticeSwitches(),
+                  onAlarmSourceChanged: () =>
+                    c.read<AppState?>()?.refreshPilotAlarms(sourceChanged: true) ??
+                    Future<void>.value(),
+                ),
                 SettingsAccordion(l?.settingsGroupAbout ?? 'About',
                     id: 'settings_about',
                     children: [
@@ -1219,7 +1187,9 @@ class MoreSettingsView extends StatelessWidget {
 // does. See MT-14 in IDEAS.md.
 
 class NotificationSettings extends StatefulWidget {
-  const NotificationSettings({super.key});
+  const NotificationSettings({super.key, this.alarmNoticeId});
+
+  final String? alarmNoticeId;
 
   @override
   State<NotificationSettings> createState() => _NotificationSettingsState();
@@ -1320,6 +1290,7 @@ class _NotificationSettingsState extends State<NotificationSettings> with Widget
     final app = c.watch<AppState>();
     return NotificationSettingsView(
       prefs: p ?? const NotificationPrefs(),
+      alarmNoticeId: widget.alarmNoticeId,
       loaded: p != null,
       granted: _granted,
       onChanged: _apply,
@@ -1378,17 +1349,99 @@ class _NotificationSettingsState extends State<NotificationSettings> with Widget
   }
 }
 
+const _alarmNoticeIds = ['alarmLatchFailed', 'alarmNightCheck'];
+
+({IconData icon, String title, String description}) _alarmNotice(
+    String id, AppLocalizations? l) => switch (id) {
+  'alarmLatchFailed' => (
+    icon: LucideIcons.alarmClock,
+    title: l?.settingsAlarmLatchFailedRowTitle ?? 'Alarm not confirmed',
+    description: l?.settingsAlarmLatchFailedRowSub ??
+        'Warn when the band never confirms an alarm this app just armed',
+  ),
+  'alarmNightCheck' => (
+    icon: LucideIcons.moon,
+    title: l?.settingsAlarmNightCheckRowTitle ?? 'No-alarm check-in',
+    description: l?.settingsAlarmNightCheckRowSub ??
+        'A 7pm heads-up on nights with no wake alarm set.',
+  ),
+  _ => throw ArgumentError.value(id, 'id'),
+};
+
+class _AlarmNoticeSwitches extends StatefulWidget {
+  const _AlarmNoticeSwitches();
+
+  @override
+  State<_AlarmNoticeSwitches> createState() => _AlarmNoticeSwitchesState();
+}
+
+class _AlarmNoticeSwitchesState extends State<_AlarmNoticeSwitches> {
+  final _settings = SettingsRepository.instance;
+  late final _initial = _settings.alerts();
+  late final _changes = _settings.changes.where((change) => change.alerts != null);
+  bool _saving = false;
+
+  Future<void> _set(String id, bool enabled) async {
+    setState(() => _saving = true);
+    try {
+      await _settings.update((draft) {
+        final prefs = draft.alerts;
+        draft.alerts = id == _alarmNoticeIds.first
+            ? prefs.copyWith(alarmLatchFailedEnabled: enabled)
+            : prefs.copyWith(alarmNightCheckEnabled: enabled);
+      }, sections: {SettingsSection.alerts});
+      if (mounted) await context.read<AppState?>()?.refreshAiReminders();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not update the alarm notice.')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext c) => FutureBuilder<NotificationPrefs>(
+    future: _initial,
+    builder: (c, initial) => StreamBuilder<SettingsChange>(
+      stream: _changes,
+      builder: (c, change) {
+        final prefs = change.data?.alerts ?? initial.data;
+        final l = AppLocalizations.of(c);
+        return Column(children: [
+          for (final id in _alarmNoticeIds)
+            ListTile(
+              title: Text(_alarmNotice(id, l).title),
+              contentPadding: EdgeInsets.zero,
+              onTap: () => goto(c, NotificationSettings(alarmNoticeId: id)),
+              trailing: Semantics(
+                label: _alarmNotice(id, l).title,
+                child: Switch(
+                  key: ValueKey('labs-alarm-notice:$id'),
+                  value: prefs?.alertRule(id).enabled == true,
+                  onChanged: _saving || prefs == null ? null : (on) => _set(id, on),
+                ),
+              ),
+            ),
+        ]);
+      },
+    ),
+  );
+}
+
 /// One alert: its name, a single destination picker, and what that choice needs
 /// in order to run. Unavailable execution is explained beneath the choice.
 class _AlertRow extends StatelessWidget {
   const _AlertRow(this.icon, this.color, this.title, this.sub, this.rule,
-      this.onMask, {this.fallbackDestination = 'phone', this.sequence, this.patternName, this.onBuzzPattern});
+      this.onMask, {this.fallbackDestination = 'phone', this.sequence, this.patternName, this.onBuzzPattern, this.showTitle = true});
   final IconData icon;
   final Color color;
   final String title, sub;
   final AlertRule rule;
   final ValueChanged<int> onMask;
   final String fallbackDestination;
+  final bool showTitle;
 
   /// What this alert buzzes the band with, and the opener for the sheet that
   /// changes it. Null [sequence] means the alert cannot reach the band.
@@ -1410,7 +1463,11 @@ class _AlertRow extends StatelessWidget {
     final p = P.of(c);
     final mask = rule.enabled ? rule.destinations : 0;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SetRow(icon, color, title, sub: sub, chevron: false),
+      if (showTitle)
+        SetRow(icon, color, title, sub: sub, chevron: false)
+      else
+        Padding(padding: const EdgeInsets.only(bottom: S.x3),
+          child: Text(sub, style: F.body.copyWith(color: p.ink2))),
       Wrap(spacing: S.x2, children: [
         for (final (m, label) in _options)
           Pressable(
@@ -1469,6 +1526,7 @@ class _AlertRow extends StatelessWidget {
 
 class NotificationSettingsView extends StatelessWidget {
   final NotificationPrefs prefs;
+  final String? alarmNoticeId;
   final bool loaded, granted;
 
   /// No longer drawn: the relay's one entrance is Settings > Alerts > App
@@ -1498,6 +1556,7 @@ class NotificationSettingsView extends StatelessWidget {
   const NotificationSettingsView({
     super.key,
     this.prefs = const NotificationPrefs(),
+    this.alarmNoticeId,
     this.loaded = true,
     this.granted = true,
     this.relaySupported = false,
@@ -1518,12 +1577,14 @@ class NotificationSettingsView extends StatelessWidget {
     final on = l?.stateOn ?? 'On';
     final off = l?.stateOff ?? 'Off';
     void set(NotificationPrefs next) => onChanged?.call(next);
-    Widget row(String id, IconData icon, Color color, String title, String sub) {
+    Widget row(String id, IconData icon, Color color, String title, String sub,
+        {bool showTitle = true}) {
       final rule = prefs.alertRule(id);
       return _AlertRow(icon, color, title, sub, rule,
           (mask) => set(prefs.withAlertRule(
               {...rule.toJson(), 'enabled': mask != 0, 'destinations': mask})),
           fallbackDestination: prefs.fallbackDestination.name,
+          showTitle: showTitle,
           sequence: AlertCapabilityRegistry.destinationSupportReason(
                       rule, 'band') ==
                   null
@@ -1531,6 +1592,37 @@ class NotificationSettingsView extends StatelessWidget {
               : null,
           patternName: patternNameFor?.call(id),
           onBuzzPattern: () => onBuzzPattern?.call(id));
+    }
+
+    Widget alarmRow(String id, {bool showTitle = true}) {
+      final info = _alarmNotice(id, l);
+      return row(id, info.icon, C.red, info.title, info.description, showTitle: showTitle);
+    }
+
+    final permission = StatusCard(
+      l?.settingsNotificationsOffSystemTitle ?? 'Notifications are off at the system level',
+      l?.settingsNotificationsOffSystemBody ?? 'Turn them on in system settings.',
+      fix: l?.settingsTurnThemOn ?? 'Turn them on',
+      icon: LucideIcons.bellOff,
+      onFix: onRequestPermission,
+    );
+
+    final notice = alarmNoticeId;
+    if (notice != null) {
+      return Scaffold(
+        backgroundColor: p.bg,
+        body: SafeArea(child: Column(children: [
+          NavBar(_alarmNotice(notice, l).title),
+          if (loaded)
+            Expanded(child: ListView(
+              padding: kTabRootPad,
+              children: [
+                if (!granted) permission,
+                alarmRow(notice, showTitle: false),
+              ],
+            )),
+        ])),
+      );
     }
 
     return Scaffold(
@@ -1544,40 +1636,15 @@ class NotificationSettingsView extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
               children: [
-                if (!granted)
-                  StatusCard(
-                    l?.settingsNotificationsOffSystemTitle ??
-                        'Notifications are off at the system level',
-                    l?.settingsNotificationsOffSystemBody ??
-                        'Turn them on in system settings.',
-                    fix: l?.settingsTurnThemOn ?? 'Turn them on',
-                    icon: LucideIcons.bellOff,
-                    onFix: onRequestPermission,
-                  ),
+                if (!granted) permission,
                 if (loaded) ...[
                   // Stable groups: each stays in place whether or not anything in
                   // it is on, and opens only through its own header. Every alert
                   // has one destination picker and says what it needs to run.
-                  SettingsAccordion(
-                      'Alarms & Wake',
+                  if (!PilotFlag.alarmScreen.enabled)
+                    SettingsAccordion('Alarms & Wake',
                       id: 'notifications_alarms_wake',
-                      initiallyExpanded: true,
-                      children: [
-                        // On by default: this exists to catch a wake alarm that
-                        // silently isn't going to fire.
-                        row('alarmLatchFailed', LucideIcons.alarmClock, C.red,
-                            l?.settingsAlarmLatchFailedRowTitle ??
-                                'Alarm not confirmed',
-                            l?.settingsAlarmLatchFailedRowSub ??
-                                'Warn when the band never confirms an alarm '
-                                    'this app just armed'),
-                        // Also on by default; silent whenever an alarm IS armed.
-                        row('alarmNightCheck', LucideIcons.moon, C.red,
-                            l?.settingsAlarmNightCheckRowTitle ??
-                                'No-alarm check-in',
-                            l?.settingsAlarmNightCheckRowSub ??
-                                'A 7pm heads-up on nights with no wake alarm set.'),
-                      ]),
+                      children: [for (final id in _alarmNoticeIds) alarmRow(id)]),
                   SettingsAccordion('Health',
                       id: 'notifications_health',
                       children: [

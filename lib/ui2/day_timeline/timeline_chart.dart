@@ -44,6 +44,7 @@ class SharedTimelineChart extends StatefulWidget {
     this.annotations = const [],
     required this.onAnnotationSelected,
     this.onScrub,
+    this.scrubColor,
     this.stages,
     this.fine,
     this.fineStartSec,
@@ -57,6 +58,7 @@ class SharedTimelineChart extends StatefulWidget {
   final List<ChartAnnotation> annotations;
   final ValueChanged<String> onAnnotationSelected;
   final ValueChanged<double>? onScrub;
+  final Color? scrubColor;
   final List<SleepStage?>? stages;
   final List<double?>? fine;
   final int? fineStartSec;
@@ -224,6 +226,7 @@ class _ChartState extends State<SharedTimelineChart>
                                   p: p,
                                   view: view,
                                   scrub: c.scrub,
+                                  scrubColor: widget.scrubColor,
                                   selection: c.selection,
                                   header: header,
                                   height: height,
@@ -666,6 +669,7 @@ class _PositionPainter extends CustomPainter implements GuidePlotOverlay {
     required this.p,
     required this.view,
     required this.scrub,
+    required this.scrubColor,
     required this.selection,
     required this.header,
     required this.height,
@@ -673,6 +677,7 @@ class _PositionPainter extends CustomPainter implements GuidePlotOverlay {
   final P p;
   final TimelineView view;
   final double? scrub;
+  final Color? scrubColor;
   final TimelineView? selection;
   final double header, height;
   @override
@@ -686,7 +691,7 @@ class _PositionPainter extends CustomPainter implements GuidePlotOverlay {
         canvas.drawLine(
           Offset(x(t), header),
           Offset(x(t), header + height),
-          paint,
+          Paint()..color = (scrubColor == null ? p.ink2 : p.on(scrubColor!))..strokeWidth = 1,
         );
       }
     }
@@ -707,5 +712,6 @@ class _PositionPainter extends CustomPainter implements GuidePlotOverlay {
 
   @override
   bool shouldRepaint(_PositionPainter old) =>
-      old.view != view || old.scrub != scrub || old.selection != selection;
+      old.view != view || old.scrub != scrub || old.scrubColor != scrubColor ||
+      old.selection != selection;
 }

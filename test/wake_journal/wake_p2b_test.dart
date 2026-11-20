@@ -8,7 +8,6 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/state/prefs.dart';
-import 'package:openstrap_edge/ui2/profile/settings.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'package:openstrap_edge/ui2/screens/sleep_detail.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
@@ -83,9 +82,8 @@ AnnotationSet _sleepAxis(WidgetTester t) => t
     )
     .set;
 
-ChartFrame _sleepFrame(WidgetTester t) => t
-    .widgetList<ChartFrame>(find.byType(ChartFrame))
-    .firstWhere((frame) => frame.title == 'Through the night');
+ChartFrame _sleepFrame(WidgetTester t) =>
+    t.widget<ChartFrame>(find.byKey(const ValueKey('sleep-night-plot')));
 
 void main() {
   setUpAll(() async {
@@ -414,54 +412,21 @@ void main() {
     },
   );
 
-  testWidgets('display setting defaults on and can be switched off', (t) async {
-    expect(Prefs.sleepWakeZoomOn, isTrue);
-    var enabled = true;
-    await pumpWakePage(
-      t,
-      StatefulBuilder(
-        builder: (c, setState) => MoreSettingsView(
-          sleepWakeZoom: enabled,
-          onToggleSleepWakeZoom: () => setState(() => enabled = !enabled),
-        ),
-      ),
-    );
-    final row = find.text('Zoom wake-up events');
-    expect(row, findsOneWidget);
-    await t.tap(row);
-    await t.pumpAndSettle();
-    expect(enabled, isFalse);
+  // why: the retired preference must not suppress denser wake-event labels.
+  testWidgets('sleep zoom ignores a saved off value and labels both endpoints',
+      (t) async {
+    await (await SharedPreferences.getInstance()).setBool('ui.sleep_wake_zoom', false);
+    await Prefs.reload();
+    await pumpWakePage(t, SleepDetail(data: sleepFixture()));
+    final zoom = _sleepFrame(t);
+    final axis = _sleepAxis(t);
+    final onset = atMinute(-480).millisecondsSinceEpoch / 1000;
+    expect(axis.domainStart, greaterThan(onset));
+    expect(axis.domainStart,
+      lessThanOrEqualTo(atMinute(-20).millisecondsSinceEpoch / 1000));
+    expect(zoom.xLabels.first, _clock(axis.domainStart));
+    expect(zoom.xLabels.last, _clock(axis.domainEnd));
   });
-
-  testWidgets(
-    'sleep zoom labels both endpoints, reacts to toggle, and persists off',
-    (t) async {
-      Prefs.setSleepWakeZoom(true);
-      await pumpWakePage(t, SleepDetail(data: sleepFixture()));
-      final zoom = _sleepFrame(t);
-      final axis = _sleepAxis(t);
-      final onset = atMinute(-480).millisecondsSinceEpoch / 1000;
-      expect(axis.domainStart, greaterThan(onset));
-      expect(
-        axis.domainStart,
-        lessThanOrEqualTo(atMinute(-20).millisecondsSinceEpoch / 1000),
-      );
-      expect(zoom.xLabels.first, _clock(axis.domainStart));
-      expect(zoom.xLabels.last, _clock(axis.domainEnd));
-      Prefs.setSleepWakeZoom(false);
-      await t.pumpAndSettle();
-      expect(_sleepAxis(t).domainStart, onset);
-      expect(
-        (await SharedPreferences.getInstance()).getBool(Prefs.sleepWakeZoom),
-        false,
-      );
-      // A newly built screen reads the saved OFF value without an ON flash.
-      await t.pumpWidget(const SizedBox());
-      await pumpWakePage(t, SleepDetail(data: sleepFixture()));
-      expect(_sleepAxis(t).domainStart, onset);
-      Prefs.setSleepWakeZoom(true);
-    },
-  );
 
   test(
     'zoom resampling keeps stage boundaries and the unobserved tail at their times',
@@ -525,13 +490,11 @@ void main() {
   });
 
   for (final locale in ['en', 'de', 'es', 'fr', 'hi', 'ru', 'zh']) {
-    test('group/count/zoom labels are localized in $locale', () {
+    test('group/count labels are localized in $locale', () {
       final arb =
           jsonDecode(File('lib/l10n/app_$locale.arb').readAsStringSync())
               as Map;
       for (final key in [
-        'sleepWakeZoom',
-        'sleepWakeZoomDescription',
         'wakeJournalCount',
         'wakeJournalGroup',
       ]) {

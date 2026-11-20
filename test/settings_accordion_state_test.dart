@@ -193,7 +193,7 @@ void main() {
       await _open(t, _screens['Settings']!());
       expect(_isOpen(t, _byTitle('Hardware')), isFalse,
           reason: 'closed last visit, closed this visit');
-      for (final other in ['Alerts', 'You & preferences', 'Data & privacy']) {
+      for (final other in ['Alerts', 'You', 'Data & privacy']) {
         expect(_isOpen(t, _byTitle(other)), isTrue, reason: other);
       }
     });

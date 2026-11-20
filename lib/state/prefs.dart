@@ -122,15 +122,6 @@ class Prefs {
     return true;
   }
 
-  static const sleepWakeZoom = 'ui.sleep_wake_zoom';
-  static bool get sleepWakeZoomOn => getBool(sleepWakeZoom, true);
-  static final sleepWakeZoomRevision = ValueNotifier<int>(0);
-  static void setSleepWakeZoom(bool on) {
-    if (sleepWakeZoomOn == on) return;
-    setBool(sleepWakeZoom, on);
-    sleepWakeZoomRevision.value++;
-  }
-
   /// Load + cache the SharedPreferences instance. Call once before runApp.
   /// Idempotent and best-effort — failures leave reads on their defaults.
   static Future<void> ensureLoaded() async {
@@ -304,13 +295,7 @@ class Prefs {
   /// gestures/gesture_failures.dart); bounded to the newest 20.
   static const String gestureFailures = 'gesture_failures';
 
-  /// "Pull down to sync": Home's pull-to-refresh. On unless somebody turned it
-  /// off, so nobody else sees a change; off leaves syncing to the status line's
-  /// Sync now button.
-  static const String pullToSync = 'pull_to_sync';
-  static bool get pullToSyncOn => getBool(pullToSync, true);
-
-  /// Settings > Data & privacy > Calculations: when derive work and warming run
+  /// Settings > App behaviour > Calculations: when derive work and warming run
   /// (see CalcPowerPolicy). The enum's name; balanced when unset or unknown.
   static const String calcPowerMode = 'calc_power_mode';
   static CalcPowerMode get calcPowerModeValue {

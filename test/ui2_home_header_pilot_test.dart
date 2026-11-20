@@ -420,14 +420,13 @@ void main() {
     });
   });
 
-  testWidgets('Appearance persists Compact and shows its hints', (t) async {
+  testWidgets('Labs header style persists Compact', (t) async {
     final app = PilotHeaderApp();
     addTearDown(app.dispose);
     await t.pumpWidget(pilotApp(app, const Scaffold(body: HomeHeaderChoice())));
-    expect(find.textContaining('Long press', findRichText: true), findsNothing);
     await t.tap(find.text('Compact'));
     await _motion(t);
-    expect(find.textContaining('Long press', findRichText: true), findsOneWidget);
+    expect(t.widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>)).selected, {true});
     final preferences = await SharedPreferences.getInstance();
     expect(preferences.getBool(HomeHeader.compactKey), isTrue);
     await t.pumpWidget(const SizedBox());

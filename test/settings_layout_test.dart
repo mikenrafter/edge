@@ -14,10 +14,8 @@
 //     person who folded it keeps it folded, and no migration code exists to go
 //     wrong). Its rows are unchanged: My devices, Gestures, Haptics.
 //  3. Accordion order, dev mode off:
-//       You & preferences, Hardware, Alerts, Data & privacy, Community,
-//       Connections, About            (+ Developer last in dev mode)
-//     i.e. "You & preferences" first, today's order otherwise, Community moved
-//     down to sit directly ABOVE Connections.
+//       You, App behaviour, Hardware, Alerts, Data & privacy, Community,
+//       Connections, Labs, About       (+ Developer last in dev mode).
 //  4. "Look barcodes up online" (the spec writes "Look up barcodes online";
 //     either spelling passes) moves out of Data & privacy into Connections.
 //     There is no group called "Integrations" anywhere in the app (grep of
@@ -86,16 +84,18 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   group('order and names', () {
-    testWidgets('You & preferences first, Community directly above '
+    testWidgets('You first, Community directly above '
         'Connections, Band is called Hardware', (t) async {
       await _pump(t, _settings());
       expect(_titles(t), [
-        'You & preferences',
+        'You',
+        'App behaviour',
         'Hardware',
         'Alerts',
         'Data & privacy',
         'Community',
         'Connections',
+        'Labs',
         'About',
       ]);
     });
@@ -103,12 +103,12 @@ void main() {
     testWidgets('dev mode: Developer is still last', (t) async {
       await _pump(t, _settings(dev: true));
       expect(_titles(t).last, 'Developer');
-      expect(_titles(t).first, 'You & preferences');
+      expect(_titles(t).first, 'You');
     });
 
     testWidgets('on screen, top to bottom, in that order', (t) async {
       await _pump(t, _settings());
-      expect(_titles(t).first, 'You & preferences');
+      expect(_titles(t).first, 'You');
       expect(
           t.getTopLeft(_section('Community')).dy,
           lessThan(t.getTopLeft(_section('Connections')).dy));
@@ -168,23 +168,25 @@ void main() {
   });
 
   group('rows', () {
-    testWidgets('You & preferences: no steps row, the rest unchanged',
+    testWidgets('You keeps the personal settings and Appearance',
         (t) async {
       await _pump(t, _settings());
-      final rows = _rows(t, 'You & preferences');
-      expect(rows, [
+      expect(_rows(t, 'You'), [
         'Edit profile',
         'Language',
-        'Settings as tab',
-        'Units',
         'Appearance',
-        'Zoom wake-up events',
-        'Time format',
-        'Pull down to sync',
         'Step calibration',
         'Expected sleep schedule',
         'Cycle tracking',
-      ], reason: 'the icon picker is not a SetRow; Steps is gone');
+        'Your day',
+        'Daily scores and totals',
+      ]);
+      expect(_rows(t, 'App behaviour'), [
+        'Settings as tab',
+        'Units',
+        'Time format',
+        'Calculations',
+      ]);
     });
 
     testWidgets('Settings has no phone-steps row under any name', (t) async {
@@ -203,8 +205,6 @@ void main() {
       expect(_rows(t, 'Data & privacy'), [
         'Storage',
         'Export, backup, import',
-        'Calculations', // the power mode
-        'Experimental sleep staging (HMM)',
         'Write to Apple Health',
         'Contribute my health data',
         'Crash reports',

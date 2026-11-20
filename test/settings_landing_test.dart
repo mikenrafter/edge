@@ -2,7 +2,7 @@
 // Profile home opens Settings (MoreSettings) directly; Quick access is gone;
 // Community (GitHub, Reddit, Discord, Sponsor) is an accordion in Settings;
 // everything else keeps its grouping; depths shrink by one.
-// It was later reordered: "You & preferences" first, Community directly
+// It was later reordered: "You" first, Community directly
 // above Connections, and "Band" is called "Hardware" (same persisted id).
 //
 // What lived only on Profile home today (checked against ProfileHomeView):
@@ -64,12 +64,14 @@ class _Pushes extends NavigatorObserver {
 }
 
 const _groups = [
-  'You & preferences',
+  'You',
+  'App behaviour',
   'Hardware',
   'Alerts',
   'Data & privacy',
   'Community',
   'Connections',
+  'Labs',
   'About',
 ];
 

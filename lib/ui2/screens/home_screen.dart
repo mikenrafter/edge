@@ -57,6 +57,7 @@ import '../profile/profile.dart';
 import '../profile/settings.dart' show MoreSettings;
 import '../profile/wearable_numbers.dart';
 import '../ui2.dart';
+import '../pull_to_sync.dart';
 import '../guides/help_entry.dart';
 import '../why_row.dart';
 import 'ai_briefing.dart' show AiBriefingScreen;
@@ -1194,12 +1195,17 @@ class RingTrio extends StatelessWidget {
         height: h + S.x2,
         child: Align(
             alignment: Alignment.center,
-            child: Row(
+            // Centre against the dial, across the card's top padding as
+            // well as this slot. Keep the reserved height and tap target.
+            child: Transform.translate(
+              offset: Offset(0, ((bigText(c) ? S.x2 : 0) - S.x4) / 2),
+              child: Row(
                 key: const ValueKey('home-since'),
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Flexible(child: Text(text, semanticsLabel: semantics, maxLines: 1, overflow: TextOverflow.ellipsis, style: F.over.copyWith(color: p.ink3))),
-                ])));
+                ]),
+            )));
   }
 
   VoidCallback? _open(HomeRingKind k) {
@@ -3151,7 +3157,8 @@ class _HomeScreenState extends State<HomeScreen>
 
     return DayNavigationFrame(selectedDay: _cycleId ?? _day ?? todayLabel(),
       onSelect: _goDay,
-      child: _refreshable(tabRootList(padding: pad.copyWith(
+      child: PullToSync(reload: _load, child: tabRootList(
+        physics: PullToSync.physics, padding: pad.copyWith(
         bottom: pad.bottom + DayNavigationFrame.clearance), children: [
       if (pilotHeader)
         card('header', HomeHeader(
@@ -3360,21 +3367,6 @@ class _HomeScreenState extends State<HomeScreen>
         onTap: () => go(c, const MetricDetail('resting_hr')),
       );
   }
-
-  /// Pull to reload. The screen also reloads itself on `insightsRevision`, but
-  /// a derive that fails silently, an import, or anything that lands without
-  /// bumping it still leaves the user a way to ask.
-  // HomeSyncStatus renders AppState's shared SyncPresentationState.
-  //
-  // "Pull down to sync" (Settings) off means no RefreshIndicator at all, so an
-  // overscroll does nothing; the status line's Sync now is the way to sync.
-  Widget _refreshable(Widget list) => !Prefs.pullToSyncOn
-      ? list
-      : RefreshIndicator.noSpinner(onRefresh: () async {
-        try { await context.read<AppState>().refreshData(); }
-        on ProviderNotFoundException { /* Standalone fixture has local data only. */ }
-        if (mounted) await PendingUserAction.run(_load);
-      }, child: list);
 
   /// The rings card, wrapped when the results are held: a Stack of (the gap
   /// above the card + the card) and a transparent 44 pt target at its top. The

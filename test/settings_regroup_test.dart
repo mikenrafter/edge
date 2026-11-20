@@ -13,11 +13,10 @@
 //    to Alerts, see zone_alert_test.dart); "Alarm" (moved from Band to
 //    the first row of Alerts), "Alerts and
 //    notifications" and "App notifications on the band" (Alerts); "Edit
-//    profile", "Language", "Units", "Appearance", "Time format",
-//    "Pull down to sync", "Expected sleep schedule",
-//    "Icon", "Cycle tracking" (You & preferences, the first group;
-//    the "Steps" row is gone, phone steps live only in My devices);
-//    "Storage", "Export, backup, import", "Calculations", "Write to Apple
+//    profile", "Language", "Appearance", "Expected sleep schedule",
+//    "Icon", "Cycle tracking" and the personal day settings (You);
+//    "Settings as tab", "Units", "Time format", "Calculations" (App behaviour);
+//    "Storage", "Export, backup, import", "Write to Apple
 //    Health", "Contribute my health data", "Crash reports", "Report an
 //    issue" (Data & privacy);
 //    "AI coach", "Tasker and Shortcuts", "App updates", "Look barcodes up online"
@@ -74,12 +73,14 @@ Widget _settings({bool dev = false, bool relay = true}) => MoreSettingsView(
     );
 
 const _groups = [
-  'You & preferences',
+  'You',
+  'App behaviour',
   'Hardware',
   'Alerts',
   'Data & privacy',
   'Community',
   'Connections',
+  'Labs',
   'About',
 ];
 
@@ -102,25 +103,29 @@ const Map<String, List<List<String>>> _rows = {
     ['Alerts and notifications'],
     ['App notifications on the band'],
   ],
-  'You & preferences': [
+  'You': [
     ['Edit profile'],
     ['Language'],
-    ['Settings as tab'],
-    ['Units'],
     ['Appearance'],
-    ['Zoom wake-up events'],
-    ['Time format'],
-    ['Pull down to sync'],
     ['Step calibration'],
     ['Expected sleep schedule'],
     ['Icon'],
     ['Cycle tracking'],
+    ['Your day'],
+    ['Daily scores and totals'],
+  ],
+  'App behaviour': [
+    ['Settings as tab'],
+    ['Units'],
+    ['Time format'],
+    ['Calculations'],
+  ],
+  'Labs': [
+    ['Experimental sleep staging (HMM)'],
   ],
   'Data & privacy': [
     ['Storage'],
     ['Export, backup, import'],
-    ['Calculations'], // the power mode
-    ['Experimental sleep staging (HMM)'],
     ['Write to Apple Health'],
     ['Contribute my health data'],
     ['Crash reports'],
@@ -194,7 +199,7 @@ void _expectRowsInOrder(WidgetTester t, String sectionTitle) {
 
 void main() {
   group('Settings top level: groups and order', () {
-    testWidgets('dev mode off: the seven groups, You & preferences first, in this order',
+    testWidgets('dev mode off: the pilot groups, You first, in this order',
         (t) async {
       await _pump(t, _settings());
       expect(sectionTitles(t), _groups);
@@ -274,7 +279,7 @@ void main() {
       expect(find.text('Band notifications'), findsNothing);
     });
 
-    testWidgets('Units live in You & preferences, not elsewhere; phone steps '
+    testWidgets('Units live in App behaviour, not elsewhere; phone steps '
         'are not on Settings at all', (t) async {
       await _pump(t, _settings());
       expect(_in('Hardware', 'Units'), findsNothing);

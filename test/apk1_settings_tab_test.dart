@@ -25,10 +25,16 @@ Future<void> _openSettings(WidgetTester t) async {
 }
 
 Future<void> _change(WidgetTester t) async {
-  // You & preferences is expanded on the first visit, like the existing UI
-  // preferences. The key names a real tap target, not the switch's label.
-  await apk1Reveal(t, _toggle);
-  expect(_toggle, findsOneWidget);
+  // Scroll the Settings route itself. The shell's tab can stay mounted
+  // below it, and App behaviour can begin outside the lazy list's viewport.
+  final scrollable = find.descendant(
+    of: find.byType(MoreSettings), matching: find.byType(Scrollable),
+  ).first;
+  await t.scrollUntilVisible(_toggle, 180, scrollable: scrollable);
+  await apk1Settle(t);
+  await Scrollable.ensureVisible(t.element(_toggle), alignment: .35);
+  await apk1Settle(t);
+  expect(_toggle.hitTestable(), findsOneWidget);
   expect(find.descendant(of: _toggle, matching: find.text('Settings as tab')), findsOneWidget);
   await t.tap(_toggle);
   await apk1Settle(t);
@@ -47,7 +53,12 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   pinProcessTimeZone();
   late BackupEnv env;
-  setUpAll(() async => env = await apk1Environment('apk1_settings.db'));
+  setUpAll(() async {
+    env = await apk1Environment('apk1_settings.db');
+    // Open SQLite outside the widget test's fake clock so its first open can
+    // finish before the shell starts background reads.
+    await LocalDb.instance;
+  });
   tearDownAll(() => env.dispose());
   setUp(apk1ClearPrefs);
 

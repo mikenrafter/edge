@@ -39,6 +39,7 @@ import '../theme.dart';
 import '../../data/day_label.dart' show calendarDaysBetween, dayLabelOf, todayLabel;
 import '../calendar_day.dart';
 import '../home_header.dart';
+import '../pull_to_sync.dart';
 import 'home_screen.dart' show ChartPoint, pointsOf;
 import 'log_workout.dart';
 import 'metric_detail.dart' show MetricDetail, detailLinkRow;
@@ -162,40 +163,44 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload imple
         // (which takes an unbounded height inside a scroll view and blanked
         // this whole tab on device). Padding the siblings is ordinary layout
         // and cannot do either.
-        return tabRootList(
-          padding: EdgeInsets.fromLTRB(0, kTabRootPad.top, 0, kTabRootPad.bottom),
-          children: [
-            for (final w in <Widget>[
-              if (pilotHeader) ...[
-                ListenableBuilder(
-                  listenable: CalendarDay.instance,
-                  builder: (c, _) => HomeHeader(
-                    tab: HomeHeaderTab.activity,
-                    day: date ?? todayLabel(pc.clock.now()),
-                    days: sessionDays,
-                    onDay: _goHistoryDay,
+        return PullToSync(
+          reload: reload,
+          child: tabRootList(
+            physics: PullToSync.physics,
+            padding: EdgeInsets.fromLTRB(0, kTabRootPad.top, 0, kTabRootPad.bottom),
+            children: [
+              for (final w in <Widget>[
+                if (pilotHeader) ...[
+                  ListenableBuilder(
+                    listenable: CalendarDay.instance,
+                    builder: (c, _) => HomeHeader(
+                      tab: HomeHeaderTab.activity,
+                      day: date ?? todayLabel(pc.clock.now()),
+                      days: sessionDays,
+                      onDay: _goHistoryDay,
+                    ),
                   ),
-                ),
+                  const SizedBox(height: S.x5),
+                ] else ...[
+                  ScreenTitle(loc?.tabActivity ?? 'Activity',
+                      avatar: const ProfileAvatar(accent: C.domMove)),
+                  const HeaderRows(),
+                ],
+                SubTabs(_tabs(loc), tab, _selectTab,
+                    color: C.domMove),
                 const SizedBox(height: S.x5),
-              ] else ...[
-                ScreenTitle(loc?.tabActivity ?? 'Activity',
-                    avatar: const ProfileAvatar(accent: C.domMove)),
-                const HeaderRows(),
-              ],
-              SubTabs(_tabs(loc), tab, _selectTab,
-                  color: C.domMove),
-              const SizedBox(height: S.x5),
-              ...body,
-              const HelpEntry(topic: GuideTopic.activity),
-            ])
-              if (w is StartCard)
-                PendingContent(pending: pending, child: w)
-              else
-                Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: S.x4),
-                    child: body.contains(w)
-                        ? PendingContent(pending: pending, child: w) : w),
-          ],
+                ...body,
+                const HelpEntry(topic: GuideTopic.activity),
+              ])
+                if (w is StartCard)
+                  PendingContent(pending: pending, child: w)
+                else
+                  Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: S.x4),
+                      child: body.contains(w)
+                          ? PendingContent(pending: pending, child: w) : w),
+            ],
+          ),
         );
       },
     ),
