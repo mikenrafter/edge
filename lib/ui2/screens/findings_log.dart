@@ -281,7 +281,7 @@ class _FindingsLogState extends State<SimplifiedFindingsLog> {
                 ],
               ),
               // Slot-centred dates share the plot cells and precede its readout.
-              axisFooter: Row(
+              axisFooter: PendingStatic(child:Row(
                 children: [
                   for (final day in days)
                     Expanded(
@@ -298,7 +298,7 @@ class _FindingsLogState extends State<SimplifiedFindingsLog> {
                       ),
                     ),
                 ],
-              ),
+              )),
               child: ChartScrub(
                 key: ValueKey('observations-week:$_week'),
                 label: l.findingsLogTitle,

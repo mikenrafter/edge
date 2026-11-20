@@ -52,8 +52,8 @@ class SlowHomeRepo extends GuideFakeRepo {
 void main() {
   setUpAll(skLoadAppFonts);
   setUp(()async{SharedPreferences.setMockInitialValues({});await Prefs.reload();});
-  // catches: replacing the list with a centered progress indicator.
-  testWidgets('alarm read reserves the first card and keeps its chart position', (t) async {
+  // catches: fabricating a card or toggle while local metadata is unavailable.
+  testWidgets('alarm read never fabricates cards before metadata', (t) async {
     skTallView(t, w:390, h:844);
     final read=Completer<List<PilotAlarm>>();
     await t.pumpWidget(host(PilotAlarmScreen(loadAlarms:()=>read.future,onSave:(_)async{})));
@@ -62,10 +62,12 @@ void main() {
     expect(find.byType(LinearProgressIndicator),findsNothing);
     expect(find.byType(PendingContent),findsWidgets);
     await takePilotShot(t,'alarms-loading');
-    final before=t.getRect(find.byType(PilotTimelineChart).first);
+    expect(find.byType(PilotTimelineChart),findsNothing);
+    expect(find.byType(Switch),findsNothing);
     read.complete([PilotAlarm(id:'one',label:'Morning'),PilotAlarm(id:'two',label:'Evening',wakeMinute:1140)]);
     await t.pump();await t.pump(const Duration(milliseconds:500));await t.pump(const Duration(milliseconds:300));
-    expect(t.getRect(find.byType(PilotTimelineChart).first),before);
+    expect(find.byType(PilotTimelineChart),findsNWidgets(2));
+    expect(find.byType(Switch),findsNWidgets(2));
     expect(t.takeException(),isNull);
     await takePilotShot(t,'alarms-loaded');
     await t.pumpWidget(const SizedBox());
