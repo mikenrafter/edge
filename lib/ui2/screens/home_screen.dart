@@ -3194,11 +3194,11 @@ class _HomeScreenState extends State<HomeScreen>
             days: Prefs.personalDayEnabled ? d.personalCycles.reversed.map((c) => c.id.value).toList() : _days,
             labels: {for (final cycle in d.personalCycles) cycle.id.value: personalDayNavLabel(cycle)},
             onDay: _goDay, alwaysShow: true)),
-      if (Prefs.personalDayEnabled && d.personalDay != null)
+      if (Prefs.personalDayEnabled)
         Padding(padding: const EdgeInsets.symmetric(vertical: S.x3),
-          child: Text(l?.personalDayStarted(clockOfTs(d.personalDay!.start.millisecondsSinceEpoch ~/ 1000))
-            ?? 'Your day started ${clockOfTs(d.personalDay!.start.millisecondsSinceEpoch ~/ 1000)}',
-            style: F.over.copyWith(color: p.ink3))),
+          child: PendingContent(pending:_loading&&d.personalDay==null,child:Text(l?.personalDayStarted(d.personalDay==null?'—':clockOfTs(d.personalDay!.start.millisecondsSinceEpoch ~/ 1000))
+            ?? 'Your day started ${d.personalDay==null?'—':clockOfTs(d.personalDay!.start.millisecondsSinceEpoch ~/ 1000)}',
+            style: F.over.copyWith(color: p.ink3)))),
       // (Held: the gap is inside the rings wrapper below, so the caption's tap
       // target can start at the day bar's edge.)
       if (held == null) const SizedBox(height: S.x3),

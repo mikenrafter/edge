@@ -1834,9 +1834,9 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
     final title = widget.reviewEntry
         ? (l?.homeReviewActivities ?? 'Review activities')
         : (l?.dayTimelineTitle ?? 'Breakdown of your day');
-    if(PilotFlag.timelines.enabled && !_loading){
+    if(PilotFlag.timelines.enabled){
       final day=_day??d.day??todayLabel(),days=d.days;
-      unawaited(_loadPilotStages(day,d.graph));
+      if(!_loading)unawaited(_loadPilotStages(day,d.graph));
       // Personal days step over cycle ids (what [TimelineData.days] holds), not
       // over the calendar score day [day]; DayNav reads them the same way.
       final nav=d.personalView?.day.id.value??day;
@@ -1847,7 +1847,7 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
         onPrevious:index>=0&&index+1<days.length?()=>_goDay(days[index+1]):null,
         onNext:index>0?()=>_goDay(days[index-1]):null,
         onCancel:()async{await review?.discardDraft();if(mounted)setState((){});},onSave:()=>review?.save(c)),DayReviewNotices(controller:review,reloader:this)]),
-        graph:d.graph,stages:_pilotStages,controller:chart,interaction:_pilotInteraction,tab:_pilotTab??PilotTimelineTab.pending,
+        pending:_loading,graph:d.graph,stages:_pilotStages,controller:chart,interaction:_pilotInteraction,tab:_pilotTab??PilotTimelineTab.pending,
         onTab:(value)=>setState(()=>_pilotTab=value),listController:_listController,
         annotations:annotations,onAnnotation:annotationTapped,onScrub:_scrubRow,focusId:_highlight,
         // v16 shades every event's range whichever tab is open (m254/m255).

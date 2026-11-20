@@ -1,5 +1,6 @@
 import 'sync_strip_overlay.dart';
 import 'pilot_theme.dart';
+import '../ui2/skeleton/async_section.dart';
 // Owner: the day screen supplies review state; this layout owns pin presentation.
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -19,7 +20,8 @@ class PilotDayLayout extends StatelessWidget {
   const PilotDayLayout({super.key,required this.title,required this.dayRow,required this.graph,
     required this.controller,required this.interaction,required this.tab,required this.onTab,
     required this.listController,required this.rows,required this.annotations,
-    this.onScrub,this.onPan,this.onAnnotation,this.before=const [],this.after=const [],this.backToOpened,this.counts=const {},this.stages=const [],this.backdrop=const [],this.focusId});
+    this.pending=false,this.onScrub,this.onPan,this.onAnnotation,this.before=const [],this.after=const [],this.backToOpened,this.counts=const {},this.stages=const [],this.backdrop=const [],this.focusId});
+  final bool pending;
   /// Other tabs' ranged events, shaded without icons (v16), and the focused row's id.
   final List<ChartAnnotation> backdrop;final String? focusId;
   /// Recorded stages for the visible day, one per 5-min slot from the graph's
@@ -38,20 +40,20 @@ class PilotDayLayout extends StatelessWidget {
     final p=P.of(context),l=AppLocalizations.of(context)??lookupAppLocalizations(const Locale('en'));
     // Zoom and pin live inside the readout card (mock-up v16 .ro .ctl), so a
     // manual pin carries them into the pinned area with it.
-    final readout=PilotReadout(controller:controller,graph:visibleGraph,compact:true,controls:PilotZoomControls(controller:controller,onZoom:(){interaction.zoom();controller.clearScrub();},trailing:TextButton.icon(
-          key:const ValueKey('pilot-pin'),onPressed:interaction.togglePin,icon:Icon(interaction.userPinned?LucideIcons.pinOff:LucideIcons.pin,size:16),label:Text(interaction.userPinned?l.pilotUnpin:l.pilotPinShort,maxLines:1))));
+    final readout=PendingContent(pending:pending,child:PilotReadout(controller:controller,graph:visibleGraph,compact:true,controls:PilotZoomControls(controller:controller,onZoom:(){interaction.zoom();controller.clearScrub();},trailing:TextButton.icon(
+          key:const ValueKey('pilot-pin'),onPressed:interaction.togglePin,icon:Icon(interaction.userPinned?LucideIcons.pinOff:LucideIcons.pin,size:16),label:Text(interaction.userPinned?l.pilotUnpin:l.pilotPinShort,maxLines:1)))));
     return PilotTheme(child:ListenableBuilder(listenable:interaction,builder:(context,_)=>Scaffold(backgroundColor:p.bg,body:SafeArea(child:Column(children:[
       // The app's standard header (m261): the same NavBar on every pilot screen.
       NavBar(title),
       Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:Column(children:[
         dayRow,
-        PilotTimelineChart(controller:controller,graph:visibleGraph,syncStrip:true,interaction:interaction,annotations:annotations,stages:stages,onScrub:onScrub,onPan:onPan,onSelect:onAnnotation,backdrop:backdrop,focusId:focusId),
+        PendingContent(pending:pending,child:PilotTimelineChart(controller:controller,graph:visibleGraph,syncStrip:true,interaction:interaction,annotations:annotations,stages:stages,onScrub:onScrub,onPan:onPan,onSelect:onAnnotation,backdrop:backdrop,focusId:focusId)),
         const SizedBox(height:6),
         // Mock-up v16 .etabs, with each tab's count as its badge (.cnt).
         SubTabs([for(final value in PilotTimelineTab.values)switch(value){PilotTimelineTab.pending=>l.dayActivitiesPending,PilotTimelineTab.saved=>l.dayActivitiesSaved,PilotTimelineTab.discarded=>l.dayActivitiesDiscarded}],
           PilotTimelineTab.values.indexOf(tab),(i)=>onTab(PilotTimelineTab.values[i]),color:C.blue,
           itemKeys:[for(final value in PilotTimelineTab.values)ValueKey('pilot-tab:${value.name}')],
-          badges:{for(var i=0;i<PilotTimelineTab.values.length;i++)i:_Count(counts[PilotTimelineTab.values[i]]??0)}),
+          badges:{for(var i=0;i<PilotTimelineTab.values.length;i++)i:PendingContent(pending:pending,child:_Count(counts[PilotTimelineTab.values[i]]??0))}),
         if(interaction.userPinned)Padding(padding:const EdgeInsets.only(top:6),child:readout)
         else AutomaticReadout(key:const ValueKey('pilot-automatic-pin'),visible:interaction.autoPinned,child:readout),
       ])),
@@ -65,7 +67,7 @@ class PilotDayLayout extends StatelessWidget {
         if(!interaction.userPinned)Visibility(visible:!interaction.autoPinned,maintainState:true,maintainAnimation:true,maintainSize:true,child:Padding(padding:const EdgeInsets.only(top:6,bottom:8),child:readout)),
         ...before,
         // One list card, as in the mock-up (.list) and the original day screen.
-        if(rows.isNotEmpty)Container(padding:const EdgeInsets.symmetric(horizontal:12,vertical:4),decoration:BoxDecoration(color:p.card,borderRadius:BorderRadius.circular(16)),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:rows)),
+        PendingContent(pending:pending,child:pending||rows.isNotEmpty?Container(padding:const EdgeInsets.symmetric(horizontal:12,vertical:4),decoration:BoxDecoration(color:p.card,borderRadius:BorderRadius.circular(16)),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:pending?const [PendingRows(count:3)]:rows)):const SizedBox.shrink()),
         ...after,
       ])))),
       if(backToOpened!=null)backToOpened!,
