@@ -8381,6 +8381,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     // event's own stamp inside onEvent. The strap stamps events on its own
     // RTC; the alarm was armed at `when - driftSec` in that frame, so map back
     // the same way.
+    final alreadyConfirmed = _pendingArm?.confirmedEarly ?? _alarm.confirmed;
     final effect = _alarm.onEvent(id, DateTime.now().millisecondsSinceEpoch,
         tsSec: ts + (engine.clockRef?.driftSec ?? 0), rawTsSec: ts,
         payloadEpoch: hex == null || !bodyVerified ? null :
@@ -8391,6 +8392,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
         _alarmGraceTimer?.cancel();
         // A write is in flight: this confirms it (see [_pendingArm]).
         _pendingArm?.confirmedEarly = true;
+        if (alreadyConfirmed) return;
         // Diagnostic: ALARM_SET (event 56) means the arm LATCHED on the band.
         // Its absence after a SET is the tell that the write never took.
         _log('[alarm] strap CONFIRMED arm — ALARM_SET (event $id) received.');

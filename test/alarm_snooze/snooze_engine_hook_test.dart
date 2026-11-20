@@ -41,6 +41,30 @@ void _terminate(BleEngine e, int code) => e.debugProcessImmediateFrame(Frame(
     ));
 
 void main() {
+  // why: history repeatedly replayed six expired stops at up to 13/s in the
+  // owner's log; only distinct stops may reach the wake controller.
+  // catches: dispatching every replay, or dropping distinct causes/subseconds.
+  test('replayed haptics stops have one hook and log per wire event', () {
+    final r = _rig();
+    final seen = <String>[];
+    r.engine.onHapticsTerminated = (cause, at, bandAt) => seen.add(cause);
+    for (var replay = 0; replay < 200; replay++) {
+      for (var second = 0; second < 6; second++) {
+        r.engine.debugProcessImmediateFrame(Frame(_eventInner(
+            EventId.hapticsTerminated, [1, HapticsTermination.expired],
+            ts: 1786000000 + second), true, true));
+      }
+    }
+    expect(seen, List.filled(6, 'expired'));
+    expect(r.logs.where((s) => s.contains('haptics terminated:')), hasLength(6));
+    _terminate(r.engine, HapticsTermination.userDoubleTap);
+    final subsecond = _eventInner(EventId.hapticsTerminated,
+        [1, HapticsTermination.expired]);
+    ByteData.sublistView(subsecond).setUint16(8, 1, Endian.little);
+    r.engine.debugProcessImmediateFrame(Frame(subsecond, true, true));
+    expect(seen, [...List.filled(6, 'expired'), 'user_double_tap', 'expired']);
+  });
+
   test('each termination reaches the hook with its cause and a receipt time',
       () {
     final r = _rig();

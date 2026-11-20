@@ -77,6 +77,27 @@ void main() {
     await app.debugLoadAlarmSchedule();
   }
 
+  // why: replayed event 56 produced 153 confirmation side effects for one
+  // arm; the next real write must still retain a confirmation before its reply.
+  // catches: repeated effects, resending BLE commands, or ignoring early 56
+  // because the previous arm was already confirmed.
+  test('replayed confirmation is quiet and the next early arm still confirms', () async {
+    band.onSet = (_, _) async => app.debugHandleAlarmEvent(56);
+    await store(_soon());
+    await app.debugArmNextAlarmOccurrence();
+    expect(app.alarmConfirmed, isTrue);
+    for (var replay = 0; replay < 159; replay++) {
+      app.debugHandleAlarmEvent(56);
+    }
+    expect(app.logLines.where((s) => s.contains('strap CONFIRMED arm')), hasLength(1));
+    expect(band.sets, hasLength(1));
+    await store(_soon(plusHours: 3));
+    await app.debugArmNextAlarmOccurrence();
+    expect(app.alarmConfirmed, isTrue);
+    expect(band.sets, hasLength(2));
+    expect(app.logLines.where((s) => s.contains('strap CONFIRMED arm')), hasLength(2));
+  });
+
   group('N: one flight', () {
     test('concurrent arms (a sync, a connect, a wake tick) write once',
         () async {

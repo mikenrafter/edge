@@ -74,6 +74,7 @@ class _SessionGapSummary {
 
 class _Session {
   final BluetoothDevice device;
+  final Set<(int, int, String)> hapticsStops = {};
   BluetoothCharacteristic? cmdTo;
 
   /// Set synchronously at the top of `_teardownSession`, before any await.

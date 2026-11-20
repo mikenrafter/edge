@@ -5174,13 +5174,15 @@ class BleEngine implements AlarmBandWriter, AlarmEchoWriter {
       // frame's arrival position — see [FrameRoute.immediateAndCount] and
       // [_countQueuedBurstMember]. Event PROCESSING stays right here: nothing
       // about wrist/battery/alarm handling may wait on an offload commit.
-      _log('[EVENT] ${_innerHex(frame.inner)}');
       // The profile matters: protocol keeps the gen5-scoped event bodies
       // (29/100/109/123) numeric and un-decoded on a gen4 link.
       final profile = _session?.band ?? BandProfile.gen4;
       final e = parseEvent(frame.inner, profile: profile);
       if (e != null) {
-        _handleEventInfo(e);
+        if (!_replayedHapticsStop(e)) {
+          _log('[EVENT] ${_innerHex(frame.inner)}');
+          _handleEventInfo(e);
+        }
         onEvent?.call(
           StrapEvent.fromEventInfo(
             e,
@@ -5190,6 +5192,8 @@ class BleEngine implements AlarmBandWriter, AlarmEchoWriter {
             profile: profile,
           ),
         );
+      } else {
+        _log('[EVENT] ${_innerHex(frame.inner)}');
       }
     }
     final entry = _session?.entry ?? kWhoopGen4;
@@ -6367,6 +6371,22 @@ class BleEngine implements AlarmBandWriter, AlarmEchoWriter {
         ));
       },
     );
+  }
+
+  bool _replayedHapticsStop(EventInfo event) {
+    final stops = _session?.hapticsStops;
+    if (stops == null || event.eventId != EventId.hapticsTerminated ||
+        event.tsEpoch < kMinPlausibleStrapEpoch) {
+      return false;
+    }
+    final key = (event.tsEpoch, event.tsSubsec,
+        event.decoded['haptics_termination'] as String? ?? 'unknown');
+    // History repeats stops in interleaved batches. Bound the link's memory
+    // without treating an unset clock as a unique event identity
+    // [snooze_engine_hook_test: replayed haptics stops].
+    if (!stops.add(key)) return true;
+    if (stops.length > 2048) stops.remove(stops.first);
+    return false;
   }
 
   void _handleEventInfo(EventInfo event) {
