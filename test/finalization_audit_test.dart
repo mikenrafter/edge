@@ -194,7 +194,11 @@ DerivationEngine _engine(
   List<String>? log,
   bool tamper = false,
 }) {
+  // One lane, newest day first: a day is not finalized while its next day is
+  // still deriving in the same pass (34c67afa3, 2026-11-01), and the default
+  // pool of up to three lanes would leave the first day provisional.
   final e = DerivationEngine(log: log?.add)
+    ..maxWorkers = 1
     ..auditPolicy = CalcPowerPolicy(mode)
     ..auditPowerRead = (() async => power);
   if (tamper) e.debugAccumulatorTamper = TestCall2(_tamper);
@@ -360,7 +364,7 @@ void main() {
     test('no policy/power wired: no audit, no pending mark (today\'s behaviour)',
         () async {
       final log = <String>[];
-      final e = DerivationEngine(log: log.add);
+      final e = DerivationEngine(log: log.add)..maxWorkers = 1; // see _engine
       await e.run(_profile, heavy: true);
       expect(_audit(log), isEmpty);
       expect(_count(e, 'audit_batch_runs'), isNull);

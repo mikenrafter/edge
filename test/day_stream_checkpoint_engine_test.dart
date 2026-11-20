@@ -398,7 +398,9 @@ void main() {
       await db.update('day_checkpoint', {'fmt': 2});
       await rows(first, second);
       final out = await pass();
-      expect(out.lines.single, contains('full fmt'),
+      // Stale pin: a foreign layout is refused in LocalDb.dayCheckpoint
+      // (lib/data/db/derive_store.dart:17), so the gate reports 'none', not 'fmt'.
+      expect(out.lines.single, contains('full none'),
           reason: 'the version bump retires every earlier blob');
       final got = await stored();
       await oracle();

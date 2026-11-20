@@ -770,7 +770,10 @@ void main() {
           final db = await LocalDb.instance;
           await db.update('day_checkpoint', {'fmt': kDayCheckpointFmt + 1});
         });
-        expect(lines.single, '[perf] checkpoint $day full fmt');
+        // Stale pin: LocalDb.dayCheckpoint (lib/data/db/derive_store.dart:17) now refuses a blob
+        // of another layout before decode (official-export schema-62 guard), so the gate
+        // sees no checkpoint ('none'); the pass still runs in full and equals the oracle.
+        expect(lines.single, '[perf] checkpoint $day full none');
       });
 
       test('another algorithm version', () async {
