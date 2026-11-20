@@ -269,6 +269,10 @@ const Map<String, String> kNestedKeyOwner = <String, String>{
   'scalars.brv_slope': 'night.rhythm',
   'scalars.irregular_rhythm_flag': 'night.rhythm',
   'scalars.rhr': 'readiness.stress_illness',
+  // Measured night baselines (9438b2875): the analytics values readiness reads
+  // beside rhr/rmssd, with no fallback to either.
+  'scalars.hr_min_night': 'readiness.stress_illness',
+  'scalars.rmssd_mean_night': 'readiness.stress_illness',
   'scalars.rhr_nocturnal': 'readiness.stress_illness',
   'scalars.rmssd': 'readiness.stress_illness',
   'scalars.sdnn': 'readiness.stress_illness',
