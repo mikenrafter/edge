@@ -601,8 +601,11 @@ Future<void> _ldbPrivCommitSyncBatchLocked(List<RawRecord> raws, List<Sample?> s
         // fresh" marker was not. It is only a derive trigger, so atomicity with
         // the rows is the correct failure mode (rolls back with them).
         await LocalDb._writeCaptureFreshness(txn, raws);
+        // The derive job rides the commit too: one fsync'd transaction, not a
+        // second one the band waits out, and no job for a chunk that rolled back.
+        // A failed statement aborts only itself, so the commit still lands.
+        await _ldbPrivQueuePulseArrival(pulseContext, txn: txn, warn: checkpoint);
       });
-      await _ldbPrivQueuePulseArrival(pulseContext);
     } finally {
       // ALWAYS restore NORMAL — even if the commit threw — so a leaked FULL does
       // not fsync every subsequent write on this connection. Non-fatal.
@@ -2221,8 +2224,8 @@ Future<void> _ldbPrivPulseAdmit(DatabaseExecutor txn, List<RawRecord> raws,
 
 String _ldbPrivPulseArrivalSql(int n) {
     final marks = List.filled(n, '?').join(',');
-    return 'SELECT rec_ts FROM decoded_onehz WHERE device_id = ? AND rec_ts IN ($marks) '
-        'UNION SELECT rec_ts FROM decoded_rr WHERE device_id = ? AND rec_ts IN ($marks)';
+    return 'SELECT ts_ms FROM decoded_onehz WHERE device_id = ? AND ts_ms IN ($marks) '
+        'UNION SELECT ts_ms FROM decoded_rr WHERE device_id = ? AND ts_ms IN ($marks)';
   }
 
 // Bounded to the incoming pulse-bearing records; no history-wide scan.
@@ -2241,22 +2244,29 @@ Future<ProcessingContext> _ldbPrivPulseArrivalContext(DatabaseExecutor txn,
     final seconds = candidates.keys.toList();
     for (var start = 0; start < seconds.length; start += 400) {
       final end = start + 400 < seconds.length ? start + 400 : seconds.length;
-      final part = seconds.sublist(start, end);
+      // ts_ms is rec_ts * 1000 in every writer: the key (device_id, ts_ms)
+      // serves the lookup, where rec_ts alone walks the band's whole ledger.
+      final part = [for (final sec in seconds.sublist(start, end)) sec * 1000];
       final rows = await txn.rawQuery(_ldbPrivPulseArrivalSql(part.length),
           [LocalDb.kPrimaryDeviceId, ...part, LocalDb.kPrimaryDeviceId, ...part]);
-      for (final row in rows) { candidates.remove((row['rec_ts'] as num).toInt()); }
+      for (final row in rows) { candidates.remove((row['ts_ms'] as num).toInt() ~/ 1000); }
     }
     return ProcessingContext.arrival([
       for (final e in candidates.entries) (recordedMs: e.key * 1000, arrivedMs: e.value),
     ]);
   }
 
-Future<void> _ldbPrivQueuePulseArrival(ProcessingContext context) async {
+Future<void> _ldbPrivQueuePulseArrival(ProcessingContext context,
+    {DatabaseExecutor? txn, void Function(String)? warn}) async {
     if (context.pulseDays.isEmpty) return;
     try {
       await LocalDb.enqueueDeriveJob(type: 'derive_light',
-          reason: 'recent_pulse_sync', processingContext: context);
-    } catch (_) {
-      // Delivery intent is optional; the raw commit must still succeed.
+          reason: 'recent_pulse_sync', processingContext: context, txn: txn);
+    } catch (e) {
+      // Delivery intent is optional; the raw commit must still succeed. Nothing
+      // re-derives it: the seconds are now stored, so a later chunk or rescan
+      // sees them as known and a plain rescan carries no arrival context. Say so.
+      warn?.call('[DB] pulse arrival enqueue failed ($e); the alert for '
+          '${context.pulseDays.keys.join(',')} will not fire for this chunk.');
     }
   }

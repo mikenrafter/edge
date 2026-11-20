@@ -7031,7 +7031,8 @@ class LocalDb {
     required String type,
     required String reason,
     ProcessingContext processingContext = ProcessingContext.reanalysis,
-  }) => _ldbEnqueueDeriveJob(type: type, reason: reason, processingContext: processingContext);
+    DatabaseExecutor? txn,
+  }) => _ldbEnqueueDeriveJob(type: type, reason: reason, processingContext: processingContext, txn: txn);
 
   static Future<Map<String, dynamic>?> takeNextComputeJob() => _ldbTakeNextComputeJob();
 
