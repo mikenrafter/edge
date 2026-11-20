@@ -13,6 +13,7 @@ import 'package:openstrap_edge/compute/derive_scheduler.dart';
 import 'package:openstrap_edge/compute/periodic_calculation_policy.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/state/derive_coordinator.dart';
+import 'package:openstrap_edge/state/derive_progress.dart';
 import 'package:openstrap_edge/state/recalc_state.dart';
 import 'package:openstrap_edge/wake/wake_orchestrator.dart' show WakeSamples;
 
@@ -340,6 +341,49 @@ void main() {
       c.debugDeriveRun = deriveHook(days: ['d1']);
       await c.debugRunScheduled(kind: DeriveJobKind.light);
       expect(charging, 0);
+    });
+  });
+
+  group('progress surface', () {
+    // CLAIM(background-rescan-quiet) [owner m385]: the header's Calculate
+    // phase and "Day k of N" come from deriveProgress. The sync's own pass
+    // and user-started passes publish it; the baseline rescan after a heavy
+    // pass never does, though its per-day labels (recalc) still work.
+    test('a background rescan publishes no progress; its day labels remain',
+        () async {
+      final c = make();
+      final gate = Completer<void>();
+      final seen = <DeriveProgress?>[];
+      c.deriveProgress.addListener(() => seen.add(c.deriveProgress.value));
+      // The main pass reports nothing, so any progress seen is the rescan's.
+      c.debugDeriveRun = deriveHook(reportScope: false);
+      c.debugRescanRecent = ({onScopeDays, onDayDone}) async {
+        onScopeDays?.call(['d2', 'd3']);
+        await gate.future;
+        onDayDone?.call('d2', 1, 2);
+        return 2;
+      };
+      await c.afterDrain(heavy: true);
+      await until(() => c.recalc.value.days.length == 2);
+      expect(c.deriveProgress.value, isNull);
+      gate.complete();
+      await until(() => c.recalc.value.days.isEmpty);
+      expect(c.deriveProgress.value, isNull);
+      expect(seen.whereType<DeriveProgress>(), isEmpty);
+    });
+
+    test('the pass the sync or the user started does publish progress',
+        () async {
+      final c = make();
+      final days = <int>[];
+      c.deriveProgress.addListener(() {
+        final p = c.deriveProgress.value;
+        if (p?.dayTotal case final t?) days.add(t);
+      });
+      c.debugDeriveRun = deriveHook(days: ['d2', 'd1']);
+      await c.afterDrain(heavy: true);
+      expect(days, isNotEmpty);
+      expect(days.every((t) => t == 2), isTrue);
     });
   });
 
