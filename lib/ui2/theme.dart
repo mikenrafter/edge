@@ -38,6 +38,14 @@ class C {
   // primary
   static const green = Color(0xFF22C55E);
   static const greenD = Color(0xFF16A34A);
+  static const syncCalculate = Color(0xff8b8cf6);
+  static const syncQueued = Color(0xff465264);
+  static const syncWarning = Color(0xfff87171);
+  static const syncError = Color(0xfffca5a5);
+  static const syncDivider = Color(0x12ffffff);
+  static const batteryAmber = Color(0xfffb923c);
+  static const batteryGrey = Color(0xff7f8da0);
+  static const batteryMint = Color(0xff86efac);
   static const blue = Color(0xFF3B82F6);
   static const purple = Color(0xFF8B5CF6);
 
@@ -316,6 +324,13 @@ class F {
 
   // Numerals — a parallel display ramp. Tabular, so a live value never jitters
   // its own layout as digits change.
+  static const syncPill = TextStyle(fontFamily: _f, fontFamilyFallback: _fb, fontSize: 13.5, height: 1.35);
+  static const syncDetail = TextStyle(fontFamily: _f, fontFamilyFallback: _fb, fontSize: 12.5, height: 1.35);
+  static const syncDetailTime = TextStyle(fontFamily: _f, fontFamilyFallback: _fb, fontSize: 12.5, height: 1.35, fontFeatures: _tab);
+  static const syncDate = TextStyle(fontFamily: _f, fontFamilyFallback: _fb, fontSize: 16, height: 1.35, fontWeight: FontWeight.w600);
+  static const headerChoice = TextStyle(fontFamily: _f, fontFamilyFallback: _fb, fontSize: 14, height: 1.35, fontWeight: FontWeight.w600);
+  static const headerChoiceHint = TextStyle(fontFamily: _f, fontFamilyFallback: _fb, fontSize: 12, height: 1.35);
+
   static const n48 = TextStyle(
       fontFamily: _f,
       fontFamilyFallback: _fb,
@@ -383,6 +398,12 @@ class R {
   static const rXl = BorderRadius.all(Radius.circular(xl));
   static const rXxl = BorderRadius.all(Radius.circular(xxl));
   static const rPill = BorderRadius.all(Radius.circular(pill));
+  static const syncTrack = BorderRadius.all(Radius.circular(4));
+  static const syncPill = BorderRadius.all(Radius.circular(22));
+  static const headerChoice = BorderRadius.all(Radius.circular(14));
+  static const headerIllustration = BorderRadius.all(Radius.circular(10));
+  static const headerIllustrationPill = BorderRadius.all(Radius.circular(7));
+  static const headerIllustrationBar = BorderRadius.all(Radius.circular(5));
 }
 
 /// ── MOTION ── one gate, no exceptions ─────────────────────────────────────
@@ -419,6 +440,20 @@ class Motion {
     } else {
       clock.stop();
       clock.value = .25; // value 1, without a visible pulse
+    }
+  }
+
+  static const syncOpening = Duration(milliseconds: 3500);
+  static const syncPhasePulse = Duration(milliseconds: 1400);
+  static const syncProgress = Duration(milliseconds: 200);
+  static const syncDetails = Duration(milliseconds: 220);
+
+  static void configureSyncPulse(AnimationController clock, {required bool enabled}) {
+    if (enabled && !clock.isAnimating) {
+      clock.repeat();
+    } else if (!enabled && clock.isAnimating) {
+      clock.stop();
+      clock.value = 0;
     }
   }
 

@@ -11,6 +11,7 @@ export 'metric_labels.dart';
 export 'ecg_widgets.dart';
 export 'gesture_failure_card.dart';
 export 'haptic_score.dart';
+export 'home_header.dart';
 export 'nudges.dart';
 export 'older_version.dart';
 export 'paint_activity.dart';

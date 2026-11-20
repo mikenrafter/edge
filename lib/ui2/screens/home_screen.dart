@@ -2981,21 +2981,6 @@ class _HomeScreenState extends State<HomeScreen>
 
 
 
-  /// Morning / afternoon / evening / night. One split at 18:00 greeted 00:30
-  /// and 15:40 alike with "Good morning" beside a sun.
-  ({String word, IconData icon, Color color}) _greeting(int h, AppLocalizations? l) {
-    if (h < 5) {
-      return (word: l?.homeGreetingStillUp ?? 'Still up', icon: LucideIcons.moon, color: C.indigo);
-    }
-    if (h < 12) {
-      return (word: l?.homeGreetingMorning ?? 'Good morning', icon: LucideIcons.sun, color: C.yellow);
-    }
-    if (h < 18) {
-      return (word: l?.homeGreetingAfternoon ?? 'Good afternoon', icon: LucideIcons.sun, color: C.orange);
-    }
-    return (word: l?.homeGreetingEvening ?? 'Good evening', icon: LucideIcons.moon, color: C.indigo);
-  }
-
   int? _seenWakeEvidence;
   void _watchWakeEvidence(BuildContext c) {
     if (!Prefs.personalDayEnabled || widget.data != null) return;
@@ -3022,7 +3007,7 @@ class _HomeScreenState extends State<HomeScreen>
     // different screen: the same cards in the same places, drawn empty. Each
     // card is keyed `card:<name>` so a layout check can hold them still.
     final d = loaded ?? const HomeData();
-    final g = _greeting(widget.hour ?? DateTime.now().hour, l);
+    final g = homeGreeting(widget.hour ?? DateTime.now().hour, l);
 
     // Nothing measured at all. It is also where a day of NO WEAR lands, because
     // the overnight block no longer borrows an older night to fill the rings
@@ -3157,34 +3142,43 @@ class _HomeScreenState extends State<HomeScreen>
             ringData.overnightAt ?? ringData.activityAt)
         : null;
 
+    final pilotHeader = HomeHeaderOpening.enabledIn(c);
+    final navDay = d.personalDay?.id.value ?? _cycleId ?? _day ?? d.dayId;
+    final navDays = Prefs.personalDayEnabled
+        ? d.personalCycles.reversed.map((cycle) => cycle.id.value).toList()
+        : _days;
+    final navLabels = personalDayNavLabels(d.personalCycles, d.personalMode, l);
+
     return DayNavigationFrame(selectedDay: _cycleId ?? _day ?? todayLabel(),
       onSelect: _goDay,
       child: _refreshable(tabRootList(padding: pad.copyWith(
         bottom: pad.bottom + DayNavigationFrame.clearance), children: [
-      if (d.sleepEdit case final status? when !status.isNone) SleepEditStatus(status: status),
-      // ── greeting ──
-      //
-      // The same header every tab has: the greeting is the title, the profile
-      // button is the avatar. Below it, the sync row (the status line every tab
-      // has, plus Sync now / Show details), then the connection. Its end is no
-      // longer shared with the button.
-      //
-      // ONE list child: the sync row's 44 pt targets overhang the lines around
-      // it (see [HitOverhang]), and a list item only hit-tests inside its own
-      // box, so the title and the rows must share a box.
-      card(
-        'header',
-        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          ScreenTitle(
-            d.name == null || d.name!.isEmpty ? g.word : '${g.word}, ${d.name}',
-            shortTitle: g.word,
-            avatar: _homeAvatar(c, l),
-          ),
-          // Keep the row control in the same spanning Column as the device
-          // rows so its full tap target remains reachable.
-          const HeaderRows(),
-        ]),
-      ),
+      if (pilotHeader)
+        card('header', HomeHeader(
+          tab: HomeHeaderTab.today,
+          day: navDay,
+          dateLabel: d.personalDay?.label ?? _day ?? d.dayId,
+          days: navDays,
+          labels: navLabels,
+          onDay: _goDay,
+          now: widget.now,
+          greeting: widget.hour == null ? null : g.word,
+        ))
+      else ...[
+        if (d.sleepEdit case final status? when !status.isNone)
+          SleepEditStatus(status: status),
+        card('header', Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ScreenTitle(
+              d.name == null || d.name!.isEmpty ? g.word : '${g.word}, ${d.name}',
+              shortTitle: g.word,
+              avatar: _homeAvatar(c, l),
+            ),
+            const HeaderRows(),
+          ],
+        )),
+      ],
       const SizedBox(height: S.x5),
       // ── conditional cards, UNDER the header ──
       //
@@ -3195,13 +3189,12 @@ class _HomeScreenState extends State<HomeScreen>
       // against the safe area.
       ?rebuilt,
 
-      // The one day bar on every screen (owner m261); with a personal day on
-      // it steps the wake cycles (owner m294, superseding CLAIM(home-now)).
-      card('daynav',
-          DayNav(day: d.personalDay?.id.value ?? _day ?? d.dayId,
-            days: Prefs.personalDayEnabled ? d.personalCycles.reversed.map((c) => c.id.value).toList() : _days,
-            labels: personalDayNavLabels(d.personalCycles, d.personalMode, l),
-            onDay: _goDay, alwaysShow: true)),
+      if (pilotHeader) ...[
+        if (d.sleepEdit case final status? when !status.isNone)
+          SleepEditStatus(status: status),
+      ] else
+        card('daynav', DayNav(day: navDay, days: navDays, labels: navLabels,
+          onDay: _goDay, alwaysShow: true)),
       // (Held: the gap is inside the rings wrapper below, so the caption's tap
       // target can start at the day bar's edge.)
       if (held == null) const SizedBox(height: S.x3),

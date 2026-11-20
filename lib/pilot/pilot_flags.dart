@@ -10,6 +10,8 @@ enum PilotFlag {
   wakeMethods('pilot.wake_methods'),
   timelines('pilot.timelines'),
   syncStrip('pilot.sync_strip'),
+  homeHeader('labs.home_header',
+      byDefault: String.fromEnvironment('OPENSTRAP_SOURCE_TAG') == 'pilot-6'),
   /// Owner m249: SubTabs share the row's width equally. Default ON; off is
   /// the original scrolling pills.
   fullWidthTabs('ui.full_width_tabs', byDefault: true);

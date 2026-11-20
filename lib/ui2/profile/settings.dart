@@ -1,4 +1,6 @@
 import '../../pilot/labs_section.dart';
+import '../../pilot/pilot_flags.dart';
+import 'home_header_settings.dart';
 import '../personal_day_widgets.dart';
 import 'step_calibration.dart' show StepCalibrationScreen;
 import '../../compute/profile.dart' show plausibleAgeYears, plausibleHeightCm, plausibleWeightKg;
@@ -321,8 +323,14 @@ class _MoreSettingsState extends State<MoreSettings> with WidgetsBindingObserver
       onCycleUnits: () => units.setSystem(units.isImperial
           ? UnitSystem.metric
           : UnitSystem.imperial),
-      onCycleAppearance: () => theme.setChoice(AppThemeChoice.values[
-          (theme.choice.index + 1) % AppThemeChoice.values.length]),
+      onCycleAppearance: () {
+        if (PilotFlag.homeHeader.enabled) {
+          goto(c, const HomeHeaderAppearance());
+        } else {
+          theme.setChoice(AppThemeChoice.values[
+            (theme.choice.index + 1) % AppThemeChoice.values.length]);
+        }
+      },
       // the wind-down body bakes the time in when it's armed, re-arm it now
       onCycleClockFormat: () async {
         try {

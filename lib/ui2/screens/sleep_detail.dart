@@ -685,21 +685,32 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     ];
     if (!widget.embedded) return detailScaffold(c, title, body, sub: sub, framed: true);
     final p = P.of(c);
+    final pilotHeader = HomeHeaderOpening.enabledIn(c);
+    final nav = body.whereType<DayNav>().firstOrNull;
     return RefreshIndicator.noSpinner(
       onRefresh: () => PendingUserAction.run(_load),
       child: tabRootList(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: kTabRootPad,
         children: [
-          ScreenTitle(title,
-              avatar: const ProfileAvatar(accent: C.domSleep)),
-          const HeaderRows(),
+          if (pilotHeader) ...[
+            HomeHeader(
+              tab: HomeHeaderTab.sleep,
+              day: nav?.day ?? _day ?? _d?.day ?? widget.day ?? todayLabel(),
+              days: nav?.days ?? (_d ?? _lastGood ?? widget.data)?.days ?? const [],
+              onDay: _goDay,
+            ),
+            const SizedBox(height: S.x5),
+          ] else ...[
+            ScreenTitle(title, avatar: const ProfileAvatar(accent: C.domSleep)),
+            const HeaderRows(),
+          ],
           if (sub.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(left: S.x1, bottom: S.x2),
               child: Text(sub, style: F.over.copyWith(color: p.ink3)),
             ),
-          ...body,
+          ...body.where((w) => !pilotHeader || w is! DayNav),
           if (!_failed && (_d?.isLatestNight ?? _day == null))
             ...widget.todayFooter,
           if (!ImportFocus.active.value) ...widget.footer,
@@ -3144,9 +3155,11 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   Widget _overnight(BuildContext c, P p, SleepData d) {
     if (_loading && _d == null) {
       final title=AppLocalizations.of(c)?.sleepDetailThroughTheNight ?? 'Through the night';
-      if(PilotFlag.sleepSummary.enabled)return PendingContent(pending:true,child:Surface(child:ChartFrame(
+      if(PilotFlag.sleepSummary.enabled) {
+        return PendingContent(pending:true,child:Surface(child:ChartFrame(
         title:title,unit:'',height:196,axisFooter:_pendingDayAxis(c,p,d,key:const ValueKey('pilot-sleep-signal-axis')),
         child:const PendingPlot())));
+      }
       return PendingChart(title:title,height:196);
     }
     final loc = AppLocalizations.of(c);

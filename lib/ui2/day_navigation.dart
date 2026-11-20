@@ -258,6 +258,7 @@ class DayNav extends StatelessWidget {
   /// that must not gain a row when the second day arrives.
   final bool alwaysShow;
   final Map<String, String> labels;
+  final Widget Function(DayStepBar)? buildBar;
 
   const DayNav({
     super.key,
@@ -266,6 +267,7 @@ class DayNav extends StatelessWidget {
     required this.onDay,
     this.alwaysShow = false,
     this.labels = const {},
+    this.buildBar,
   });
 
   @override
@@ -278,7 +280,7 @@ class DayNav extends StatelessWidget {
     final newer = i > 0 ? days[i - 1] : null;
 
     final shown = labels[day] ?? dayNavLabel(day, l);
-    return DayStepBar(
+    final bar = DayStepBar(
       label: shown,
       previousLabel: l?.metricDetailPreviousDay ?? 'Previous day',
       nextLabel: l?.metricDetailNextDay ?? 'Next day',
@@ -294,6 +296,7 @@ class DayNav extends StatelessWidget {
         }
       },
     );
+    return buildBar?.call(bar) ?? bar;
   }
 }
 

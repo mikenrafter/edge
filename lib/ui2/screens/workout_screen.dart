@@ -2,6 +2,7 @@ import '../guides/guide_navigation.dart';
 import '../../l10n/display_text.dart';
 import 'dart:async' show unawaited;
 import 'dart:math' as math;
+import 'package:clock/clock.dart' as pc;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -35,7 +36,9 @@ import '../last_result_cache.dart';
 import '../revision.dart';
 import '../status_line.dart' show HeaderRows;
 import '../theme.dart';
-import '../../data/day_label.dart' show calendarDaysBetween;
+import '../../data/day_label.dart' show calendarDaysBetween, dayLabelOf, todayLabel;
+import '../calendar_day.dart';
+import '../home_header.dart';
 import 'home_screen.dart' show ChartPoint, pointsOf;
 import 'log_workout.dart';
 import 'metric_detail.dart' show MetricDetail, detailLinkRow;
@@ -76,6 +79,17 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload imple
   @override
   void workoutHistoryChanged() { if (mounted) reload(); }
   int tab = 0;
+  String? _historyDay;
+
+  void _goHistoryDay(String value) => setState(() {
+        tab = 2;
+        _historyDay = value;
+      });
+
+  void _selectTab(int value) => setState(() {
+        tab = value;
+        _historyDay = null;
+      });
   List<String> _tabs(AppLocalizations? loc) => [
         loc?.workoutTabForYou ?? 'For you',
         loc?.workoutTabActivities ?? 'Activities',
@@ -116,6 +130,12 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload imple
         final loc = AppLocalizations.of(c);
         final d = snap.data ?? const _WorkoutData.empty();
         final pending = !snap.hasData && !snap.hasError;
+        final pilotHeader = HomeHeaderOpening.enabledIn(c);
+        final date = pilotHeader ? _historyDay : null;
+        final sessionDays = pilotHeader ? (
+          d.workouts.map((workout) => dayLabelOf(workout.start)).toSet().toList()
+            ..sort((a, b) => b.compareTo(a))
+        ) : const <String>[];
         final body = !snap.hasData && snap.hasError
             ? <Widget>[
                 StatusCard(
@@ -131,7 +151,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload imple
             : switch (tab) {
                 0 => _forYou(c, d),
                 1 => _activities(c, d),
-                _ => _history(c, d),
+                _ => _history(c, d, date: date),
               };
         // Main's first-load honesty with the fork's later pending owner:
         // unread values and actions are masked together until the read settles.
@@ -146,10 +166,23 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload imple
           padding: EdgeInsets.fromLTRB(0, kTabRootPad.top, 0, kTabRootPad.bottom),
           children: [
             for (final w in <Widget>[
-              ScreenTitle(loc?.tabActivity ?? 'Activity',
-                  avatar: const ProfileAvatar(accent: C.domMove)),
-              const HeaderRows(),
-              SubTabs(_tabs(loc), tab, (i) => setState(() => tab = i),
+              if (pilotHeader) ...[
+                ListenableBuilder(
+                  listenable: CalendarDay.instance,
+                  builder: (c, _) => HomeHeader(
+                    tab: HomeHeaderTab.activity,
+                    day: date ?? todayLabel(pc.clock.now()),
+                    days: sessionDays,
+                    onDay: _goHistoryDay,
+                  ),
+                ),
+                const SizedBox(height: S.x5),
+              ] else ...[
+                ScreenTitle(loc?.tabActivity ?? 'Activity',
+                    avatar: const ProfileAvatar(accent: C.domMove)),
+                const HeaderRows(),
+              ],
+              SubTabs(_tabs(loc), tab, _selectTab,
                   color: C.domMove),
               const SizedBox(height: S.x5),
               ...body,
@@ -698,12 +731,71 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload imple
     );
   }
 
-  List<Widget> _history(BuildContext c, _WorkoutData d) {
+  List<Widget> _history(BuildContext c, _WorkoutData d, {String? date}) {
     final p = P.of(c);
     final loc = AppLocalizations.of(c);
+    final workouts = date == null ? d.workouts
+        : d.workouts.where((workout) => dayLabelOf(workout.start) == date).toList();
     final none = d.workouts.isEmpty;
     final importedThisWeek = d.weekImported;
+    Widget sessions() {
+      if (date != null && workouts.isEmpty) {
+        return const StatusCard('No sessions on this day', '',
+            icon: LucideIcons.dumbbell);
+      }
+      if (none) {
+        return KeyedSubtree(
+          key: const ValueKey('list:sessions'),
+          child: StatusCard(
+            loc?.workoutNoSessionsTitle ?? 'No sessions recorded yet',
+            loc?.workoutNoSessionsBody ??
+                'Sessions appear here once you start one.',
+            fix: loc?.workoutStartWorkoutFix ?? 'Start a workout',
+            onFix: () => _openPicker(c, d),
+            icon: LucideIcons.dumbbell,
+          ),
+        );
+      }
+      return Column(key: const ValueKey('list:sessions'), children: [
+        for (final w in workouts) ...[
+          _HistoryRow(w,
+              weightKg: d.weightKg,
+              onChanged: this,
+              onDelete: w.id.isEmpty
+                  ? null
+                  : () => _confirmDeleteWorkout(c, w),
+              onScore: w.importedFrom != null && w.id.isNotEmpty
+                  ? () async {
+                      await scoreImportedWorkout(c,
+                          uuid: w.id,
+                          start: w.start,
+                          end: w.start.add(w.duration),
+                          activity: w.activity);
+                      if (mounted) reload();
+                    }
+                  : null,
+              // A retime is a re-score over the new window, so it is offered
+              // only where there is something of ours to re-score: an imported
+              // row's times belong to the app that recorded it, and this band
+              // measured nothing across them.
+              onRetime: w.importedFrom == null && w.id.isNotEmpty
+                  ? () => _push(
+                        c,
+                        LogWorkout(
+                          sessionId: w.id,
+                          start: w.start,
+                          end: w.start.add(w.duration),
+                          activity: w.activity,
+                          title: loc?.workoutFixTimes ?? 'Fix the times',
+                        ),
+                      )
+                  : null),
+          const SizedBox(height: S.x3),
+        ],
+      ]);
+    }
     return [
+      if (date != null) ...[sessions(), const SizedBox(height: S.x3)],
       ..._suggestionCards(c, d),
       // The same three tiles with or without sessions; with none they read
       // "—", not a count of zero nobody measured.
@@ -755,57 +847,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload imple
       _logPastCard(c),
       ..._morningAfter(c, p, d),
       const SizedBox(height: S.x5),
-      // The list's slot. Empty, it says so in the same place.
-      if (none)
-        KeyedSubtree(
-          key: const ValueKey('list:sessions'),
-          child: StatusCard(
-            loc?.workoutNoSessionsTitle ?? 'No sessions recorded yet',
-            loc?.workoutNoSessionsBody ??
-                'Sessions appear here once you start one.',
-            fix: loc?.workoutStartWorkoutFix ?? 'Start a workout',
-            onFix: () => _openPicker(c, d),
-            icon: LucideIcons.dumbbell,
-          ),
-        )
-      else
-        Column(key: const ValueKey('list:sessions'), children: [
-      for (final w in d.workouts) ...[
-        _HistoryRow(w,
-            weightKg: d.weightKg,
-            onChanged: this,
-            onDelete: w.id.isEmpty
-                ? null
-                : () => _confirmDeleteWorkout(c, w),
-            onScore: w.importedFrom != null && w.id.isNotEmpty
-                ? () async {
-                    await scoreImportedWorkout(c,
-                        uuid: w.id,
-                        start: w.start,
-                        end: w.start.add(w.duration),
-                        activity: w.activity);
-                    if (mounted) reload();
-                  }
-                : null,
-            // A retime is a re-score over the new window, so it is offered
-            // only where there is something of ours to re-score: an imported
-            // row's times belong to the app that recorded it, and this band
-            // measured nothing across them.
-            onRetime: w.importedFrom == null && w.id.isNotEmpty
-                ? () => _push(
-                      c,
-                      LogWorkout(
-                        sessionId: w.id,
-                        start: w.start,
-                        end: w.start.add(w.duration),
-                        activity: w.activity,
-                        title: loc?.workoutFixTimes ?? 'Fix the times',
-                      ),
-                    )
-                : null),
-        const SizedBox(height: S.x3),
-      ],
-        ]),
+      if (date == null) sessions(),
     ];
   }
 

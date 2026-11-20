@@ -68,7 +68,7 @@ import '../l10n/decimal_text.dart' show parseTypedNumber;
 /// this library — cards, links, tabs, buttons — is built on it.
 class Pressable extends StatefulWidget {
   final Widget child;
-  final VoidCallback? onTap;
+  final VoidCallback? onTap, onLongPress;
 
   /// Optional measured presses; onTap remains the accessibility action.
   final VoidCallback? onPressStart;
@@ -94,6 +94,7 @@ class Pressable extends StatefulWidget {
     super.key,
     required this.child,
     this.onTap,
+    this.onLongPress,
     this.onPressStart,
     this.onPressEnd,
     this.onPressCancel,
@@ -170,7 +171,7 @@ class _PressableState extends State<Pressable> {
         )),
       );
     }
-    if (widget.onTap == null) {
+    if (widget.onTap == null && widget.onLongPress == null) {
       final marked = GuideUnitMark(component: c, child: out);
       return widget.semanticLabel == null
           ? marked
@@ -183,6 +184,7 @@ class _PressableState extends State<Pressable> {
       child: GuideUnitMark(component: c, child: QuietTap(
         behavior: HitTestBehavior.opaque,
         onTap: widget.onTap == null ? null : _activate,
+        onLongPress: widget.onLongPress,
         onTapDown: (_) => setState(() => _down = true),
         onTapUp: (_) => setState(() => _down = false),
         onTapCancel: () => setState(() => _down = false),

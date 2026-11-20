@@ -776,7 +776,7 @@ class _ShellState extends State<AppMainShell> implements GuideShellLink, Call0<N
     // SELECT, not watch: a bool that flips twice a workout, not the ~1 Hz
     // AppState tick.
     final live = context.select<AppState, bool>((a) => a.activeWorkout != null);
-    return AppShell(
+    return HomeHeaderOpening(child: AppShell(
       initial: _domain,
       selection: _selection,
       banner: live ? const _LiveSessionBar() : null,
@@ -794,7 +794,7 @@ class _ShellState extends State<AppMainShell> implements GuideShellLink, Call0<N
         ShellDomain.activity => const WorkoutScreen(),
         ShellDomain.health => const HealthScreen(),
       },
-    );
+    ));
   }
 
 

@@ -93,13 +93,14 @@ class QuietTap extends StatefulWidget {
     super.key,
     required this.child,
     this.onTap,
+    this.onLongPress,
     this.onTapDown,
     this.onTapUp,
     this.onTapCancel,
     this.behavior = HitTestBehavior.opaque,
   });
   final Widget child;
-  final VoidCallback? onTap;
+  final VoidCallback? onTap, onLongPress;
   final GestureTapDownCallback? onTapDown;
   final GestureTapUpCallback? onTapUp;
   final GestureTapCancelCallback? onTapCancel;
@@ -114,8 +115,10 @@ class _QuietTapState extends State<QuietTap> {
   @override
   Widget build(BuildContext context) {
     final onTap = widget.onTap;
+    final onLongPress = widget.onLongPress;
     return Semantics(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Listener(
         behavior: HitTestBehavior.translucent,
         // Sampled at pointer-down, before the scrollable's own hold stops the
@@ -126,6 +129,7 @@ class _QuietTapState extends State<QuietTap> {
           behavior: widget.behavior,
           excludeFromSemantics: true,
           onTap: onTap == null ? null : () { if (!_scrolledAtDown) onTap(); },
+          onLongPress: onLongPress == null ? null : () { if (!_scrolledAtDown) onLongPress(); },
           onTapDown: widget.onTapDown,
           onTapUp: widget.onTapUp,
           onTapCancel: widget.onTapCancel,
