@@ -3,6 +3,7 @@ import 'util/callable.dart';
 import 'package:flutter/foundation.dart' show debugPrintSynchronously;
 import 'dart:async';
 import 'ui2/read_prefetch.dart';
+import 'ui2/scroll_quiet.dart' show ScrollQuietListener;
 import 'ui2/sleep_operation_errors.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -241,12 +242,12 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       // Any touch is foreground activity: it restarts the 30 s idle wait before
       // Home/Health artifacts are warmed (Calculations power mode).
       builder: (context, child) => _ClockScope(
-        child: Listener(
+        child: ScrollQuietListener(child: Listener(
           behavior: HitTestBehavior.translucent,
           onPointerDown: (_) =>
               context.read<AppState>().noteForegroundActivity(),
           child: PilotSunriseOverlay(child:SleepOperationErrors(child: ThemeSwitchOverlay(key: themeSwitchKey, child: child!))),
-        ),
+        )),
       ),
       navigatorObservers: [TelemetryNavigatorObserver(), _guideRunner.routes,
             ReadPrefetch.routes],

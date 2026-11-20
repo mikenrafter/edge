@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/pilot/pilot_flags.dart';
 import 'package:openstrap_edge/pilot/timeline_policy.dart';
 import 'package:openstrap_edge/ui2/grammar.dart' show SubTabs;
+import 'package:openstrap_edge/ui2/scroll_quiet.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import '../support/apk2_review_harness.dart';
 import '../support/pilot_shots.dart';
@@ -25,7 +26,7 @@ void main() {
   testWidgets('fast scrolling never switches or moves the pilot day timeline tabs', (t) async {
     final rig = await Apk2Rig.create(t);
     await PilotFlags.set(PilotFlag.timelines, true);
-    await rig.mount(t, size: const Size(390, 844));
+    await rig.mount(t, size: const Size(390, 844), screen: const ScrollQuietListener(child: DayTimelineScreen(day: apk2Day)));
     final first = shown(t);
     final strip = t.getRect(find.byType(SubTabs));
     final chart = t.getRect(find.byKey(const ValueKey('pilot-timeline-plot')));
@@ -71,24 +72,39 @@ void main() {
     expect(t.takeException(), null);
   });
 
-  // WHY / CLAIM(day-tab-stays): the touch that stops a fling is not a choice of
-  // tab, but a tap on the settled page still is. CATCHES: dropping every tab
-  // tap, or none. (The widget test could not make a scroll alone switch a tab;
-  // this pins the one gesture that can reach the strip while the page moves.)
-  testWidgets('a tab tap during a fling is dropped, after it settles it works', (t) async {
+  // WHY / CLAIM(day-tab-stays, scroll-tap-quiet) [owner m348]: the touch that
+  // stops a fling is not a choice of tab, and neither is a tap 150 ms after the
+  // page stopped; a tap 250 ms after it is. CATCHES: dropping every tab tap,
+  // none, or the old page-local 450 ms window.
+  testWidgets('a tab tap during a fling or 150 ms after it is dropped; at 250 ms it works', (t) async {
     final rig = await Apk2Rig.create(t);
     await PilotFlags.set(PilotFlag.timelines, true);
-    await rig.mount(t, size: const Size(390, 844));
+    await rig.mount(t, size: const Size(390, 844), screen: const ScrollQuietListener(child: DayTimelineScreen(day: apk2Day)));
     final first = shown(t);
     final other = PilotTimelineTab.values.firstWhere((v) => v != first);
+    final tab = find.byKey(ValueKey('pilot-tab:${other.name}'));
     final list = t.getRect(find.byKey(const ValueKey('pilot-day-list')));
     await t.flingFrom(list.center, const Offset(0, -260), 4000);
     await t.pump(const Duration(milliseconds: 60));
-    await t.tap(find.byKey(ValueKey('pilot-tab:${other.name}')));
+    await t.tap(tab);
     await t.pump(const Duration(milliseconds: 30));
     expect(shown(t), first, reason: 'the stopping touch is not a tab tap');
-    await t.pumpAndSettle();
-    await t.tap(find.byKey(ValueKey('pilot-tab:${other.name}')));
+    // A second fling, run until the page stops moving (16 ms frames: other
+    // animations keep frames coming past the last movement, so "no frame
+    // scheduled" is not the end of the scroll), then a tap 150 ms later.
+    await t.flingFrom(list.center, const Offset(0, 260), 4000);
+    final position = t.state<ScrollableState>(find.descendant(
+        of: find.byKey(const ValueKey('pilot-day-list')),
+        matching: find.byType(Scrollable))).position;
+    for (var i = 0; i < 600 && (i == 0 || position.isScrollingNotifier.value); i++) {
+      await t.pump(const Duration(milliseconds: 16));
+    }
+    await t.pump(const Duration(milliseconds: 150));
+    await t.tap(tab);
+    await t.pump(const Duration(milliseconds: 30));
+    expect(shown(t), first, reason: 'within 200 ms of the scroll');
+    await t.pump(const Duration(milliseconds: 250));
+    await t.tap(tab);
     await t.pumpAndSettle();
     expect(shown(t), other, reason: 'a tap on the settled page switches');
     expect(t.takeException(), null);

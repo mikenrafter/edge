@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../ui2/theme.dart';
+import '../ui2/scroll_quiet.dart' show QuietTap;
 import '../ui2/grammar.dart' show Pressable,HitOverhang;
 
 class PilotTheme extends StatelessWidget {
@@ -37,7 +38,7 @@ class PilotItemRow extends StatelessWidget {
   final IconData icon;final Color color;final String title,time;final String? timeSub,titleSub;
   final Widget? action;final bool selected;final Color? glow,timeColor;final VoidCallback? onTap;
   @override Widget build(BuildContext context){final p=P.of(context);
-    return LayoutBuilder(builder:(context,box)=>Semantics(button:onTap!=null,selected:selected,child:GestureDetector(behavior:HitTestBehavior.opaque,onTap:onTap,child:Container(
+    return LayoutBuilder(builder:(context,box)=>Semantics(button:onTap!=null,selected:selected,child:QuietTap(behavior:HitTestBehavior.opaque,onTap:onTap,child:Container(
       constraints:const BoxConstraints(minHeight:48),margin:const EdgeInsets.symmetric(vertical:1),padding:const EdgeInsets.symmetric(horizontal:10,vertical:8),
       decoration:BoxDecoration(color:glow??(selected?const Color(0xFF232C3D):null),borderRadius:BorderRadius.circular(12),border:Border.all(color:selected?const Color(0xFF4A5F92):Colors.transparent)),
       child:Row(children:[
