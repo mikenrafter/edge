@@ -43,7 +43,11 @@ class PilotAlarmScreen extends StatefulWidget {
 class _AlarmListState extends State<PilotAlarmScreen>{
   List<PilotAlarm> _alarms=[];String? _error;bool _loading=true,_saving=false;
   AppLocalizations get l=>AppLocalizations.of(context)??lookupAppLocalizations(const Locale('en'));
-  @override void initState(){super.initState();if(widget.alarms!=null){_alarms=widget.alarms!.map((a)=>a.copy()).toList();_loading=false;}else{_load();}}
+  @override void initState(){super.initState();
+    try{final alarms=widget.alarms??(widget.loadAlarms==null?PilotAlarmStore.readCached():null);
+      if(alarms!=null){_alarms=alarms.map((a)=>a.copy()).toList();_loading=false;}else{_load();}
+    }catch(e){_error=e.toString();_loading=false;}
+  }
   Future<void> _load()async{try{final a=await (widget.loadAlarms?.call()??PilotAlarmStore.load());if(mounted)setState((){_alarms=a;_loading=false;});}catch(e){if(mounted)setState((){_error=e.toString();_loading=false;});}}
   Future<void> _save(List<PilotAlarm> alarms)async{
     setState(()=>_saving=true);
@@ -84,12 +88,13 @@ class _AlarmListState extends State<PilotAlarmScreen>{
   @override Widget build(BuildContext context){
     final p=P.of(context),now=widget.now??DateTime.now();
     final app=widget.onSave==null?context.watch<AppState>():null;
-    final sorted=[...(_loading?[PilotAlarm(id:'pending',label:l.pilotSleepAlarm)]:_alarms)]..sort((a,b){final x=pilotNextAt(a,now),y=pilotNextAt(b,now);if(x==null)return y==null?0:1;if(y==null)return -1;return x.compareTo(y);});
+    final sorted=[..._alarms]..sort((a,b){final x=pilotNextAt(a,now),y=pilotNextAt(b,now);if(x==null)return y==null?0:1;if(y==null)return -1;return x.compareTo(y);});
     final next=sorted.where((a)=>a.enabled).firstOrNull?.id;
     return PilotTheme(child:Builder(builder:(context)=>Scaffold(backgroundColor:p.bg,appBar:PreferredSize(preferredSize:const Size.fromHeight(52),child:SafeArea(bottom:false,child:NavBar(l.pilotAlarms))),floatingActionButton:FloatingActionButton(onPressed:_saving||_loading?null:_add,tooltip:l.pilotAddAlarm,child:const Icon(LucideIcons.plus)),
       body:ListView(padding:const EdgeInsets.all(16),children:[
-        if(app!=null)_activeWake(app),if(_error!=null)Text(_error!),if(!_loading&&_alarms.isEmpty)Text(l.pilotNoAlarms),
-        for(final a in sorted)PendingContent(pending:_loading,child:Padding(padding:const EdgeInsets.only(bottom:12),child:GestureDetector(onTap:()=>_edit(a),behavior:HitTestBehavior.opaque,child:Container(key:ValueKey('pilot-alarm:${a.id}'),padding:const EdgeInsets.fromLTRB(16,12,12,14),decoration:BoxDecoration(color:p.card,border:Border.all(color:a.id==next?p.on(C.blue):p.line),borderRadius:BorderRadius.circular(16)),child:Column(children:[
+        if(app!=null)_activeWake(app),if(_error!=null)Text(_error!),if(!_loading&&_error==null&&_alarms.isEmpty)Text(l.pilotNoAlarms),
+        if(_loading)const PendingContent(pending:true,child:PendingRows(count:1,rowHeight:48)),
+        for(final a in sorted)Padding(padding:const EdgeInsets.only(bottom:12),child:GestureDetector(onTap:()=>_edit(a),behavior:HitTestBehavior.opaque,child:Container(key:ValueKey('pilot-alarm:${a.id}'),padding:const EdgeInsets.fromLTRB(16,12,12,14),decoration:BoxDecoration(color:p.card,border:Border.all(color:a.id==next?p.on(C.blue):p.line),borderRadius:BorderRadius.circular(16)),child:Column(children:[
           // Mock-up v22 .acard .head: star, label, "next" on the left; the repeat
           // days and the switch on the right (m261). The whole card opens the editor.
           // The name is capped, not Flexible: a Flexible beside the Expanded days
@@ -105,7 +110,7 @@ class _AlarmListState extends State<PilotAlarmScreen>{
           const SizedBox(height:10),
           // v22 .acard.off.dim: an off alarm's graph keeps every mark and range, at .35.
           Opacity(opacity:a.enabled?1:.35,child:IgnorePointer(child:_AlarmChart(alarm:a,now:now,graph:widget.graph,stages:widget.stages,reference:widget.reference,pending:_loading))),
-        ]))))),
+        ])))),
       ]))));
   }
 }
@@ -153,22 +158,22 @@ class _AlarmChartState extends State<_AlarmChart>{
     final cut=left!=null&&right!=null&&right>left+1200?PilotTimelineCut(leftEnd:left,rightStart:right):null;
     final p=P.of(context);
     // m261: the three stats are right-aligned.
-    Widget stat(String label,String value)=>Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.end,children:[Text(label,textAlign:TextAlign.right,style:F.cap.copyWith(color:p.ink3)),Text(value,maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.right,style:F.body.copyWith(color:p.ink,fontWeight:FontWeight.w500))]));
+    Widget stat(String label,String value,{bool forecast=false})=>Expanded(child:PendingContent(pending:forecast&&(widget.pending||_reading),child:Column(crossAxisAlignment:CrossAxisAlignment.end,children:[Text(label,textAlign:TextAlign.right,style:F.cap.copyWith(color:p.ink3)),Text(value,maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.right,style:F.body.copyWith(color:p.ink,fontWeight:FontWeight.w500))])));
     // v22 .mchart: a 72 px graph (it grows only if stacked icons need it).
-    return PendingContent(pending:widget.pending||_reading,child:Column(children:[PilotTimelineChart(controller:c,graph:measured??widget.graph,interaction:interaction,stages:a.type==PilotAlarmType.sleep?recorded??widget.stages:const [],height:72,overview:true,cut:cut,annotations:annotations,showHeartRate:a.type==PilotAlarmType.workout),
+    return Column(children:[PendingContent(pending:widget.pending||_reading,child:PilotTimelineChart(controller:c,graph:measured??widget.graph,interaction:interaction,stages:a.type==PilotAlarmType.sleep?recorded??widget.stages:const [],height:72,overview:true,cut:cut,annotations:annotations,showHeartRate:a.type==PilotAlarmType.workout)),
       const SizedBox(height:10),
       // Mock-up v22 statsOf(): Wake (a range with early wake), Expected,
       // Usual sleep; workout: Window, Zone, Buzzes at.
       Row(children:a.type==PilotAlarmType.sleep?[
         stat(l.pilotWakeShort,_wakeText(a)),
-        stat(l.pilotExpectedShort,expected==null?'—':formatClock(expected!~/60,expected!%60)),
-        if(bed!=null||widget.pending||_reading)stat(l.pilotUsualSleep,usualSleepMinutes==null?'—':pilotForecastText(l,usualSleepMinutes!)),
+        stat(l.pilotExpectedShort,expected==null?'—':formatClock(expected!~/60,expected!%60),forecast:true),
+        if(bed!=null||widget.pending||_reading)stat(l.pilotUsualSleep,usualSleepMinutes==null?'—':pilotForecastText(l,usualSleepMinutes!),forecast:true),
       ]:[
         stat(l.pilotWindow,'${formatClock(a.workoutStartMinute~/60,a.workoutStartMinute%60)}–${formatClock(a.wakeMinute~/60,a.wakeMinute%60)}'),
         stat(l.pilotZone,l.pilotZoneAtLeast(a.zone)),
         stat(l.pilotBuzzesAt,formatClock(a.wakeMinute~/60,a.wakeMinute%60)),
       ]),
-    ]));
+    ]);
   }
 }
 

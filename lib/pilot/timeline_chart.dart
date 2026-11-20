@@ -13,6 +13,7 @@ import '../ui2/day_timeline/day_graph.dart';
 import '../ui2/day_timeline/timeline_controller.dart';
 import '../ui2/theme.dart';
 import '../ui2/skeleton/guide_plot.dart';
+import '../ui2/skeleton/pending_scope.dart';
 import 'timeline_policy.dart';
 
 String pilotClock(double sec) => formatClockOf(DateTime.fromMillisecondsSinceEpoch(sec.round()*1000));
@@ -228,13 +229,15 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
           decoration:BoxDecoration(color:on?const Color(0xFFE8ECF3):lane>0?const Color(0xCC0D121B):const Color(0xFF0D121B),borderRadius:BorderRadius.circular(small?5:6),border:Border.all(color:on?const Color(0xFFE8ECF3):const Color(0xFF3A4560))),
           child:Icon(icon,size:small?10:13,color:on?const Color(0xFF0D121B):color));
         final plotHeight=widget.overview?math.max(widget.height,overviewGroups.fold<double>(0,(h,g)=>math.max(h,(g.lane+g.items.length+(g.more.isEmpty?0:1))*annotationStep+8))):widget.height;
+        final axes=PilotTimelineAxesPainter(p:p,view:c.view,graph:visibleGraph,height:plotHeight,showHeartRate:widget.showHeartRate,bpmInPlot:!widget.showHeader,cut:widget.cut);
         return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
           if(!widget.overview&&widget.showHeader)SizedBox(height:26,child:Row(children:[Expanded(child:Text(nearest?.label??'',maxLines:1,overflow:TextOverflow.ellipsis,style:F.cap.copyWith(color:p.ink2))),Text('bpm',style:F.cap.copyWith(color:p.on(C.red)))])),
           Listener(onPointerDown:_start,onPointerMove:_move,onPointerUp:_end,onPointerCancel:_end,
             child:GestureDetector(onPanUpdate:(_){},behavior:HitTestBehavior.opaque,
               child:SizedBox(key:const ValueKey('pilot-timeline-plot'),height:plotHeight+24,
                 child:ClipRect(child:Stack(children:[
-                  Positioned.fill(child:CustomPaint(painter:_PilotPainter(p:p,view:c.view,graph:visibleGraph,stages:widget.stages,
+                  Positioned(left:0,right:0,top:0,height:plotHeight,child:PendingStatic(child:DecoratedBox(key:const ValueKey('pilot-chart-frame'),decoration:BoxDecoration(color:p.card,borderRadius:BorderRadius.circular(10),border:Border.all(color:p.line))))),
+                  Positioned(left:0,right:0,top:0,height:plotHeight,child:CustomPaint(painter:_PilotPainter(p:p,view:c.view,graph:visibleGraph,stages:widget.stages,
                     annotations:visible,scrub:c.scrub,selection:c.selection,height:plotHeight,dimHrInsideSleep:widget.dimHrInsideSleep,cut:widget.cut,showHeartRate:widget.showHeartRate,bpmInPlot:!widget.showHeader,backdrop:widget.backdrop,focusId:widget.focusId))),
                   if(c.selection==null)for(final h in widget.handles)if(h.at>=c.view.start&&h.at<=c.view.end)
                     Positioned(left:c.view.fraction(h.at)*_width-24,top:22,width:48,height:math.max(48,widget.height-24),
@@ -261,7 +264,10 @@ class _PilotChartState extends State<PilotTimelineChart> with TickerProviderStat
                     var lane=c.scrub==null?selectedLane:0,left=x+14>_width-52?x-58:x+14;
                     if(!clear(left,lane)){final other=left==x+14?x-58:x+14;if(other>=0&&other<=_width-52&&clear(other,lane)){left=other;}else{while(!clear(left,lane)&&lane<8){lane++;}}}
                     return Positioned(left:left.clamp(0.0,math.max(0.0,_width-52)),top:6+lane*22.0,child:DecoratedBox(decoration:BoxDecoration(color:p.card2,borderRadius:BorderRadius.circular(6)),child:Padding(padding:const EdgeInsets.symmetric(horizontal:6,vertical:1),child:Text(pilotClock(at),style:F.cap.copyWith(color:p.ink,fontSize:11,fontWeight:FontWeight.w600)))));}),
-                  if(widget.syncStrip)Positioned.fill(child:SyncStripOverlay(view:c.view,bottom:24,axisRight:24,axes:PilotTimelineAxesPainter(p:p,view:c.view,graph:visibleGraph,height:plotHeight,showHeartRate:widget.showHeartRate,bpmInPlot:!widget.showHeader,cut:widget.cut))),
+                  Positioned.fill(child:PendingStatic(child:widget.syncStrip
+                    ?SyncStripOverlay(view:c.view,bottom:24,axisRight:24,axes:axes)
+                    :CustomPaint(foregroundPainter:axes))),
+                  Positioned.fill(child:PendingStatic(child:_PilotTimeAxis(view:c.view,cut:widget.cut,height:plotHeight))),
                   if(widget.cut!=null)Positioned(left:widget.cut!.leftWidth(_width)-3,top:plotHeight/2-10,width:34,child:Text('…',key:const ValueKey('pilot-overview-cut'),textAlign:TextAlign.center,style:F.head.copyWith(color:p.ink3))),
                   // Mock-up .hint: drawn last, above the hypnogram and marks,
                   // bottom-left, #232c3d99 backing with #e8ecf3cc text (m254: never
@@ -281,6 +287,45 @@ class _OverviewSlot {
   final double at,left;final int lane;final List<ChartAnnotation> items;final more=<ChartAnnotation>[];
 }
 
+// Bounds are known before measurements; keep them above the sync fade.
+class _PilotTimeAxis extends StatelessWidget {
+  const _PilotTimeAxis({required this.view,required this.cut,required this.height});
+  final TimelineView view;final PilotTimelineCut? cut;final double height;
+  @override Widget build(BuildContext context)=>LayoutBuilder(builder:(context,box){
+    final p=P.of(context),width=box.maxWidth,cut=this.cut;
+    final ticks=<({double at,double left,bool right})>[];
+    if(cut==null){
+      for(var i=0;i<=4;i++)ticks.add((at:view.at(i/4),left:i*width/4,right:i==4));
+    }else{
+      ticks.add((at:view.start,left:0,right:false));
+      for(final segment in [(view.start,cut.leftEnd),(cut.rightStart,view.end)]){
+        for(var at=(segment.$1/1800).ceil()*1800.0;at<segment.$2;at+=1800){
+          final x=cut.x(at,view,width);if(x>16&&x<width-30)ticks.add((at:at,left:x,right:false));
+        }
+      }
+      ticks.add((at:view.end,left:width,right:true));
+    }
+    final style=F.cap.copyWith(color:p.ink3,fontSize:10);
+    double labelWidth(double at){
+      final text=TextPainter(text:TextSpan(text:pilotClock(at),style:DefaultTextStyle.of(context).style.merge(style)),
+        textDirection:Directionality.of(context),textScaler:TextScaler.noScaling)..layout();
+      final width=text.width;text.dispose();return width;
+    }
+    final shown=<({double at,double left,bool right})>[ticks.first];
+    var occupied=labelWidth(ticks.first.at);
+    final lastLeft=width-labelWidth(ticks.last.at);
+    for(final tick in ticks.skip(1).take(ticks.length-2)){
+      final end=tick.left+labelWidth(tick.at);
+      if(tick.left>=occupied+3 && end<=lastLeft-3){shown.add(tick);occupied=end;}
+    }
+    shown.add(ticks.last);
+    return Stack(children:[
+      for(var i=0;i<shown.length;i++)Positioned(top:height+5,left:shown[i].right?null:shown[i].left,right:shown[i].right?0:null,
+        child:Text(pilotClock(shown[i].at),key:ValueKey('pilot-axis:$i'),maxLines:1,textScaler:TextScaler.noScaling,style:style)),
+    ]);
+  });
+}
+
 class _PilotPainter extends CustomPainter implements GuidePlot {
   @override Color get guideLineColor=>p.on(C.red);
   _PilotPainter({required this.p,required this.view,required this.graph,required this.stages,
@@ -292,7 +337,7 @@ class _PilotPainter extends CustomPainter implements GuidePlot {
   @override void paint(Canvas canvas,Size size){
     final w=size.width,base=(graph.dayStart??view.start).toDouble();
     double x(double at)=>cut?.x(at,view,w)??view.fraction(at)*w;
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(0,0,w,height),const Radius.circular(10)),Paint()..color=p.card);
+
     for(final gap in graph.unmeasured){
       canvas.drawRect(Rect.fromLTRB(x(base+gap.$1*60),20,x(base+gap.$2*60),height),Paint()..color=p.card2);
     }
@@ -369,7 +414,7 @@ class _PilotPainter extends CustomPainter implements GuidePlot {
     if(selection!=null)canvas.drawRect(Rect.fromLTRB(x(selection!.start),0,x(selection!.end),height),Paint()..color=p.on(C.blue).withValues(alpha:.2));
     if(scrub!=null)canvas.drawLine(Offset(x(scrub!),0),Offset(x(scrub!),height),Paint()..color=p.ink..strokeWidth=1.4);
     canvas.restore();
-    PilotTimelineAxesPainter(p:p,view:view,graph:graph,height:height,showHeartRate:showHeartRate,bpmInPlot:bpmInPlot,cut:cut).paint(canvas,size);
+    if(cut!=null)canvas.drawRect(Rect.fromLTWH(cut!.leftWidth(w),0,28,height),Paint()..color=p.card);
   }
   @override bool shouldRepaint(_PilotPainter old)=>true;
 }
@@ -381,7 +426,6 @@ class PilotTimelineAxesPainter extends CustomPainter {
   final bool showHeartRate,bpmInPlot;final PilotTimelineCut? cut;
   @override void paint(Canvas canvas,Size size){
     final w=size.width,base=(graph.dayStart??view.start).toDouble();
-    double x(double at)=>cut?.x(at,view,w)??view.fraction(at)*w;
     final ticks=!showHeartRate?const <int>[]:visibleHeartRateTicks(graph.hr,start:((view.start-base)/60).floor(),end:((view.end-base)/60).ceil());
     final low=ticks.isEmpty?0:ticks.first,high=ticks.isEmpty?1:ticks.last;
     double y(num v)=>25+(1-(v-low)/(high-low))*(height-35);
@@ -391,13 +435,6 @@ class PilotTimelineAxesPainter extends CustomPainter {
     }
     for(final t in ticks)text('$t',w-3,y(t)-11,p.on(C.red),right:true);
     if(bpmInPlot&&ticks.isNotEmpty)text('bpm',w-3,2,p.on(C.red),right:true);
-    if(cut!=null){
-      final left=cut!.leftWidth(w);
-      canvas.drawRect(Rect.fromLTWH(left,0,28,height),Paint()..color=p.card);
-      for(final segment in [(view.start,cut!.leftEnd),(cut!.rightStart,view.end)]){
-        for(var at=(segment.$1/1800).ceil()*1800.0;at<segment.$2;at+=1800){final dx=x(at);if(dx>16&&dx<w-30)text(pilotClock(at),dx,height+5,p.ink3);}
-      }
-    }else{for(var i=0;i<=4;i++){text(pilotClock(view.at(i/4)),i==4?w:i*w/4,height+5,p.ink3,right:i==4);}}
   }
   @override bool shouldRepaint(PilotTimelineAxesPainter old)=>true;
 }

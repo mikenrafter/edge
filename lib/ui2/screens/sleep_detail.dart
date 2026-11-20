@@ -666,7 +666,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     // Keep the research warning visible in every state and outside remembered
     // accordions, including the Sleep tab's embedded detail.
     body = [for (final child in body)
-      if (child is DayNav) child else PendingContent(pending: _loading && _d == null,
+      if (child is DayNav || PilotFlag.sleepSummary.enabled && child is SettingsAccordion) child else PendingContent(pending: _loading && _d == null,
           memoryKey: child.key == null
               ? null
               : 'sleep:${child.key}:$_memoryKind',
@@ -1402,7 +1402,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
                   id == 'versus' && (_d?.historyPending ?? false) ||
                   id == 'unusual' &&
                       ((_d?.historyPending ?? false) || _roughPending),
-              child: child,
+              child: PilotFlag.sleepSummary.enabled && _loading && _d == null && id == 'versus'
+                  ? const PendingRows(key:ValueKey('sleep-versus-pending'),count:4,rowHeight:80) : child,
             ),
           ),
         ],
@@ -2087,6 +2088,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       final scaler = MediaQuery.textScalerOf(c);
       final lane =
           math.max(33.0, scaler.scale(F.over.fontSize!) * F.over.height! + 8);
+      final pendingDay = PilotFlag.sleepSummary.enabled && _loading && _d == null;
+      final pendingAxis = pendingDay ? _pendingDayAxis(c,p,d,key:const ValueKey('pilot-sleep-day-axis')) : null;
       return Surface(
         key: const ValueKey('card:night'),
         child: _sectionViewport(c, Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -2097,7 +2100,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             height: lane * 4,
             // Real glyphs, not '': an empty label line rounds a pixel shorter
             // at large text and would move everything under the axis.
-            xLabels: [
+            axisFooter: pendingAxis,
+            xLabels: pendingAxis != null ? const [] : [
               for (final ts in [
                 start,
                 if (start != null && end != null) start + (end - start) ~/ 2 else null,
@@ -3126,9 +3130,24 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
 
   // ── OVERNIGHT SIGNALS ─────────────────────────────────────────────────────
 
+  Widget? _pendingDayAxis(BuildContext c, P p, SleepData d, {required Key key}) {
+    final date=DateTime.tryParse(d.day ?? todayLabel());
+    if(date==null)return null;
+    final start=DateTime(date.year,date.month,date.day).millisecondsSinceEpoch ~/ 1000;
+    final end=DateTime(date.year,date.month,date.day+1).millisecondsSinceEpoch ~/ 1000;
+    return PendingStatic(child:Padding(key:key,padding:const EdgeInsets.only(top:S.x1),
+      child:Row(children:[for(final (i,ts) in [start,start+(end-start)~/2,end].indexed)
+        Expanded(child:Text(clockOfTs(ts),style:F.over.copyWith(color:p.ink3),maxLines:1,
+          textAlign:i==0?TextAlign.start:i==2?TextAlign.end:TextAlign.center))])));
+  }
+
   Widget _overnight(BuildContext c, P p, SleepData d) {
     if (_loading && _d == null) {
-      return PendingChart(title: AppLocalizations.of(c)?.sleepDetailThroughTheNight ?? 'Through the night', height: 196);
+      final title=AppLocalizations.of(c)?.sleepDetailThroughTheNight ?? 'Through the night';
+      if(PilotFlag.sleepSummary.enabled)return PendingContent(pending:true,child:Surface(child:ChartFrame(
+        title:title,unit:'',height:196,axisFooter:_pendingDayAxis(c,p,d,key:const ValueKey('pilot-sleep-signal-axis')),
+        child:const PendingPlot())));
+      return PendingChart(title:title,height:196);
     }
     final loc = AppLocalizations.of(c);
     /// One lane as `(timestamp, value)`. The timestamp is the point — the

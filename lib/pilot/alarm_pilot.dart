@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../state/alarm_schedule.dart';
 import 'pilot_flags.dart';
+import '../state/prefs.dart';
 
 enum PilotAlarmType { sleep, workout }
 enum GradualPattern { ramp, steady, wave }
@@ -63,10 +64,13 @@ class PilotAlarm {
 
 class PilotAlarmStore {
   static const key = 'pilot.alarms.v1';
-  static Future<List<PilotAlarm>> load() async {
-    final json = (await SharedPreferences.getInstance()).getString(key);
-    return json == null ? [] : [for(final j in jsonDecode(json) as List) PilotAlarm.fromJson((j as Map).cast<String,dynamic>())];
-  }
+  // The startup preference cache supplies card identity before forecast reads.
+  static List<PilotAlarm>? readCached() => Prefs.loaded
+      ? _decode(Prefs.getString(key, '[]')) : null;
+  static List<PilotAlarm> _decode(String? json) => json == null
+      ? [] : [for(final j in jsonDecode(json) as List) PilotAlarm.fromJson((j as Map).cast<String,dynamic>())];
+  static Future<List<PilotAlarm>> load() async =>
+      _decode((await SharedPreferences.getInstance()).getString(key));
   static Future<void> save(List<PilotAlarm> alarms,{DateTime? now}) async {
     final copies=[for(final a in alarms) a.copy()];
     final previous={for(final a in await load())a.id:a};

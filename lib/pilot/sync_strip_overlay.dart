@@ -64,9 +64,9 @@ class _SyncStripOverlayState extends State<SyncStripOverlay>{
   @override void initState(){super.initState();_timer=Timer.periodic(const Duration(minutes:1),(_){if(mounted)setState((){});});}
   @override void dispose(){_timer?.cancel();super.dispose();}
   @override Widget build(BuildContext c)=>ValueListenableBuilder<int>(valueListenable:PilotFlags.revision,builder:(c,_,child){
-    if(!PilotFlag.syncStrip.enabled)return const SizedBox.shrink();
+    if(!PilotFlag.syncStrip.enabled)return CustomPaint(foregroundPainter:widget.axes);
     final window=widget.window??syncStripWindow(c);
-    if(window.last==null||window.missing<=0||window.now<widget.view.start||window.last!>=widget.view.end)return const SizedBox.shrink();
+    if(window.last==null||window.missing<=0||window.now<widget.view.start||window.last!>=widget.view.end)return CustomPaint(foregroundPainter:widget.axes);
     return IgnorePointer(child:Semantics(label:'${window.label}. ${window.backlogLabel}',child:CustomPaint(foregroundPainter:widget.axes,
       painter:SyncStripOverlayPainter(p:P.of(c),view:widget.view,window:window,left:widget.left,right:widget.right,top:widget.top,bottom:widget.bottom,
         scaler:MediaQuery.textScalerOf(c),axisRight:widget.axisRight))));
