@@ -52,18 +52,35 @@ void main() {
     await Prefs.reload();
   });
 
-  // WHY / CLAIM(home-now): boundary options must not make Home show yesterday
-  // in the morning or change its day at midnight. Catches: selected mode on Home.
+  // WHY / CLAIM(home-steps-mode): owner m301 supersedes the 2026-11-18 "Home
+  // reads the current wake cycle whatever the timeline setting" (CLAIM(home-now)
+  // for the mode part): Home reads and steps the SAME cycles the Day screen
+  // shows for the selected mode, so the bar never skips a day the timeline has.
+  // The cycle holding now is that mode's: sleep to sleep starts at the last
+  // onset, calendar offset at the last noon. Its numbers still come from the one
+  // calendar day it is named for, so the in-bed Home keeps Nov 3 past midnight.
+  // Calendar offset before noon is the noon-to-noon cycle that began yesterday:
+  // Nov 2, as the Day screen shows it (the one place the old claim's "never
+  // yesterday in the morning" no longer holds; see pilot5/report.md).
+  // Catches: forcing wake cycles on Home again, or a Home that names another
+  // day than its own cycle.
   for (final mode in PersonalDayMode.values) {
     for (final now in [at(3, 10), at(4, 0, 30)]) {
-      test('Home stays on Nov 3 in ${mode.name} at $now', () async {
+      final morning = now == at(3, 10);
+      final start = switch (mode) {
+        PersonalDayMode.wakeToWake => at(3, 8),
+        PersonalDayMode.sleepToSleep => morning ? at(2, 23) : at(3, 23),
+        PersonalDayMode.calendarOffset => morning ? at(2, 12) : at(3, 12),
+      };
+      final day = mode == PersonalDayMode.calendarOffset && morning ? '2026-11-02' : '2026-11-03';
+      test('Home reads the ${mode.name} cycle holding now: $day at $now', () async {
         await Prefs.setPersonalDayMode(mode);
         await Prefs.setPersonalDayTotals(PersonalDayTotals.last);
         final home = await withClock(Clock.fixed(now), () => HomeData.load(CycleRepo()));
-        expect(home.dayId, '2026-11-03');
-        expect(home.personalDay!.start, at(3, 8));
-        expect(home.personalDay!.scoreDay, '2026-11-03');
-        expect(home.sleepMin.value, 437);
+        expect(home.dayId, day);
+        expect(home.personalDay!.start, start);
+        expect(home.personalDay!.scoreDay, day);
+        expect(home.sleepMin.value, day == '2026-11-03' ? 437 : 301);
       });
     }
   }
@@ -71,8 +88,9 @@ void main() {
   // WHY / CLAIM(home-day-bar): owner m294 supersedes the 2026-11-18 "no day
   // picker" half of CLAIM(home-now): Home shows the app's one day bar in
   // personal-day mode too, plus the start caption (stepping is in
-  // home_day_bar_test.dart). Catches: dropping the bar, or a mode-labelled
-  // picker (the title row stays off Home).
+  // home_day_bar_test.dart). Owner m301: sleep to sleep starts the day at the
+  // onset, so the caption says 23:00 here. Catches: dropping the bar, or a
+  // mode-labelled picker (the title row stays off Home).
   testWidgets('Home has a start caption and the day bar', (tester) async {
     await Prefs.setPersonalDayMode(PersonalDayMode.sleepToSleep);
     final now = at(3, 10);
@@ -91,7 +109,7 @@ void main() {
         supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(body: HomeScreen(data: home, now: now, hour: 10)))));
     expect(find.byType(DayNav), findsOneWidget);
-    expect(find.text('Your day started 08:00'), findsOneWidget);
+    expect(find.text('Your day started 23:00'), findsOneWidget);
     expect(find.text('Your day (sleep to sleep)'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -157,7 +175,9 @@ void main() {
   });
 
   // WHY / CLAIM(home-now): the production Home read must consume qualified
-  // wake evidence even with a calendar timeline and an unscored night.
+  // wake evidence even with a calendar timeline and an unscored night. Owner
+  // m301: the cycle itself is the selected mode's (calendar offset: the noon
+  // that began it), not the wake cycle; the wake evidence still ends pre-sleep.
   test('acknowledged wake ends Home pre-sleep without inventing sleep', () async {
     await Prefs.setPersonalDayMode(PersonalDayMode.calendarOffset);
     await LocalDb.putWakeEvidence(onsetSec: at(2, 23).millisecondsSinceEpoch ~/ 1000,
@@ -165,7 +185,7 @@ void main() {
     final home = await withClock(Clock.fixed(at(3, 7, 30)),
         () => HomeData.load(_NoScoreRepo()));
     expect(home.wakeObserved, isTrue);
-    expect(home.personalDay!.start, at(3, 7));
+    expect(home.personalDay!.start, at(2, 12));
     expect(home.sleepMin.value, isNull);
   });
 }

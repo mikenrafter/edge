@@ -60,19 +60,17 @@ Future<({List<MainSleep> sleeps, List<PersonalWake> wakes})> _inputs(
   return (sleeps: sleeps, wakes: wakes);
 }
 
-/// A bounded read around the requested date. Home always requests the current
-/// wake cycle; timeline/history use the selected boundary mode. Errors propagate.
+/// A bounded read around the requested date, in the selected boundary mode:
+/// Home and the Day screen step the same sequence [owner m301]. Errors propagate.
 Future<PersonalDayView?> readPersonalDay(LocalRepository repo, String label,
-    {required DateTime now, bool current = false, bool home = false}) async {
+    {required DateTime now, bool current = false}) async {
   if (!Prefs.personalDayEnabled) return null;
   final date = DateTime.parse(label);
   final from = DateTime(date.year, date.month, date.day - 7);
   final horizon = DateTime(date.year, date.month, date.day + 3);
   final openEnd = now.add(const Duration(minutes: 1));
   final limit = current || horizon.isAfter(openEnd) ? openEnd : horizon;
-  // CLAIM(home-now): the pilot Home reads one current wake cycle regardless
-  // of the timeline setting [owner 2026-11-18; round4_test.dart].
-  final mode = home ? PersonalDayMode.wakeToWake : Prefs.personalDayMode;
+  final mode = Prefs.personalDayMode;
   final local = now.toLocal();
   final today = DateTime(local.year, local.month, local.day);
   // Initialize from NOW even when the first entry point is an old history day.
@@ -96,7 +94,19 @@ Future<PersonalDayView?> readPersonalDay(LocalRepository repo, String label,
   final noon = label.length > 10 ? null : DateTime(date.year, date.month, date.day, 12);
   final selected = current ? cycles.where((d) => d.contains(now)).firstOrNull
       : cycles.where((d) => label.length > 10 ? d.id.value == label : d.label == label).firstOrNull
-        ?? (noon == null ? null : cycles.where((d) => d.contains(noon)).firstOrNull);
+        ?? (noon == null ? _sameCycle(cycles, date) : cycles.where((d) => d.contains(noon)).firstOrNull);
   return selected == null ? null : PersonalDayView(selected, mode,
       current && personalDayAwake(sleeps, wakes, now), cycles);
+}
+
+/// A cycle id is its start instant, and a finished calculation can move a start
+/// by minutes (a refined onset or wake). The screen keeps the day the user
+/// picked: the cycle whose start is nearest the old id, never none [owner m301].
+PersonalDay? _sameCycle(List<PersonalDay> cycles, DateTime start) {
+  PersonalDay? best;
+  for (final cycle in cycles) {
+    if (best == null || cycle.start.difference(start).abs() <=
+        best.start.difference(start).abs()) { best = cycle; }
+  }
+  return best;
 }

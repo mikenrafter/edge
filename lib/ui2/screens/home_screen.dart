@@ -2404,11 +2404,10 @@ class HomeData {
 
   static Future<HomeData> _personal(LocalRepository repo, HomeData base,
       String date, AppLocalizations? l, {bool current = false}) async {
-    // CLAIM(home-day-bar) [owner m294]: every Home read is wake-to-wake, the
-    // current cycle and the neighbours the bar steps to alike, so the shown
-    // cycle, its numbers and the bar's list are one set. Following the timeline's
-    // mode would start a new, empty cycle at sleep onset (CLAIM(home-now)).
-    final view = await readPersonalDay(repo, date, now: pc.clock.now(), current: current, home: true);
+    // CLAIM(home-steps-mode) [owner m301, superseding m294's wake-to-wake
+    // reads]: Home reads and steps the selected mode, the same cycles the Day
+    // screen shows, so the bar never skips a day the timeline has.
+    final view = await readPersonalDay(repo, date, now: pc.clock.now(), current: current);
     final score = view?.day.scoreDay;
     final chosen = score == null ? const HomeData()
       : score == base.dayId ? base : await _loadCalendarForDay(repo, score, l);
@@ -2708,9 +2707,18 @@ class _HomeScreenState extends State<HomeScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  /// [Prefs.personalDayShape] the selected day was read under.
+  String _shape = Prefs.personalDayShape;
+
   void _personalDayChanged() {
-    _day = null;
-    _cycleId = null;
+    // CLAIM(home-keeps-day) [owner m301]: the revision also fires when a read
+    // learns the totals choice. That must not move Home off the day the user
+    // picked; only a different on/off or mode (other cycle ids) does.
+    if (_shape != Prefs.personalDayShape) {
+      _shape = Prefs.personalDayShape;
+      _day = null;
+      _cycleId = null;
+    }
     if (widget.data == null) { _load(); }
     else if (mounted) { setState(() {}); }
   }
@@ -3192,7 +3200,7 @@ class _HomeScreenState extends State<HomeScreen>
       card('daynav',
           DayNav(day: d.personalDay?.id.value ?? _day ?? d.dayId,
             days: Prefs.personalDayEnabled ? d.personalCycles.reversed.map((c) => c.id.value).toList() : _days,
-            labels: {for (final cycle in d.personalCycles) cycle.id.value: personalDayNavLabel(cycle)},
+            labels: personalDayNavLabels(d.personalCycles, d.personalMode, l),
             onDay: _goDay, alwaysShow: true)),
       if (Prefs.personalDayEnabled)
         Padding(padding: const EdgeInsets.symmetric(vertical: S.x3),

@@ -1219,7 +1219,25 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
     }
     if (_highlight != nearest.id) _reveal(nearest.id);
   }
+  // CLAIM(day-tab-stays) [owner m301]: the touch that stops a fling, or a thumb
+  // landing at the page edge between two quick flicks, is not a choice of tab.
+  // A tab tap within [_scrollQuiet] of the last scroll movement is dropped; a
+  // tap on a settled page works as ever [test/pilot/day_tab_scroll_test.dart].
+  bool _scrolledRecently = false;
+  Timer? _scrollQuietTimer;
+  static const _scrollQuiet = Duration(milliseconds: 450);
+  void _noteScroll() {
+    _scrolledRecently = true;
+    _scrollQuietTimer?.cancel();
+    _scrollQuietTimer = Timer(_scrollQuiet, () => _scrolledRecently = false);
+  }
   void _listScrolled() {
+    // Only a finger's scroll (a drag or its fling) counts: a tab switch that
+    // re-lays the list out, or a row reveal, moves the position too.
+    if (!_programmaticScroll && _listController.hasClients &&
+        _listController.position.userScrollDirection != ScrollDirection.idle) {
+      _noteScroll();
+    }
     if(PilotFlag.timelines.enabled && _pilotInteraction.handScrubbing)return;
     if (_programmaticScroll || !_listController.hasClients ||
         _listController.position.userScrollDirection == ScrollDirection.idle) { return; }
@@ -1256,6 +1274,7 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
   void dispose() {
     Prefs.personalDayRevision.removeListener(_personalDayChanged);
     _highlightTimer?.cancel();
+    _scrollQuietTimer?.cancel();
     _pilotInteraction.dispose();
     _chart?.dispose();
     _filter.removeListener(_filterChanged);
@@ -1478,8 +1497,15 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  String _shape = Prefs.personalDayShape;
+
+  // Same rule as Home [owner m301]: learning the totals choice inside a read
+  // bumps this revision and must not move the screen off the day picked.
   void _personalDayChanged() {
-    _day = null;
+    if (_shape != Prefs.personalDayShape) {
+      _shape = Prefs.personalDayShape;
+      _day = null;
+    }
     if (widget.data == null) { _load(); }
     else if (mounted) { setState(() {}); }
   }
@@ -1814,8 +1840,12 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
     ]..sort((a, b) => a.row.moment.at != b.row.moment.at
           ? a.row.moment.at.compareTo(b.row.moment.at)
           : a.rank.compareTo(b.rank));
-    if(PilotFlag.timelines.enabled && _pilotTabDay!=d.day){
-      _pilotTabDay=d.day;_openedDay??=d.personalView?.day.id.value??d.day;
+    // Keyed by the cycle, not its score day: a calculation or the clock can
+    // rename the open cycle's day under the user, and that is not a new day
+    // (the tab they chose must stay) [owner m301].
+    final tabKey=d.personalView?.day.id.value??d.day;
+    if(PilotFlag.timelines.enabled && _pilotTabDay!=tabKey){
+      _pilotTabDay=tabKey;_openedDay??=d.personalView?.day.id.value??d.day;
       _pilotTab=initialTimelineTab(pending:ranked.any((r)=>r.row.moment.timelineKind==DayTimelineKind.pending),saved:ranked.any((r)=>r.row.moment.timelineKind!=DayTimelineKind.discarded));
     }
     bool visible(Moment m) {
@@ -1841,14 +1871,15 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
       // over the calendar score day [day]; DayNav reads them the same way.
       final nav=d.personalView?.day.id.value??day;
       final cycles=d.personalView?.cycles??const <PersonalDay>[];
-      String named(String id)=>cycles.where((c)=>c.id.value==id).map(personalDayNavLabel).firstOrNull??prettyDay(id,l);
+      final labels=d.personalView==null?const <String,String>{}:personalDayNavLabels(cycles,d.personalView!.mode,l);
+      String named(String id)=>labels[id]??prettyDay(id,l);
       final index=days.indexOf(nav);
       return PopScope(canPop:_allowPop||(review?.hasChanges!=true&&review?.busy!=true),onPopInvokedWithResult:(didPop,result){if(!didPop)unawaited(_leave());},child:PilotDayLayout(title:title,dayRow:Column(children:[PilotDayRow(day:d.personalView==null?prettyDay(day,l):named(nav),dirty:review?.hasChanges==true,busy:review?.busy==true,
         onPrevious:index>=0&&index+1<days.length?()=>_goDay(days[index+1]):null,
         onNext:index>0?()=>_goDay(days[index-1]):null,
         onCancel:()async{await review?.discardDraft();if(mounted)setState((){});},onSave:()=>review?.save(c)),DayReviewNotices(controller:review,reloader:this)]),
         pending:_loading,graph:d.graph,stages:_pilotStages,controller:chart,interaction:_pilotInteraction,tab:_pilotTab??PilotTimelineTab.pending,
-        onTab:(value)=>setState(()=>_pilotTab=value),listController:_listController,
+        onTab:(value){if(!_scrolledRecently)setState(()=>_pilotTab=value);},listController:_listController,
         annotations:annotations,onAnnotation:annotationTapped,onScrub:_scrubRow,focusId:_highlight,
         // v16 shades every event's range whichever tab is open (m254/m255).
         backdrop:dayAnnotations([for(final e in ranked)if(!visible(e.row.moment))e.row.moment]).where((a)=>a.until!=null).toList(),
@@ -1889,8 +1920,8 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
                 children: [
                 PendingContent(pending: _loading && _d == null,
                   child: DayNav(day: d.personalView?.day.id.value ?? _day ?? d.day ?? todayLabel(), days: d.days,
-                    labels: {for (final cycle in d.personalView?.cycles ?? const <PersonalDay>[])
-                      cycle.id.value: personalDayNavLabel(cycle)},
+                    labels: d.personalView == null ? const {}
+                        : personalDayNavLabels(d.personalView!.cycles, d.personalView!.mode, l),
                     onDay: _goDay, alwaysShow: true)),
                 const SizedBox(height: S.x3),
                 TextButton(onPressed: () => go(c, const TypicalDayScreen()),

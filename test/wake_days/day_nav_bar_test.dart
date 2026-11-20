@@ -111,6 +111,20 @@ void main() {
           expect(find.byKey(const ValueKey('day-nav-previous')), findsOneWidget);
           expect(bar.label, isNot(matches(RegExp(r'^\d{4}-\d{2}-\d{2}T'))),
               reason: 'label is the personal-day label, never the cycle id');
+          // Owner m342: the one label, on the original and the pilot layout.
+          final word = mode == PersonalDayMode.sleepToSleep ? 'Cycle of ' : 'Day of ';
+          expect(bar.label, startsWith(word));
+          // The pilot layout's row has no day picker; the original's spoken
+          // label and picker rows carry the same label.
+          if (!timelines) {
+            expect(bar.chooseLabel, contains(bar.label), reason: 'spoken label matches');
+            await apk2Tap(t, find.byKey(const ValueKey('day-nav-choose')));
+            await settle(t);
+            expect(find.text(bar.label), findsWidgets, reason: 'picker rows use it too');
+            expect(find.textContaining(word), findsAtLeastNWidgets(2));
+            await t.tapAt(const Offset(5, 5));
+            await settle(t);
+          }
           // Stepping back lands on the previous cycle and its own label.
           final first = bar.label;
           await apk2Tap(t, find.byKey(const ValueKey('day-nav-previous')));
@@ -118,6 +132,7 @@ void main() {
           expect(find.byType(DayStepBar), findsOneWidget);
           final stepped = t.widget<DayStepBar>(find.byType(DayStepBar));
           expect(stepped.label, isNot(first), reason: 'arrow stepped a cycle');
+          expect(stepped.label, startsWith(word));
           expect(stepped.onNext, isNotNull, reason: 'the newer cycle is reachable back');
           _noStepFailure(t, timelines);
         });
