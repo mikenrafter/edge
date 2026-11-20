@@ -134,6 +134,31 @@ void main() {
     });
   });
 
+  // why: the lookup keys on ts_ms = rec_ts * 1000, so every writer must store
+  // exactly that. proves: CLAIM(pulse-arrival-key).
+  test('the app writers store ts_ms = rec_ts * 1000 in both decoded tables', () async {
+    final base = DateTime.now().millisecondsSinceEpoch ~/ 1000 - 3600;
+    final raws = [for (var i = 0; i < 4; i++) raw(i + 1, base + i, 5000)];
+    final samples = [for (var i = 0; i < 4; i++) sample(i + 1, base + i)];
+    await LocalDb.commitSyncBatch(raws, samples,
+        trimToken: _trim, processingOrigin: ProcessingOrigin.recentSync);
+    await LocalDb.commitSyncBatch(
+        [raw(9, base + 100, 5000)], [sample(9, base + 100)],
+        trimToken: _trim);
+    await LocalDb.insertRecord(raw(10, base + 200, 5000), sample(10, base + 200));
+    await LocalDb.insertRecordsBatch(
+        [raw(11, base + 300, 5000)], [sample(11, base + 300)]);
+    final db = await LocalDb.instance;
+    for (final t in ['decoded_onehz', 'decoded_rr']) {
+      expect((await db.rawQuery('SELECT COUNT(*) c FROM $t')).first['c'], greaterThan(0));
+      expect(
+          (await db.rawQuery('SELECT COUNT(*) c FROM $t WHERE ts_ms != rec_ts * 1000'))
+              .first['c'],
+          0,
+          reason: t);
+    }
+  });
+
   // why: ACK follows the commit; the enqueue is the commit's own write, so a
   // rolled-back chunk leaves no job and a committed one always has it, with no
   // second fsync'd transaction behind the commit. proves: CLAIM(pulse-arrival-same-txn).
@@ -172,6 +197,24 @@ void main() {
       expect(txnOf['jobs'], isNotNull, reason: '$events');
       expect(txnOf['jobs'], txnOf['commit'],
           reason: 'the job was written outside the chunk commit: $events');
+    });
+
+    // why: a failed enqueue is swallowed inside the transaction; a failed
+    // statement aborts only itself, so the chunk must still commit (and the
+    // band be ACKed) and the failure must be reported, not silent.
+    test('a failing enqueue neither blocks the commit nor stays silent', () async {
+      final db = await LocalDb.instance;
+      await db.execute('CREATE TRIGGER fail_jobs BEFORE INSERT ON compute_jobs '
+          "BEGIN SELECT RAISE(ABORT, 'no jobs'); END");
+      final notes = <String>[];
+      await LocalDb.commitSyncBatch(raws, samples,
+          trimToken: _trim,
+          processingOrigin: ProcessingOrigin.recentSync,
+          onCheckpoint: notes.add);
+      expect((await db.rawQuery('SELECT COUNT(*) c FROM decoded_onehz')).first['c'], 3);
+      expect(await LocalDb.getCursor('strap_trim'), _trim);
+      expect(await arrivalJobs(), 0);
+      expect(notes.where((n) => n.contains('pulse arrival enqueue failed')), hasLength(1));
     });
 
     test('a chunk that rolls back enqueues nothing', () async {

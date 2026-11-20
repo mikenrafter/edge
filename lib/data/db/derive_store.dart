@@ -1495,10 +1495,11 @@ Future<void> _ldbPrivComputeAndWriteFreshness() async {
     );
   }
 
-Future<void> _ldbEnqueueDeriveJob({required String type, required String reason, required ProcessingContext processingContext}) async {
-    final db = await LocalDb.instance;
+Future<void> _ldbEnqueueDeriveJob({required String type, required String reason, required ProcessingContext processingContext, DatabaseExecutor? txn}) async {
     final now = LocalDb.nowMs();
-    await db.transaction((txn) async {
+    // [txn] joins the caller's transaction, so the job commits or rolls back
+    // with the rows it describes; without one it runs in its own.
+    Future<void> body(DatabaseExecutor txn) async {
       // Dedupe against QUEUED jobs only. A running job already read its
       // inputs, so data that lands after that must queue a follow-up rather
       // than be absorbed into a pass that cannot see it.
@@ -1545,7 +1546,10 @@ Future<void> _ldbEnqueueDeriveJob({required String type, required String reason,
         'created_at': now,
         'updated_at': now,
       });
-    });
+    }
+    if (txn != null) return body(txn);
+    final db = await LocalDb.instance;
+    await db.transaction(body);
   }
 
 Future<Map<String, dynamic>?> _ldbTakeNextComputeJob() async {
