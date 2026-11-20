@@ -269,10 +269,10 @@ const Map<String, String> kNestedKeyOwner = <String, String>{
   'scalars.brv_slope': 'night.rhythm',
   'scalars.irregular_rhythm_flag': 'night.rhythm',
   'scalars.rhr': 'readiness.stress_illness',
-  // Measured night baselines (9438b2875): the analytics values readiness reads
-  // beside rhr/rmssd, with no fallback to either.
-  'scalars.hr_min_night': 'readiness.stress_illness',
-  'scalars.rmssd_mean_night': 'readiness.stress_illness',
+  // Measured night baselines (9438b2875): copied by the day assembly from the
+  // sleep segmentation's own result, with no fallback to rhr or rmssd.
+  'scalars.hr_min_night': 'edge.assembly',
+  'scalars.rmssd_mean_night': 'edge.assembly',
   'scalars.rhr_nocturnal': 'readiness.stress_illness',
   'scalars.rmssd': 'readiness.stress_illness',
   'scalars.sdnn': 'readiness.stress_illness',
@@ -372,6 +372,8 @@ const Map<String, List<String>> kKeyProducers = <String, List<String>>{
   'scalars.brv_cv': ['breathingRateVariability'],
   'scalars.brv_slope': ['breathingRateVariability'],
   'scalars.irregular_rhythm_flag': ['irregularBeatScreenDetailed'],
+  'scalars.hr_min_night': ['deriveDayBundle'],
+  'scalars.rmssd_mean_night': ['deriveDayBundle'],
   'scalars.rhr': ['nocturnalRhr'],
   'scalars.rhr_nocturnal': ['nocturnalRhr'],
   'scalars.rmssd': ['sleepSessionRmssdDetail'],
