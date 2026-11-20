@@ -82,7 +82,13 @@ void main() {
     await t.tap(find.text('Session 5'));
     await t.pumpAndSettle();
     final selected = _chart(t);
-    expect(selected.controller.view.span, closeTo(16.8 * 3600, .01));
+    // The tap zooms to the item itself: a 15-minute session gets the 1-hour
+    // minimum window, centred on it (was 70% of the day: 16.8 h).
+    final w = _workout(4);
+    final v = selected.controller.view;
+    expect(v.span, closeTo(3600, 1));
+    expect(v.start, lessThanOrEqualTo(w.at.toDouble()));
+    expect(v.end, greaterThanOrEqualTo((w.until ?? w.at).toDouble()));
     expect(selected.controller.scrub, _workout(4).at);
     expect(selected.focusId, 'session:4');
     expect(selected.focusColor, C.purple);

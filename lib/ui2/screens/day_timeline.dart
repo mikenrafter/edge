@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import '../../pilot/pilot_flags.dart';
 import '../../pilot/day_layout.dart';
 import '../../pilot/timeline_policy.dart';
@@ -1246,7 +1247,19 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
   }
   void _selectRow(String id, Moment moment) {
     final at = moment.at.toDouble();
-    _chart?.zoomAt(at);
+    // Zoom to the item itself: its span with a quarter of it as margin on
+    // each side, never narrower than an hour, centred on the item.
+    final end = moment.until != null && moment.until! > moment.at
+        ? moment.until!
+        : moment.at;
+    final pad = math.max(900, ((end - moment.at) / 4).round());
+    var lo = moment.at - pad, hi = end + pad;
+    if (hi - lo < 3600) {
+      final mid = (lo + hi) ~/ 2;
+      lo = mid - 1800;
+      hi = mid + 1800;
+    }
+    _chart?.selectRange(lo, hi);
     _chart?.setScrub(at);
     if (PilotFlag.timelines.enabled) _pilotInteraction.focus(at);
     _reveal(id);
