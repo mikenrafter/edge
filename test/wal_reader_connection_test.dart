@@ -587,6 +587,11 @@ void main() {
   test('shared LocalDb helpers still use writer by default for compute', () async {
     await _putDay(_day);
     await LocalDb.readExecutor();
+    // These helpers read through the shared read executor, which is the second
+    // connection only while the UI is in the foreground (044a275bb, 2026-11-15:
+    // reads moved to readerRun). Compute and headless sync run with it off, which
+    // is the case this contract is about: no reader, the writer.
+    await LocalDb.setForeground(false);
     final writer = await writerId();
     sql.clear();
     await LocalDb.dayResult(_day);

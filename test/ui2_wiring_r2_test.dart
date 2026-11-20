@@ -365,9 +365,9 @@ void main() {
           sleepFixture(
               need: const Metric(
                   value: 462, unit: 'min', confidence: .7, tier: MetricTier.estimate)));
-      expect(find.text('42m'), findsOneWidget);
-      expect(find.text('20m'), findsNothing);
-      expect(find.text('vs your 7h 42m need'), findsOneWidget);
+      // One line now, with an explicit minus: the shortfall against the need.
+      expect(find.text('\u221242m vs your 7h 42m need'), findsOneWidget);
+      expect(find.textContaining('20m'), findsNothing);
     });
 
     testWidgets('under two weeks it abstains and says how many days it has',

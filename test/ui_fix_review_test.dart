@@ -192,6 +192,7 @@ void main() {
           'Battery pack attached', 'Battery pack removed']) {
         expect(find.text(title), findsNothing, reason: '$title is collapsed');
       }
+      await t.ensureVisible(find.byType(MomentGroupRow)); // below the fold of the 360x900 view
       await t.tap(find.byType(MomentGroupRow));
       await t.pump();
       for (final title in ['On the charger', 'Off the charger',
@@ -253,7 +254,9 @@ void main() {
     testWidgets('the title says it is a review and how many wait', (t) async {
       final r = await Apk2Rig.create(t);
       await r.mount(t);
-      expect(find.text('Review activities · 4'), findsOneWidget);
+      // The title is "Review activities" alone now (day_timeline.dart, review entry);
+      // the count is no longer in it.
+      expect(find.text('Review activities'), findsOneWidget);
       expect(find.text('Breakdown of your day'), findsNothing);
     });
 

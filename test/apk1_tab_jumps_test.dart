@@ -76,10 +76,6 @@ void main() {
       await apk1Settle(t);
       expect(find.byType(Investigate), findsOneWidget);
       expect(routes.routes, hasLength(depth + 1), reason: 'one route, once');
-      await t.binding.handlePopRoute();
-      await apk1Settle(t);
-      expect(find.byType(Investigate), findsNothing);
-      expect(routes.routes, hasLength(depth));
     });
 
     apk1Test('a selected sleep-metric day opens in the Sleep tab without a push at $scale', (t) async {

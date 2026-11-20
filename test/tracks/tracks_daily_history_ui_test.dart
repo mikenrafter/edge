@@ -18,7 +18,7 @@ Finder _byKeySuffix(String suffix) => find.byWidgetPredicate(
   (w) => w.key is ValueKey && (w.key! as ValueKey).value.toString().endsWith(suffix),
 );
 
-Future<void> _expand(WidgetTester t, String label) async {
+Future<void> _expand(WidgetTester t, String label, {bool toggle = false}) async {
   // The editor is a lazy list and the Prescribed row (tracksPrescribed, 2026-11)
   // pushed this section below the built range, so scroll to it first.
   await t.scrollUntilVisible(find.text(label), 300,
@@ -26,7 +26,11 @@ Future<void> _expand(WidgetTester t, String label) async {
   await t.ensureVisible(find.text(label));
   await t.pumpAndSettle();
   // Accordions open by default since f49bac5aa (2026-11-15), so a tap here would
-  // close the section; reaching it is enough.
+  // close the section; reaching it is enough unless the test wants it folded.
+  if (toggle) {
+    await t.tap(find.text(label));
+    await t.pumpAndSettle();
+  }
 }
 
 void main() {
@@ -224,7 +228,7 @@ void main() {
     );
     await openEditor(t, height: 1400);
     // Fold the (default open) kinetics section so the periods fill the view.
-    await _expand(t, 'Timing and kinetics');
+    await _expand(t, 'Timing and kinetics', toggle: true);
     expect(find.text('Daily since Mar 1 · ~08:00 · 50 mg'), findsOneWidget);
     expect(t.takeException(), isNull);
     await expectLater(

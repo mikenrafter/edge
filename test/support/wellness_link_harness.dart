@@ -10,6 +10,7 @@ import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+import 'pending_finders.dart';
 
 const _day = '2026-08-16';
 
@@ -82,7 +83,9 @@ Future<void> settle(WidgetTester t,
     await t.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)));
     await t.pump(const Duration(milliseconds: 16));
-    loaded = find.byType(CircularProgressIndicator).evaluate().isEmpty;
+    // Loading is a pending section now, not a spinner (fa1e52e04, d3c53c24c).
+    loaded = find.byType(CircularProgressIndicator).evaluate().isEmpty &&
+        pendingSection.evaluate().isEmpty;
   }
   if (!loaded) {
     throw TestFailure('the Wellness screen still shows a '

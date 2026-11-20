@@ -152,7 +152,7 @@ void main() {
       expect(find.byKey(const ValueKey('apk2-review-savebar')), findsNothing);
       // The empty day timeline prints "—" for what it does not have (absent, never
       // a stand-in); what must not appear is a measurement.
-      expect(find.textContaining('bpm'), findsNothing);
+      expect(find.textContaining(RegExp(r'\d\s*bpm')), findsNothing);
     });
 
     testWidgets('a reviewed notification target leaves pending items visible', (t) async {
