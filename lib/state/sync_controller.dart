@@ -179,7 +179,7 @@ class SyncController {
 
   /// The burst's end: `true` when the caller should ask for a heavy pass with
   /// stored data. Releases a manual sync's deferred finalize.
-  bool _settleBurstHeavy(int records) {
+  bool _settleBurst(int records) {
     _burstOwesHeavy = false;
     final deferred = _manualHeavyDeferred;
     _manualHeavyDeferred = false;
@@ -988,12 +988,12 @@ class SyncController {
           // staging + 24-h spectra over every stale day).
           // A drain that stored nothing leaves nothing for a heavy pass to read;
           // a flappy link would otherwise run one per reconnect.
-          if (_settleBurstHeavy(report.records)) {
+          if (_settleBurst(report.records)) {
             _deriveScheduler.requestHeavy(storedData: true);
           }
           _notify();
         }).catchError((Object e) {
-          _settleBurstHeavy(0);
+          _settleBurst(0);
           _log('Background sync burst failed: $e');
         }),
       );
@@ -1175,7 +1175,7 @@ class SyncController {
               // one per 30 min while backgrounded — the interim reconnects
               // still get a light pass, and the foreground return finalizes
               // with a real heavy anyway.
-              if (_settleBurstHeavy(report.records)) {
+              if (_settleBurst(report.records)) {
                 final now = DateTime.now();
                 final lastHeavy = _lastBackgroundHeavyAt;
                 if (background &&
@@ -1189,7 +1189,7 @@ class SyncController {
               }
               _notify();
             }).catchError((Object e) {
-              _settleBurstHeavy(0);
+              _settleBurst(0);
               _log('Reconnect sync burst failed: $e');
             }),
           );
