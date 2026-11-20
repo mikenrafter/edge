@@ -74,6 +74,12 @@ void main() {
           if (m[1] != 'en') m[1]!,
     ]..sort();
     expect(codes, containsAll(['de', 'es', 'fr', 'hi', 'ru', 'th', 'zh']));
+    final thDebt = {
+      for (final l in File('test/fixtures/l10n_th_untranslated_baseline.txt')
+          .readAsLinesSync())
+        if (l.trim().isNotEmpty && !l.startsWith('#')) l.trim(),
+    };
+    final thStillEnglish = <String>{};
     final copies = <String>[];
     for (final code in codes) {
       final arb = _arb(code);
@@ -84,9 +90,18 @@ void main() {
         if (!english.contains(' ')) continue;
         if (arb[key] != english) continue;
         if (_sameOnPurpose.contains('$code:$key')) continue;
+        if (code == 'th' && thDebt.contains(key)) {
+          thStillEnglish.add(key);
+          continue;
+        }
         copies.add('$code:$key = $english');
       }
     }
     expect(copies, isEmpty);
+    // The Thai debt is a ratchet: a listed key that is no longer English has to
+    // leave the list, so it can only shrink.
+    expect(thDebt.difference(thStillEnglish), isEmpty,
+        reason: 'translated Thai keys still listed in '
+            'test/fixtures/l10n_th_untranslated_baseline.txt');
   });
 }

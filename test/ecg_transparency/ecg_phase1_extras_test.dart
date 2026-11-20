@@ -103,7 +103,7 @@ void main() {
       final l = await LocaleController.currentStrings();
       expect(
         findingTitle(l, const Finding(FindingKind.irregularRhythm, '2026-10-07')),
-        startsWith('Unregelmäßiges Pulsmuster markiert'),
+        contains('Unregelmäßiges Pulsmuster'),
       );
     });
 

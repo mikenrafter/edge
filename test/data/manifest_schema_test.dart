@@ -112,7 +112,9 @@ void main() {
     }
   });
 
-  test('schemaVersion is 79', () => expect(LocalDb.schemaVersion, 79));
+  // Later rungs (80-95) came with other features; the day manifest is rung 79.
+  test('schemaVersion reaches 79',
+      () => expect(LocalDb.schemaVersion, greaterThanOrEqualTo(79)));
 
   test('upgrade from v78 creates the table, empty, and keeps other rows',
       () async {

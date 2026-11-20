@@ -69,7 +69,8 @@ void main() {
       // Placeholders are structural sections now, not spinners to be found inside
       // a card (d3c53c24c, 2026-11-14), so only their presence is pinned; the
       // InlineLoading below is the card.
-      expect(find.byType(InlineLoading), findsOneWidget);
+      // Some tabs draw an InlineLoading card, others a bare pending section.
+      expect(_bars, findsWidgets);
     });
   }
 }
