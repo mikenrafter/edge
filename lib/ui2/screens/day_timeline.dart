@@ -1219,25 +1219,10 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
     }
     if (_highlight != nearest.id) _reveal(nearest.id);
   }
-  // CLAIM(day-tab-stays) [owner m301]: the touch that stops a fling, or a thumb
-  // landing at the page edge between two quick flicks, is not a choice of tab.
-  // A tab tap within [_scrollQuiet] of the last scroll movement is dropped; a
-  // tap on a settled page works as ever [test/pilot/day_tab_scroll_test.dart].
-  bool _scrolledRecently = false;
-  Timer? _scrollQuietTimer;
-  static const _scrollQuiet = Duration(milliseconds: 450);
-  void _noteScroll() {
-    _scrolledRecently = true;
-    _scrollQuietTimer?.cancel();
-    _scrollQuietTimer = Timer(_scrollQuiet, () => _scrolledRecently = false);
-  }
+  // CLAIM(day-tab-stays) [owner m301, m348]: the touch that stops a fling is not
+  // a choice of tab. The 200 ms rule is app-wide now (ui2/scroll_quiet.dart,
+  // enforced by Pressable under SubTabs) and no longer lives on this screen.
   void _listScrolled() {
-    // Only a finger's scroll (a drag or its fling) counts: a tab switch that
-    // re-lays the list out, or a row reveal, moves the position too.
-    if (!_programmaticScroll && _listController.hasClients &&
-        _listController.position.userScrollDirection != ScrollDirection.idle) {
-      _noteScroll();
-    }
     if(PilotFlag.timelines.enabled && _pilotInteraction.handScrubbing)return;
     if (_programmaticScroll || !_listController.hasClients ||
         _listController.position.userScrollDirection == ScrollDirection.idle) { return; }
@@ -1274,7 +1259,6 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
   void dispose() {
     Prefs.personalDayRevision.removeListener(_personalDayChanged);
     _highlightTimer?.cancel();
-    _scrollQuietTimer?.cancel();
     _pilotInteraction.dispose();
     _chart?.dispose();
     _filter.removeListener(_filterChanged);
@@ -1560,6 +1544,7 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
     }
     final l = AppLocalizations.of(context);
     final releasePrefetch = ReadPrefetch.shared.visibleRead('review-day');
+    final asked = _day;
     try {
       final reviewRead = !Prefs.personalDayEnabled && _day != null && _review?.day != _day ? _readReview(_day!) : Future<void>.value();
       var completeRead = false;
@@ -1568,7 +1553,7 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
         if (mounted && token == _loadToken && (_review?.day != primary.day || _review?.cycle?.id != primary.personalView?.day.id) && primary.day != null) {
           await _readReview(primary.day!, cycle: primary.personalView?.day);
         }
-        if (mounted && token == _loadToken && !completeRead) setState(() { _d = primary; _loading = false; });
+        if (mounted && token == _loadToken && !completeRead) { _followCycle(asked, primary); setState(() { _d = primary; _loading = false; }); }
         releasePrefetch();
       }, onPending: (reads) {
         if (mounted && token == _loadToken) setState(() => _pendingReads = reads);
@@ -1581,6 +1566,7 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
           : const <DeviceOption>[];
       if (mounted && token == _loadToken) {
         // The chart can take its actual shape while the saved-review read finishes.
+        _followCycle(asked, d);
         setState(() => _d = d);
         await reviewRead;
         if ((_review?.day != d.day || _review?.cycle?.id != d.personalView?.day.id) && d.day != null) {
@@ -1633,6 +1619,20 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
     } finally {
       releasePrefetch();
     }
+  }
+
+  // CLAIM(day-keeps-cycle) [owner m301, m351]: a cycle id is its start instant and
+  // a finished calculation can move a start by minutes. readPersonalDay then
+  // answers with the cycle nearest the old id, under a NEW id. The user is still
+  // on the same day: carry the picked id, the "Back to" anchor and the tab key
+  // over to it, so the tab stays and no "Back to ..." link appears for a day
+  // they never left [test/wake_days/day_keeps_cycle_test.dart].
+  void _followCycle(String? asked, TimelineData d) {
+    final id = d.personalView?.day.id.value;
+    if (asked == null || id == null || id == asked || asked.length <= 10) return;
+    if (_day == asked) _day = id;
+    if (_openedDay == asked) _openedDay = id;
+    if (_pilotTabDay == asked) _pilotTabDay = id;
   }
 
   @override
@@ -1879,7 +1879,7 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
         onNext:index>0?()=>_goDay(days[index-1]):null,
         onCancel:()async{await review?.discardDraft();if(mounted)setState((){});},onSave:()=>review?.save(c)),DayReviewNotices(controller:review,reloader:this)]),
         pending:_loading,graph:d.graph,stages:_pilotStages,controller:chart,interaction:_pilotInteraction,tab:_pilotTab??PilotTimelineTab.pending,
-        onTab:(value){if(!_scrolledRecently)setState(()=>_pilotTab=value);},listController:_listController,
+        onTab:(value)=>setState(()=>_pilotTab=value),listController:_listController,
         annotations:annotations,onAnnotation:annotationTapped,onScrub:_scrubRow,focusId:_highlight,
         // v16 shades every event's range whichever tab is open (m254/m255).
         backdrop:dayAnnotations([for(final e in ranked)if(!visible(e.row.moment))e.row.moment]).where((a)=>a.until!=null).toList(),

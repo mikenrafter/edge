@@ -1,3 +1,4 @@
+import '../ui2/scroll_quiet.dart' show QuietTap;
 import 'recorded_stages.dart';
 import 'alarm_readout.dart';
 import 'package:intl/intl.dart';
@@ -94,7 +95,7 @@ class _AlarmListState extends State<PilotAlarmScreen>{
       body:ListView(padding:const EdgeInsets.all(16),children:[
         if(app!=null)_activeWake(app),if(_error!=null)Text(_error!),if(!_loading&&_error==null&&_alarms.isEmpty)Text(l.pilotNoAlarms),
         if(_loading)const PendingContent(pending:true,child:PendingRows(count:1,rowHeight:48)),
-        for(final a in sorted)Padding(padding:const EdgeInsets.only(bottom:12),child:GestureDetector(onTap:()=>_edit(a),behavior:HitTestBehavior.opaque,child:Container(key:ValueKey('pilot-alarm:${a.id}'),padding:const EdgeInsets.fromLTRB(16,12,12,14),decoration:BoxDecoration(color:p.card,border:Border.all(color:a.id==next?p.on(C.blue):p.line),borderRadius:BorderRadius.circular(16)),child:Column(children:[
+        for(final a in sorted)Padding(padding:const EdgeInsets.only(bottom:12),child:QuietTap(onTap:()=>_edit(a),behavior:HitTestBehavior.opaque,child:Container(key:ValueKey('pilot-alarm:${a.id}'),padding:const EdgeInsets.fromLTRB(16,12,12,14),decoration:BoxDecoration(color:p.card,border:Border.all(color:a.id==next?p.on(C.blue):p.line),borderRadius:BorderRadius.circular(16)),child:Column(children:[
           // Mock-up v22 .acard .head: star, label, "next" on the left; the repeat
           // days and the switch on the right (m261). The whole card opens the editor.
           // The name is capped, not Flexible: a Flexible beside the Expanded days
@@ -400,7 +401,7 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
           // A workout alarm shows the row at .45, inert.
           Semantics(key:const ValueKey('pilot-primary'),toggled:a.canBePrimary&&a.primary,enabled:a.canBePrimary,onTap:a.canBePrimary?()=>setState(()=>a.primary=!a.primary):null,excludeSemantics:true,
             label:'${a.canBePrimary&&a.primary?l.pilotPrimaryOn:l.pilotPrimaryOff}. ${a.canBePrimary?'${a.primary?l.pilotPrimaryTapToStop:l.pilotPrimaryTapToMake} ${l.pilotPrimarySub}':l.pilotPrimaryWorkoutSub}',
-            child:Opacity(opacity:a.canBePrimary?1:.45,child:GestureDetector(behavior:HitTestBehavior.opaque,onTap:a.canBePrimary?()=>setState(()=>a.primary=!a.primary):null,
+            child:Opacity(opacity:a.canBePrimary?1:.45,child:QuietTap(behavior:HitTestBehavior.opaque,onTap:a.canBePrimary?()=>setState(()=>a.primary=!a.primary):null,
               child:ConstrainedBox(constraints:const BoxConstraints(minHeight:44),child:Padding(padding:const EdgeInsets.symmetric(vertical:8),child:Row(children:[
                 SizedBox(width:40,height:40,child:Icon(a.canBePrimary&&a.primary?Icons.star_rounded:LucideIcons.star,size:a.canBePrimary&&a.primary?23:20,color:a.canBePrimary&&a.primary?const Color(0xFFF2C94C):const Color(0xFF7F8BA0))),
                 const SizedBox(width:10),

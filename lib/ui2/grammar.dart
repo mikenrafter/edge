@@ -19,6 +19,7 @@ import 'skeleton/unit_paint.dart' show GuideUnitMark;
 import 'chart_annotations.dart' show AnnotationSet, ChartAnnotationLane;
 import 'charts.dart';
 import 'scroll_hint.dart';
+import 'scroll_quiet.dart' show QuietTap;
 import 'status_line.dart';
 import 'theme.dart';
 import 'trend.dart';
@@ -179,7 +180,7 @@ class _PressableState extends State<Pressable> {
       button: !widget.link,
       link: widget.link,
       label: widget.semanticLabel,
-      child: GuideUnitMark(component: c, child: GestureDetector(
+      child: GuideUnitMark(component: c, child: QuietTap(
         behavior: HitTestBehavior.opaque,
         onTap: widget.onTap == null ? null : _activate,
         onTapDown: (_) => setState(() => _down = true),
@@ -5099,7 +5100,7 @@ class ChartPanel extends StatelessWidget {
       button: true,
       label: openLabel,
       onTap: onOpen,
-      child: GestureDetector(
+      child: QuietTap(
         behavior: HitTestBehavior.opaque,
         onTap: onOpen,
         child: ConstrainedBox(
