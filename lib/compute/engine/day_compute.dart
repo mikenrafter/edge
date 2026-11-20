@@ -412,7 +412,8 @@ extension _EngineDayCompute on DerivationEngine {
     // Prove an unchanged manual assertion before the no-input blanking policy
     // runs. Recalculate must preserve its measured window too (R3-1).
     if (nightInputMissing && fence != null &&
-        await SleepEditStore.reuseMeasuredNightIfCurrent(day.date, fence, algoVersion: kAlgoVersion)) {
+        await SleepEditStore.reuseMeasuredNightIfCurrent(day.date, fence, algoVersion: kAlgoVersion,
+            allowVendorStaged: day.isWearable)) {
       // The reuse also holds a measured night nobody asserted (no override row):
       // that decline is the pruned-night one, not "matches the assertion".
       _declineReasons[day.date] = await LocalDb.getSleepOverride(day.date) == null

@@ -150,7 +150,9 @@ void main() {
       expect(find.text('Breakdown of your day'), findsOneWidget);
       expect(find.byKey(const ValueKey('apk2-review-keep:activity:a')), findsNothing);
       expect(find.byKey(const ValueKey('apk2-review-savebar')), findsNothing);
-      expect(find.text('—'), findsNothing);
+      // The empty day timeline prints "—" for what it does not have (absent, never
+      // a stand-in); what must not appear is a measurement.
+      expect(find.textContaining('bpm'), findsNothing);
     });
 
     testWidgets('a reviewed notification target leaves pending items visible', (t) async {

@@ -203,7 +203,10 @@ void main() {
     // Each wrapper sits on the method it names.
     for (final n in wrapped) {
       expect(
-        RegExp("\\b$n\\([^;]*?\\)\\s*=>\\s*ReadPerf\\.reading\\('$n'")
+        // `getToday() async { final served = _focusCheck(...); ...; return
+        // ReadPerf.reading('getToday', ...) }` since the import-focus check
+        // came first, so the wrapper may follow a short preamble.
+        RegExp("\\b$n\\([\\s\\S]{0,400}?ReadPerf\\.reading\\('$n'")
             .hasMatch(src),
         isTrue,
         reason: '$n is wrapped under another method\'s name',

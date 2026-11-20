@@ -41,7 +41,9 @@ void main() {
 
     await t.pumpWidget(_app(const SleepDetail(data: SleepData())));
     await t.pump();
-    expect(find.byIcon(LucideIcons.chevronLeft), findsOneWidget);
+    // The back arrow plus the shared day navigation's "previous day" chevron
+    // (ba00ae6e4, 2026-11-17), which uses the same icon.
+    expect(find.byIcon(LucideIcons.chevronLeft), findsAtLeastNWidgets(1));
     expect(find.byType(ProfileAvatar), findsNothing);
   });
 

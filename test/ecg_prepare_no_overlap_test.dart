@@ -102,17 +102,16 @@ void main() {
     });
   });
 
-  test('the gesture controller starts the stream through it, behind the '
-      'start cue\'s write (source guard)', () {
+  test('the gesture controller no longer starts an ECG stream (source guard)',
+      () {
+    // 1942e844b (2026-11-18) removed ECG touch counting: a tap no longer starts
+    // the stream, so the controller holds neither `_beginEcgForTap` nor the start
+    // cue it waited for. The Device lab probe still starts it through
+    // `beginEcgForTap` (app_state `_beginEcgForProbe`), covered by its own tests.
     final src = File('lib/state/gesture_controller.dart').readAsStringSync();
-    final a = src.indexOf('Future<bool> _beginEcgForTap()');
-    final body = codeOnly(src.substring(a, src.indexOf('_startCueSent;', a)));
-    expect(body.indexOf('_startCueWritten()'), greaterThan(0));
-    expect(body.indexOf('_startCueWritten()'),
-        lessThan(body.indexOf('haptics.runExclusive')));
-    expect(body, contains('beginEcgForTap('));
     final code = codeOnly(src);
-    expect(code, contains('_startCueSent = _gestureCue('),
-        reason: 'the start cue is the one the stream start waits for');
+    expect(code, isNot(contains('beginEcgForTap(')));
+    expect(code, isNot(contains('_beginEcgForTap')));
+    expect(code, isNot(contains('_startCueSent')));
   });
 }

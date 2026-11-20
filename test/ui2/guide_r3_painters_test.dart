@@ -35,7 +35,8 @@ void main() {
   // # catches: a new chart painter added without a placeholder treatment.
   test('R3: every CustomPainter in lib/ui2 declares its placeholder treatment', () {
     final all = _painters();
-    expect(all.keys, containsAll(['LineChart', 'EcgWaveformPainter', 'Elevation', 'RouteMap', 'ExplorePlotPainter', '_GuidePainter']),
+    // ExplorePlotPainter went with the old Explore (75e58cfe2, 2026-11-18).
+    expect(all.keys, containsAll(['LineChart', 'EcgWaveformPainter', 'Elevation', 'RouteMap', 'TimelinePainter', '_GuidePainter']),
       reason: 'positive control: the scan sees painters in many files');
     expect(all.length, greaterThan(28));
     expect(_unclassified('class _New extends CustomPainter {\n}'), ['_New'], reason: 'the check rejects an undeclared painter');
@@ -48,7 +49,7 @@ void main() {
   // painters draw the user's data (review R3) and must stay plots.
   // # catches: silencing the guard by calling a data painter a decoration.
   test('R3: the painters named in the review are plots, not decorations', () {
-    const data = ['EcgWaveformPainter', 'EcgLivePainter', 'Elevation', 'RouteMap', 'ExplorePlotPainter', '_TypicalPainter',
+    const data = ['EcgWaveformPainter', 'EcgLivePainter', 'Elevation', 'RouteMap', '_TypicalPainter',
       'IntervalLadder', '_SideStrip', 'PosterMap', 'HapticScorePainter', 'BreathRing', 'LineChart', 'Bars', 'Ring'];
     final all = _painters();
     for (final name in data) {

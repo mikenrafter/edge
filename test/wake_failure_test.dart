@@ -341,6 +341,10 @@ class _BadStateObserver implements NaturalStageObserver {
   Future<NaturalObserveResult> observe(NaturalObserveRequest r) async =>
       NaturalObserveResult(
         observation: remObs(),
+        // The planner needs gate evidence before Natural may fire (the same
+        // default ScriptedObserver carries); without it nothing fires.
+        evidence: const NaturalGateEvidence(
+            baseline: 50, recentHr: 56, motion: .01, trending: false),
         nextState: {'bad': double.nan},
       );
 }
