@@ -262,6 +262,12 @@ class SleepSummary extends StatelessWidget {
     final watched = inBedMin != null && unobservedMin != null && unobservedMin! > 0
         ? (inBedMin! - unobservedMin!).clamp(0, inBedMin!) : null;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (updatedAt case final at?) ...[
+        Text(l.asOfTime(formatClockOf(at.toLocal())),
+          key: const ValueKey('sleep-summary-updated'),
+          style: F.cap.copyWith(color: p.ink3)),
+        const SizedBox(height: S.x3),
+      ],
       Row(children: [
         SizedBox(width: 100, height: 100, child: Semantics(
           key: const ValueKey('sleep-efficiency-ring'),
@@ -296,7 +302,7 @@ class SleepSummary extends StatelessWidget {
         ])),
       ]),
       const SizedBox(height: S.x3),
-      Text(updatedAt == null ? window : l.sleepSummaryWindowUpdated(window, formatClockOf(updatedAt!.toLocal())),
+      Text(window,
         style: F.cap.copyWith(color: p.ink2)),
       ?context,
       Padding(padding: const EdgeInsets.only(top: S.x2), child: Text(l.sleepSummaryPercentageExplanation, style: F.over.copyWith(color: p.ink2))),

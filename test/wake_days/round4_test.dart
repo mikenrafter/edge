@@ -87,11 +87,10 @@ void main() {
 
   // WHY / CLAIM(home-day-bar): owner m294 supersedes the 2026-11-18 "no day
   // picker" half of CLAIM(home-now): Home shows the app's one day bar in
-  // personal-day mode too, plus the start caption (stepping is in
-  // home_day_bar_test.dart). Owner m301: sleep to sleep starts the day at the
-  // onset, so the caption says 23:00 here. Catches: dropping the bar, or a
+  // personal-day mode too (stepping is in home_day_bar_test.dart).
+  // Owner m354 removes the start caption. Catches: dropping the bar, or a
   // mode-labelled picker (the title row stays off Home).
-  testWidgets('Home has a start caption and the day bar', (tester) async {
+  testWidgets('Home keeps the day bar without a start caption', (tester) async {
     await Prefs.setPersonalDayMode(PersonalDayMode.sleepToSleep);
     final now = at(3, 10);
     final home = (await tester.runAsync(() =>
@@ -109,7 +108,8 @@ void main() {
         supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(body: HomeScreen(data: home, now: now, hour: 10)))));
     expect(find.byType(DayNav), findsOneWidget);
-    expect(find.text('Your day started 23:00'), findsOneWidget);
+    // WHY: owner m354 removes the start caption, including sleep-to-sleep mode.
+    expect(find.textContaining('Your day started'), findsNothing);
     expect(find.text('Your day (sleep to sleep)'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
   });

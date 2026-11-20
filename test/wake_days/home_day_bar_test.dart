@@ -9,7 +9,6 @@ import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/day_navigation.dart';
 import 'package:openstrap_edge/ui2/personal_day.dart';
 import 'package:openstrap_edge/ui2/screens/home_screen.dart';
-import 'package:openstrap_edge/ui2/screens/metric_detail.dart' show DayNav;
 import 'package:openstrap_edge/ui2/ui2.dart';
 import '../backup/backup_support.dart';
 import 'package:openstrap_edge/data/db.dart';
@@ -90,14 +89,8 @@ void main() {
           expect(find.byType(DayNav), findsOneWidget);
           final current = _label(t);
           expect(current, isNot(matches(RegExp(r'^\d{4}-\d{2}-\d{2}T'))));
-          // Owner m301: Home reads the selected mode's cycle, so the day starts
-          // at the wake (08:00), the onset (23:00) or the noon offset (12:00).
-          final started = 'Your day started ${switch (mode) {
-            PersonalDayMode.wakeToWake => '08:00',
-            PersonalDayMode.sleepToSleep => '23:00',
-            PersonalDayMode.calendarOffset => '12:00',
-          }}';
-          expect(find.text(started), findsOneWidget);
+          // WHY: owner m354 removes the personal-day start caption in every mode.
+          expect(find.textContaining('Your day started'), findsNothing);
           expect(find.byKey(const ValueKey('home-back-to-today')), findsNothing);
           final bar = t.widget<DayStepBar>(find.byType(DayStepBar));
           expect(bar.onPrevious, isNotNull, reason: 'an earlier personal day exists');
@@ -121,7 +114,7 @@ void main() {
           await t.tap(find.byKey(const ValueKey('home-back-to-today')));
           await _settle(t);
           expect(_label(t), current);
-          expect(find.text(started), findsOneWidget);
+          expect(find.textContaining('Your day started'), findsNothing);
           await t.pumpWidget(const SizedBox.shrink());
         });
       });

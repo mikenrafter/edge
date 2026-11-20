@@ -49,7 +49,7 @@ void main() {
   tearDown(() { ClockFormatController.debugReset(); });
 
   // catches: putting the day fingerprint's end-of-day time under the night.
-  testWidgets('R2 real card uses included recording timestamp beside sleep window', (t) async {
+  testWidgets('included recording timestamp sits at the top of the real summary card', (t) async {
     skTallView(t, w: 390, h: 2500);
     await PilotFlags.set(PilotFlag.sleepSummary, true);
     final app = AppState.forTesting(); addTearDown(app.dispose);
@@ -63,7 +63,14 @@ void main() {
       'recordings_through': included.millisecondsSinceEpoch, 'sleep_source': 'auto',
     }))));
     await t.pumpAndSettle();
-    expect(find.text('9h 36m sleep window · updated 16:15'), findsOneWidget);
+    // WHY: owner m355 moves only the included-recording time into the card's first line.
+    // catches: restoring the timestamp beside the window or above the card.
+    final stamp = find.descendant(of: find.byType(SleepSummary), matching: find.text('As of 16:15'));
+    expect(stamp, findsOneWidget);
+    expect(find.text('9h 36m sleep window'), findsOneWidget);
+    expect(t.getTopLeft(stamp).dy, lessThan(t.getTopLeft(find.text('9h 32m')).dy));
+    expect(find.text('No band data yet'), findsOneWidget);
+    expect(find.text('Not connected'), findsOneWidget);
     expect(find.textContaining('recordings through'), findsNothing);
     expect(find.textContaining('through As of'), findsNothing);
     await t.pumpWidget(const SizedBox());
@@ -80,6 +87,7 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('9h 36m sleep window'), findsOneWidget);
     expect(find.textContaining('updated'), findsNothing);
+    expect(find.descendant(of: find.byType(SleepSummary), matching: find.textContaining('As of')), findsNothing);
     await t.pumpWidget(const SizedBox());
   });
 
@@ -95,7 +103,12 @@ void main() {
       'recordings_through': local(14, 16, 15).millisecondsSinceEpoch, 'sleep_source': 'auto',
     }))));
     await t.pumpAndSettle();
-    expect(find.text('9h 36m sleep window · updated 16:15'), findsOneWidget);
+    // WHY: owner m355 moves only the included-recording time into the card's first line.
+    // catches: restoring the timestamp beside the window or above the card.
+    final stamp = find.descendant(of: find.byType(SleepSummary), matching: find.text('As of 16:15'));
+    expect(stamp, findsOneWidget);
+    expect(find.text('9h 36m sleep window'), findsOneWidget);
+    expect(t.getTopLeft(stamp).dy, lessThan(t.getTopLeft(find.text('9h 32m')).dy));
     expect(find.text('Updating this night'), findsOneWidget);
     expect(find.textContaining('recordings through'), findsNothing);
     expect(find.textContaining('05:05'), findsNothing);
