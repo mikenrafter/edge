@@ -11,6 +11,7 @@ import '../ui2/charts.dart' show SleepStage, Hypnogram;
 import '../ui2/day_timeline/day_graph.dart';
 import '../ui2/day_timeline/timeline_controller.dart';
 import '../ui2/theme.dart';
+import '../ui2/skeleton/guide_plot.dart';
 import 'timeline_policy.dart';
 
 String pilotClock(double sec) => formatClockOf(DateTime.fromMillisecondsSinceEpoch(sec.round()*1000));
@@ -276,7 +277,8 @@ class _OverviewSlot {
   final double at,left;final int lane;final List<ChartAnnotation> items;final more=<ChartAnnotation>[];
 }
 
-class _PilotPainter extends CustomPainter {
+class _PilotPainter extends CustomPainter implements GuidePlot {
+  @override Color get guideLineColor=>p.on(C.red);
   _PilotPainter({required this.p,required this.view,required this.graph,required this.stages,
     required this.annotations,required this.scrub,required this.selection,required this.height,required this.dimHrInsideSleep,this.cut,this.showHeartRate=true,this.bpmInPlot=false,this.backdrop=const [],this.focusId});
   final List<ChartAnnotation> backdrop;final String? focusId;

@@ -150,23 +150,15 @@ class _FindingsLogState extends State<SimplifiedFindingsLog> {
       (String d, f) => f.day.compareTo(d) < 0 ? f.day : d,
     );
     return detailScaffold(c, l.findingsLogTitle, [
-      if (_pending)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: S.x3),
-          child: Semantics(
-            liveRegion: true,
-            child: Text(
-              l.observationsLoading,
-              style: F.cap.copyWith(color: p.ink2),
-            ),
-          ),
-        ),
+      Padding(padding:const EdgeInsets.symmetric(vertical:S.x3),child:TextSlot(
+        sizingText:l.observationsLoading,style:F.cap.copyWith(color:p.ink2),
+        child:_pending?Semantics(liveRegion:true,child:Text(l.observationsLoading,style:F.cap.copyWith(color:p.ink2))):null)),
       if (_failed)
         TextButton(
           onPressed: _loadEpisodes,
           child: const Text('Pulse recordings could not be loaded. Try again.'),
         ),
-      Surface(
+      PendingContent(pending:_pending,child:Surface(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -345,7 +337,7 @@ class _FindingsLogState extends State<SimplifiedFindingsLog> {
             ),
           ],
         ),
-      ),
+      )),
       if (widget.findings.any((f) => f.kind == FindingKind.rhrShift))
         TextButton.icon(
           onPressed: () => Navigator.of(c).push(

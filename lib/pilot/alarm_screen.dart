@@ -15,6 +15,7 @@ import '../haptics/pattern_store.dart';
 import '../haptics/example_playback.dart' show HapticCancel;
 import '../ui2/screens/home_screen.dart' show repoOf;
 import '../ui2/grammar.dart' show BigButton,SubTabs,NavBar;
+import '../ui2/skeleton/async_section.dart';
 import '../ui2/day_navigation.dart' show DayStepBar;
 import '../ui2/profile/profile.dart' show SetRow;
 import '../state/app_state.dart';
@@ -32,8 +33,9 @@ import 'timeline_chart.dart';
 import 'timeline_policy.dart';
 
 class PilotAlarmScreen extends StatefulWidget {
-  const PilotAlarmScreen({super.key,this.alarms,this.onSave,this.now,this.graph=const DayGraph(),this.stages=const [],this.reference});
+  const PilotAlarmScreen({super.key,this.alarms,this.loadAlarms,this.onSave,this.now,this.graph=const DayGraph(),this.stages=const [],this.reference});
   final Future<PilotAlarmReference?> Function(DateTime)? reference;
+  final Future<List<PilotAlarm>> Function()? loadAlarms;
   final List<PilotAlarm>? alarms;final Future<void> Function(List<PilotAlarm>)? onSave;
   final DateTime? now;final DayGraph graph;final List<SleepStage?> stages;
   @override State<PilotAlarmScreen> createState()=>_AlarmListState();
@@ -42,7 +44,7 @@ class _AlarmListState extends State<PilotAlarmScreen>{
   List<PilotAlarm> _alarms=[];String? _error;bool _loading=true,_saving=false;
   AppLocalizations get l=>AppLocalizations.of(context)??lookupAppLocalizations(const Locale('en'));
   @override void initState(){super.initState();if(widget.alarms!=null){_alarms=widget.alarms!.map((a)=>a.copy()).toList();_loading=false;}else{_load();}}
-  Future<void> _load()async{try{final a=await PilotAlarmStore.load();if(mounted)setState((){_alarms=a;_loading=false;});}catch(e){if(mounted)setState((){_error=e.toString();_loading=false;});}}
+  Future<void> _load()async{try{final a=await (widget.loadAlarms?.call()??PilotAlarmStore.load());if(mounted)setState((){_alarms=a;_loading=false;});}catch(e){if(mounted)setState((){_error=e.toString();_loading=false;});}}
   Future<void> _save(List<PilotAlarm> alarms)async{
     setState(()=>_saving=true);
     var saved=alarms;
@@ -82,12 +84,12 @@ class _AlarmListState extends State<PilotAlarmScreen>{
   @override Widget build(BuildContext context){
     final p=P.of(context),now=widget.now??DateTime.now();
     final app=widget.onSave==null?context.watch<AppState>():null;
-    final sorted=[..._alarms]..sort((a,b){final x=pilotNextAt(a,now),y=pilotNextAt(b,now);if(x==null)return y==null?0:1;if(y==null)return -1;return x.compareTo(y);});
+    final sorted=[...(_loading?[PilotAlarm(id:'pending',label:l.pilotSleepAlarm)]:_alarms)]..sort((a,b){final x=pilotNextAt(a,now),y=pilotNextAt(b,now);if(x==null)return y==null?0:1;if(y==null)return -1;return x.compareTo(y);});
     final next=sorted.where((a)=>a.enabled).firstOrNull?.id;
-    return PilotTheme(child:Builder(builder:(context)=>Scaffold(backgroundColor:p.bg,appBar:PreferredSize(preferredSize:const Size.fromHeight(52),child:SafeArea(bottom:false,child:NavBar(l.pilotAlarms))),floatingActionButton:FloatingActionButton(onPressed:_saving?null:_add,tooltip:l.pilotAddAlarm,child:const Icon(LucideIcons.plus)),
-      body:_loading?const Center(child:CircularProgressIndicator()):ListView(padding:const EdgeInsets.all(16),children:[
-        if(app!=null)_activeWake(app),if(_error!=null)Text(_error!),if(_alarms.isEmpty)Text(l.pilotNoAlarms),
-        for(final a in sorted)Padding(padding:const EdgeInsets.only(bottom:12),child:GestureDetector(onTap:()=>_edit(a),behavior:HitTestBehavior.opaque,child:Container(key:ValueKey('pilot-alarm:${a.id}'),padding:const EdgeInsets.fromLTRB(16,12,12,14),decoration:BoxDecoration(color:p.card,border:Border.all(color:a.id==next?p.on(C.blue):p.line),borderRadius:BorderRadius.circular(16)),child:Column(children:[
+    return PilotTheme(child:Builder(builder:(context)=>Scaffold(backgroundColor:p.bg,appBar:PreferredSize(preferredSize:const Size.fromHeight(52),child:SafeArea(bottom:false,child:NavBar(l.pilotAlarms))),floatingActionButton:FloatingActionButton(onPressed:_saving||_loading?null:_add,tooltip:l.pilotAddAlarm,child:const Icon(LucideIcons.plus)),
+      body:ListView(padding:const EdgeInsets.all(16),children:[
+        if(app!=null)_activeWake(app),if(_error!=null)Text(_error!),if(!_loading&&_alarms.isEmpty)Text(l.pilotNoAlarms),
+        for(final a in sorted)PendingContent(pending:_loading,child:Padding(padding:const EdgeInsets.only(bottom:12),child:GestureDetector(onTap:()=>_edit(a),behavior:HitTestBehavior.opaque,child:Container(key:ValueKey('pilot-alarm:${a.id}'),padding:const EdgeInsets.fromLTRB(16,12,12,14),decoration:BoxDecoration(color:p.card,border:Border.all(color:a.id==next?p.on(C.blue):p.line),borderRadius:BorderRadius.circular(16)),child:Column(children:[
           // Mock-up v22 .acard .head: star, label, "next" on the left; the repeat
           // days and the switch on the right (m261). The whole card opens the editor.
           // The name is capped, not Flexible: a Flexible beside the Expanded days
@@ -102,8 +104,8 @@ class _AlarmListState extends State<PilotAlarmScreen>{
             Switch(value:a.enabled,onChanged:_saving?null:(v){final copies=_alarms.map((x)=>x.copy()).toList();copies.firstWhere((x)=>x.id==a.id).enabled=v;unawaited(_save(copies).catchError((_){ }));})])),
           const SizedBox(height:10),
           // v22 .acard.off.dim: an off alarm's graph keeps every mark and range, at .35.
-          Opacity(opacity:a.enabled?1:.35,child:IgnorePointer(child:_AlarmChart(alarm:a,now:now,graph:widget.graph,stages:widget.stages,reference:widget.reference))),
-        ])))),
+          Opacity(opacity:a.enabled?1:.35,child:IgnorePointer(child:_AlarmChart(alarm:a,now:now,graph:widget.graph,stages:widget.stages,reference:widget.reference,pending:_loading))),
+        ]))))),
       ]))));
   }
 }
@@ -115,17 +117,20 @@ extension on List<int>{String sortedDays(AppLocalizations l){sort();final names=
   return [for(final r in runs)r.length>=3?'${names[r.first-1]}–${names[r.last-1]}':r.map((d)=>names[d-1]).join(', ')].join(', ');}}
 
 class _AlarmChart extends StatefulWidget{
-  const _AlarmChart({required this.alarm,required this.now,required this.graph,required this.stages,this.reference});
+  const _AlarmChart({required this.alarm,required this.now,required this.graph,required this.stages,this.reference,this.pending=false});
   final Future<PilotAlarmReference?> Function(DateTime)? reference;
+  final bool pending;
   final PilotAlarm alarm;final DateTime now;final DayGraph graph;final List<SleepStage?> stages;
   @override State<_AlarmChart> createState()=>_AlarmChartState();
 }
 class _AlarmChartState extends State<_AlarmChart>{
   late final TimelineController c;final interaction=TimelineInteraction(retention:PilotScrub.temporary);
+  bool _reading=false;
   late final int start;DayGraph? measured;List<SleepStage?>? recorded;int? bed,expected,usualSleepMinutes;
   @override void initState(){super.initState();final day=DateTime(widget.now.year,widget.now.month,widget.now.day);start=day.millisecondsSinceEpoch~/1000;
     c=TimelineController(glideDuration:const Duration(milliseconds:450),homeStartSec:DateTime(day.year,day.month,day.day-1,12).millisecondsSinceEpoch~/1000,homeEndSec:DateTime(day.year,day.month,day.day+1,18).millisecondsSinceEpoch~/1000);
-    _range();if(widget.reference!=null||widget.graph.slots==0)WidgetsBinding.instance.addPostFrameCallback((_)=>_load());
+    _reading=!widget.pending&&(widget.reference!=null||widget.graph.slots==0);
+    _range();if(!widget.pending&&(widget.reference!=null||widget.graph.slots==0))WidgetsBinding.instance.addPostFrameCallback((_)=>_load());
   }
   void _range(){final a=widget.alarm;if(bed==null){c.selectRange(start+(a.type==PilotAlarmType.sleep?a.wakeMinute-a.earlyMinutes-150:a.workoutStartMinute-90)*60,start+(a.wakeMinute+math.max(60,a.maxSnoozes*a.snoozeMinutes).toInt())*60);}
     else{final ann=pilotAlarmAnnotations(a,lookupAppLocalizations(const Locale('en')),start,bedMinute:bed,expectedWake:expected).where((v)=>v.id!='bed');
@@ -136,6 +141,7 @@ class _AlarmChartState extends State<_AlarmChart>{
       final sample=await reading;
       if(mounted&&sample!=null){setState((){measured=sample.graph;recorded=widget.alarm.type==PilotAlarmType.sleep?sample.stages:const [];bed=widget.alarm.type==PilotAlarmType.sleep?sample.bedMinute:null;final wm=sample.wakeMinute;usualSleepMinutes=sample.usualSleepMinutes;expected=wm!=null&&wm>=widget.alarm.wakeMinute-widget.alarm.earlyMinutes&&wm<=widget.alarm.wakeMinute?wm:null;});_range();}
     }catch(_){/* The overview stays empty when no recorded night is available. */}
+    finally{if(mounted)setState(()=>_reading=false);}
   }
   @override void didUpdateWidget(_AlarmChart old){super.didUpdateWidget(old);if(old.alarm.wakeMinute!=widget.alarm.wakeMinute||old.alarm.earlyMinutes!=widget.alarm.earlyMinutes)_range();}
   @override void dispose(){c.dispose();interaction.dispose();super.dispose();}
@@ -149,20 +155,20 @@ class _AlarmChartState extends State<_AlarmChart>{
     // m261: the three stats are right-aligned.
     Widget stat(String label,String value)=>Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.end,children:[Text(label,textAlign:TextAlign.right,style:F.cap.copyWith(color:p.ink3)),Text(value,maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.right,style:F.body.copyWith(color:p.ink,fontWeight:FontWeight.w500))]));
     // v22 .mchart: a 72 px graph (it grows only if stacked icons need it).
-    return Column(children:[PilotTimelineChart(controller:c,graph:measured??widget.graph,interaction:interaction,stages:a.type==PilotAlarmType.sleep?recorded??widget.stages:const [],height:72,overview:true,cut:cut,annotations:annotations,showHeartRate:a.type==PilotAlarmType.workout),
+    return PendingContent(pending:widget.pending||_reading,child:Column(children:[PilotTimelineChart(controller:c,graph:measured??widget.graph,interaction:interaction,stages:a.type==PilotAlarmType.sleep?recorded??widget.stages:const [],height:72,overview:true,cut:cut,annotations:annotations,showHeartRate:a.type==PilotAlarmType.workout),
       const SizedBox(height:10),
       // Mock-up v22 statsOf(): Wake (a range with early wake), Expected,
       // Usual sleep; workout: Window, Zone, Buzzes at.
       Row(children:a.type==PilotAlarmType.sleep?[
         stat(l.pilotWakeShort,_wakeText(a)),
         stat(l.pilotExpectedShort,expected==null?'—':formatClock(expected!~/60,expected!%60)),
-        if(bed!=null)stat(l.pilotUsualSleep,usualSleepMinutes==null?'—':pilotForecastText(l,usualSleepMinutes!)),
+        if(bed!=null||widget.pending||_reading)stat(l.pilotUsualSleep,usualSleepMinutes==null?'—':pilotForecastText(l,usualSleepMinutes!)),
       ]:[
         stat(l.pilotWindow,'${formatClock(a.workoutStartMinute~/60,a.workoutStartMinute%60)}–${formatClock(a.wakeMinute~/60,a.wakeMinute%60)}'),
         stat(l.pilotZone,l.pilotZoneAtLeast(a.zone)),
         stat(l.pilotBuzzesAt,formatClock(a.wakeMinute~/60,a.wakeMinute%60)),
       ]),
-    ]);
+    ]));
   }
 }
 
@@ -215,6 +221,7 @@ class PilotAlarmEditor extends StatefulWidget{
 }
 class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderStateMixin {
   late PilotAlarm a;late TimelineController c;late int start;int tab=0;String focus='wake';bool repeat=false,saving=false,playing=false;double progress=0;String? error;
+  bool _referencePending=false;
   DayGraph? measured;List<SleepStage?> stages=[];int? usualBed,previewBed,expectedWake,_runtimeExpectedWake;int night=0,_referenceEpoch=0;
   final interaction=TimelineInteraction(retention:PilotScrub.temporary);
   HapticCancel? _playback;
@@ -228,7 +235,8 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
   @override void initState(){super.initState();a=widget.alarm.copy();final now=widget.now??DateTime.now();final day=DateTime(now.year,now.month,now.day);start=day.millisecondsSinceEpoch~/1000;
     c=TimelineController(glideDuration:const Duration(milliseconds:450),homeStartSec:DateTime(day.year,day.month,day.day-(a.type==PilotAlarmType.sleep?1:0),a.type==PilotAlarmType.sleep?18:0).millisecondsSinceEpoch~/1000,homeEndSec:DateTime(day.year,day.month,day.day+(a.type==PilotAlarmType.sleep?0:1),a.type==PilotAlarmType.sleep?18:0).millisecondsSinceEpoch~/1000);
     c.selectRange(start+(a.type==PilotAlarmType.sleep?a.wakeMinute-a.earlyMinutes-20:a.workoutStartMinute-90)*60,start+(a.wakeMinute+(a.type==PilotAlarmType.sleep?20:60))*60);stages=widget.stages;expectedWake=_runtimeExpectedWake=a.referenceWakeMinute;
-    if(widget.reference!=null||widget.graph.slots==0)WidgetsBinding.instance.addPostFrameCallback((_)=>_loadReference());
+    _referencePending=widget.reference!=null||widget.graph.slots==0;
+    if(_referencePending)WidgetsBinding.instance.addPostFrameCallback((_)=>_loadReference());
   }
   List<DateTime> get nights {
     final now=widget.now??DateTime.now(),out=<DateTime>[];
@@ -252,6 +260,7 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
   Future<void> _loadReference()async{
     final epoch=++_referenceEpoch,choices=nights;if(choices.isEmpty)return;
     final selected=choices[night.clamp(0,choices.length-1)];
+    setState(()=>_referencePending=true);
     try{
       PilotAlarmReference? sample;
       if(widget.reference!=null){sample=await widget.reference!(selected);}else{
@@ -260,6 +269,7 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
       if(mounted&&epoch==_referenceEpoch)setState((){stages=sample?.stages??widget.stages;measured=sample?.graph;usualBed=previewBed=sample?.bedMinute;
         final wm=sample?.wakeMinute;expectedWake=wm!=null&&wm>=a.wakeMinute-a.earlyMinutes&&wm<=a.wakeMinute?wm:null;if(night==0)_runtimeExpectedWake=expectedWake;});
     }catch(_){/* Missing reference data stays absent. */}
+    finally{if(mounted&&epoch==_referenceEpoch)setState(()=>_referencePending=false);}
   }
   @override void dispose(){_tabFlash.dispose();_rowGlow.dispose();_playback?.cancel();interaction.dispose();c.dispose();super.dispose();}
   int minute(double at)=>((at-start)/60).round();
@@ -333,8 +343,8 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
         label:nights.isEmpty?l.pilotTonight:_nightLabel(nights[night.clamp(0,nights.length-1)]),previousLabel:l.pilotPreviousNight,nextLabel:l.pilotNextNight,
         previousKey:const ValueKey('pilot-night-previous'),nextKey:const ValueKey('pilot-night-next'),
         onPrevious:night>0?()=>_pageNight(night-1):null,onNext:night<nights.length-1?()=>_pageNight(night+1):null)),
-      Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:PilotTimelineChart(controller:c,graph:graph,interaction:interaction,stages:stages,handles:handles,selectedAnnotationId:focus,onHandle:_handle,onSelect:(id){if({'bed','wake','early','gradual','sunrise','sound','vibration','flash','window'}.contains(id))select(id,start+_minuteFor(id)*60.0);},
-        showHeartRate:a.type==PilotAlarmType.workout,showHeader:false,annotations:pilotAlarmAnnotations(a,l,start,bedMinute:previewBed,expectedWake:expectedWake))),
+      Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:PendingContent(pending:_referencePending,child:PilotTimelineChart(controller:c,graph:graph,interaction:interaction,stages:stages,handles:handles,selectedAnnotationId:focus,onHandle:_handle,onSelect:(id){if({'bed','wake','early','gradual','sunrise','sound','vibration','flash','window'}.contains(id))select(id,start+_minuteFor(id)*60.0);},
+        showHeartRate:a.type==PilotAlarmType.workout,showHeader:false,annotations:pilotAlarmAnnotations(a,l,start,bedMinute:previewBed,expectedWake:expectedWake)))),
       // Mock-up v22 .tabs; a new phone timing flashes the Times tab (m206).
       Padding(padding:const EdgeInsets.fromLTRB(16,6,16,0),child:Stack(children:[
         SubTabs(tabs,tab,_openTab,color:C.blue,itemKeys:[for(final t in tabs)ValueKey('pilot-alarm-tab:$t')]),
@@ -400,7 +410,7 @@ class _AlarmEditorState extends State<PilotAlarmEditor> with TickerProviderState
           section(l.pilotBeforeAlarm),
           toggle(l.pilotSunrise,a.sunrise,(v){setState(()=>a.sunrise=v);if(v)_showNewTiming('sunrise');},sub:a.sunrise?'${l.pilotBeforeOnTimes(a.sunriseMinutes)}\n${l.pilotPhoneLimit}':l.pilotPhoneLimit,icon:LucideIcons.sun,color:C.orange),
           toggle(l.pilotGradual,a.gradual,(v)=>setState(()=>a.gradual=v),sub:a.gradual?l.pilotBeforeOnTimes(a.gradualMinutes):null,icon:LucideIcons.vibrate,color:C.yellow),
-          if(a.gradual)...[SizedBox(height:56,child:playing?Center(child:LinearProgressIndicator(value:progress)):choices(GradualPattern.values,a.pattern,(v)=>a.pattern=v,(v)=>switch(v){GradualPattern.ramp=>l.pilotRamp,GradualPattern.steady=>l.pilotSteady,GradualPattern.wave=>l.pilotWave})),feelRow()],
+          if(a.gradual)...[SizedBox(height:56,child:playing?const Center(child:PendingMark()):choices(GradualPattern.values,a.pattern,(v)=>a.pattern=v,(v)=>switch(v){GradualPattern.ramp=>l.pilotRamp,GradualPattern.steady=>l.pilotSteady,GradualPattern.wave=>l.pilotWave})),feelRow()],
           section(l.pilotWhenAlarm),
           toggle(l.pilotBandBuzz,a.band,(v){var added=false;setState((){a.band=v;if(!v&&!a.phoneSound&&!a.phoneVibration&&!a.phoneFlash){a.phoneSound=true;a.soundDelayMinutes=0;added=true;}});if(added)_showNewTiming('sound');},sub:a.band?null:l.pilotBackupLimit,icon:LucideIcons.watch,color:C.blue),
           if(a.band)...[choices(['default','custom'],a.customPatternId==null?'default':'custom',(v){if(v=='default'){a.customPatternId=null;}else{_pickPattern();}},(v)=>v=='default'?l.pilotBandsAlarm:l.pilotMyPattern),feelRow(),Text(l.pilotCustomTradeoff,style:F.cap.copyWith(color:p.ink2))],

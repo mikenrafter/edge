@@ -11,6 +11,7 @@ import '../../state/clock_format.dart';
 import '../../wake/wake_outcome.dart';
 import '../../wake/wake_timeline.dart';
 import '../theme.dart';
+import '../charts.dart' show Ring;
 
 class SleepSummaryInterval {
   const SleepSummaryInterval({required this.id, required this.start,
@@ -267,9 +268,9 @@ class SleepSummary extends StatelessWidget {
           label: percent == null ? l.supplementUnavailable(l.wearableRowEfficiency) : l.wearableRowEfficiency,
           value: percent == null ? null : '$percent%',
           child: ExcludeSemantics(child: Stack(alignment: Alignment.center, children: [
-          SizedBox.expand(child: CircularProgressIndicator(
-            value: percent == null ? 0 : eff!.clamp(0, 1).toDouble(),
-            strokeWidth: 7, backgroundColor: p.line, color: p.on(C.indigo))),
+          SizedBox.expand(child: CustomPaint(painter: Ring(
+            percent == null ? 0 : eff!.clamp(0, 1).toDouble(),
+            p.on(C.indigo), p.line, stroke:7, solid:true))),
           Column(mainAxisSize: MainAxisSize.min, children: [
             Text(percent == null ? '—' : '$percent%',
               key: const ValueKey('sleep-efficiency-value'),

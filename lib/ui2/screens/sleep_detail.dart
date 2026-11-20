@@ -1600,6 +1600,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   Widget _pilotNightCard(BuildContext c, SleepData d) {
     final l = AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));
     final n = d.night;
+    final pending = _loading && _d == null;
     final source = n['sleep_source'];
     final mine = source == 'manual' || source == 'confirmed';
     DateTime? at(Object? ts) => ts is num
@@ -1616,6 +1617,13 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             SleepSummaryInterval(id: 'nap:$i', start: start, end: end, nap: true,
               source: nap['source'] as String?, durationMin: nap['duration_min'] as num?),
     ];
+    // Reserve the common two-boundary timeline before a night is known.
+    // The enclosing PendingContent replaces its paint and excludes semantics.
+    if (pending && intervals.isEmpty) {
+      final date = DateTime.parse(_day ?? d.day ?? todayLabel());
+      intervals.add(SleepSummaryInterval(id:'pending', start:date,
+        end:DateTime(date.year,date.month,date.day,8)));
+    }
     return SleepSummary(
       key: const ValueKey('sleep-summary'),
       asleepMin: n['duration_min'] as num?,
@@ -1628,7 +1636,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           : mine ? l.sleepDetailWindowMine
           : source == 'auto_fallback' ? l.sleepDetailWindowFallback
           : source == 'vendor_staged' ? l.sleepDetailStagedByRing
-          : start == null ? l.sleepDetailNoNightBody : l.sleepDetailWindowAuto,
+          : start == null && !pending ? l.sleepDetailNoNightBody : l.sleepDetailWindowAuto,
       sourceDetail: source == 'auto_fallback' ? l.sleepDetailWindowFallbackBody
           : mine && d.solMin != null ? l.sleepDetailWindowSol(_solBand(c, d.solMin!))
           : mine && !d.hasNight && _storedRanges(n) != null ? l.sleepDetailTimesSavedRanges : null,

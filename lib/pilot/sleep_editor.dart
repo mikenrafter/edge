@@ -1,4 +1,5 @@
 import 'recorded_stages.dart';
+import '../ui2/skeleton/async_section.dart';
 import 'pilot_theme.dart';
 // Owner: editor State owns detached interval drafts and undo; the canonical
 // SleepBlockStore owns persistence through AppState.saveSleepEditor.
@@ -52,6 +53,7 @@ class _SleepEditorState extends State<PilotSleepEditor>{
   late String day;SleepEditorRead? read;DayGraph graph=const DayGraph();
   List<SleepStage?> stages=[];List<ChartAnnotation> wakeEvents=[];
   List<SleepIntervalDraft> blocks=[];List<SleepIntervalDraft>? undo;
+  late final TimelineController _pendingController=TimelineController(homeStartSec:DateTime.parse(day).subtract(const Duration(hours:12)).millisecondsSinceEpoch~/1000,homeEndSec:DateTime.parse(day).add(const Duration(hours:12)).millisecondsSinceEpoch~/1000);
   TimelineController? c;final interaction=TimelineInteraction(retention:PilotScrub.temporary);
   String? selected,error;bool endSelected=true,loading=true,saving=false,adding=false;
   bool _allowPop=false;
@@ -91,7 +93,7 @@ class _SleepEditorState extends State<PilotSleepEditor>{
       if(!mounted)return;setState((){_bind(r,DayGraph(hr:hrs,movement:motion,rest:rest,dayStart:lo),stage);wakeEvents=events;dream=primary?.wake.dream?.answer==DreamAnswer.dream?true:primary?.wake.dream?.answer==DreamAnswer.normal?false:null;originalDream=dream;dreamEpoch=primary?.wake.events.where((e)=>e.wakeEpochSec!=null).firstOrNull?.wakeEpochSec;});
     }catch(e){if(mounted)setState((){error=e.toString();loading=false;});}
   }
-  @override void dispose(){c?.dispose();interaction.dispose();super.dispose();}
+  @override void dispose(){c?.dispose();interaction.dispose();_pendingController.dispose();super.dispose();}
   void _checkpoint(){undo=blocks.map((b)=>b.copy()).toList();}
   void _move(String id,double at){
     final b=block;if(b==null||b.removed)return;
@@ -162,11 +164,11 @@ class _SleepEditorState extends State<PilotSleepEditor>{
   }
   Future<void> _go(int days)async{final d=DateTime.parse(day);setState((){day=dayLabelOf(DateTime(d.year,d.month,d.day+days));loading=true;error=null;});await _load();}
   @override Widget build(BuildContext context){
-    final p=P.of(context),b=block,controller=c;
+    final p=P.of(context),b=loading?SleepIntervalDraft(id:'pending',start:_pendingController.home.start.round(),end:_pendingController.home.end.round()):block,controller=c??_pendingController;
     return PilotTheme(child:Builder(builder:(context)=>PopScope(canPop:_allowPop||(!dirty&&!saving),onPopInvokedWithResult:(didPop,result)async{
       if(didPop||saving)return;final leave=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(l.pilotCancel),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(l.pilotCancel)),TextButton(onPressed:()=>Navigator.pop(c,true),child:Text(l.dayReviewDiscard))]));
       if(leave==true&&mounted){setState(()=>_allowPop=true);await WidgetsBinding.instance.endOfFrame;if(mounted)Navigator.pop(this.context);}
-    },child:Scaffold(backgroundColor:p.bg,appBar:PreferredSize(preferredSize:const Size.fromHeight(52),child:SafeArea(bottom:false,child:NavBar(l.pilotSleepEditor))),body:SafeArea(child:loading?const Center(child:CircularProgressIndicator()):controller==null?Center(child:Text(error??l.pilotSourceFailed)):Column(children:[
+    },child:Scaffold(backgroundColor:p.bg,appBar:PreferredSize(preferredSize:const Size.fromHeight(52),child:SafeArea(bottom:false,child:NavBar(l.pilotSleepEditor))),body:SafeArea(child:c==null&&!loading?Center(child:Text(error??l.pilotSourceFailed)):PendingContent(pending:loading,child:Column(children:[
       Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:Column(children:[
         PilotDayRow(day:prettyDay(day,l),dirty:dirty,busy:saving,onPrevious:()=>_go(-1),onNext:()=>_go(1),onCancel:(){setState(()=>_bind(read!,graph,stages));},onSave:_save),
         if(adding)SizedBox(height:24,child:Text(addedStart==null?l.pilotTapStart:l.pilotTapEnd)),
@@ -174,9 +176,9 @@ class _SleepEditorState extends State<PilotSleepEditor>{
           handles:b==null||b.removed?[]:[PilotHandle('start',b.start.toDouble(),p.on(C.blue),active:!endSelected),PilotHandle('end',b.end.toDouble(),p.on(C.blue),active:endSelected)],onHandle:_move,
           annotations:[...wakeEvents,for(final row in blocks)ChartAnnotation(id:row.id,kind:row.entry?.kind==SleepBlockKind.main?AnnotationKind.mainSleep:AnnotationKind.nap,at:row.start.toDouble(),until:row.end.toDouble(),label:row.entry?.kind==SleepBlockKind.main?l.tabSleep:l.dayTimelineNap)],
           onSelect:(id){if(id=='start'||id=='end'){setState(()=>endSelected=id=='end');return;}final match=blocks.where((b)=>b.id==id).firstOrNull;if(match!=null)_select(match);}),
-        Builder(builder:(context){final ordered=[...blocks]..sort((a,b)=>a.start.compareTo(b.start));
+        Builder(builder:(context){final ordered=loading?[b!]:([...blocks]..sort((a,b)=>a.start.compareTo(b.start)));
           // Mock-up v11 .tabs, one per block in time order; a removed block is struck through.
-          return Padding(padding:const EdgeInsets.only(top:6),child:SubTabs([for(final row in ordered)_label(row)],math.max(0,ordered.indexWhere((r)=>r.id==selected)),(i)=>_select(ordered[i]),color:C.blue,
+          return Padding(padding:const EdgeInsets.only(top:6),child:SubTabs(loading?[l.tabSleep]:[for(final row in ordered)_label(row)],math.max(0,ordered.indexWhere((r)=>r.id==selected)),(i)=>_select(ordered[i]),color:C.blue,
             struck:{for(var i=0;i<ordered.length;i++)if(ordered[i].removed)i}));}),
       ])),
       Expanded(child:ListView(padding:const EdgeInsets.fromLTRB(16,8,16,32),children:[
@@ -209,7 +211,7 @@ class _SleepEditorState extends State<PilotSleepEditor>{
         ],
         if(undo!=null)Row(children:[Expanded(child:Text(l.pilotUndo)),TextButton(onPressed:()=>setState((){blocks=undo!;undo=null;selected=blocks.firstOrNull?.id;}),child:Text(l.pilotUndo))]),
       ])),
-    ]))))));
+    ])))))));
   }
   Widget _key(Color color,String label)=>Row(mainAxisSize:MainAxisSize.min,children:[Container(width:14,height:3,decoration:BoxDecoration(color:color,borderRadius:BorderRadius.circular(2))),const SizedBox(width:5),Text(label,style:F.cap.copyWith(color:P.of(context).ink3,fontSize:11))]);
   String? _asleep(SleepIntervalDraft b){
