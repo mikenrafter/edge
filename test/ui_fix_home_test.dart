@@ -47,7 +47,8 @@ HomeData _rings({num recovery = 58, num sleep = 450, num need = 480}) => HomeDat
       strain: _m(5),
     );
 
-Future<void> _pumpRings(WidgetTester t, HomeData d, {RingHelp? help}) async {
+Future<void> _pumpRings(WidgetTester t, HomeData d,
+    {RingHelp? help, bool pending = false}) async {
   t.view.devicePixelRatio = 1;
   t.view.physicalSize = const Size(390, 3000);
   addTearDown(t.view.reset);
@@ -55,9 +56,11 @@ Future<void> _pumpRings(WidgetTester t, HomeData d, {RingHelp? help}) async {
     theme: buildTheme(Brightness.light),
     home: Scaffold(
         body: SingleChildScrollView(
-            child: RingTrio(d: d, now: DateTime(2026, 10, 8, 15), help: help))),
+            child: RingTrio(d: d, now: DateTime(2026, 10, 8, 15), help: help, pending: pending))),
   ));
   await t.pump();
+  // The slot's rows animate in (the card grows); measure after it has settled.
+  await t.pump(const Duration(seconds: 1));
 }
 
 /// The slot's rows, whatever kind: why, gap note, status, update, older.
@@ -213,8 +216,10 @@ void main() {
           matching: find.text('Recovery is still being worked out')), findsOneWidget);
       expect(find.byKey(const ValueKey('home-note-icon:status')), findsOneWidget);
       // A busy status keeps the row and swaps the icon for the spinner.
+      // The spinner shows while the screen is pending (home_screen.dart, `busy &&
+      // pending && cache == null`).
       await _pumpRings(t, const HomeData(),
-          help: const RingHelp.busy('Reading your night'));
+          help: const RingHelp.busy('Reading your night'), pending: true);
       expect(find.descendant(of: find.byKey(const ValueKey('home-note:status')),
           matching: find.byType(PendingMark)), findsOneWidget); // fa1e52e04, d3c53c24c
     });

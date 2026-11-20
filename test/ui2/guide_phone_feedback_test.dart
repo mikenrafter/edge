@@ -178,7 +178,7 @@ void main() {
     final key = GlobalKey();
     await _start(t, 'fix-sleep-times', key);
     final o = _overlay(t);
-    final own = t.getRect(find.ancestor(of: find.text('Set the times myself'), matching: find.byType(GuideBox)).last);
+    final own = t.getRect(find.ancestor(of: find.text('I was asleep'), matching: find.byType(GuideBox)).last);
     expect(look(o, own), 'lit');
     for (final title in ['Recalculate this night', 'Not sleep', 'Naps']) {
       expect(_over(o, t.getRect(find.text(title).first).deflate(1)), isEmpty, reason: '$title is in the target\'s card');

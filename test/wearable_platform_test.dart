@@ -41,6 +41,8 @@ const String _strap = 'hrs-0a1b2c3d';
 /// 120 bpm with two beats (488 ms, 500 ms): a standard 0x2A37 notification.
 const List<int> _hrWithTwoRr = <int>[0x16, 120, 0xF4, 0x01, 0x00, 0x02];
 
+const _m404 = 'Known issue for this release (owner m404, fix designed later, workq 286-292): a re-derive of a no-input night keeps a switched-off wearable vendor_staged night (SleepEditStore.reuseMeasuredNightIfCurrent, 51588d2bd); fixing it changes stored data.';
+
 void main() {
   test('every registry entry carries its category', () {
     expect({for (final e in kBandRegistry) e.id: e.category}, {
@@ -444,9 +446,8 @@ void main() {
     });
 
     test('turning the watch off through the app\'s re-derive leaves nothing '
-        "of it: its own days stay empty, the band's lose its night", () async {
-      markTestSkipped('OWNER DECISION PENDING (hardening report blocker 1): a re-derive of a no-input night keeps a switched-off wearable's vendor_staged night (SleepEditStore.reuseMeasuredNightIfCurrent, 51588d2bd). Fixing it changes stored data, so it is not changed here.');
-      return;
+        "of it: its own days stay empty, the band's lose its night",
+        skip: _m404, () async {
       onWearableDaysChanged = (days) =>
           DerivationEngine().runDays(_profile, days, force: true);
       Future<String?> sleepSource(String day) async =>

@@ -30,6 +30,8 @@ const List<String> _families = [
   'oura',
 ];
 
+const _m404 = 'Known issue for this release (owner m404, fix designed later, workq 286-292): a re-derive of a no-input night keeps a switched-off wearable vendor_staged night (SleepEditStore.reuseMeasuredNightIfCurrent, 51588d2bd); fixing it changes stored data.';
+
 void main() {
   final handed = <Set<String>>[];
 
@@ -75,9 +77,8 @@ void main() {
   }
 
   for (final f in _families) {
-    test('$f: an HR-less staged night goes when the flag goes off', () async {
-      markTestSkipped('OWNER DECISION PENDING (hardening report blocker 1): a re-derive of a no-input night keeps a switched-off wearable's vendor_staged night (SleepEditStore.reuseMeasuredNightIfCurrent, 51588d2bd). Fixing it changes stored data, so it is not changed here.');
-      return;
+    test('$f: an HR-less staged night goes when the flag goes off',
+        skip: _m404, () async {
       final id = '$f-synthetic';
       await useDevice(id, f, true);
       await DerivationEngine().runDays(_profile, {_day}, force: true);

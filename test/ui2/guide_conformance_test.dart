@@ -75,6 +75,9 @@ Widget _tab(Widget w) => Scaffold(body: w);
 
 /// The user has tapped Discard on the one pending row: a decision is staged, the Save bar shows.
 Future<void> _stageDiscard(WidgetTester t, AppLocalizations l) async {
+  // The review is a lazy list now (apk2 review list): bring the row on screen first.
+  await t.ensureVisible(find.text(l.dayReviewDiscard));
+  await settleLiveGuide(t, frames: 5);
   await t.tap(find.text(l.dayReviewDiscard));
   await settleLiveGuide(t, frames: 10);
 }
@@ -232,9 +235,15 @@ void main() {
     final target = steps[1].target.resolve(root, l);
     expect(target, isA<TargetFound>(), reason: 'two Discard buttons, one target');
     final discards = find.text(l.dayReviewDiscard);
-    expect((target as TargetFound).rect.center.dy, closeTo(t.getCenter(discards.first).dy, 1), reason: 'the first (topmost) row');
+    // The target is the first row's whole unit now (guide treatments follow unit
+    // ownership, ea4689c5c), so it holds the first Discard and not the second.
+    final rect = (target as TargetFound).rect;
+    expect(rect.contains(t.getCenter(discards.first)), isTrue, reason: 'the first (topmost) row');
+    expect(rect.contains(t.getCenter(discards.last)), isFalse, reason: 'not the second row');
     expect(t.getCenter(discards.first).dy, lessThan(t.getCenter(discards.last).dy));
     expect(steps[2].anchor.resolve(root, l), isNot(isA<TargetFound>()), reason: 'Save is not there before anything is staged');
+    await t.ensureVisible(find.text(l.dayReviewDiscard).first);
+    await settleLiveGuide(t, frames: 5);
     await t.tap(find.text(l.dayReviewDiscard).first);
     await settleLiveGuide(t, frames: 10);
     expect(steps[2].anchor.resolve(root, l), isA<TargetFound>(), reason: 'staging a discard shows Save');

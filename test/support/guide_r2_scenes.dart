@@ -154,7 +154,9 @@ Future<R2Mounted> pumpR2Scene(WidgetTester t, R2Scene scene, {Size size = r2Size
     final discard = discardStep.target;
     final resolved = await pumpGuideSearch(t, revealTarget(page, discard, r2Locale));
     expect(resolved, isA<TargetFound>(), reason: 'fixture: pending row can be revealed');
-    await t.tapAt((resolved as TargetFound).rect.center);
+    // The target is the first row's whole unit now (ea4689c5c), so its centre is
+    // not the button: tap the first Discard itself, now that it is revealed.
+    await t.tap(find.text(r2Locale.dayReviewDiscard).first);
     await settleLiveGuide(t);
   }
   final run = GuideRun(guide: guide, variant: (guide.variantFor(null) as GuideVariantFound).variant);

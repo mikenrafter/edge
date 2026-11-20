@@ -69,6 +69,9 @@ void main() {
     expect(find.textContaining('bzz-bzz'), findsWidgets,
         reason: 'one command is one bzz-bzz: that is what the wearer counts');
     expect(sent, hasLength(3));
+    // The panel is a scroll view now: bring the answer buttons on screen.
+    await t.ensureVisible(find.byKey(const ValueKey('probe-felt-2')));
+    await t.pump();
     await t.tap(find.byKey(const ValueKey('probe-felt-2')));
     await t.pump();
     // The answer is written after the trial's rest (2000 ms, the probe's pacing).

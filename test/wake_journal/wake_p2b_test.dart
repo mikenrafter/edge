@@ -83,9 +83,12 @@ AnnotationSet _sleepAxis(WidgetTester t) => t
     )
     .set;
 
+// The night plot with the wake-zoom axis is the 'Stages' frame in card:night
+// (sleep_detail.dart:2007); 'Through the night' is the signal-lane card, which
+// the fixture has no series for.
 ChartFrame _sleepFrame(WidgetTester t) => t
     .widgetList<ChartFrame>(find.byType(ChartFrame))
-    .firstWhere((frame) => frame.title == 'Through the night');
+    .firstWhere((frame) => frame.key == const ValueKey('sleep-night-plot'));
 
 void main() {
   setUpAll(() async {
