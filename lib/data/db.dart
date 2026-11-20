@@ -7017,11 +7017,22 @@ class LocalDb {
   // right behind the claim of the job it follows); `id` is the primary key.
   static int _deriveJobSeq = 0;
 
+  /// The novelty lookup's SQL for [n] seconds, and the context it builds.
+  /// Exposed so a test can plan the query on a real schema.
+  @visibleForTesting
+  static String pulseArrivalSql(int n) => _ldbPrivPulseArrivalSql(n);
+
+  @visibleForTesting
+  static Future<ProcessingContext> pulseArrivalContext(DatabaseExecutor txn,
+          List<RawRecord> raws, List<Sample?> samples) =>
+      _ldbPrivPulseArrivalContext(txn, raws, samples);
+
   static Future<void> enqueueDeriveJob({
     required String type,
     required String reason,
     ProcessingContext processingContext = ProcessingContext.reanalysis,
-  }) => _ldbEnqueueDeriveJob(type: type, reason: reason, processingContext: processingContext);
+    DatabaseExecutor? txn,
+  }) => _ldbEnqueueDeriveJob(type: type, reason: reason, processingContext: processingContext, txn: txn);
 
   static Future<Map<String, dynamic>?> takeNextComputeJob() => _ldbTakeNextComputeJob();
 
