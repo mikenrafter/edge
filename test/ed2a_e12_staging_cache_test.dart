@@ -225,9 +225,23 @@ void main() {
     final before = e.debugStagingComputations;
     expect(before, greaterThan(0));
     await LocalDb.setCursor('baseline_sig', 'force-ed2a-rescan');
+    // The baseline really moved for this day: the history its derive read is
+    // not today's (a rescan leaves days whose history is unchanged alone).
+    await LocalDb.setCursor('inputs_before:v$kAlgoVersion:$edDay', 'moved');
     expect(await e.rescanRecent(edProfile), greaterThan(0));
     expect(e.debugStagingComputations, before,
         reason: 'baseline recompute must not rerun the unchanged staging worker');
+  });
+
+  test('a rescan leaves a day whose history is unchanged alone', () async {
+    final e = DerivationEngine();
+    expect(await e.runDays(edProfile, {edDay}), 1);
+    final before = e.debugStagingComputations;
+    await LocalDb.setCursor('baseline_sig', 'force-ed2a-rescan');
+    final days = <String>[];
+    expect(await e.rescanRecent(edProfile, onScopeDays: days.addAll), 0);
+    expect(days, isEmpty, reason: 'nothing the day reads moved: no scope, no header');
+    expect(e.debugStagingComputations, before);
   });
 
   test('a nonfolding entry cannot satisfy a later mayFold request', () async {
