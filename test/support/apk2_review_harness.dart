@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/compute/derivation_engine.dart' show kAlgoVersion;
 import 'package:openstrap_edge/data/activity_store.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
@@ -142,13 +143,6 @@ class Apk2Repository extends LocalRepositoryImpl {
   Completer<Map<String, dynamic>>? timelineGate;
   /// Extra `getDayTimeline` keys for [apk2Day] (stored `naps`, `sessions`).
   Map<String, dynamic> extraTimeline = {};
-  /// When the day's result was "calculated" (epoch ms), as the timeline load
-  /// reads it. Null: no marker.
-  int? computedAtMs;
-  @override
-  Future<Map<String, dynamic>> getDayHrv(String date) async =>
-      {'computed_at': computedAtMs};
-
   @override
   Future<List<ActivitySuggestion>> pendingActivities() async {
     if (queueGate != null) return queueGate!.future;
@@ -271,6 +265,17 @@ class Apk2Rig {
     });
     return rig;
   }
+
+  /// Stores a result for [apk2Day] "calculated" at [ms] (epoch ms). The timeline
+  /// load reads it from `day_result.computed_at` (LocalDb.dayComputedAtMs, since
+  /// 044a275bb), not from the repository.
+  Future<void> setComputedAt(WidgetTester t, int ms) => t.runAsync(() async {
+        await LocalDb.putDayResult(
+            dayId: apk2Day, algoVersion: kAlgoVersion,
+            payloadJson: '{}', windowJson: '{}');
+        await db.update('day_result', {'computed_at': ms},
+            where: 'day_id = ?', whereArgs: [apk2Day]);
+      });
 
   Future<void> mount(WidgetTester t, {Widget? entry, bool marked = false,
       double scale = 1, MomentReviewService? service, Widget? screen,

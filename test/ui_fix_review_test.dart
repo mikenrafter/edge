@@ -17,6 +17,7 @@ import 'package:openstrap_edge/data/moment_label.dart';
 import 'package:openstrap_edge/gestures/moment_follow_ups.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
 import 'package:openstrap_edge/ui2/activity/catalogue.dart' show activityByName;
+import 'package:openstrap_edge/ui2/screens/day_review.dart' show DayReviewEntry;
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'package:openstrap_edge/ui2/screens/log_workout.dart' show LogWorkout;
 import 'package:openstrap_edge/ui2/screens/naps.dart' show NapsScreen;
@@ -251,11 +252,19 @@ void main() {
       expect(iconAt(apk2At(16)), LucideIcons.bookmark, reason: 'other');
     });
 
-    testWidgets('the title says it is a review and how many wait', (t) async {
+    testWidgets('the title says it is a review (entry from Home); the plain day stays Breakdown', (t) async {
       final r = await Apk2Rig.create(t);
       await r.mount(t);
-      // The title is "Review activities" alone now (day_timeline.dart, review entry);
-      // the count is no longer in it.
+      // Only the review entry (reviewEntry: true, day_timeline.dart:1710) is titled
+      // "Review activities", and without a count; the day opened any other way is
+      // the Breakdown even with items waiting.
+      expect(find.text('Breakdown of your day'), findsOneWidget);
+      expect(find.text('Review activities'), findsNothing);
+    });
+
+    testWidgets('the review entry is titled Review activities, without a count', (t) async {
+      final r = await Apk2Rig.create(t);
+      await r.mount(t, screen: const DayReviewEntry());
       expect(find.text('Review activities'), findsOneWidget);
       expect(find.text('Breakdown of your day'), findsNothing);
     });
@@ -311,10 +320,11 @@ void main() {
     const a = 'session:run-a', b = 'session:run-b';
     // The revealed row is tinted, the others are not.
     bool tinted(String id) => t.widget<Container>(apk2Row(id)).color != null;
-    // Two workouts at one minute: two chart annotations, ids workout:T and
-    // workout:T#1, made from the first and the second row.
-    final first = find.byKey(ValueKey('annotation-icon:workout:$at'));
-    final second = find.byKey(ValueKey('annotation-icon:workout:$at#1'));
+    // Two workouts at one minute: two chart annotations, one per session. Their
+    // ids follow the row ids now (annotation-icon:session:<id>), not workout:T and
+    // workout:T#1 as the first version of this test read them.
+    final first = find.byKey(const ValueKey('annotation-icon:$a'));
+    final second = find.byKey(const ValueKey('annotation-icon:$b'));
     for (final (icon, want, other) in [(first, a, b), (second, b, a)]) {
       await t.ensureVisible(icon);
       await t.pump();

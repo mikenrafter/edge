@@ -1,11 +1,14 @@
-import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/wake/wake_outcome.dart';
 import 'package:openstrap_edge/wake/wake_timeline.dart';
+import '../support/pin_tz.dart';
 import 'fixtures.dart';
 
 void main() {
-  test('P2 tests run in UTC', () => expect(Platform.environment['TZ'], 'UTC'));
+  // The suite's zone is pinned in the file (pin_tz.dart, as p23/p25 goldens do),
+  // so the host's TZ no longer matters.
+  pinProcessTimeZone();
+  test('P2 tests run in UTC', () => expect(DateTime.now().timeZoneOffset, Duration.zero));
 
   test(
     'one epoch has every event in clock order, first Natural and Gradual only',

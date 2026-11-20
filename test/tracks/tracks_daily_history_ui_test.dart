@@ -235,6 +235,10 @@ void main() {
     await openEditor(t, height: 1400);
     // Fold the (default open) kinetics section so the periods fill the view.
     await _expand(t, 'Timing and kinetics', toggle: true);
+    // Lazy list: the periods are built only once scrolled to.
+    await _expand(t, 'Setup history');
+    await t.scrollUntilVisible(find.text('Daily since Mar 1 · ~08:00 · 50 mg'), 300,
+        scrollable: find.byType(Scrollable).first);
     expect(find.text('Daily since Mar 1 · ~08:00 · 50 mg'), findsOneWidget);
     expect(t.takeException(), isNull);
     await expectLater(

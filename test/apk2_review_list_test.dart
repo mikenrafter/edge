@@ -318,7 +318,7 @@ void main() {
       final r = await Apk2Rig.create(t);
       // Derivation deferred: the stored bundle is the OLD one, with a nap that
       // happens to overlap the edited window.
-      r.repo.computedAtMs = 1;
+      await r.setComputedAt(t, 1);
       r.repo.extraTimeline = {'naps': [
         {'start': apk2At(11, 20), 'end': apk2At(11, 40), 'duration_min': 20},
       ]};
@@ -335,7 +335,7 @@ void main() {
         '(absorbed into the main sleep)', (t) async {
       final semantics = t.ensureSemantics();
       final r = await Apk2Rig.create(t);
-      r.repo.computedAtMs = future;
+      await r.setComputedAt(t, future);
       await r.mount(t);
       await saveThenReloadViaSecondSave(t, r);
       expect(apk2Row(apk2NapA), findsNothing);
@@ -362,7 +362,7 @@ void main() {
               t.getTopLeft(apk2Row(tie)).dy ? apk2NapA : tie;
       final second = first == apk2NapA ? tie : apk2NapA;
       // The kept one comes back as a stored row at the very same time.
-      r.repo.computedAtMs = future;
+      await r.setComputedAt(t, future);
       r.repo.extraTimeline = first == apk2NapA
           ? {'naps': [{'start': apk2At(11), 'end': apk2At(11, 25), 'duration_min': 25}]}
           : {'sessions': [{'id': 'apk2-stored', 'start_ts': apk2At(11),

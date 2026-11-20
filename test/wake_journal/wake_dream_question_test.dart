@@ -142,7 +142,6 @@ void main() {
     'the real alarm event exposes an I\'m up question even with Natural off',
     (t) async {
       final app = AppState.forTesting(engine: FakeAlarmEngine());
-      addTearDown(app.dispose);
       app.debugWakeClock = () => atMinute(1);
       app.debugHandleAlarmEvent(57, ts: epoch);
       await t.pumpWidget(
@@ -153,6 +152,11 @@ void main() {
       );
       await tapImUp(t);
       await drain(t);
+      // The app's own timer must be gone before the binding checks for pending
+      // timers (the invariant runs before tearDown callbacks).
+      await t.pumpWidget(const SizedBox());
+      await t.pump(const Duration(minutes: 10));
+      app.dispose();
     },
   );
 

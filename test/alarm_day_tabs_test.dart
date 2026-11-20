@@ -230,9 +230,11 @@ void main() {
           findsOneWidget);
       expect(_in(_timeline, find.text('Band alarm')), findsOneWidget);
       expect(_in(_timeline, find.text('Gradual Wake buzzes')), findsOneWidget);
-      for (final row in ['Armed state', 'Next alarm', 'Last wake decision']) {
+      for (final row in ['Armed state', 'Next alarm']) {
         expect(_in(_timeline, find.text(row)), findsOneWidget, reason: row);
       }
+      // A nested accordion of that title holds the row (d3c53c24c, alarm.dart:1167).
+      expect(_in(_timeline, find.text('Last wake decision')), findsNWidgets(2));
       expect(_in(_timeline, find.text('Confirmed')), findsWidgets);
       expect(_in(_timeline, find.text('Tue 07:00')), findsWidgets);
       expect(_in(_timeline, find.textContaining('armed and confirmed')),

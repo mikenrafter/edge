@@ -1629,7 +1629,8 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                   margin: const EdgeInsets.symmetric(vertical: S.x1),
                   padding: const EdgeInsets.symmetric(horizontal: S.x3),
                   decoration: BoxDecoration(color: p.card2,
-                      border:review?.needsReview(row.id)==true ? Border.all(color:p.on(C.blue)) : null,
+                      // Always the same 1 px frame (transparent once reviewed), so a Save moves no row.
+                      border: Border.all(color: review?.needsReview(row.id)==true ? p.on(C.blue) : const Color(0x00000000)),
                       borderRadius: BorderRadius.circular(R.md)),
                   child: MomentRow(row.moment,
                       below: DayReviewActions(controller: review, id: row.id,
