@@ -422,4 +422,38 @@ void main() {
       expect(kinds, hasLength(2));
     });
   });
+
+  group('a hold that lands while the claimed job is being published', () {
+    // The log showed a light pass starting 46 ms after "capture active -
+    // holding". `_drain` re-checked the hold after claiming the job but then
+    // awaited the snapshot refresh before running. The refresh ends with
+    // onChanged, so a hold raised there reproduces the window exactly.
+    test('hands the job back instead of running it', () async {
+      final kinds = <DeriveJobKind>[];
+      var raised = false;
+      late DeriveScheduler sched;
+      sched = made = s = DeriveScheduler(
+        run: ({required DeriveJobKind kind}) async {
+          kinds.add(kind);
+          return _ok;
+        },
+        log: (_) {},
+        onChanged: () {
+          if (!raised && sched.running) {
+            raised = true;
+            sched.setWorkoutActive(true);
+          }
+        },
+        lightSettle: _settle,
+        heavySettle: _settle,
+      );
+      sched.markStoredData();
+      await _until(() => raised);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(kinds, isEmpty, reason: 'a held scheduler starts nothing');
+      expect(sched.running, isFalse);
+      final row = (await _job())!;
+      expect(row['state'], 'queued');
+    });
+  });
 }

@@ -2678,10 +2678,17 @@ class DerivationEngine {
     final sw = Stopwatch()..start();
     try {
       _incompleteFingerprints.remove(day.date);
+      // Taken BEFORE the derive: a value that lands in the history while the
+      // day computes then leaves a stale hash (one wasted re-derive), never a
+      // fresh one the day did not read.
+      final inputs = history.inputsBefore(day.date);
       final committed = await _deriveReviewedDay(day, profile, dataNowSec, history,
           calculationMode: calculationMode,
           reason: reason,
           onStaleTonight: onStaleTonight);
+      if (committed == DayDerive.committed) {
+        await _recordInputsBefore(day.date, inputs);
+      }
       // During an import, today's and yesterday's read models are published
       // right after they commit (no-op for any other day or time).
       if (committed == DayDerive.committed) {
@@ -4362,7 +4369,6 @@ class DerivationEngine {
       perf.startPass();
       perfStarted = true;
       _calcStage('Day calculations');
-      onScopeDays?.call(todoDays.reversed.toList());
       final profileSig = _profileSignature(profile);
       final fps = await LocalDb.decodedDayFingerprints({
         for (final d in todoDays) ...[d, _adjacentDayIds(d).first],
@@ -4388,6 +4394,28 @@ class DerivationEngine {
             if (changed.any((c) => c.compareTo(day) < 0)) day];
         }
       }
+
+      // Leave out the days whose history is the one their last derive read
+      // [owner m385]: a sync that moved only today's values re-derives nothing
+      // older, and the scope reported below is what actually runs.
+      final storedOwn = await _storedDerivedFingerprints();
+      final storedInputs = <String, String?>{
+        for (final d in rescanDays)
+          d: await LocalDb.getCursor(_inputsBeforeCursor(d)),
+      };
+      final before = rescanDays.length;
+      rescanDays = rescanScope(
+        days: rescanDays,
+        inputsNow: history.inputsBefore,
+        inputsStored: (d) => storedInputs[d],
+        ownNow: (d) => dayFp[d],
+        ownStored: (d) => storedOwn[d],
+      );
+      if (rescanDays.length < before) {
+        _log('rescan: ${before - rescanDays.length} day(s) read the same '
+            'history as their last derive — left alone');
+      }
+      onScopeDays?.call(rescanDays.reversed.toList());
 
       // Same bounded worker-pool pattern as run()/runDays — up to
       // _rescanWindowDays (21) days is exactly the kind of sweep that used
@@ -4458,6 +4486,49 @@ class DerivationEngine {
       _running = false;
     }
   }
+
+  /// The history a committed derive of [day] read, hashed
+  /// ([_BaselineHistoryCache.inputsBefore]): the one thing [rescanRecent]
+  /// refreshes a day for. Keyed by [kAlgoVersion] like the day rows.
+  static String _inputsBeforeCursor(String day) =>
+      'inputs_before:v$kAlgoVersion:$day';
+
+  Future<void> _recordInputsBefore(String day, String inputs) async {
+    try {
+      await LocalDb.setCursor(_inputsBeforeCursor(day), inputs);
+    } catch (e) {
+      _log('derive $day: could not record the inputs it read: $e');
+    }
+  }
+
+  /// The days of [days] a baseline rescan must re-derive: those with no
+  /// recorded history, a history that moved since their last committed derive,
+  /// or an own-input fingerprint that differs from the stored one. A day whose
+  /// stored inputs-before equal today's (and whose own inputs are unchanged)
+  /// would compute the same baseline-dependent scalars, so it is left alone and
+  /// never reaches the pass, the header or the day labels.
+  @visibleForTesting
+  static List<String> rescanScope({
+    required Iterable<String> days,
+    required String Function(String day) inputsNow,
+    required String? Function(String day) inputsStored,
+    required String? Function(String day) ownNow,
+    required String? Function(String day) ownStored,
+  }) => [
+        for (final d in days)
+          if (inputsStored(d) == null ||
+              inputsStored(d) != inputsNow(d) ||
+              ownNow(d) == null ||
+              ownNow(d) != ownStored(d))
+            d,
+      ];
+
+  /// Test seam: the hash [rescanScope] compares, from plain dated series
+  /// (`key -> [(date, value)]`, ascending).
+  @visibleForTesting
+  static String debugInputsBefore(
+      Map<String, List<({String date, double value})>> series, String day) =>
+      _BaselineHistoryCache(series).inputsBefore(day);
 
   /// The days [rescanRecent] re-derives: every day with substrate inside the
   /// rescan window, minus any whose derive window ([_targetDayWindow], from the

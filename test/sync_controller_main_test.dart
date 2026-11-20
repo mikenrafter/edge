@@ -640,6 +640,24 @@ void main() {
       ]);
     }));
 
+    // CLAIM(one-heavy-per-sync) [pilot-7 churn]: a Sync now that joins the
+    // session's own backlog burst must not add a second heavy request.
+    test('syncNow joining the session burst leaves the heavy request to it',
+        _rigCase((r, timers) async {
+      r.engine.link = true;
+      final gate = r.engine.syncGate = Completer<void>();
+      await r.c.openSession();
+      await until(() => r.engine.count('runSync') == 1);
+      final manual = r.c.syncNow();
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      r.engine.syncGate = null;
+      gate.complete();
+      await manual;
+      await until(() => r.trace.contains('sched.heavy'));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(r.trace.where((e) => e == 'sched.heavy'), hasLength(1));
+    }));
+
     test('manual sync starts phone steps and BLE together, joins repeated taps, '
         'and finalizes after the phone read', _rigCase((r, timers) async {
       r.engine.link = true;

@@ -442,6 +442,17 @@ class DeriveScheduler {
     _heavyStartSeq = kind == DeriveJobKind.heavy ? _storedSeq : null;
     final importPass = kind == DeriveJobKind.heavy && _importPassOwed;
     await _refreshSnapshot();
+    // A SECOND RE-CHECK, after the snapshot await: a capture or workout hold
+    // that landed during it must stop the pass before it starts (a light pass
+    // once began 46 ms after "capture active - holding").
+    if (heldBesidesPower || _powerHold) {
+      if (id != null && id.isNotEmpty) await LocalDb.requeueComputeJob(id);
+      _running = false;
+      _runningContext = ProcessingContext.reanalysis;
+      _heavyStartSeq = null;
+      await _refreshSnapshot();
+      return;
+    }
     log('[derive-scheduler] running ${kind == DeriveJobKind.heavy ? "heavy" : "light"} pass');
     try {
       // _drain runs unawaited from a timer: a failed pass is recorded on its

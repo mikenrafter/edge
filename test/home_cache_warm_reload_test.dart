@@ -41,8 +41,9 @@ void main() {
       repo.next = Completer<Map<String, dynamic>>();
       app.insightsRevision.value++;
       await t.pump(const Duration(milliseconds: 400));
+      // m385: the value stays and is not dated as stale while an update reads.
       expect(find.text('Recovery 22 of 100'), findsOneWidget);
-      expect(find.textContaining('Last known'), findsOneWidget);
+      expect(find.textContaining('Last known'), findsNothing);
       expect(
         HomeRingDetailCache.local.read(todayLabel(), 'en_US')!.readAt,
         saved,
@@ -54,7 +55,7 @@ void main() {
       repo.next = Completer<Map<String, dynamic>>();
       app.insightsRevision.value++;
       await t.pump(const Duration(milliseconds: 400));
-      expect(find.textContaining('updating'), findsOneWidget);
+      expect(find.textContaining('updating'), findsNothing);
       repo.next.complete(homeBundle(readiness: 30));
       for (var i = 0; i < 20; i++) {
         await t.pump(const Duration(milliseconds: 20));
@@ -64,7 +65,7 @@ void main() {
       repo.next = Completer<Map<String, dynamic>>();
       app.insightsRevision.value++;
       await t.pump(const Duration(milliseconds: 400));
-      expect(find.textContaining('Last known'), findsOneWidget);
+      expect(find.textContaining('Last known'), findsNothing);
       repo.next.complete(homeBundle(withDaily: false));
       for (var i = 0; i < 20; i++) {
         await t.pump(const Duration(milliseconds: 20));

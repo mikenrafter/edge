@@ -308,7 +308,10 @@ class DeriveCoordinator {
   }
   void endSleepEdit(int owner) => _recalcClear(owner);
 
-  void _recalcScope(int owner, List<String> days) {
+  // [quiet] passes keep the per-day labels (recalc) but publish no
+  // [deriveProgress]: the header's Calculate phase and "Day k of N" belong to
+  // the sync's own pass and to passes the user started [owner m385].
+  void _recalcScope(int owner, List<String> days, {bool quiet = false}) {
     if (days.isEmpty) return;
     _recalcOwner = owner;
     final scope = Set<String>.unmodifiable(days);
@@ -316,15 +319,18 @@ class DeriveCoordinator {
     _setRecalc(RecalcState(
       days: scope, coveredDays: scope, passStartedAt: DateTime.now(),
     ));
-    _setProgress(owner, DeriveProgress(dayIndex: 0, dayTotal: _recalcScopeSize));
+    if (!quiet) {
+      _setProgress(owner, DeriveProgress(dayIndex: 0, dayTotal: _recalcScopeSize));
+    }
   }
 
-  void _recalcDayDone(int owner, String day) {
+  void _recalcDayDone(int owner, String day, {bool quiet = false}) {
     if (_recalcOwner != owner) return;
     final cur = _recalc.value;
     if (!cur.days.contains(day)) return;
     final left = {...cur.days}..remove(day);
     _setRecalc(cur.copyWith(days: left));
+    if (quiet) return;
     _setProgress(
         owner,
         DeriveProgress(
@@ -783,9 +789,9 @@ class DeriveCoordinator {
           final rescanId = ++_recalcSeq;
           try {
             final n = await _rescanRecent(
-              onScopeDays: (days) => _recalcScope(rescanId, days),
+              onScopeDays: (days) => _recalcScope(rescanId, days, quiet: true),
               onDayDone: (day, index, total) {
-                _recalcDayDone(rescanId, day);
+                _recalcDayDone(rescanId, day, quiet: true);
                 _dayPublisher.request();
               },
             );

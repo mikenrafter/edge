@@ -2860,7 +2860,15 @@ class _HomeScreenState extends State<HomeScreen>
     }
     // CLAIM(home-cache-freshness): every read qualifies retained judgments
     // before its first await [home_cache_warm_reload_test].
-    if (mounted) setState(() { _loading = true; _failed = false; });
+    // CLAIM(home-reload-keeps-values) [owner m385]: placeholders only when
+    // there is nothing of this day to show (first read, day switch, store
+    // swap, invalidated snapshot). An update keeps what is drawn.
+    if (mounted) {
+      setState(() {
+        _loading = _d == null || _dataGeneration != HomeSnapshotStore.generation;
+        _failed = false;
+      });
+    }
     final generation = HomeSnapshotStore.generation;
     bool current() => HomeSnapshotStore.generation == generation &&
         identical(repo, repoOf(context));

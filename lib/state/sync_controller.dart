@@ -170,6 +170,23 @@ class SyncController {
 
   BandLease? _foregroundLease;
 
+  /// A session's own backlog burst will ask for the heavy pass when it ends
+  /// (it knows whether records landed). A Sync now that joins that burst then
+  /// leaves the request to it, so one sync asks once; the burst asks plainly
+  /// if it stored nothing but a manual sync wanted its finalize.
+  bool _burstOwesHeavy = false;
+  bool _manualHeavyDeferred = false;
+
+  /// The burst's end: `true` when the caller should ask for a heavy pass with
+  /// stored data. Releases a manual sync's deferred finalize.
+  bool _settleBurstHeavy(int records) {
+    _burstOwesHeavy = false;
+    final deferred = _manualHeavyDeferred;
+    _manualHeavyDeferred = false;
+    if (records == 0 && deferred) _deriveScheduler.requestHeavy();
+    return records > 0;
+  }
+
   /// Last backgrounded heavy-derive request — throttles reconnect-driven heavy
   /// passes while a flappy link churns in the background (30-min floor).
   DateTime? _lastBackgroundHeavyAt;
@@ -954,6 +971,7 @@ class SyncController {
       await _recoverOrphanedLiveSession();
       _resetLivePedometer(); // fresh live step count for this connected session
       await engine.reconcileLiveStreams(); // the owners' intent, not full live
+      _burstOwesHeavy = true;
       unawaited(
         _kickSyncBurst(kickFirst: false).then((report) async {
           if (_disposed) return;
@@ -970,11 +988,12 @@ class SyncController {
           // staging + 24-h spectra over every stale day).
           // A drain that stored nothing leaves nothing for a heavy pass to read;
           // a flappy link would otherwise run one per reconnect.
-          if (report.records > 0) {
+          if (_settleBurstHeavy(report.records)) {
             _deriveScheduler.requestHeavy(storedData: true);
           }
           _notify();
         }).catchError((Object e) {
+          _settleBurstHeavy(0);
           _log('Background sync burst failed: $e');
         }),
       );
@@ -1138,6 +1157,7 @@ class SyncController {
           // Alarm display comes from the locally-set/persisted value; the
           // GET_ALARM readback is parked (unconfirmed format) — see ble_engine.
           _log('Reconnected — live on; draining backlog in background.');
+          _burstOwesHeavy = true;
           unawaited(
             _kickSyncBurst(kickFirst: false).then((report) async {
               if (_disposed) return;
@@ -1155,7 +1175,7 @@ class SyncController {
               // one per 30 min while backgrounded — the interim reconnects
               // still get a light pass, and the foreground return finalizes
               // with a real heavy anyway.
-              if (report.records > 0) {
+              if (_settleBurstHeavy(report.records)) {
                 final now = DateTime.now();
                 final lastHeavy = _lastBackgroundHeavyAt;
                 if (background &&
@@ -1169,6 +1189,7 @@ class SyncController {
               }
               _notify();
             }).catchError((Object e) {
+              _settleBurstHeavy(0);
               _log('Reconnect sync burst failed: $e');
             }),
           );
@@ -1715,7 +1736,11 @@ class SyncController {
     } finally {
       await steps;
       if (finalize && !_isDisposed() && !ResetGate.active) {
-        _deriveScheduler.requestHeavy();
+        if (_burstOwesHeavy) {
+          _manualHeavyDeferred = true;
+        } else {
+          _deriveScheduler.requestHeavy();
+        }
       }
     }
   }
