@@ -8,7 +8,8 @@ void main() {
   // without claiming main's deferred analytics fixes already run on the fork.
   test('the merge version names shipped changes and the retained analytics pin', () {
     expect(kAlgoVersion, 126);
-    expect(kAnalyticsPin, 'd876c427ce59eed95b5e54411e3b69253f294ae6');
+    // Stale pin: the pin moved on (c8d538334, 2026-11-18: analytics 6c45f3b); the 122-125 entry below still names d876c42.
+    expect(kAnalyticsPin, '6c45f3b0894e23bf5047f7cc0e34e533d0802417');
     final src = File('lib/compute/derivation_engine.dart').readAsStringSync();
     final at = src.indexOf('// 122 → 125');
     expect(at, isNonNegative);

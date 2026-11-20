@@ -111,7 +111,10 @@ void main() {
         if (f.path.endsWith('lib/data/sample_archive.dart') ||
             f.path.endsWith('lib/data/sample_import.dart') ||
             f.path.endsWith('lib/data/db.dart') ||
-            f.path.contains('lib/data/db/')) {
+            f.path.contains('lib/data/db/') ||
+            // The official-app exporter names the table to copy it into the
+            // export file; it never feeds a derivation (27dbb288d, 2026-11-17).
+            f.path.contains('lib/data/official_export/')) {
           continue;
         }
         if (f.readAsStringSync().contains('spectral_archive')) {

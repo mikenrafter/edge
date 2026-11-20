@@ -754,8 +754,12 @@ void main() {
       test('a sleep window edit rebuilds instead of resuming', () async {
         final lines = await scenario(() => TestSleepWrites.putSleepOverride(
               dayId: day,
-              onsetTs: start - 7 * 3600,
-              offsetTs: start - 600,
+              // Inside the day's rows. A window wholly before them (the old
+              // `start - 7 h .. start - 600`) is shown by a pass but dropped by a
+              // forced re-derive since the sleep block commands (c54d7233e); see
+              // the hardening report.
+              onsetTs: start + 300,
+              offsetTs: start + 1500,
               source: 'manual',
             ));
         expect(lines, isEmpty, reason: 'a user edit never resumes');

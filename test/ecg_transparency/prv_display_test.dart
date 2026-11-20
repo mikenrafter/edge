@@ -144,8 +144,9 @@ void main() {
       // Upstream's numbering since the catch-up (merge log D4), plus our one
       // bump atop upstream 113 (D27 revised): 114, then 115 (D36, the fold
       // fix), then 116 (analytics #99). Nothing in this artifact bumped it.
-      expect(kAlgoVersion, 116);
-      expect(kAnalyticsPin, '6a2a9fc7392b03103ab0b371b0449c28cca104f7');
+      // Stale pin: later bumps moved both (c8d538334, 2026-11-18: v126, analytics 6c45f3b).
+      expect(kAlgoVersion, 126);
+      expect(kAnalyticsPin, '6c45f3b0894e23bf5047f7cc0e34e533d0802417');
       expect(kProtocolPin, '89080bcfac7767b3a871fd3a7d9307f5f30dad26');
     });
 

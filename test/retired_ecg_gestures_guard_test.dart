@@ -26,7 +26,12 @@ void main() {
     expect(columns.map((c) => c['name']), isNot(contains('origin')));
     expect(LocalDb.restoredTableNames, isNot(contains('ecg_gesture_session')));
     expect(kSliceTables, isNot(contains('ecg_gesture_session')));
-    expect(officialProfile.tables, isNot(contains('ecg_gesture_session')));
+    // The frozen v0.12.2 official profile keeps the table as an OPTIONAL,
+    // dropped, recovery-only inventory for upgraded export sources (858bbe7de,
+    // 2026-11-18); it is never kept or merged into the fresh schema.
+    final retired = officialProfile.tables['ecg_gesture_session'];
+    expect(retired?.optional, isTrue);
+    expect(retired?.dest, isNull);
   });
 
   // A whole-library ban is a backstop for an accidental new runtime reader.
@@ -36,6 +41,8 @@ void main() {
     expect(forbidden.hasMatch('ecg_gesture_session'), isTrue);
     final offenders = <String>[];
     for (final file in Directory('lib').listSync(recursive: true).whereType<File>()) {
+      // The official-export profile names the retired table on purpose (above).
+      if (file.path == 'lib/data/official_export/profile_tables.dart') continue;
       if (file.path.endsWith('.dart') && forbidden.hasMatch(file.readAsStringSync())) {
         offenders.add(file.path);
       }

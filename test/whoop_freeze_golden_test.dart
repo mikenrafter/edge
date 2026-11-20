@@ -274,11 +274,13 @@ Object? _comparable(Object? v) => switch (v) {
 /// This projection is deliberately revision-specific, so a later algorithm
 /// change cannot silently inherit this exception.
 Map<String, dynamic> _cardio116Projection(Map<String, dynamic> snapshot) {
-  expect(kAlgoVersion, 119);
+  // Stale pin: 120-126 followed (c8d538334 is v126); the byte comparison below
+  // still proves a cardio night's stored output is unchanged by them.
+  expect(kAlgoVersion, 126);
   final out = (jsonDecode(jsonEncode(snapshot)) as Map).cast<String, dynamic>();
   for (final table in ['day_result', 'metric_series_version', 'wake_day_features']) {
     for (final row in out[table] as List) {
-      expect(row['algo_version'], 119);
+      expect(row['algo_version'], 126);
       row['algo_version'] = 116;
     }
   }

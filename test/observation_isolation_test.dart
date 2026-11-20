@@ -152,6 +152,10 @@ void main() {
       // A LocalDb part file (lib/data/db/) is lib/data/db.dart's own code.
       final rel = canonDbPath(p.relative(e.path).replaceAll(r'\', '/'));
       if (_allowedToNameTheTable.contains(rel)) continue;
+      // The official-app exporter copies the table into the export file (kept,
+      // plainReplace merge); nothing it does feeds a computed number (2026-11-17,
+      // feat(official-export) 27dbb288d).
+      if (rel.startsWith('lib/data/official_export/')) continue;
       final lines = e.readAsLinesSync();
       for (var i = 0; i < lines.length; i++) {
         if (_pureComment.hasMatch(lines[i])) continue;
