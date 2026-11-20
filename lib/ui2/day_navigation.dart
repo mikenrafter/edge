@@ -277,14 +277,16 @@ class DayNav extends StatelessWidget {
     final older = i < 0 ? days.firstOrNull : (i + 1 < days.length ? days[i + 1] : null);
     final newer = i > 0 ? days[i - 1] : null;
 
+    final shown = labels[day] ?? dayNavLabel(day, l);
     return DayStepBar(
-      label: labels[day] ?? dayNavLabel(day, l),
+      label: shown,
       previousLabel: l?.metricDetailPreviousDay ?? 'Previous day',
       nextLabel: l?.metricDetailNextDay ?? 'Next day',
       onPrevious: older == null ? null : () => onDay(older),
       onNext: newer == null ? null : () => onDay(newer),
-      chooseLabel: l?.metricDetailChooseDayShowing(dayNavLabel(day, l)) ??
-          'Choose a day. Showing ${dayNavLabel(day, l)}',
+      // The spoken label names the day as the bar does (owner m342: one label).
+      chooseLabel: l?.metricDetailChooseDayShowing(shown) ??
+          'Choose a day. Showing $shown',
       onChoose: () async {
         final picked = await chooseDay(c, days, day, labels: labels);
         if (c.mounted && picked != null && picked != day) {

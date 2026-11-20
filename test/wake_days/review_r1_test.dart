@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
+import 'package:openstrap_edge/l10n/date_text.dart' show displayDay;
 import 'package:openstrap_edge/ui2/theme.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/pilot/pilot_flags.dart';
@@ -159,8 +160,21 @@ void main() {
     expect(t.widget<PilotSleepEditor>(find.byType(PilotSleepEditor)).day,'2026-11-03');
     r.navigator.currentState!.pop();await settle(t);await opened;
   });
-  test('navigation shows actual start date separately from the cycle name', () {
+  // Owner m301 replaced the "label · start time" form: the bar says only "Cycle
+  // of <date>" / "Day of <date>"; the start time lives in the caption.
+  test('navigation names the cycle by its date and mode, without the start', () {
     final d = PersonalDay(at(1,23), at(2,23), '2026-11-02', '2026-11-02');
-    expect(personalDayNavLabel(d), contains('2026-11-01'));
+    expect(personalDayNavLabel(d, PersonalDayMode.sleepToSleep), 'Cycle of ${displayDay('2026-11-02', null)}');
+    // Two cycles named for one date also carry their start time; others do not.
+    final next = PersonalDay(at(2,23), at(3,23), '2026-11-02', null);
+    final labels = personalDayNavLabels([d, next], PersonalDayMode.sleepToSleep);
+    expect(labels[d.id.value], 'Cycle of ${displayDay('2026-11-02', null)} · ${displayDay('2026-11-01', null)} 23:00');
+    expect(labels[next.id.value], isNot(labels[d.id.value]));
+    final late = PersonalDay(at(2,20), at(3,20), '2026-11-02', null);
+    expect(personalDayNavLabels([d, late], PersonalDayMode.sleepToSleep)[late.id.value],
+        'Cycle of ${displayDay('2026-11-02', null)} · 20:00');
+    expect(personalDayNavLabels([d], PersonalDayMode.sleepToSleep)[d.id.value],
+        'Cycle of ${displayDay('2026-11-02', null)}');
+    expect(personalDayNavLabel(d, PersonalDayMode.wakeToWake), 'Day of ${displayDay('2026-11-02', null)}');
   });
 }

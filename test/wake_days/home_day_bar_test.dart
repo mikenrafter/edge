@@ -59,8 +59,8 @@ void main() {
   tearDownAll(() => env.dispose());
   // WHY / CLAIM(home-day-bar): owner m294 supersedes CLAIM(home-now)'s "no day
   // picker": Home shows the app's one day bar with a personal day on too, and
-  // stepping it moves Home to the neighbouring personal day. The first
-  // CLAIM(home-now) (Home stays on the current wake cycle at any hour) stands.
+  // stepping it moves Home to the neighbouring personal day. Owner m301: the
+  // cycles are the selected mode's, as on the Day screen (home_s2s_nav_test).
   // CATCHES: `if (!Prefs.personalDayEnabled)` around the bar, or a Home that
   // only ever reads the current cycle.
   for (final mode in PersonalDayMode.values) {
@@ -90,7 +90,14 @@ void main() {
           expect(find.byType(DayNav), findsOneWidget);
           final current = _label(t);
           expect(current, isNot(matches(RegExp(r'^\d{4}-\d{2}-\d{2}T'))));
-          expect(find.text('Your day started 08:00'), findsOneWidget);
+          // Owner m301: Home reads the selected mode's cycle, so the day starts
+          // at the wake (08:00), the onset (23:00) or the noon offset (12:00).
+          final started = 'Your day started ${switch (mode) {
+            PersonalDayMode.wakeToWake => '08:00',
+            PersonalDayMode.sleepToSleep => '23:00',
+            PersonalDayMode.calendarOffset => '12:00',
+          }}';
+          expect(find.text(started), findsOneWidget);
           expect(find.byKey(const ValueKey('home-back-to-today')), findsNothing);
           final bar = t.widget<DayStepBar>(find.byType(DayStepBar));
           expect(bar.onPrevious, isNotNull, reason: 'an earlier personal day exists');
@@ -114,7 +121,7 @@ void main() {
           await t.tap(find.byKey(const ValueKey('home-back-to-today')));
           await _settle(t);
           expect(_label(t), current);
-          expect(find.text('Your day started 08:00'), findsOneWidget);
+          expect(find.text(started), findsOneWidget);
           await t.pumpWidget(const SizedBox.shrink());
         });
       });

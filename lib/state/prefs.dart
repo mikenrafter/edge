@@ -90,6 +90,11 @@ class Prefs {
   static Future<bool> learnPersonalDayTotals(PersonalDayTotals totals) async =>
       !personalDayTotalsNeedsCycle ||
       await _setPersonalChoice(personalDayLearnedTotalsKey, totals.name);
+  /// What decides a cycle's identity: on/off and the mode. A screen keeps the
+  /// day the user picked across a revision that leaves this unchanged (the
+  /// totals choice is learned inside a read), and resets only when it moves.
+  static String get personalDayShape =>
+      '$personalDayEnabled:${personalDayMode.name}';
   static bool get personalDayTotalsIsDefault => _personalTotalsChoice == null;
   static Future<bool> setPersonalDayEnabled(bool enabled) =>
       _setPersonalChoice(personalDayModeKey, enabled ? personalDayMode.name : null);
