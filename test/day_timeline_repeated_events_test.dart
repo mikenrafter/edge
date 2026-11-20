@@ -101,6 +101,21 @@ void main() {
       expect(groups.map((g) => g.count), [4]);
     });
 
+    test('same-id events fold however far apart they are '
+        '(nothing else between them)', () {
+      // 15 minutes apart: wider than #764's 10-minute runs. The fork rule
+      // (owner, 2026-10-26) still collapses them into one row.
+      final groups = groupRepeatedEvents(
+          _moments([_ev(14, 0), _ev(14, 15), _ev(14, 30)]));
+      expect(groups.map((g) => g.count), [3]);
+    });
+
+    test('a charger group folds across a 30-minute gap', () {
+      final groups =
+          groupRepeatedEvents(_moments([_ev(7, 0), _ev(7, 30)]));
+      expect(groups.map((g) => g.count), [2]);
+    });
+
     test('a charger run ends at an unrelated event', () {
       final groups = groupRepeatedEvents(
           _moments([_ev(7, 0), _ev(8, 1), _ev(14, 2), _ev(7, 3)]));

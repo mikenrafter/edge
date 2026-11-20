@@ -178,6 +178,13 @@ class MomentGroup {
 }
 
 /// [dayMoments] folds same-ID runs before merging in other timeline rows.
+/// Same event id, or the same event group (e.g. charger on/off), with nothing
+/// else between them in time order: one row (owner, 2026-10-26: same-type UI
+/// events collapse, never a pile of identical markers). #764's 10-minute runs
+/// nest inside these groups.
+bool _sameRun(Moment a, Moment b) => a.eventId == b.eventId ||
+    (a.eventGroup != null && a.eventGroup == b.eventGroup);
+
 List<MomentGroup> groupRepeatedEvents(List<Moment> sorted) {
   final out = <List<Moment>>[];
   final wakes = <int?, List<Moment>>{};
@@ -191,10 +198,7 @@ List<MomentGroup> groupRepeatedEvents(List<Moment> sorted) {
       } else {
         group.add(m);
       }
-    } else if (out.isNotEmpty &&
-        m.eventGroup != null &&
-        m.eventGroup == out.last.last.eventGroup &&
-        m.eventId != out.last.last.eventId) {
+    } else if (out.isNotEmpty && m.eventId != null && _sameRun(out.last.last, m)) {
       out.last.add(m);
     } else {
       out.add([m]);

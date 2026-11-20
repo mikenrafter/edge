@@ -1756,6 +1756,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       try {
         await refreshActivityReviews();
         await _finalizeImport();
+        await _refreshImportedFrontier();
         // The imported days are recalculated by a durable heavy job on the
         // scheduler, not a pass run here: the queue waits out a band sync
         // (whose commits must land before the ACK), retries a refused or
@@ -1784,6 +1785,17 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
         importProgress.value = null;
       }
     }
+  }
+
+  /// After an import (fresh or resumed): the record frontier and the
+  /// "band data, clock not set" state follow the imported rows (#762). A read
+  /// failure leaves both as they were; it never blocks the derive request.
+  Future<void> _refreshImportedFrontier() async {
+    try {
+      final recTsHw = await LocalDb.getRecordFrontier();
+      if (recTsHw != null && recTsHw > (_lastRecTs ?? 0)) _lastRecTs = recTsHw;
+      _bandUntimedArchive = await LocalDb.hasGateDroppedArchive();
+    } catch (_) {}
   }
 
   Future<void> _finalizeImport() {
@@ -1850,11 +1862,9 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       importProgress.value = const ImportRebuilding(0, 0, null);
       await refreshActivityReviews();
       await _finalizeImport();
-      final recTsHw = await LocalDb.getRecordFrontier();
-      if (recTsHw != null && recTsHw > (_lastRecTs ?? 0)) _lastRecTs = recTsHw;
-      _bandUntimedArchive = await LocalDb.hasGateDroppedArchive();
       passRequested = await _deriveImportWhenDone();
       await _deriveCoordinator.publishNow();
+      await _refreshImportedFrontier();
       // The resumed import's notes were saved by its record step; the mirror
       // only needs to follow the store. A resume never clears anything.
       try {

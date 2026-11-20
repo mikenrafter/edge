@@ -151,6 +151,17 @@ void main() {
     }
   });
 
+  test('an ordinary restore moves the record frontier to the imported rows '
+      '(#762)', () async {
+    // The store's frontier moved while this AppState never read it (as after
+    // a sync in another isolate). The restore's refresh must pick it up.
+    const stored = _t0 + 5000;
+    await LocalDb.setCursor('rec_ts_hw', '$stored');
+    expect(app.recordFrontierTs, isNull);
+    await app.importEdgeBackup(await _backup(tmp.path));
+    expect(app.recordFrontierTs, stored);
+  });
+
   test('a .db.gz reports inflating before opening', () async {
     final plain = await _backup(tmp.path, seconds: 100);
     final gz = '$plain.gz';
