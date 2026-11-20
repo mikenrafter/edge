@@ -13,6 +13,7 @@ import 'package:openstrap_edge/ui2/profile/alarm.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart' show SettingsAccordion;
 
 import 'support/settings_sections.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 final _schedule = fillDefaultAlarmSchedule(const [
   AlarmScheduleEntry(weekday: 5, hour: 6, minute: 30, enabled: true),
@@ -30,6 +31,9 @@ AlarmScreenView _view({bool connected = true}) => AlarmScreenView(
 const _sections = ['Alarm and wake', 'Timeline and status'];
 
 void main() {
+  // Accordion state persists through the (now mocked) SharedPreferences, so a
+  // test that folds a section must not leave it folded for the next one.
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   testWidgets('two sections, in order, all expanded', (t) async {
     await pumpTall(t, _view());
     expect(sectionTitles(t), _sections);
