@@ -66,17 +66,9 @@ void main() {
       await _pump(t, tab);
       expect(find.text('Health'), findsWidgets);
       expect(_bars, findsWidgets, reason: '$name is waiting on a read');
-      for (final e in _bars.evaluate()) {
-        final inCard = find
-            .ancestor(
-                of: find.byElementPredicate((x) => identical(x, e)),
-                matching: find.byType(Surface))
-            .evaluate()
-            .isNotEmpty;
-        expect(inCard, isTrue,
-            reason: '$name: a spinner outside a Surface card is the bare '
-                'page spinner');
-      }
+      // Placeholders are structural sections now, not spinners to be found inside
+      // a card (d3c53c24c, 2026-11-14), so only their presence is pinned; the
+      // InlineLoading below is the card.
       expect(find.byType(InlineLoading), findsOneWidget);
     });
   }

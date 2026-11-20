@@ -279,7 +279,11 @@ void main() {
           // Allowed: inside a panel's listener method, or the day-screen switch
           // the panel's own open action uses.
           final context = lines.sublist(i < 14 ? 0 : i - 14, i + 1).join('\n');
-          if (!RegExp(r'openNerdStats|_dayScreen|_WearNerdStats').hasMatch(context)) {
+          // Also allowed: metricDayScreen, the same day-screen switch moved to
+          // metric_detail.dart and shared with Home, and the Sleep tab's "What
+          // charged and drained you" link (wellnessWhatChargedAndDrained), a
+          // day-insight screen the Sleep tab opens, not a stats door.
+          if (!RegExp(r'openNerdStats|_dayScreen|metricDayScreen|wellnessWhatChargedAndDrained|_WearNerdStats').hasMatch(context)) {
             hits.add('${f.path}:${i + 1} ${code.trim()}');
           }
         }

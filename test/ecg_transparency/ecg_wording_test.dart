@@ -45,10 +45,18 @@ final Set<String> _baseline = File('test/ecg_transparency/support/arb_baseline_k
     .where((l) => l.isNotEmpty)
     .toSet();
 
-/// Keys Phase 1 added to the English template.
+/// Keys Phase 1 added to the English template: the list recorded when the phase
+/// closed (en.arb at f29a243e1, 2026-10-19, minus the baseline). Computing it
+/// as "every key not in the baseline" grew with every later feature, and this
+/// phase's rules (banned claims, 3-word translation check) are not theirs.
+final Set<String> _phase1 = File('test/ecg_transparency/support/phase1_new_keys.txt')
+    .readAsLinesSync()
+    .where((l) => l.isNotEmpty)
+    .toSet();
+
 List<String> _newKeys() => [
   for (final k in _arb('en').keys)
-    if (!k.startsWith('@') && !_baseline.contains(k)) k,
+    if (!k.startsWith('@') && !_baseline.contains(k) && _phase1.contains(k)) k,
 ]..sort();
 
 AppLocalizations _l(String loc) => lookupAppLocalizations(Locale(loc));
@@ -140,7 +148,9 @@ void main() {
           RegExp(r'^No rhythm reading to analyze — \{\w+\}$'),
       'Details': RegExp(r'^Details$'),
       'not recorded': RegExp(r'^not recorded$'),
-      'Irregular pulse pattern flagged': RegExp(r'^Irregular pulse pattern flagged$'),
+      // The title names its recorded day (Pulse, c8d538334).
+      'Irregular pulse pattern flagged':
+          RegExp(r'^Irregular pulse pattern flagged( on \{\w+\})?$'),
     };
     for (final e in phrases.entries) {
       test(e.key, () {
@@ -311,7 +321,9 @@ void main() {
     final en = AppLocalizationsEn();
 
     test('English title and body', () {
-      expect(findingTitle(en, irregular), 'Irregular pulse pattern flagged');
+      // A pulse flag always names its recorded day (Pulse, c8d538334).
+      expect(findingTitle(en, irregular),
+          'Irregular pulse pattern flagged on Wed, Oct 7, 2026');
       expect(
         findingDetail(en, irregular),
         startsWith(
@@ -325,11 +337,11 @@ void main() {
     test('the other five titles are unchanged, now read from the ARBs', () {
       // Illness and low readiness take upstream's copy (its accumulated-RHR
       // illness rule; "recovery" for the score), merge log D16/D17.
-      expect(findingTitle(en, const Finding(FindingKind.illness, 'd')), 'Resting heart rate has been raised');
-      expect(findingTitle(en, const Finding(FindingKind.anomaly, 'd')), 'Unusual overnight readings');
-      expect(findingTitle(en, const Finding(FindingKind.tempElevated, 'd')), 'Skin temperature elevated');
-      expect(findingTitle(en, const Finding(FindingKind.lowReadiness, 'd')), 'Low recovery');
-      expect(findingTitle(en, const Finding(FindingKind.rhrShift, 'd')),
+      expect(findingTitle(en, const Finding(FindingKind.illness, '2026-10-07')), 'Resting heart rate has been raised');
+      expect(findingTitle(en, const Finding(FindingKind.anomaly, '2026-10-07')), 'Unusual overnight readings');
+      expect(findingTitle(en, const Finding(FindingKind.tempElevated, '2026-10-07')), 'Skin temperature elevated');
+      expect(findingTitle(en, const Finding(FindingKind.lowReadiness, '2026-10-07')), 'Low recovery');
+      expect(findingTitle(en, const Finding(FindingKind.rhrShift, '2026-10-07')),
           'Resting heart rate changed');
     });
 
@@ -337,7 +349,7 @@ void main() {
       test('$loc: every finding title is translated', () {
         final l = _l(loc);
         for (final k in FindingKind.values) {
-          final f = Finding(k, 'd');
+          final f = Finding(k, '2026-10-07');
           expect(findingTitle(l, f), isNot(findingTitle(en, f)), reason: '$loc $k');
           expect(findingTitle(l, f).trim(), isNotEmpty);
         }

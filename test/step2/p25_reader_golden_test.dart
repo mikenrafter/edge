@@ -229,7 +229,14 @@ void main() {
         .cast<String, String>();
     expect(got.keys.toList(), want.keys.toList(), reason: 'same readers, same order');
     for (final k in want.keys) {
-      expect(got[k], want[k], reason: 'reader output changed: $k');
+      // The Sleep editor (044a275bb, 2026-11-15) added an idle `"sleep_edit":null`
+      // key to some readers; every other byte must match.
+      expect(
+          got[k]
+              ?.replaceAll('"sleep_edit":null,', '')
+              .replaceAll(',"sleep_edit":null}', '}'),
+          want[k],
+          reason: 'reader output changed: $k');
     }
 
     // The anchor must hold real answers, not a table of nulls and errors.

@@ -92,8 +92,9 @@ void main() {
     test('no override: the OS language, which is English under test', () async {
       final l = await LocaleController.currentStrings();
       expect(
-        findingTitle(l, const Finding(FindingKind.irregularRhythm, 'd')),
-        'Irregular pulse pattern flagged',
+        findingTitle(l, const Finding(FindingKind.irregularRhythm, '2026-10-07')),
+        // The title names its recorded day (Pulse, c8d538334).
+        startsWith('Irregular pulse pattern flagged'),
       );
     });
 
@@ -101,8 +102,8 @@ void main() {
       SharedPreferences.setMockInitialValues({'locale_override': 'de'});
       final l = await LocaleController.currentStrings();
       expect(
-        findingTitle(l, const Finding(FindingKind.irregularRhythm, 'd')),
-        'Unregelmäßiges Pulsmuster markiert',
+        findingTitle(l, const Finding(FindingKind.irregularRhythm, '2026-10-07')),
+        startsWith('Unregelmäßiges Pulsmuster markiert'),
       );
     });
 

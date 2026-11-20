@@ -233,6 +233,13 @@ void main() {
         reason: 'the charging event this fixture seeds sits in a window the '
             'ring owns — the primary\'s charging must not be able to mask it');
 
+    // The first derive carries the typed sleep window of an UNAPPLIED edit; once
+    // the edit is applied a retained job is history and a night the band recorded
+    // none of keeps no typed window (CLAIM(sleep-edit-r3), the sleep edit jobs of
+    // c54d7233e). So the baseline for "removing the event changes nothing" is a
+    // second derive in that settled state, not the first.
+    await DerivationEngine().runDays(const Profile(), {_dayId}, force: true);
+    final settled = await LocalDb.dayResult(_dayId);
     await db.delete('band_events',
         where: 'device_id = ? AND event_id IN (?, ?)',
         whereArgs: [_primary, proto.EventId.chargingOn, proto.EventId.chargingOff]);
@@ -240,7 +247,7 @@ void main() {
         await DerivationEngine().runDays(const Profile(), {_dayId}, force: true);
     expect(done2, 1);
     final row2 = await LocalDb.dayResult(_dayId);
-    expect(row2!['payload_json'], row['payload_json'],
+    expect(row2!['payload_json'], settled!['payload_json'],
         reason: 'the primary\'s charging event sat inside a window the ring '
             'owned, so removing it must not change the derived payload at '
             'all — a day whose only charging event belongs to the '

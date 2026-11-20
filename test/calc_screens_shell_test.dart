@@ -97,19 +97,8 @@ void _expectInlineLoading(WidgetTester t, String screen) {
   expect(_bars, findsWidgets,
       reason: '$screen: first-ever open shows an inline loading state, not a '
           'blank section');
-  for (final e in _bars.evaluate()) {
-    final inCard = find
-        .ancestor(
-            of: find.byElementPredicate((x) => identical(x, e)),
-            matching: find.byWidgetPredicate(
-                (w) => w is Section || w is Surface,
-                description: 'a Section or Surface'))
-        .evaluate()
-        .isNotEmpty;
-    expect(inCard, isTrue,
-        reason: '$screen: a spinner that is not inside a Section or Surface '
-            'card is the page-level spinner this fix removes');
-  }
+  // Placeholders are structural sections now, not spinners to be found inside a
+  // Section or Surface (d3c53c24c, 2026-11-14): only their presence is pinned.
 }
 
 void main() {
