@@ -131,8 +131,17 @@ class _PendingContentState extends State<PendingContent>
     _delay = Timer(const Duration(milliseconds: 200), () {
       if (!mounted || !widget.pending) return;
       setState(() => _visible = true);
-      _fade.forward(from: 0);
+      _play(from: 0);
     });
+  }
+
+  /// Reduced motion shows the finished state at once (the ui2 token rule).
+  void _play({double? from}) {
+    if (MediaQuery.maybeDisableAnimationsOf(context) == true) {
+      _fade.value = 1;
+      return;
+    }
+    _fade.forward(from: from);
   }
   @override
   void didUpdateWidget(PendingContent old) {
@@ -159,7 +168,7 @@ class _PendingContentState extends State<PendingContent>
           if (mounted && _announceComplete) setState(() => _announceComplete = false);
         });
       }
-      _fade.forward();
+      _play();
     }
   }
   @override

@@ -3,6 +3,7 @@ export 'as_of.dart';
 export 'chart_annotations.dart';
 export 'charts.dart';
 export 'community_links.dart';
+export 'day_navigation.dart';
 export 'grammar.dart';
 export 'inline_loading.dart';
 export 'last_result_cache.dart';
