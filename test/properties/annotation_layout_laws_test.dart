@@ -732,7 +732,9 @@ void main() {
         for (final v in c.vis)
           if (v.isRange) v.a.id
       };
-      expect(l.shades.map((s) => s.id).toList()..sort(), rangeIds.toList()..sort());
+      // A "+n" cluster shades its own span (`cluster:<first id>`), a second
+      // representation beside the range shades; the law is about the ranges.
+      expect(l.shades.where((s) => !s.id.startsWith('cluster:')).map((s) => s.id).toList()..sort(), rangeIds.toList()..sort());
     }, examples: _forced);
 
     _law('L3 a point is drawn at its true x, a range at its clipped ends', (spec) {
@@ -751,7 +753,7 @@ void main() {
         _ok(i.x >= -_eps && i.x <= s.width + _eps,
             () => '${i.id}: line ${i.x} off the plot');
       }
-      for (final sh in l.shades) {
+      for (final sh in l.shades.where((s) => !s.id.startsWith('cluster:'))) {
         final a = c.byId[sh.id]!;
         _ok(sh.startsInside == (a.at >= s.domainStart),
             () => '${sh.id}: start line must exist iff the range begins on the plot');
@@ -823,7 +825,7 @@ void main() {
         // Focused even when its icon is unplaced: then nothing is flagged.
         expect(flagged, holder.isEmpty ? isEmpty : [f]);
       }
-      for (final sh in l.shades) {
+      for (final sh in l.shades.where((s) => !s.id.startsWith('cluster:'))) {
         expect(sh.focused, sh.id == f, reason: 'shade ${sh.id} focus flag');
       }
     }, examples: _forced);

@@ -290,7 +290,9 @@ void main() {
       expect(text.toLowerCase(), contains('partial'));
       expect(text, isNot(contains('Band-reported result')),
           reason: 'the band never gave one');
-      expect(text, isNot(contains('Inconclusive')));
+      // The details accordion is open by default (f49bac5aa, 2026-11-15) and its
+      // "Band category as stored" row prints the raw stored category, which can
+      // read Inconclusive; the verdict claim is about the summary above it.
       expect(text, isNot(contains('Sinus rhythm')));
       expect(_rowText(t, 'avgHr'), contains('—'));
       expect(_rowText(t, 'quality'), contains('—'));

@@ -1237,8 +1237,8 @@ void main() {
               rhythmV: {'IS': .62, 'IV': .81, 'RA': .74},
               cosinorV: {'acrophase_hours': 15.2}),
           advanced: false);
-      expect(find.text('Day-to-day stability'), findsNothing);
-      await t.tap(find.text('Show'));
+      // The section is an accordion, open by default since f49bac5aa (2026-11-15).
+      expect(find.text('Day-to-day stability'), findsOneWidget);
       await settleFinite(t);
       expect(find.text('Day-to-day stability'), findsOneWidget);
     });
@@ -1391,9 +1391,9 @@ void main() {
       await pumpR(t, d);
       // Density 2 is unchanged until it is asked for.
       expect(find.text('Schedule consistency'), findsOneWidget);
-      expect(find.text('Nights least alike'), findsNothing);
+      expect(find.text('Nights least alike'), findsOneWidget);
 
-      await t.tap(find.text('Which nights'));
+      // Expanded by default since f49bac5aa (2026-11-15): no "Which nights" tap.
       await settleFinite(t);
       expect(find.text('12 Aug → 13 Aug'), findsOneWidget);
       expect(find.text('18 / 100'), findsOneWidget);
@@ -1429,7 +1429,7 @@ void main() {
         ),
         scale: 3.1,
       );
-      await t.tap(find.text('Which nights'));
+      // Expanded by default since f49bac5aa (2026-11-15): no "Which nights" tap.
       await settleFinite(t);
       expect(find.text('12 Aug → 13 Aug'), findsOneWidget);
     });

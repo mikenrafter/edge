@@ -76,8 +76,10 @@ Finder get _units => find.byWidgetPredicate((w) =>
 
 /// Space between the last thing in the card and its bottom edge.
 double _bottomPad(WidgetTester t) {
-  final card = t.getRect(find.descendant(
-      of: find.byType(RingTrio), matching: find.byType(Surface)).first);
+  // The ring card is the OUTERMOST Surface around the rings; RingTrio now holds
+  // inner Surfaces too (details, why rows), so `.first` is not the card.
+  final card = t.getRect(find.ancestor(
+      of: _units.first, matching: find.byType(Surface)).last);
   var last = [
     for (var i = 0; i < _units.evaluate().length; i++) t.getRect(_units.at(i)).bottom
   ].reduce((a, b) => a > b ? a : b);
@@ -172,8 +174,11 @@ void main() {
     });
 
     testWidgets('every kind of row is the same inset row', (t) async {
-      final inset = find.byWidgetPredicate(
-          (w) => w.runtimeType.toString() == '_HomeInsetRow');
+      // The "why" row is the shared WhyRow component now (why_row.dart); every
+      // other kind is still _HomeInsetRow.
+      final inset = find.byWidgetPredicate((w) =>
+          w.runtimeType.toString() == '_HomeInsetRow' ||
+          w.runtimeType.toString() == 'WhyRow');
       for (final (name, d, help) in <(String, HomeData, RingHelp?)>[
         ('why', _rings(recovery: 10), null),
         ('gap note', HomeData(

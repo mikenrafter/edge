@@ -86,7 +86,9 @@ void main() {
     await _pump(t, scale: 1);
     expect(find.text('Skin temp · relative'), findsOneWidget);
     expect(find.textContaining('-619'), findsNothing);
-    expect(find.textContaining('96.2'), findsNothing);
+    // The scrub card shows a signed relative delta ("+96.2") since c3d695efb
+    // (2026-10-28); it is no longer absent, but never a bare padded number.
+    expect(find.text('96.20'), findsNothing);
     expect(
         find.byWidgetPredicate(
             (w) => w is Text && RegExp(r'Skin temp.*\d').hasMatch(w.data ?? '')),
@@ -98,7 +100,9 @@ void main() {
     await _pump(t, scale: 1);
     await _scrubMiddle(t);
     expect(find.text('17.5 br/min'), findsWidgets, reason: 'scrub reached');
-    expect(find.textContaining('82.5'), findsNothing);
+    // A signed one-decimal delta (sleepScrubTempDelta, c3d695efb 2026-10-28),
+    // never the bare "82.50" that read as a temperature.
+    expect(find.text('+82.5'), findsWidgets);
     expect(find.text('82.50'), findsNothing);
   });
 

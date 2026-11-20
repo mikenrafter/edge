@@ -80,7 +80,9 @@ void main() {
       expect(text, contains('0.75'));
       expect(text, contains('33.1'));
       expect(text, contains('1,234'));
-      expect(RegExp(r'confidence', caseSensitive: false).hasMatch(text), isTrue);
+      // The row is labelled "Data sufficiency, 24 h" now (owner copy), the stored
+      // confidence 0.62 beside it.
+      expect(text, contains('Data sufficiency'));
       expect(RegExp(r'(^|[^\d.])0\.62(?!\d)|(^|[^\d.])62(\.0)? ?%').hasMatch(text), isTrue,
           reason: 'the stored 24 h confidence, 0.62');
     });

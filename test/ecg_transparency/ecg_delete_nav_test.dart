@@ -76,7 +76,7 @@ void main() {
     expect(find.byType(EcgDetailScreen), findsOneWidget);
 
     // C's Details -> the earlier attempt A.
-    await t.tap(find.byKey(const ValueKey('ecg-details')));
+    // Details is open by default (f49bac5aa, 2026-11-15); a tap would close it.
     await t.pump();
     await t.tap(find.byKey(const ValueKey('ecg-attempt:A')));
     await _until(t, find.byType(EcgDetailScreen, skipOffstage: false), n: 2);
