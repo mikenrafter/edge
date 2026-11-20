@@ -223,6 +223,9 @@ void main() {
     testWidgets('Your data shows kept notes on a fresh visit and can dismiss',
         (t) async {
       _tall(t);
+      // Taller still: every accordion opens by default now (f49bac5aa), so the
+      // notes at the end of the screen sit below 2000 logical px.
+      t.view.physicalSize = const Size(1170, 30000);
       var dismissed = 0;
       await t.pumpWidget(_app(DataScreenView(
           pendingReentry: const [kNeedsReentryCoachKey],
