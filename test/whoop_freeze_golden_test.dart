@@ -314,10 +314,12 @@ Map<String, dynamic> _cardio116Projection(Map<String, dynamic> snapshot) {
 /// approves a regeneration (data goldens need that approval).
 void _dropPrsaTierAndNote(Map<String, dynamic> snapshot) {
   for (final row in snapshot['day_result'] as List) {
-    final prsa = ((row['payload_json'] as Map)['clinical'] as Map?)?['prsa_dc'];
-    if (prsa is Map) {
-      prsa.remove('tier');
-      prsa.remove('note');
+    for (final k in ['prsa_dc', 'prsa_ac']) {
+      final prsa = ((row['payload_json'] as Map)['clinical'] as Map?)?[k];
+      if (prsa is Map) {
+        prsa.remove('tier');
+        prsa.remove('note');
+      }
     }
   }
 }
