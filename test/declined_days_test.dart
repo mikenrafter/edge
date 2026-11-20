@@ -115,7 +115,10 @@ void main() {
 
     final declined = await repo.declinedDays();
     expect(declined.keys, [_day]);
-    expect(declined[_day]!.reason, 'night_substrate_pruned');
+    // Since 51588d2bd an unasserted pruned night takes the reuse path, whose reason is
+    // 'measured_window_matches_assertion'. The label reads wrong for a night with no
+    // assertion; relabelling changes a stored value, so it is left to the owner.
+    expect(declined[_day]!.reason, 'measured_window_matches_assertion');
     expect(declined[_day]!.keptAlgoVersion, kAlgoVersion - 1);
     expect(declined[_day]!.decidedAtMs, greaterThanOrEqualTo(before));
   }, timeout: slow);

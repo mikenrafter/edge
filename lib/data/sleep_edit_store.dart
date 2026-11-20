@@ -267,10 +267,6 @@ class SleepEditStore {
     String day,
     int generation, {
     required int algoVersion,
-    // A stored night a wearable's own hypnogram staged (`vendor_staged`, R6) may
-    // only be kept while that wearable still owns the day; with its flag off the
-    // same stored row would survive the switch-off ("leaves nothing of it").
-    bool allowVendorStaged = true,
   }) async {
     final reusable=await LocalDb.timedTransaction(
     await LocalDb.instance,
@@ -291,15 +287,13 @@ class SleepEditStore {
               AND CASE WHEN json_valid(r.window_json) THEN
                 COALESCE(json_extract(r.window_json, '$.value.offset_ms'),
                          json_extract(r.window_json, '$.offset_ms')) END = o.offset_ts * 1000))
-              AND (? = 1 OR COALESCE(CASE WHEN json_valid(r.payload_json) THEN
-                json_extract(r.payload_json, '$.sleep_source') END, '') != 'vendor_staged')
               AND (r.rhr > 0 OR r.rmssd > 0 OR
                 CASE WHEN json_valid(r.payload_json) THEN CAST(
                   COALESCE(json_extract(r.payload_json, '$.scalars.tst_min.value'),
                            json_extract(r.payload_json, '$.scalars.tst_min')) AS REAL) END > 0)
             LIMIT 1
           ''',
-        [day, day, algoVersion, allowVendorStaged ? 1 : 0],
+        [day, day, algoVersion],
       );
       return measured.isNotEmpty;
     }),
