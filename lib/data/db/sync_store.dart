@@ -2219,6 +2219,12 @@ Future<void> _ldbPrivPulseAdmit(DatabaseExecutor txn, List<RawRecord> raws,
       nowMs: DateTime.now().millisecondsSinceEpoch);
   }
 
+String _ldbPrivPulseArrivalSql(int n) {
+    final marks = List.filled(n, '?').join(',');
+    return 'SELECT rec_ts FROM decoded_onehz WHERE device_id = ? AND rec_ts IN ($marks) '
+        'UNION SELECT rec_ts FROM decoded_rr WHERE device_id = ? AND rec_ts IN ($marks)';
+  }
+
 // Bounded to the incoming pulse-bearing records; no history-wide scan.
 Future<ProcessingContext> _ldbPrivPulseArrivalContext(DatabaseExecutor txn,
       List<RawRecord> raws, List<Sample?> samples) async {
@@ -2236,9 +2242,7 @@ Future<ProcessingContext> _ldbPrivPulseArrivalContext(DatabaseExecutor txn,
     for (var start = 0; start < seconds.length; start += 400) {
       final end = start + 400 < seconds.length ? start + 400 : seconds.length;
       final part = seconds.sublist(start, end);
-      final rows = await txn.rawQuery(
-          'SELECT rec_ts FROM decoded_onehz WHERE device_id = ? AND rec_ts IN (${List.filled(part.length, '?').join(',')}) '
-          'UNION SELECT rec_ts FROM decoded_rr WHERE device_id = ? AND rec_ts IN (${List.filled(part.length, '?').join(',')})',
+      final rows = await txn.rawQuery(_ldbPrivPulseArrivalSql(part.length),
           [LocalDb.kPrimaryDeviceId, ...part, LocalDb.kPrimaryDeviceId, ...part]);
       for (final row in rows) { candidates.remove((row['rec_ts'] as num).toInt()); }
     }
