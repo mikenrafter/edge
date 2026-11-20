@@ -82,8 +82,13 @@ Future<Map<String, String>> _healthRun(Database db) async {
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(const MethodChannel('flutter_health'), (c) async {
     final args = c.arguments;
+    // The legacy-steps purge (health_export.dart:247) deletes from the epoch up to
+    // today's end, so its end moves with the run date: record it as <NOW>.
     final text = args is Map
-        ? jsonEncode({for (final k in (args.keys.toList()..sort())) '$k': args[k]})
+        ? jsonEncode({
+            for (final k in (args.keys.toList()..sort()))
+              '$k': k == 'endTime' && c.method == 'delete' && args['startTime'] == 0 ? '<NOW>' : args[k]
+          })
         : '$args';
     calls.add('${c.method} $text');
     return true;
