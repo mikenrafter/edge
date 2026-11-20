@@ -126,10 +126,11 @@ class SleepMergeProposal {
 /// written. It is an [ActivityReviewException] so screens that only show the
 /// message keep working.
 class SleepMergeRequiredException extends ActivityReviewException {
-  SleepMergeRequiredException(this.proposal)
+  SleepMergeRequiredException(this.proposal, {this.suggestionId})
       : super('This change would merge these sleep blocks.');
 
   final SleepMergeProposal proposal;
+  final String? suggestionId;
 }
 
 // ── Detection history and retained stages ─────────────────────────────────────────

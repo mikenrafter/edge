@@ -274,6 +274,7 @@ class LocalRepositoryImpl extends LocalRepository {
         } else {
           final res = await store.confirm(s, startTs: d.startTs ?? s.startTs,
               endTs: d.endTs ?? s.endTs, session: sessions[s.id],
+              merge: d.merge,
               edited: d.startTs != null || d.endTs != null, transaction: tx);
           if (res != null) {
             for (final b in res.extended) {

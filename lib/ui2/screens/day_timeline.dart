@@ -1843,10 +1843,10 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
       final cycles=d.personalView?.cycles??const <PersonalDay>[];
       String named(String id)=>cycles.where((c)=>c.id.value==id).map(personalDayNavLabel).firstOrNull??prettyDay(id,l);
       final index=days.indexOf(nav);
-      return PopScope(canPop:_allowPop||(review?.hasChanges!=true&&review?.busy!=true),onPopInvokedWithResult:(didPop,result){if(!didPop)unawaited(_leave());},child:PilotDayLayout(title:title,dayRow:PilotDayRow(day:d.personalView==null?prettyDay(day,l):named(nav),dirty:review?.hasChanges==true,busy:review?.busy==true,
+      return PopScope(canPop:_allowPop||(review?.hasChanges!=true&&review?.busy!=true),onPopInvokedWithResult:(didPop,result){if(!didPop)unawaited(_leave());},child:PilotDayLayout(title:title,dayRow:Column(children:[PilotDayRow(day:d.personalView==null?prettyDay(day,l):named(nav),dirty:review?.hasChanges==true,busy:review?.busy==true,
         onPrevious:index>=0&&index+1<days.length?()=>_goDay(days[index+1]):null,
         onNext:index>0?()=>_goDay(days[index-1]):null,
-        onCancel:()async{await review?.discardDraft();if(mounted)setState((){});},onSave:()=>review?.save(c)),
+        onCancel:()async{await review?.discardDraft();if(mounted)setState((){});},onSave:()=>review?.save(c)),DayReviewNotices(controller:review,reloader:this)]),
         graph:d.graph,stages:_pilotStages,controller:chart,interaction:_pilotInteraction,tab:_pilotTab??PilotTimelineTab.pending,
         onTab:(value)=>setState(()=>_pilotTab=value),listController:_listController,
         annotations:annotations,onAnnotation:annotationTapped,onScrub:_scrubRow,focusId:_highlight,
@@ -1859,7 +1859,7 @@ Future<void> _loadPilotStages(String day,DayGraph g)async{
           // Mock-up v16: "Typical day ›" follows the list, left-aligned.
           Align(alignment:Alignment.centerLeft,child:TextButton(onPressed:()=>go(c,const TypicalDayScreen()),child:Text('${l?.typicalDayTitle??'Typical day'} ›'))),
           if(d.computedAtMs!=null)Text(l!.asOfTime(clockOfTs(d.computedAtMs!~/1000)),style:F.cap.copyWith(color:p.ink3)),
-          if(widget.reviewEntry)const NapAutoLogRow(),DayReviewNotices(controller:review,reloader:this),
+          if(widget.reviewEntry)const NapAutoLogRow(),
         ],backToOpened:_openedDay!=null&&nav!=_openedDay?TextButton(onPressed:()=>_goDay(_openedDay!),child:Text(_openedDay==todayLabel()||cycles.any((c)=>c.id.value==_openedDay&&c.contains(DateTime.now()))?(l?.homeBackToToday??'Back to today'):l!.pilotBackToDay(named(_openedDay!)))):null));
     }
     return PopScope(

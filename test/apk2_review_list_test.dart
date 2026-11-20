@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+import 'package:openstrap_edge/pilot/pilot_flags.dart';
+import 'package:openstrap_edge/ui2/screens/day_review.dart';
 
 import 'support/apk2_keys.dart';
 import 'support/apk2_review_harness.dart';
@@ -13,6 +15,84 @@ import 'support/pin_tz.dart';
 
 void main() {
   pinProcessTimeZone('America/Denver');
+
+  // why: the owner's November 18 pending naps were 1,241 seconds apart;
+  // saving both must ask for a merge, then commit the complete batch once.
+  // catches: a generic hidden refusal, premature success, or random block ids
+  // invalidating the same merge approval after transaction rollback.
+  for (final pilot in [false, true]) testWidgets('nearby kept naps offer a merge and retry the atomic day save, pilot $pilot', (t) async {
+    addTearDown(() => PilotFlags.set(PilotFlag.timelines, false));
+    final semantics = t.ensureSemantics();
+    final r = await Apk2Rig.create(t);
+    final first = apk2At(11);
+    final second = first + 995 + 1241;
+    await t.runAsync(() async {
+    await PilotFlags.set(PilotFlag.timelines, pilot);
+    await r.db.update('activity_suggestions', {'end_ts': first + 995},
+        where: 'id = ?', whereArgs: ['apk2-nap-a']);
+    await r.db.update('activity_suggestions', {'start_ts': second, 'end_ts': second + 2620},
+        where: 'id = ?', whereArgs: ['apk2-nap-b']);
+    });
+    await r.mount(t);
+    await apk2Show(t, apk2NapA);
+    await apk2Tap(t, apk2Keep(apk2NapA));
+    await apk2Show(t, apk2NapB);
+    await apk2Tap(t, apk2Keep(apk2NapB));
+    await apk2Tap(t, apk2Key(pilot ? 'pilot-day-save' : apk2Save));
+    final controller = t.widget<DayReviewNotices>(find.byType(DayReviewNotices)).controller!;
+    expect(controller.savedRevision, 0);
+    expect(controller.isSettled(apk2NapA), false);
+    expect(await r.status(t, apk2NapA), ActivityReviewStatus.pending);
+    expect(await r.status(t, apk2NapB), ActivityReviewStatus.pending);
+    expect((await r.snapshot(t))['sleep_nap'], isEmpty);
+    expect(find.textContaining('merge these sleep blocks'), findsOneWidget);
+    if (pilot) {
+      final error = t.getRect(apk2Key('apk2-review-save-error'));
+      expect(error.top, greaterThanOrEqualTo(0));
+      expect(error.bottom, lessThan(900));
+    }
+    expect(apk2Selected(t, apk2Keep(apk2NapA)), isTrue);
+    expect(apk2Selected(t, apk2Keep(apk2NapB)), isTrue);
+    await apk2Tap(t, apk2Key('day-review-merge'));
+    expect(controller.savedRevision, 1);
+    expect(await r.status(t, apk2NapA), ActivityReviewStatus.confirmed);
+    expect(await r.status(t, apk2NapB), ActivityReviewStatus.confirmed);
+    final naps = (await r.snapshot(t))['sleep_nap']!;
+    expect(naps, hasLength(1));
+    expect(naps.single['start_ts'], first);
+    expect(naps.single['end_ts'], second + 2620);
+    expect(apk2Key('apk2-review-save-error'), findsNothing);
+    semantics.dispose();
+  });
+
+  // why: revision refusals must tell the wearer why the Save rolled back.
+  // catches: swallowing ActivityReviewException.message or reporting success.
+  testWidgets('a changed suggestion shows its reason and retains the staged Keep', (t) async {
+    final semantics = t.ensureSemantics();
+    final r = await Apk2Rig.create(t);
+    await r.mount(t);
+    await apk2Tap(t, apk2Keep(apk2NapA));
+    final prior = t.widget<DayReviewNotices>(find.byType(DayReviewNotices)).controller!;
+    prior.followUpFailed = true; // a previous committed Save's export failed
+    await t.runAsync(() => r.db.rawUpdate(
+        'UPDATE activity_suggestions SET revision = revision + 1 WHERE id = ?',
+        ['apk2-nap-a']));
+    await apk2Tap(t, apk2Key(apk2Save));
+    expect(find.text('This suggestion changed as more data arrived. Review its updated times and try again.'), findsOneWidget);
+    final controller = t.widget<DayReviewNotices>(find.byType(DayReviewNotices)).controller!;
+    expect(controller.savedRevision, 0);
+    expect(controller.followUpFailed, false);
+    expect(find.textContaining('Decisions saved.'), findsNothing);
+    expect(controller.isSettled(apk2NapA), false);
+    expect(apk2Selected(t, apk2Keep(apk2NapA)), isTrue);
+    expect(await r.status(t, apk2NapA), ActivityReviewStatus.pending);
+    expect((await r.snapshot(t))['sleep_nap'], isEmpty);
+    await t.runAsync(controller.discardDraft);
+    await t.pump();
+    expect(apk2Key('apk2-review-save-error'), findsNothing);
+    expect(controller.hasChanges, false);
+    semantics.dispose();
+  });
 
   testWidgets('day change clears the old rows and the Save bar while the new timeline is loading', (t) async {
     final semantics = t.ensureSemantics();

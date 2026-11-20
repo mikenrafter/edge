@@ -51,4 +51,27 @@ void main(){
     await expectLater(restore(),throwsA(isA<ActivityReviewException>()));expect((await rig.store.get(id))!.revision,restored.revision);
     });
   });
+  // why: retry-stable Keep identities must not collide with an older removed
+  // block after the wearer discards, restores and keeps the same suggestion.
+  // catches: using only suggestion id, without its reviewed revision.
+  testWidgets('a kept nap can be discarded restored and kept again',(t)async{
+    final rig=await Apk2Rig.create(t);
+    await t.runAsync(()async{
+      await PilotFlags.set(PilotFlag.timelines,true);
+      final id=apk2NapA.substring(9),repo=LocalRepositoryImpl(getProfileMap:()=>{});
+      final first=(await rig.store.get(id))!;
+      await repo.saveDayReview(activities:[ActivityDecision(first,keep:true)],moments:[]);
+      final kept=(await rig.store.get(id))!;
+      await rig.store.discard(kept);
+      final discarded=(await rig.store.get(id))!;
+      await repo.saveDayReview(activities:[ActivityDecision(discarded,keep:true,restore:true)],moments:[]);
+      final restored=(await rig.store.get(id))!;
+      await repo.saveDayReview(activities:[ActivityDecision(restored,keep:true)],moments:[]);
+      expect((await rig.store.get(id))!.status,ActivityReviewStatus.confirmed);
+      final blocks=await rig.db.query('sleep_block',where:"kind = 'nap' AND state = 'live'");
+      expect(blocks,hasLength(1));expect(blocks.single['start_ts'],first.startTs);
+      expect(blocks.single['end_ts'],first.endTs);
+    });
+  });
+
 }

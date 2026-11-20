@@ -549,6 +549,9 @@ class ActivityStore {
       final plan=await SleepBlockStore.plan(tx,day,[command]);
       final proposal=await SleepBlockStore.preflight(tx,plan);
       final outcome=await SleepBlockStore.apply(plan,tx:tx,merge:merge);
+      if (outcome is SleepRefused && outcome.proposal != null) {
+        throw SleepMergeRequiredException(outcome.proposal!, suggestionId: expected.id);
+      }
       requireSleepSaved(outcome);
       if(proposal is SleepProposalMergeRequired) {
         final p=proposal.proposal;
