@@ -37,6 +37,7 @@ import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
 import 'support/settings_sections.dart';
+import 'support/finite_settle.dart';
 
 const _key = 'pull_to_sync';
 const _title = 'Pull down to sync';
@@ -143,7 +144,7 @@ void main() {
       await t.fling(find.byType(ListView).first, const Offset(0, 400), 1000);
       await t.pump();
       await t.pump(const Duration(seconds: 1));
-      await t.pumpAndSettle();
+      await settleFinite(t);
       expect(app.refreshes, 1, reason: 'a pull asks for a sync');
     });
 
@@ -220,7 +221,7 @@ void main() {
       await t.fling(find.byType(ListView).first, const Offset(0, 400), 1000);
       await t.pump();
       await t.pump(const Duration(seconds: 1));
-      await t.pumpAndSettle();
+      await settleFinite(t);
       expect(app.refreshes, 0);
       expect(app.syncs, 0);
     });

@@ -254,6 +254,11 @@ void main() {
         (t) async {
       var opened = 0;
       await _pump(t, MoreSettingsView(devMode: true, onDeviceLab: () => opened++));
+      // Settings grew past the built range of its lazy list; scroll to the row.
+      await t.scrollUntilVisible(find.text('Device lab'), 400,
+          scrollable: find.byType(Scrollable).first);
+      await t.ensureVisible(find.text('Device lab'));
+      await t.pumpAndSettle();
       await t.tap(find.text('Device lab'));
       expect(opened, 1);
       await _pump(t, MoreSettingsView(onDeviceLab: () => opened++));

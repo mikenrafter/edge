@@ -16,7 +16,10 @@ Future<(Element, AppLocalizations)> _pumpIn( WidgetTester t, Locale locale, Widg
   return (t.element(find.byKey(_root)), l); } void main() {
   // WHY: main can have only workouts, or several naps. The shipped guide must
   // choose a real correction control rather than abstain or report ambiguity.
-  for (final labels in [<String>['Not a workout'], ['Not a nap', 'Not a nap'], ['Not a workout', 'Not a nap']]) {
+  // The review is the day breakdown in review mode: every pending row carries
+  // its own Discard (guide_remove_detected.dart; no "Not a nap"/"Not a workout"
+  // pair), and the step outlines the first.
+  for (final labels in [<String>['Discard'], ['Discard', 'Discard'], ['Discard', 'Discard', 'Discard']]) {
     testWidgets('the correction guide targets the first offered control in $labels', (t) async {
       final (root, l) = await _pumpIn(t, const Locale('en'), (_) => Column(children: [
         for (final label in labels) Pressable(onTap: () {}, child: Text(label)),

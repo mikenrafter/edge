@@ -47,6 +47,19 @@ class _Repo extends LocalRepository {
   }
 
   Map<String, JournalMetricValue>? posted;
+
+  /// The storage owner's step (the water per-glass record): it reads the day's
+  /// stored total itself and writes the next one, so the screen never carries a
+  /// total across midnight.
+  @override
+  Future<double?> changeWater(String date, double delta,
+      {required int atMinuteOfDay}) async {
+    final stored = journal['water_ml']?.value ?? 0.0;
+    final next = stored + delta < 0 ? 0.0 : stored + delta;
+    posted = journal = {'water_ml': JournalMetricValue(next)};
+    return next;
+  }
+
   @override
   Future<void> postJournalMetrics(
       String date, Map<String, JournalMetricValue> fields) async {
@@ -265,6 +278,7 @@ void main() {
     }
 
     expect(repo.posted?['water_ml']?.value, 250,
-        reason: 'yesterday\'s total was carried into today');
+        reason: 'the step starts from the day\'s stored total (none yet), not '
+            'from the 2 L the screen last loaded');
   });
 }

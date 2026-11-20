@@ -12,6 +12,7 @@ import 'package:openstrap_edge/ui2/activity/zones.dart'; import 'package:openstr
 import 'package:openstrap_edge/ui2/guides/guide_heart_rate_zones.dart'; import 'package:openstrap_edge/ui2/guides/guide_target.dart';
 import 'package:openstrap_edge/ui2/screens/home_screen.dart'; import 'package:openstrap_edge/ui2/skeleton/skeleton.dart'; import 'package:openstrap_edge/ui2/ui2.dart';
 import '../support/guide_demo_data.dart'; import '../support/guide_demo_screens.dart'; import '../support/guide_view.dart'; import '../support/skeleton_fixture.dart';
+import '../support/finite_settle.dart';
 const _root = ValueKey('root'); List<GuideStep> _steps() => switch (heartRateZonesGuide.variantFor(BandGeneration.whoop4)) {
       GuideVariantFound(:final variant) => variant.steps, GuideNoVariant() => fail('guide #1 must cover WHOOP 4'), };
 /// Pumps [step]'s screen (or [screen]) filling a [w] x [h] root, in [locale].
@@ -156,7 +157,7 @@ void main() { setUpAll(() async { TestWidgetsFlutterBinding.ensureInitialized();
         // The texts as the screens PRINT them: Home upper-cases the ring label (home_screen.dart:1215); the other two are printed as in the arb.
         final labels = [l.homeRingStrain.toUpperCase(), l.dayStrainHowSet, l.activityZonesSetYourOwnLink]; for (var i = 0; i < steps.length; i++) { await t.pumpWidget(skHost(
             Scaffold(body: SingleChildScrollView(child: Center(child: GuideStepView(number: i + 1, step: steps[i])))), locale: locale, ));
-          await t.pumpAndSettle(); expect(t.takeException(), isNull, reason: 'step ${i + 1} ${locale.languageCode}');
+          await settleFinite(t); expect(t.takeException(), isNull, reason: 'step ${i + 1} ${locale.languageCode}');
           final frame = t.getRect(find.byKey(GuideStepView.frameKey)); expect(frame.width, closeTo(280, 0.6)); final target = t.getRect(find.text(labels[i]).first);
           expect(skContains(frame, target), isTrue, reason: 'target $target in frame $frame');
           final outline = t.getRect(find.byKey(GuideStepView.outlineKey)); final pill = t.getRect(find.byKey(GuideStepView.tapPillKey));
@@ -175,7 +176,7 @@ void main() { setUpAll(() async { TestWidgetsFlutterBinding.ensureInitialized();
         skTallView(t, w: 800, h: 3000); final l = lookupAppLocalizations(locale); final steps = _steps();
         final labels = [l.homeRingStrain.toUpperCase(), l.dayStrainHowSet, l.activityZonesSetYourOwnLink]; for (var i = 0; i < steps.length; i++) { await t.pumpWidget(skHost(
             Scaffold(body: SingleChildScrollView(child: Center(child: GuideStepView(number: i + 1, step: steps[i])))), locale: locale, ));
-          await t.pumpAndSettle(); final skeleton = find.byType(Skeletonize); final toGlobal = t.renderObject<RenderBox>(skeleton).getTransformTo(null); final shapes = [
+          await settleFinite(t); final skeleton = find.byType(Skeletonize); final toGlobal = t.renderObject<RenderBox>(skeleton).getTransformTo(null); final shapes = [
             for (final s in t.state<SkeletonizeState>(skeleton).paintedShapes) MatrixUtils.transformRect(toGlobal, s.rect), ];
           final target = t.getRect(find.text(labels[i]).first); final legible = <Rect>[];
           for (final e in find.descendant(of: skeleton, matching: find.byType(RichText)).evaluate()) {

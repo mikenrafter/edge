@@ -19,10 +19,14 @@ Finder _byKeySuffix(String suffix) => find.byWidgetPredicate(
 );
 
 Future<void> _expand(WidgetTester t, String label) async {
+  // The editor is a lazy list and the Prescribed row (tracksPrescribed, 2026-11)
+  // pushed this section below the built range, so scroll to it first.
+  await t.scrollUntilVisible(find.text(label), 300,
+      scrollable: find.byType(Scrollable).first);
   await t.ensureVisible(find.text(label));
   await t.pumpAndSettle();
-  await t.tap(find.text(label));
-  await t.pumpAndSettle();
+  // Accordions open by default since f49bac5aa (2026-11-15), so a tap here would
+  // close the section; reaching it is enough.
 }
 
 void main() {
