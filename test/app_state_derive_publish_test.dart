@@ -14,6 +14,9 @@ import 'support/scripted_artifact_source.dart';
 import 'support/app_state_derive_harness.dart';
 
 const _db = 'openstrap_app_state_derive_publish.db';
+// Every publish also runs refreshReminderSleep, which bumps once more (31aa3bef8,
+// 2026-10-27: reminders suppressed during sleep), so a publish moves the revision twice.
+const _perPublish = 2;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -64,7 +67,8 @@ void main() {
       expect(app.insightsRevision.value, 1);
       gate.complete();
       await pass;
-      expect(app.insightsRevision.value, 2, reason: 'end-of-pass publish');
+      expect(app.insightsRevision.value, 2 * _perPublish,
+          reason: 'day publish + end-of-pass publish');
     });
 
     test('ten days in one burst: one immediate bump, one trailing flush ~1.5 s '
@@ -75,12 +79,13 @@ void main() {
       final revs = RevisionLog(app);
       await app.debugAfterDrain();
       await settleMs(300);
-      expect(revs.bumps, 2,
+      expect(revs.bumps, 2 * _perPublish,
           reason: 'immediate day publish + end of pass; trailing flush waits');
-      await until(() => revs.bumps >= 3, within: const Duration(seconds: 4));
-      expect(revs.bumps, 3);
+      await until(() => revs.bumps >= 3 * _perPublish,
+          within: const Duration(seconds: 4));
+      expect(revs.bumps, 3 * _perPublish);
       await settleMs(300);
-      expect(revs.bumps, 3, reason: 'nothing further');
+      expect(revs.bumps, 3 * _perPublish, reason: 'nothing further');
     }, timeout: const Timeout(Duration(seconds: 20)));
 
     test('a pass that commits no day publishes only at the end', () async {
@@ -89,7 +94,7 @@ void main() {
       final revs = RevisionLog(app);
       await app.debugAfterDrain();
       await settleMs();
-      expect(revs.bumps, 1);
+      expect(revs.bumps, _perPublish);
     });
 
     test('two passes inside the gap share the publisher: the second pass\'s '
@@ -100,13 +105,15 @@ void main() {
       await app.debugAfterDrain();
       await settleMs(200);
       final afterFirst = revs.bumps;
-      expect(afterFirst, 2);
+      expect(afterFirst, 2 * _perPublish);
       await app.debugAfterDrain();
       await settleMs(200);
-      expect(revs.bumps, afterFirst + 1, reason: 'only the end-of-pass bump');
-      await until(() => revs.bumps >= afterFirst + 2,
+      expect(revs.bumps, afterFirst + _perPublish,
+          reason: 'only the end-of-pass publish');
+      await until(() => revs.bumps >= afterFirst + 2 * _perPublish,
           within: const Duration(seconds: 4));
-      expect(revs.bumps, afterFirst + 2, reason: 'then the trailing flush');
+      expect(revs.bumps, afterFirst + 2 * _perPublish,
+          reason: 'then the trailing flush');
     }, timeout: const Timeout(Duration(seconds: 20)));
   });
 
