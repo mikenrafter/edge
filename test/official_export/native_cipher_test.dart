@@ -10,6 +10,7 @@
 // rename that changed bytes; a stream-only provider; an older bridge.
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:crypto/crypto.dart' as hashes;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/backup_storage.dart';
@@ -27,13 +28,14 @@ GCMBlockCipher _gcm(bool encrypt,OsbkKey key)=>GCMBlockCipher(AESEngine())
 class NativeDestination extends Destination implements NativeOsbkCipher {
   NativeDestination(super.root,super.space);
   int encrypts=0,verifies=0,appends=0;
+  final floors=<int>[];
   // A bridge built before the platform cipher answers false here.
   bool nativeSupported=true;
   // A rename that keeps the length and both ends but changes one byte in the middle.
   bool flipMiddleOnRename=false;
   @override Future<void> appendCiphertext(BackupFile file,List<int> bytes){appends++;return super.appendCiphertext(file,bytes);}
-  @override Future<String> encryptFileInto(BackupFile file,String plainPath,OsbkKey key,{void Function(int)? onBytes,void Function()? checkCancelled}) async {
-    encrypts++;
+  @override Future<String> encryptFileInto(BackupFile file,String plainPath,OsbkKey key,{int floorBytes=0,void Function(int)? onBytes,void Function()? checkCancelled}) async {
+    encrypts++;floors.add(floorBytes);
     final plain=await File(plainPath).readAsBytes();
     final sealed=_gcm(true,key).process(plain);
     await File(file.path).writeAsBytes([...key.header,...sealed],mode:FileMode.append);
@@ -126,5 +128,38 @@ void main() {
     messenger.setMockMethodCallHandler(AndroidBackupStorage.channel,(call)async=>call.method=='cipherProgress'?0:null);
     try {expect(await storage.nativeAvailable(),isTrue);}
     finally {messenger.setMockMethodCallHandler(AndroidBackupStorage.channel,null);}
+  });
+  // [review r1 F6] One free-space sample before a ~1 GB native write lets a band
+  // drain or another writer spend the ingestion reserve mid-write, so the
+  // writer is handed the reserve and rechecks it itself.
+  test('the native writer is handed the live-data reserve to recheck while it writes',()async {
+    final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('native_cipher_floor_');
+    try {
+      final free=Space();final destination=NativeDestination(root,free);
+      final budget=ExportSpaceBudget(source:free,liveFloorBytes:123456789);
+      final outcome=await OfficialExportCoordinator().export(snapshot:Snapshot(fx.forkPath),privateRoot:Directory('${root.path}/private'),
+        destination:destination,space:budget,prompts:Prompts(()async=>'pw',(_)async=>false));
+      expect(outcome,isA<OfficialExportSaved>());
+      expect(destination.floors,[123456789]);
+    } finally {await root.delete(recursive:true);await fx.dispose();}
+  });
+  test('the bridge passes the reserve down and a refusal from its writer is the ordinary space refusal',()async {
+    final messenger=TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    final storage=const AndroidCipherBackupStorage(BackupFolder(uri:'content://tree',name:'Documents'));
+    final key=OsbkKey(Uint8List(38),Uint8List(32));
+    Map<Object?,Object?>? sent;
+    messenger.setMockMethodCallHandler(AndroidBackupStorage.channel,(call)async {
+      if(call.method=='cipherProgress')return 0;
+      if(call.method=='encryptCiphertext'){
+        sent=call.arguments as Map<Object?,Object?>;
+        throw PlatformException(code:'space',message:'no room',details:[1000,2000,3000]);
+      }
+      return null;
+    });
+    try {
+      await expectLater(storage.encryptFileInto(const BackupFile(path:'x',name:'x'),'/plain',key,floorBytes:777),
+        throwsA(isA<ExportSpaceExhausted>().having((e)=>(e.freeBytes,e.nextWriteBytes,e.floorBytes),'numbers',(1000,2000,3000))));
+      expect(sent!['floorBytes'],777);
+    } finally {messenger.setMockMethodCallHandler(AndroidBackupStorage.channel,null);}
   });
 }

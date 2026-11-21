@@ -22,6 +22,10 @@ import java.util.concurrent.atomic.AtomicLong
  * Registered on the cached engine so writes do not depend on an Activity.
  * The picker alone borrows the visible Activity, like CompanionBridge.
  */
+/** The volume no longer has the bytes about to be written plus the live-data reserve. */
+class ExportSpaceException(val free: Long, val next: Long, val floor: Long) :
+    IOException("Export needs $next bytes plus the $floor live-data reserve; $free bytes available")
+
 object BackupFolderBridge {
     private const val REQUEST_PICK_FOLDER = 0x5A41
     private val worker = Executors.newSingleThreadExecutor()
@@ -58,6 +62,8 @@ object BackupFolderBridge {
             try {
                 val value = operation()
                 main.post { result.success(value) }
+            } catch (e: ExportSpaceException) {
+                main.post { result.error("space", e.message, listOf(e.free, e.next, e.floor)) }
             } catch (e: Exception) {
                 val code = if (e is SecurityException) "folder_access_lost" else "folder_io"
                 val message = if (e is SecurityException) {
@@ -275,8 +281,17 @@ object BackupFolderBridge {
                     val pending = cipherWrites[uri] ?: throw IOException("Export stream is closed")
                     if (pending.first != tree) throw SecurityException("Export belongs to another folder")
                     val source = File(call.argument<String>("source") ?: throw IllegalArgumentException("Missing source"))
+                    // The Dart side checked free space once; ingestion and WAL writes keep spending it
+                    // while ~1 GB is written, so every write rechecks the reserve it was handed.
+                    val floor = call.argument<Number>("floorBytes")?.toLong() ?: 0L
+                    val reserve = { next: Long ->
+                        if (floor > 0) {
+                            val free = StatFs(context.filesDir.absolutePath).availableBytes
+                            if (free - next < floor) throw ExportSpaceException(free, next, floor)
+                        }
+                    }
                     try {
-                        source.inputStream().use { gcm.encrypt(it, pending.second, progress, cancelled) }
+                        source.inputStream().use { gcm.encrypt(it, pending.second, progress, cancelled, reserve) }
                     } catch (e: Exception) {
                         cipherWrites.remove(uri)
                         try { pending.second.close() } catch (_: Exception) {}

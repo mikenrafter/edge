@@ -135,13 +135,24 @@ class OsbkGcm(key: ByteArray, private val nonce: ByteArray, private val aad: Byt
         }
     }
 
-    /** Writes header, ciphertext and tag to [out]; returns the plaintext SHA-256 (hex). */
-    fun encrypt(input: InputStream, out: OutputStream, onBytes: (Long) -> Unit, cancelled: () -> Boolean): String {
+    /**
+     * Writes header, ciphertext and tag to [out]; returns the plaintext SHA-256 (hex). [beforeWrite]
+     * is told how many bytes are about to be written, so the caller can refuse when the volume no
+     * longer has them to spare.
+     */
+    fun encrypt(
+        input: InputStream,
+        out: OutputStream,
+        onBytes: (Long) -> Unit,
+        cancelled: () -> Boolean,
+        beforeWrite: (Long) -> Unit = {},
+    ): String {
         val ghash = Ghash().apply { aad(this@OsbkGcm.aad) }
         val sha = MessageDigest.getInstance("SHA-256")
         val cipher = ctr(Cipher.ENCRYPT_MODE)
         val buf = ByteArray(CHUNK)
         val enc = ByteArray(CHUNK + 16)
+        beforeWrite(aad.size.toLong())
         out.write(aad)
         var total = 0L
         while (true) {
@@ -152,12 +163,14 @@ class OsbkGcm(key: ByteArray, private val nonce: ByteArray, private val aad: Byt
             sha.update(buf, 0, n)
             val m = cipher.update(buf, 0, n, enc, 0)
             ghash.update(enc, 0, m)
+            beforeWrite(m.toLong())
             out.write(enc, 0, m)
             total += n
             onBytes(total)
         }
         val tail = cipher.doFinal()
-        if (tail.isNotEmpty()) { ghash.update(tail, 0, tail.size); out.write(tail) }
+        if (tail.isNotEmpty()) { ghash.update(tail, 0, tail.size); beforeWrite(tail.size.toLong()); out.write(tail) }
+        beforeWrite(16)
         out.write(ghash.tag())
         out.flush()
         return hex(sha.digest())

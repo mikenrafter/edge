@@ -70,4 +70,22 @@ class OsbkGcmTest {
             OsbkGcm(key, nonce, header).verify(ByteArrayInputStream(reference(plain)), {}, { true })
         }
     }
+
+    // [review r1 F6] The writer asks before every write, so a reserve spent mid-write stops it.
+    @Test fun writerAsksBeforeEveryWriteAndStopsWhenRefused() {
+        val plain = bytes(3 * OsbkGcm.CHUNK + 9)
+        val asked = ArrayList<Long>()
+        val out = ByteArrayOutputStream()
+        OsbkGcm(key, nonce, header).encrypt(ByteArrayInputStream(plain), out, {}, { false }, { asked.add(it) })
+        assertEquals("every byte written was asked for first", out.size().toLong(), asked.sum())
+
+        var calls = 0
+        val partial = ByteArrayOutputStream()
+        assertThrows(IOException::class.java) {
+            OsbkGcm(key, nonce, header).encrypt(ByteArrayInputStream(plain), partial, {}, { false }) {
+                if (++calls == 3) throw IOException("no room")
+            }
+        }
+        assertEquals("nothing is written after a refusal", header.size + OsbkGcm.CHUNK.toLong(), partial.size().toLong())
+    }
 }

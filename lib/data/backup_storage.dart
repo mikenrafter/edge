@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../import/backup_crypto.dart' show OsbkKey;
+import 'official_export/space_budget.dart' show ExportSpaceExhausted;
 
 /// A document-tree grant, not a filesystem path. Kept on this device only.
 class BackupFolder {
@@ -208,7 +209,8 @@ class LocalCipherBackupStorage implements CipherBackupStorage {
 /// [encryptBackupStream]'s for the same [OsbkKey]. Both return the plaintext
 /// SHA-256 (hex); verification also authenticates the GCM tag.
 abstract interface class NativeOsbkCipher {
-  Future<String> encryptFileInto(BackupFile file,String plainPath,OsbkKey key,{void Function(int)? onBytes,void Function()? checkCancelled});
+  /// [floorBytes] is the free space the writer must leave: it rechecks as it writes.
+  Future<String> encryptFileInto(BackupFile file,String plainPath,OsbkKey key,{int floorBytes=0,void Function(int)? onBytes,void Function()? checkCancelled});
   Future<String> verifyFile(BackupFile file,OsbkKey key,{void Function(int)? onBytes,void Function()? checkCancelled});
   /// False on a bridge built before the platform cipher: the caller then uses
   /// the Dart stream and never calls the methods above.
@@ -241,8 +243,8 @@ class AndroidCipherBackupStorage implements CipherBackupStorage, NativeOsbkCiphe
     } finally {await AndroidBackupStorage.channel.invokeMethod<void>('closeCiphertextRead',_args(file));}
   }
   @override Future<BackupFile> publishCiphertext(BackupFile file,String name)=>AndroidBackupStorage(folder).rename(file,name);
-  @override Future<String> encryptFileInto(BackupFile file,String plainPath,OsbkKey key,{void Function(int)? onBytes,void Function()? checkCancelled})=>
-    _nativePass('encryptCiphertext',{..._args(file),'source':plainPath,'key':key.key,'nonce':key.nonce,'header':key.header},onBytes,checkCancelled);
+  @override Future<String> encryptFileInto(BackupFile file,String plainPath,OsbkKey key,{int floorBytes=0,void Function(int)? onBytes,void Function()? checkCancelled})=>
+    _nativePass('encryptCiphertext',{..._args(file),'source':plainPath,'key':key.key,'nonce':key.nonce,'header':key.header,'floorBytes':floorBytes},onBytes,checkCancelled);
   @override Future<String> verifyFile(BackupFile file,OsbkKey key,{void Function(int)? onBytes,void Function()? checkCancelled})=>
     _nativePass('verifyCiphertext',{..._args(file),'key':key.key,'nonce':key.nonce,'header':key.header},onBytes,checkCancelled);
   // cipherProgress ships with the cipher methods, so a bridge that lacks it
@@ -282,8 +284,11 @@ class AndroidCipherBackupStorage implements CipherBackupStorage, NativeOsbkCiphe
       final hash=await channel.invokeMethod<String>(method,args);
       if(hash==null)throw const FileSystemException('Export cipher returned nothing');
       return hash;
-    } on PlatformException {
+    } on PlatformException catch(error) {
       if(stop!=null)throw stop!;
+      // The writer rechecks the live-data reserve as it writes; its refusal is the ordinary one.
+      final d=error.details;
+      if(error.code=='space' && d is List && d.length==3)throw ExportSpaceExhausted((d[0] as num).toInt(),(d[1] as num).toInt(),(d[2] as num).toInt());
       rethrow;
     } finally {done=true;await poll;}
   }

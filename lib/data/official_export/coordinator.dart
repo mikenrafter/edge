@@ -372,9 +372,10 @@ class OfficialExportCoordinator extends ChangeNotifier {
     final OsbkKey? key=native==null?null:await prepareBackupKey(_passphrase!);
     final String encryptedHash;
     if(native!=null) {
-      // One reservation covers the whole ciphertext: header, data and tag.
+      // One reservation covers the whole ciphertext: header, data and tag; the
+      // writer then rechecks the reserve before each write, as the Dart stream does.
       await _space.requireAvailable(size+54+65536);
-      encryptedHash=await native.encryptFileInto(_incomplete!,plain.path,key!,checkCancelled:_cancellation.check,
+      encryptedHash=await native.encryptFileInto(_incomplete!,plain.path,key!,floorBytes:_space.liveFloorBytes,checkCancelled:_cancellation.check,
         onBytes:(n)=>_progress(ExportStage.encrypting,artifact:artifact,done:n,total:size));
     } else {
       encryptedHash=await encryptBackupStream(plain,_passphrase!, (chunk)async {
