@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.math.BigInteger
 import java.security.MessageDigest
 import java.util.Random
 import javax.crypto.Cipher
@@ -87,5 +88,57 @@ class OsbkGcmTest {
             }
         }
         assertEquals("nothing is written after a refusal", header.size + OsbkGcm.CHUNK.toLong(), partial.size().toLong())
+    }
+
+    // [review r1 F7] pointycastle 3.9 keeps the ciphertext bit length in a Uint32. Expected values are
+    // that arithmetic done independently (BigInteger), at, below and above the 2^29-byte wrap.
+    @Test fun lengthWordWrapsLikePointycastleAround512MiB() {
+        val wrap = BigInteger.ONE.shiftLeft(32)
+        val m512 = 1L shl 29
+        for (n in listOf(0L, 1L, 38L, m512 - 1, m512, m512 + 1, m512 + 17, 2 * m512 - 1, 2 * m512, (1L shl 32) + 5, 537_000_123L, 1L shl 40)) {
+            val expected = BigInteger.valueOf(n).shiftLeft(3).mod(wrap).toLong()
+            assertEquals("bytes $n", expected, OsbkGcm.lengthWord(n))
+        }
+        assertEquals(0xffff_fff8L, OsbkGcm.lengthWord(m512 - 1))
+        assertEquals(0L, OsbkGcm.lengthWord(m512))
+        assertEquals(136L, OsbkGcm.lengthWord(m512 + 17))
+        assertEquals(40L, OsbkGcm.lengthWord((1L shl 32) + 5))
+    }
+
+    // The same 537,000,123 plaintext bytes (just over 512 MiB) as test/official_export/gcm_length_oracle_test.dart,
+    // which has pointycastle encrypt them: its output hashes to ORACLE_SHA256 (recorded 2026-11-21). If the length
+    // block drifts from pointycastle's, only this streamed vector notices at the real size.
+    @Test fun streamedOracleAbove512MiBMatchesPointycastle() {
+        val oracleKey = ByteArray(32) { it.toByte() }
+        val oracleNonce = ByteArray(12) { (0xA0 + it).toByte() }
+        val oracleHeader = ByteArray(38) { (0x40 + it).toByte() }
+        val total = 537_000_123L
+        val plain = object : InputStream() {
+            private var x = 0x9E3779B97F4A7C15uL.toLong()
+            private var left = total
+            override fun read(): Int = throw UnsupportedOperationException()
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                if (left == 0L) return -1
+                val n = minOf(len.toLong(), left).toInt()
+                var s = x
+                for (i in off until off + n) {
+                    s = s xor (s shl 13); s = s xor (s ushr 7); s = s xor (s shl 17)
+                    b[i] = (s ushr 56).toByte()
+                }
+                x = s; left -= n
+                return n
+            }
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+        val sink = object : java.io.OutputStream() {
+            override fun write(b: Int) = digest.update(b.toByte())
+            override fun write(b: ByteArray, off: Int, len: Int) = digest.update(b, off, len)
+        }
+        OsbkGcm(oracleKey, oracleNonce, oracleHeader).encrypt(plain, sink, {}, { false })
+        assertEquals(ORACLE_SHA256, digest.digest().joinToString("") { "%02x".format(it) })
+    }
+
+    private companion object {
+        const val ORACLE_SHA256 = "e80f1467cc408c3797d023c7e39a1bed69506b5dfd65273d6106bb6108f6892e"
     }
 }

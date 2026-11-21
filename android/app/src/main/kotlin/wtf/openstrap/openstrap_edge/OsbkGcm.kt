@@ -65,11 +65,11 @@ class OsbkGcm(key: ByteArray, private val nonce: ByteArray, private val aad: Byt
         private val block = ByteArray(16)
         private var fill = 0
         private var aadBits = 0L
-        private var dataBits = 0L
+        private var dataBytes = 0L
 
         fun aad(bytes: ByteArray) { feed(bytes, 0, bytes.size); pad(); aadBits = bytes.size * 8L }
 
-        fun update(bytes: ByteArray, off: Int, len: Int) { feed(bytes, off, len); dataBits += len * 8L }
+        fun update(bytes: ByteArray, off: Int, len: Int) { feed(bytes, off, len); dataBytes += len }
 
         private fun feed(bytes: ByteArray, off: Int, len: Int) {
             var p = off
@@ -123,10 +123,8 @@ class OsbkGcm(key: ByteArray, private val nonce: ByteArray, private val aad: Byt
         fun tag(): ByteArray {
             pad()
             zh = zh xor aadBits
-            // pointycastle 3.9 (what every OSBK reader, official v0.12.2 included, runs) stores the
-            // ciphertext bit length in a Uint32, so above 512 MiB its tag covers the length mod 2^32.
-            // Standard GCM would make those files unreadable there; match the format, not the RFC.
-            zl = zl xor (dataBits and 0xffffffffL)
+            // pointycastle's length block (see [lengthWord]) rather than the RFC's.
+            zl = zl xor lengthWord(dataBytes)
             mult()
             val out = ByteArray(16)
             put64(out, 0, zh); put64(out, 8, zl)
@@ -226,6 +224,15 @@ class OsbkGcm(key: ByteArray, private val nonce: ByteArray, private val aad: Byt
 
     companion object {
         const val CHUNK = 1 shl 20
+
+        /**
+         * The low half of GCM's length block for [dataBytes] of ciphertext. pointycastle 3.9 (what
+         * every OSBK reader, official v0.12.2 included, runs) stores the ciphertext bit length in a
+         * Uint32 (`..[0] = _processedBytes * 8`, gcm.dart doFinal), so above 512 MiB its tag covers
+         * the length mod 2^32. Standard GCM would make those files unreadable there; match the
+         * format, not the RFC. Pinned in OsbkGcmTest around 2^29 bytes and by a recorded oracle.
+         */
+        fun lengthWord(dataBytes: Long): Long = (dataBytes * 8L) and 0xffffffffL
         private val LAST4 = longArrayOf(0x0000, 0x1c20, 0x3840, 0x2460, 0x7080, 0x6ca0, 0x48c0, 0x54e0,
             0xe100, 0xfd20, 0xd940, 0xc560, 0x9180, 0x8da0, 0xa9c0, 0xb5e0)
 
