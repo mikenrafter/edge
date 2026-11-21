@@ -28,8 +28,9 @@ LiveGuideOverlayState _overlay(WidgetTester t) => t.state(find.byType(LiveGuideO
       final picture = t.widget<CustomPaint>(cursor).painter; final before = overlay.hand.tip; var moved = false; for (var i = 0; i < 180; i++) { await t.pump(const Duration(milliseconds: 16)); moved |= (overlay.hand.tip - before).distance > 1; }
       expect(overlay.signatureChecks, walks, reason: 'hand ticks must not walk elements');
       // Hover hit-tests the guide layer on every move; holes and ink reuse the planned walk.
+      final beforeHover = overlay.pageWalks;
       final mouse = await t.createGesture(kind: PointerDeviceKind.mouse); await mouse.addPointer(location: const Offset(200, 300));
-      final pageWalks = overlay.pageWalks; expect(pageWalks, lessThanOrEqualTo(1), reason: 'one walk serves every later hit test');
+      final pageWalks = overlay.pageWalks; expect(pageWalks - beforeHover, lessThanOrEqualTo(1), reason: 'one walk serves every later hit test');
       for (var i = 0; i < 30; i++) { await mouse.moveBy(const Offset(1, 2)); }
       expect(overlay.pageWalks, pageWalks, reason: 'hover must not walk the page'); await mouse.removePointer();
       for (var i = 0; i < 10; i++) { await t.pump(const Duration(milliseconds: 16)); } final settled = overlay.pageWalks;

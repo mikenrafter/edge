@@ -12,6 +12,7 @@ import 'layout_shift/layout_shift.dart';
   final protected = {
     for (final e in pending.elements)
       if (!e.id.startsWith('~pending|') &&
+          !e.id.startsWith('~text|chart-key-value:') &&
           e.id != 'sleep-unusual-pending' &&
           e.rect.top < tailTop &&
           e.rect.top + e.rect.height <= tailTop + 1)

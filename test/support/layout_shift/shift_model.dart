@@ -79,6 +79,9 @@ class ElementSnapshot {
 
   /// Tracked ancestors contain this element; they cannot occlude their own child.
   final List<String> ancestorIds;
+  /// Optional pre-order paint index from [ShiftProbe]; an earlier element
+  /// sits behind a later sibling and cannot cover it.
+  final int? paintOrder;
   const ElementSnapshot({
     required this.id,
     required this.rect,
@@ -88,6 +91,7 @@ class ElementSnapshot {
     this.focused = false,
     this.enabled = true,
     this.ancestorIds = const [],
+    this.paintOrder,
   });
 }
 

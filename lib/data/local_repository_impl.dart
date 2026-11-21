@@ -541,11 +541,10 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   Future<Map<String, dynamic>?> _readBundle(String date) async {
-    bundleDecodes++;
     final read = await BundleStore.shared.read(BundleSource.day(date));
-    return read is BundleOk
-        ? await _withSleepEdit(date, await _withOlderValues(date, _dayMap(read)))
-        : null;
+    if (read is! BundleOk) return null;
+    bundleDecodes++;
+    return _withSleepEdit(date, await _withOlderValues(date, _dayMap(read)));
   }
 
   /// [b], the stored day [day], as a screen may show it while sleep edits are

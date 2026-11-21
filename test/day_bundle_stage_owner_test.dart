@@ -1,11 +1,10 @@
-// WHY: the coordinator owns staging. A legacy serialized flag must never
-// start a second HMM classifier inside the day-bundle worker.
-// Proves CLAIM(day-bundle-stage-owner).
+// WHY: when the opt-in HMM switch (#898) is off/omitted — or on without beats —
+// the coordinator's supplied hypnoStages remain authoritative.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/onehz_pipeline.dart';
 
 void main() {
-  test('legacy HMM flag is ignored and supplied stages remain authoritative', () {
+  test('supplied stages remain authoritative when HMM is off or has no beats', () {
     const start = 1780000000;
     const stages = ['deep', 'rem', 'unobserved', 'light', 'wake'];
     final input = DayBundleInput(
@@ -18,9 +17,12 @@ void main() {
       profile: const {},
     );
     final ordinary = deriveDayBundle(input.toJson());
-    final legacy = deriveDayBundle({...input.toJson(), 'use_hmm_stages': true});
-    expect(legacy, ordinary);
-    final hypnogram = (legacy['series'] as Map)['hypnogram'] as List;
+    final hmmNoBeats = deriveDayBundle({...input.toJson(), 'use_hmm_stages': true});
+    final hypnogram = (hmmNoBeats['series'] as Map)['hypnogram'] as List;
     expect([for (final segment in hypnogram) (segment as Map)['stage']], stages);
+    final sleep = hmmNoBeats['sleep'] as Map;
+    expect(sleep['accounting'], (ordinary['sleep'] as Map)['accounting']);
+    expect(sleep['staging_effective_method'], 'cardio');
+    expect(sleep['staging_fallback'], 'hmm_unavailable');
   });
 }

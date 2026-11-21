@@ -646,7 +646,8 @@ void main() {
       await r.settle();
       await r.settle();
       expect(r.c.state.phase, EcgCapturePhase.inconclusiveRetry);
-      expect(r.saved, isEmpty);
+      // Fork Design 04 saves each inconclusive attempt before offering retry.
+      expect(r.saved, hasLength(2));
     });
 
     test('a save failure never shows completed', () async {

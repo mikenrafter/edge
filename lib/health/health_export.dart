@@ -1214,8 +1214,9 @@ class HealthExporter {
                 if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
                 final wrote = await _androidSleep.replace(
                   bundle,
-                  previousWake: await _previousWake(
+                  previousWake: await _previousWakeLight(
                     _localMidnight(priorityDay!.key) ?? DateTime.now(),
+                    exportGeneration,
                   ),
                 );
                 requireSameStore();
@@ -1302,12 +1303,16 @@ class HealthExporter {
               if (!finalized) prefixContiguous = false;
               continue;
             }
+            // Re-evaluate after bundleFor(date), which detects a re-derive of
+            // the retained priority night and sets rederivedDate.
+            final sleepWrittenForExport =
+                date == androidSleepAlreadyWritten && rederivedDate != date;
             _dayHeldForPurge = false;
             ok = await _exportDay(
               date,
               bundle,
               generation: exportGeneration,
-              androidSleepAlreadyWritten: sleepWritten,
+              androidSleepAlreadyWritten: sleepWrittenForExport,
             ); // delete-then-write (idempotent)
             // Suppression is not an export failure or a success. Leave all
             // progress/retry stamps untouched when demo mode interrupts a pass.
@@ -1439,18 +1444,34 @@ class HealthExporter {
     });
   }
 
-  Future<DateTime?> _previousWake(DateTime dayStart) async {
-    try {
-      final prev = DateTime(dayStart.year, dayStart.month, dayStart.day - 1);
-      final read = await BundleStore.shared.read(
-        BundleSource.day(dayLabelOf(prev)),
-      );
-      final pb = read is BundleOk ? bundleReaderMap(read.view) : null;
-      return pb == null ? null : normalizeHealthSleepSession(pb)?.end;
-    } catch (e) {
-      debugPrintSynchronously('[health] previous wake lookup: $e');
-      return null;
+  Future<DateTime?> _previousWakeLight(
+    DateTime dayStart,
+    StoreGeneration generation,
+  ) async {
+    final prev = dayLabelOf(
+      DateTime(dayStart.year, dayStart.month, dayStart.day - 1),
+    );
+    final seen = _passWakes;
+    if (seen != null && seen.containsKey(prev)) {
+      // The Android scan already light-read that day this pass.
+      return seen[prev];
     }
+    // The sleep-window projection is all normalizeHealthSleepSession reads;
+    // no full decode of yesterday's bundle.
+    final reads = await BundleStore.shared.readStream(
+      [BundleSource.day(prev)],
+      chunkRows: 1,
+      projection: ProjectionId.sleepWindow,
+    );
+    _requireSameStore(generation);
+    final read = reads.single;
+    DateTime? previousWake;
+    if (read is BundleOk) {
+      previousWake =
+          normalizeHealthSleepSession(bundleReaderMap(read.view))?.end;
+    }
+    seen?[prev] = previousWake;
+    return previousWake;
   }
 
   /// Write one day's metrics. DELETES our prior samples for the day window first
@@ -1479,33 +1500,10 @@ class HealthExporter {
 
     // Sleep is the smallest, highest-value write. Native replace owns cleanup
     // on both stores (Health Connect SleepSessionRecord; HealthKit inBed+Core).
-    Future<DateTime?> previousWake() async {
-        DateTime? previousWake;
-          final prev = dayLabelOf(
-              DateTime(dayStart.year, dayStart.month, dayStart.day - 1));
-          final seen = _passWakes;
-          if (seen != null && seen.containsKey(prev)) {
-            // The Android scan already light-read that day this pass.
-            return seen[prev];
-          } else {
-            // The sleep-window projection is all normalizeHealthSleepSession
-            // reads; no full decode of yesterday's bundle.
-            final reads = await BundleStore.shared.readStream(
-              [BundleSource.day(prev)],
-              chunkRows: 1,
-              projection: ProjectionId.sleepWindow,
-            );
-            _requireSameStore(generation);
-            final read = reads.single;
-            if (read is BundleOk) {
-              previousWake =
-                  normalizeHealthSleepSession(bundleReaderMap(read.view))?.end;
-            }
-            seen?[prev] = previousWake;
-          }
-
-        return previousWake;
-    }
+    // Record this day's wake in the pass cache so tomorrow's previousWake
+    // lookup reuses the bundle already in memory instead of re-reading it.
+    _passWakes?[date] = normalizeHealthSleepSession(b)?.end;
+    Future<DateTime?> previousWake() => _previousWakeLight(dayStart, generation);
     if (_platform.isAndroid && !androidSleepAlreadyWritten) {
       if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
       try {

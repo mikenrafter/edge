@@ -7812,28 +7812,6 @@ class LocalDb {
     return [for (final r in rows) r['id'] as String];
   }
 
-  static Future<Map<String, Object?>> _pastDayFreshnessFacts(
-    String dayId,
-    Object? algoVersion,
-  ) async {
-    final db = await instance;
-    final rows = await db.rawQuery(
-      "SELECT json_type(p, '\$.skipped') = 'true' AS skipped, "
-      "COALESCE(json_type(p, '\$.sleep.accounting.value.tst_sec'), 'null') "
-      "<> 'null' AS has_sleep, "
-      "CASE WHEN json_type(p, '\$.flags') = 'array' THEN EXISTS ("
-      "SELECT 1 FROM json_each(p, '\$.flags') "
-      "WHERE value IN ('NO_SLEEP_DETECTED', 'SLEEP_REJECTED')) END "
-      'AS no_sleep, '
-      "json_type(p, '\$.scalars.readiness') IN ('integer', 'real') "
-      'AS readiness '
-      'FROM (SELECT payload_json AS p FROM day_result '
-      'WHERE day_id = ? AND algo_version = ?) WHERE json_valid(p)',
-      [dayId, algoVersion],
-    );
-    return rows.isEmpty ? const {} : rows.first;
-  }
-
   static Future<int> endLiveSession(String id, int endTs) async {
     final db = await instance;
     return db.transaction((tx) async {

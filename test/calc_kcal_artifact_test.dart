@@ -277,8 +277,8 @@ void main() {
       // fix), then 116 (analytics #99), then 117 (phase 2: opt-in HMM,
       // measured night baselines and staging provenance, analytics 1255e9d).
       // Nothing in this artifact bumped it.
-      // Stale pin: later bumps moved it (c8d538334, 2026-11-18: v126, Pulse episodes).
-      expect(kAlgoVersion, 126);
+      // Stale pin: later bumps moved it (v127: upstream 093943562 merge above both 126 parents).
+      expect(kAlgoVersion, 127);
     });
 
     test('the analytics pin carries minuteEnergy (7334289 and its '

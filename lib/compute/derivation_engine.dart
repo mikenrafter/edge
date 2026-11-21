@@ -4652,6 +4652,7 @@ class DerivationEngine {
       final input = CalendarDaysInput(sub,
           targetDay: target, skipUnusedDays: target != null);
       final result = await segmentImportedCalendarDays(worker, input);
+      recordStagingWalkSegmentedDays(result.segmentedDays);
       final days = result.days;
       final dataNowSec = sub.lastTs ?? 0;
       var done = 0;

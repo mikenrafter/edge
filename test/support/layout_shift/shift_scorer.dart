@@ -325,7 +325,8 @@ ShiftReport score(Scenario s, ShiftPolicy p) {
       if (o != null && e.rect.area <= o.rect.area) continue;
       for (final f in frame.elements) {
         if (!f.focusable || f.id == e.id || f.rect.area <= 0 ||
-            (f.ancestorIds.contains(e.id) || e.ancestorIds.contains(f.id))) { continue; }
+            (f.ancestorIds.contains(e.id) || e.ancestorIds.contains(f.id)) ||
+            (e.paintOrder != null && f.paintOrder != null && e.paintOrder! < f.paintOrder!)) { continue; }
         double frac(ShiftRect cover, ShiftRect target) {
           final visible = target.intersect(s.viewport);
           if (visible == null) return 0;

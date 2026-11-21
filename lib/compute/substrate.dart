@@ -1305,6 +1305,7 @@ int debugSegmentedDayCount = 0;
 // Copied back from the registered staging worker as execution diagnostics.
 void resetStagingWalkDiagnostics() => debugSegmentedDayCount = 0;
 int get stagingWalkSegmentedDays => debugSegmentedDayCount;
+void recordStagingWalkSegmentedDays(int count) { debugSegmentedDayCount += count; }
 
 
 /// Split the substrate into CALENDAR days (local midnight → next local midnight).

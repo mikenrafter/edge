@@ -32,10 +32,11 @@ void main() {
     return out;
   }
 
-  test('Pulse structural repin uses kAlgoVersion 126', () {
-    expect(kAlgoVersion, 126);
-    expect(int.parse(m.group(1)!), 126);
+  test('upstream sync merge uses kAlgoVersion 127 above both 126 parents', () {
+    expect(kAlgoVersion, 127);
+    expect(int.parse(m.group(1)!), 127);
     expect(block().join('\n'), contains('125 → 126 (Pulse structural)'));
+    expect(block().join('\n'), contains('126 → 127'));
   });
 
   test('the 114 entry is kept: names its base and the decisions it covers', () {

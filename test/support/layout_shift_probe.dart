@@ -167,6 +167,7 @@ class ShiftProbe {
         focusable: canFocus,
         focused: ownsControl && (node?.hasFocus ?? false),
         ancestorIds: [for (final a in _ancestors(e)) if (ids[a] != null) ids[a]!],
+        paintOrder: out.length,
       ));
     }
     _ids = ids;

@@ -422,7 +422,7 @@ class AlarmScreenView extends StatefulWidget {
     final days = calendarDaysBetween(now, d);
     // same calendar day but already passed is spent too, not "later today"
     if (days < 0 || !d.isAfter(now)) {
-      return l?.alarmInThePast ?? 'Already passed';
+      return l?.alarmInThePast ?? 'In the past — it has already fired or been missed';
     }
     if (days == 0) return l?.alarmLaterToday ?? 'Later today';
     if (days == 1) return l?.alarmTomorrow ?? 'Tomorrow';

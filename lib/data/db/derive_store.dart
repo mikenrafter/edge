@@ -1371,26 +1371,6 @@ Future<void> _ldbPrivComputeAndWriteFreshness() async {
     for (var row in recent) {
       final dayId = (row['day_id'] ?? row['date'])?.toString();
       if (dayId == null || dayId.isEmpty) continue;
-      if (dayId != today) {
-        final f = await LocalDb._pastDayFreshnessFacts(dayId, row['algo_version']);
-        if (f['skipped'] == 1) continue;
-        if (latestOvernightDay == null &&
-            (f['has_sleep'] == 1 || f['no_sleep'] == 1)) {
-          latestOvernightDay = dayId;
-          latestOvernightComputedAt = (row['computed_at'] as num?)?.toInt();
-        }
-        if (latestRecoveryDay == null &&
-            ((row['readiness'] as num?) != null || f['readiness'] == 1)) {
-          latestRecoveryDay = dayId;
-          latestRecoveryComputedAt = (row['computed_at'] as num?)?.toInt();
-        }
-        if (latestOvernightDay != null &&
-            latestRecoveryDay != null &&
-            (todayRow != null || dayId.compareTo(today) < 0)) {
-          break;
-        }
-        continue;
-      }
       final paired = await LocalDb._freshnessRead(dayId, row);
       if (paired == null) continue; // deleted while it was being read
       row = paired.row;

@@ -17,8 +17,9 @@ class CalendarDaysInput {
 
 @SendableShape('day bounds and analytics sleep objects; sendable_segmentCalendarDaysHeavy_test')
 class CalendarDaysResult {
-  const CalendarDaysResult(this.days);
+  const CalendarDaysResult(this.days, {this.segmentedDays = 0});
   final List<PhysioDay> days;
+  final int segmentedDays;
 }
 
 @heavy
@@ -26,8 +27,10 @@ CalendarDaysResult segmentCalendarDaysHeavy(WorkerInputs worker, CalendarDaysInp
   WorkerInit.ensure(worker);
   assertWorker();
   WorkerAudit.entered('segmentCalendarDaysHeavy');
-  return CalendarDaysResult(calendarDaysHeavy(input.substrate,
-      targetDay: input.targetDay, skipUnusedDays: input.skipUnusedDays));
+  resetStagingWalkDiagnostics();
+  final days = calendarDaysHeavy(input.substrate,
+      targetDay: input.targetDay, skipUnusedDays: input.skipUnusedDays);
+  return CalendarDaysResult(days, segmentedDays: stagingWalkSegmentedDays);
 }
 
 // Keep the dispatch closure outside an engine lock's async context: capturing

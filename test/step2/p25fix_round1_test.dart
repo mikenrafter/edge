@@ -393,9 +393,10 @@ void main() {
         }
       }
       expect(byProjection['full'], days.length, reason: 'each day decoded in full once');
-      expect(byProjection['sleepWindow'], 5,
-          reason: 'four days without sleep, then the priority night: one light '
-              'read each, never repeated');
+      expect(byProjection['sleepWindow'], 6,
+          reason: 'four days without sleep, the priority night, and the '
+              'priority night\'s previous wake (#770): one light read each, '
+              'never repeated');
     });
   });
 }

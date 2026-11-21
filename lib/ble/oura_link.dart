@@ -543,6 +543,7 @@ class OuraLink {
 
     _deviceId = deviceId;
     await _loadAnchor(deviceId);
+    void log(String m) => debugPrint('[oura] $m');
     try {
       // A cap on concurrent SECONDARY links (never the band's own connect —
       // see ble_state.dart's kMaxConcurrentSecondaryLinks doc). This offload
@@ -572,8 +573,7 @@ class OuraLink {
             freshKey == null ||
             current?['id'] != deviceId ||
             current?['remote_id'] != remoteId) {
-          debugPrintSynchronously(
-              '[oura] the ring was forgotten or re-paired while this '
+          log('the ring was forgotten or re-paired while this '
               'sync waited; skipping it.');
           return false;
         }
@@ -602,7 +602,7 @@ class OuraLink {
           final link = GattBandLink(
             entry: kOura,
             services: services,
-            onLog: (m) => debugPrint('[oura] $m'),
+            onLog: log,
           );
           _link = link;
           final missing =

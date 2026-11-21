@@ -2407,8 +2407,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     }
     final goalBefore = user?['step_goal'];
     final before = user;
-    final merged = {...?user, ...fields};
-    user = merged;
+    final merged = user = {...?user, ...fields};
     try {
       await prefs.setString(_kProfile, jsonEncode(merged));
     } catch (_) {
@@ -9032,15 +9031,12 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   Future<void> _toggleWorkoutFromGesture(StrapEvent _) async {
     try {
       if (activeWorkout != null) {
+        final wid = activeWorkout!.workoutId;
         await stopWorkout();
+        if (wid != null) try { await repo?.endWorkout(wid); } catch (_) {}
       } else {
         String? id;
-        try {
-          final w = await repo?.startWorkout('other');
-          id = w?['workout_id'] as String?;
-        } catch (_) {
-          /* seam not implemented yet; still start locally */
-        }
+        try { id = (await repo?.startWorkout('other'))?['workout_id'] as String?; } catch (_) {}
         startWorkout(workoutId: id, type: 'other');
       }
       await HapticFeedback.mediumImpact();
@@ -9188,11 +9184,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       phoneStepsLastTotal = r.totalSteps;
       await _refreshPhoneStepsToday();
       if (stale()) return 0;
-      if (r.daysRead > 0) {
+      if (progress.days > 0) {
         // Use the normal durable queue: capture, workout and background holds
         // still apply, and a read finishing during derive gets a later pass.
         _queuePhoneDerive(progress);
-        if (progress.days == 0) _deriveScheduler.markStoredData();
       }
       notifyListeners();
       return r.daysRead;

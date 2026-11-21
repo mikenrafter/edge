@@ -135,68 +135,68 @@ Future<StressBackfillResult> backfillStressScale({bool force = false}) async {
   final touchedDays = <String>{};
 
   for (final day in days) {
-    // One transaction per day: the rows are read and rewritten together, so a
-    // derive in another isolate cannot land between the read and the write
-    // and be overwritten by an older payload.
-    await db.transaction((txn) async {
-      final rows = await txn.query('day_result',
-          columns: ['algo_version', 'payload_json', 'partial'],
-          where: 'day_id = ?',
-          whereArgs: [day],
-          orderBy: 'algo_version DESC');
-      // The build that last wrote this day's series, when stamped.
-      final stamp = ((await txn.query('metric_series_version',
-                  columns: ['algo_version'],
-                  where: 'date = ?',
-                  whereArgs: [day]))
-              .firstOrNull?['algo_version'] as num?)
-          ?.toInt();
-      double? seriesScore;
-      var seriesPicked = false;
-      for (final row in rows) {
-        final raw = row['payload_json'];
-        final res = raw is String
-            ? await _rescaleOneStressRow(workerInputs, raw)
-            : (skipped: true, imported: false, nextScore: null, encodedPayload: null);
-        // The trend point comes ONLY from the row that wrote it: the stamped
-        // writer, else the newest complete row (a partial row never writes the
-        // series). If that row has no usable score the trend stays as it is.
-        if (!seriesPicked &&
-            (row['partial'] as num?)?.toInt() != 1 &&
-            (stamp == null || (row['algo_version'] as num?)?.toInt() == stamp)) {
-          seriesPicked = true;
-          if (!res.imported) seriesScore = res.nextScore;
-        }
-        // No usable index, or another source's day: a rescaled day must not
-        // become 0 (a score, not an absence), and an imported score is not
-        // ours to re-price.
-        if (res.skipped) {
-          skipped++;
-          continue;
-        }
-        final encoded = res.encodedPayload;
-        if (encoded == null) continue; // already on the new scale
-        await txn.update(
-          'day_result',
-          {'payload_json': encoded},
-          where: 'day_id = ? AND algo_version = ?',
-          whereArgs: [day, row['algo_version']],
-        );
+    final rows = await db.query('day_result',
+        columns: ['algo_version', 'payload_json', 'partial'],
+        where: 'day_id = ?',
+        whereArgs: [day],
+        orderBy: 'algo_version DESC');
+    // The build that last wrote this day's series, when stamped.
+    final stamp = ((await db.query('metric_series_version',
+                columns: ['algo_version'],
+                where: 'date = ?',
+                whereArgs: [day]))
+            .firstOrNull?['algo_version'] as num?)
+        ?.toInt();
+    double? seriesScore;
+    var seriesPicked = false;
+    for (final row in rows) {
+      final raw = row['payload_json'];
+      final res = raw is String
+          ? await _rescaleOneStressRow(workerInputs, raw)
+          : (skipped: true, imported: false, nextScore: null, encodedPayload: null);
+      // The trend point comes ONLY from the row that wrote it: the stamped
+      // writer, else the newest complete row (a partial row never writes the
+      // series). If that row has no usable score the trend stays as it is.
+      if (!seriesPicked &&
+          (row['partial'] as num?)?.toInt() != 1 &&
+          (stamp == null || (row['algo_version'] as num?)?.toInt() == stamp)) {
+        seriesPicked = true;
+        if (!res.imported) seriesScore = res.nextScore;
+      }
+      // No usable index, or another source's day: a rescaled day must not
+      // become 0 (a score, not an absence), and an imported score is not
+      // ours to re-price.
+      if (res.skipped) {
+        skipped++;
+        continue;
+      }
+      final encoded = res.encodedPayload;
+      if (encoded == null) continue; // already on the new scale
+      // Route through LocalDb's CAS write seam (P2.1): if a concurrent derive
+      // replaced this row while the isolate ran, expectedPayloadJson mismatches
+      // and the stale rewrite is safely dropped.
+      final wrote = await LocalDb.rewriteDayPayload(
+        day,
+        (row['algo_version'] as num).toInt(),
+        encoded,
+        expectedPayloadJson: raw as String,
+      );
+      if (wrote) {
         bundleDays++;
         touchedDays.add(day);
       }
-      if (seriesScore == null) return;
-      // UPDATE only: never create a trend point the derive did not write, and
-      // leave a day whose series another source produced alone.
-      final n = await txn.rawUpdate(
-        "UPDATE metric_series SET value = ? WHERE date = ? AND key = 'stress' "
-        'AND (value IS NULL OR value <> ?) AND NOT EXISTS (SELECT 1 FROM '
-        'metric_series_version v WHERE v.date = ? AND COALESCE(v.source, \'band\') '
-        "<> 'band')",
-        [seriesScore, day, seriesScore, day],
-      );
-      if (n > 0) seriesDays++;
-    });
+    }
+    if (seriesScore == null) continue;
+    // UPDATE only: never create a trend point the derive did not write, and
+    // leave a day whose series another source produced alone.
+    final n = await db.rawUpdate(
+      "UPDATE metric_series SET value = ? WHERE date = ? AND key = 'stress' "
+      'AND (value IS NULL OR value <> ?) AND NOT EXISTS (SELECT 1 FROM '
+      'metric_series_version v WHERE v.date = ? AND COALESCE(v.source, \'band\') '
+      "<> 'band')",
+      [seriesScore, day, seriesScore, day],
+    );
+    if (n > 0) seriesDays++;
   }
 
   if (touchedDays.isNotEmpty) BundleStore.shared.invalidateDays(touchedDays);
