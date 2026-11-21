@@ -5729,7 +5729,10 @@ class LocalDb {
       List<(String,int)> keys) async {
     if (keys.length>256) {throw ArgumentError('export identity page exceeds 256');}
     if (keys.isEmpty) {return RowBatch<Map<String,Object?>>.wrap([]);}
-    final rows=await snapshot.rawQuery('SELECT device_id,ts_ms FROM decoded_onehz WHERE (device_id,ts_ms) IN (${List.filled(keys.length,'(?,?)').join(',')})',
+    // OR of equalities, not a row-value IN: Android's SQLite (3.39 on API
+    // 34) scans the whole table for `(a,b) IN ((?,?),...)` (~80 ms per page,
+    // 140 s for the owner's beats); this form is one index probe per key.
+    final rows=await snapshot.rawQuery('SELECT device_id,ts_ms FROM decoded_onehz WHERE ${List.filled(keys.length,'(device_id=? AND ts_ms=?)').join(' OR ')}',
         [for(final key in keys) ...[key.$1,key.$2]]);
     return RowBatch<Map<String,Object?>>.wrap(rows);
   }
