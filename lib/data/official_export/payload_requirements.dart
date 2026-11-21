@@ -74,7 +74,7 @@ class PayloadViolation {
 ///
 /// [expectedPrunedBefore] is the carried cursor the exporter computed (null:
 /// the fork had none, so no row is expected). Kinds: `userVersion`,
-/// `unknownTable`, `layout`, `droppedTableHasRows`, `foreignCursor`,
+/// `unknownTable`, `platformTable`, `layout`, `droppedTableHasRows`, `foreignCursor`,
 /// `foreignFreshnessKey`, `prunedBeforeMismatch`, `prunedBeforeUnexpected`,
 /// `prunedBeforeInvalid`.
 List<PayloadViolation> checkPayload(
@@ -97,6 +97,19 @@ List<PayloadViolation> checkPayload(
     if (_platformTables.contains(name)) continue;
     if (!target.tables.containsKey(name) && !carrierNames.contains(name)) {
       out.add(PayloadViolation('unknownTable', name));
+    }
+  }
+  // The platform table is exempt from the checks below only in its own shape.
+  // The scratch file's layout comes from an open, which cannot vouch for it.
+  final meta = payload.catalog.tables[_androidMetadata];
+  if (meta != null) {
+    final c = meta.columns;
+    if (c.length != 1 || (c[0].name, c[0].type.toUpperCase(), c[0].notNull, c[0].defaultValue, c[0].pk) != ('locale', 'TEXT', false, null, 0)) {
+      out.add(const PayloadViolation('platformTable', 'android_metadata is not a single locale TEXT column'));
+    }
+    final rows = payload.rowCounts[_androidMetadata] ?? 0;
+    if (rows > 1) {
+      out.add(PayloadViolation('platformTable', 'android_metadata has $rows rows, at most one expected'));
     }
   }
   for (final t in target.tables.values) {
@@ -174,7 +187,8 @@ List<PayloadViolation> checkPayload(
 /// target too, so it is neither unknown nor fork data. Every Android SQLite
 /// file has it, the official app's own databases included. The source's copy
 /// is still dropped by its profile. [android_metadata_test]
-const _platformTables = {'android_metadata'};
+const _androidMetadata = 'android_metadata';
+const _platformTables = {_androidMetadata};
 
 bool _sameColumns(List<ColumnShape> a, List<ColumnShape> b) =>
     a.length == b.length &&

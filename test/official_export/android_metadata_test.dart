@@ -65,4 +65,60 @@ void main() {
       expect(violations.map((v) => v.toString()), contains('droppedTableHasRows: assumed_water'));
     } finally { await fx.dispose(); }
   });
+  // [review r1 F5] The exception is for the platform's own table only: its
+  // single ordinary `locale TEXT` column and at most one row. Anything else
+  // under that name is payload, whatever layout the scratch open reported.
+  Future<List<String>> violationsAfter(RichFixture fx, Future<void> Function(Database db) tamper) async {
+    final path = '${File(fx.forkPath).parent.path}/mapped.db';
+    await mapOfficialSnapshot(snapshotPath: fx.forkPath, outputPath: path,
+        factory: databaseFactoryFfi, calendar: const FixedOffsetCalendar(0));
+    final db = await databaseFactoryFfi.openDatabase(path);
+    await tamper(db);
+    await db.close();
+    return [for (final v in checkPayload(await fx.inventoryOf(path), officialProfile,
+        target: loadCapture('target_schema_62.json'), expectedPrunedBefore: fx.expectedPrunedBefore)) v.toString()];
+  }
+  test('a second row in android_metadata is refused', () async {
+    final fx = await RichFixture.build();
+    try {
+      final violations = await violationsAfter(fx, (db) async {
+        await db.execute('CREATE TABLE android_metadata (locale TEXT)');
+        await db.insert('android_metadata', {'locale': 'en_US'});
+        await db.insert('android_metadata', {'locale': 'fr_FR'});
+      });
+      expect(violations.where((v) => v.contains('android_metadata')), isNotEmpty, reason: '$violations');
+    } finally { await fx.dispose(); }
+  });
+  test('android_metadata with extra or differently typed columns is refused', () async {
+    for (final ddl in [
+      'CREATE TABLE android_metadata (locale TEXT, owner_note TEXT)',
+      'CREATE TABLE android_metadata (locale INTEGER)',
+      'CREATE TABLE android_metadata (note TEXT)',
+      'CREATE TABLE android_metadata (locale TEXT NOT NULL)',
+    ]) {
+      final fx = await RichFixture.build();
+      try {
+        final violations = await violationsAfter(fx, (db) async {
+          await db.execute(ddl);
+          final column = ddl.contains('(note') ? 'note' : 'locale';
+          await db.rawInsert('INSERT INTO android_metadata ($column) VALUES (?)', [ddl.contains('INTEGER') ? 1 : 'en_US']);
+        });
+        expect(violations.where((v) => v.contains('android_metadata')), isNotEmpty, reason: '$ddl -> $violations');
+      } finally { await fx.dispose(); }
+    }
+  });
+  test('the platform shape with no row, or one, is accepted', () async {
+    for (final rows in [0, 1]) {
+      final fx = await RichFixture.build();
+      try {
+        final violations = await violationsAfter(fx, (db) async {
+          await db.execute('CREATE TABLE android_metadata (locale TEXT)');
+          for (var i = 0; i < rows; i++) {
+            await db.insert('android_metadata', {'locale': 'en_US'});
+          }
+        });
+        expect(violations, isEmpty, reason: '$rows rows: $violations');
+      } finally { await fx.dispose(); }
+    }
+  });
 }
