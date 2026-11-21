@@ -140,7 +140,7 @@ Future<MappingOutput> officialMappingHeavy(WorkerInputs inputs, MappingInput inp
         'ts_ms': bucket.onehz.valueAt('ts_ms', i),
         'rec_ts': bucket.onehz.valueAt('rec_ts', i),
         'row_index': i,
-        'beats': view.beatsOf(i).length,
+        'beats': view.beatCount(i),
         'digest': sha256.convert(utf8.encode(view.content(i))).toString(),
       },
     ], view.orphanNotes);
@@ -358,12 +358,13 @@ bool _supportedRacePlanHeavy(String table,String text) {
 /// A decoded archive bucket with its beats grouped under their parents.
 class _ArchiveView {
   _ArchiveView(this.bucket) {
-    for (var i = 0; i < bucket.onehz.rowCount; i++) {
-      (_parents[(bucket.onehz.valueAt('device_id', i), bucket.onehz.valueAt('ts_ms', i))] ??= []).add(i);
-    }
+    final parents = <(Object?, Object?)>{
+      for (var i = 0; i < bucket.onehz.rowCount; i++)
+        (bucket.onehz.valueAt('device_id', i), bucket.onehz.valueAt('ts_ms', i)),
+    };
     for (var i = 0; i < bucket.rr.rowCount; i++) {
       final identity = (bucket.rr.valueAt('device_id', i), bucket.rr.valueAt('ts_ms', i));
-      if (!_parents.containsKey(identity)) {
+      if (!parents.contains(identity)) {
         orphanNotes.add({'beat_index': i, 'reason': 'archive orphan beat'});
       } else {
         (_beats[identity] ??= []).add(i);
@@ -371,42 +372,81 @@ class _ArchiveView {
     }
   }
   final ArchiveBucket bucket;
-  final _parents = <(Object?, Object?), List<int>>{};
   final _beats = <(Object?, Object?), List<int>>{};
   final orphanNotes = <Map<String, Object?>>[];
+  late final _typedParents = _TypedArchiveRows(bucket.onehz);
+  late final _typedBeats = _TypedArchiveRows(bucket.rr);
+
+  List<int> _beatIndexesOf(int parentIndex) => _beats[(
+    bucket.onehz.valueAt('device_id', parentIndex),
+    bucket.onehz.valueAt('ts_ms', parentIndex),
+  )] ?? const [];
+
+  int beatCount(int parentIndex) => _beatIndexesOf(parentIndex).length;
+
+  List<int> _orderedBeatIndexes(int parentIndex) {
+    final indexes = _beatIndexesOf(parentIndex);
+    if (indexes.length < 2) return indexes;
+    late final tiedContent = <int, String>{};
+    return List<int>.of(indexes)..sort((a, b) {
+      final x = bucket.rr.valueAt('beat_index', a);
+      final y = bucket.rr.valueAt('beat_index', b);
+      final byIndex = x is int && y is int ? x.compareTo(y) : x == null ? (y == null ? 0 : -1) : y == null ? 1 : 0;
+      if (byIndex != 0) return byIndex;
+      final first = tiedContent.putIfAbsent(a, () => _typedBeats.rowAt(a));
+      final second = tiedContent.putIfAbsent(b, () => _typedBeats.rowAt(b));
+      return first.compareTo(second);
+    });
+  }
 
   /// The parent's beats ordered by beat_index (ties by typed content).
-  List<Map<String, Object?>> beatsOf(int parentIndex) {
-    final identity = (bucket.onehz.valueAt('device_id', parentIndex), bucket.onehz.valueAt('ts_ms', parentIndex));
-    final rows = [for (final i in _beats[identity] ?? const <int>[]) bucket.rr.rowAt(i)];
-    final keyed = [for (final r in rows) (r, _typedRow(r))];
-    keyed.sort((a, b) {
-      final x = a.$1['beat_index'], y = b.$1['beat_index'];
-      final byIndex = x is int && y is int ? x.compareTo(y) : x == null ? (y == null ? 0 : -1) : y == null ? 1 : 0;
-      return byIndex != 0 ? byIndex : a.$2.compareTo(b.$2);
-    });
-    return [for (final k in keyed) k.$1];
-  }
+  List<Map<String, Object?>> beatsOf(int parentIndex) => [
+    for (final i in _orderedBeatIndexes(parentIndex)) bucket.rr.rowAt(i),
+  ];
 
   /// Canonical TYPED content of one claim (parent row plus ordered beats):
   /// int, real, text, blob and NULL stay distinct, so 72 and 72.0 differ.
   String content(int parentIndex) => jsonEncode([
-    _typedRow(bucket.onehz.rowAt(parentIndex)),
-    [for (final beat in beatsOf(parentIndex)) _typedRow(beat)],
+    _typedParents.rowAt(parentIndex),
+    [for (final i in _orderedBeatIndexes(parentIndex)) _typedBeats.rowAt(i)],
   ]);
 }
 
-String _typedRow(Map<String, Object?> row) => jsonEncode([
-  for (final k in row.keys.toList()..sort()) [k, _typed(row[k])],
-]);
+/// Reuse the sorted column names across all rows in a bucket. Encode directly
+/// from the columns to keep the original typed JSON without materializing maps.
+/// [archive_claims_test: canonical digest bytes]
+class _TypedArchiveRows {
+  _TypedArchiveRows(ArchiveTable table)
+      : _columns = [
+          for (final name in table.columns.keys.toList()..sort())
+            ('[${jsonEncode(name)},', table.columns[name]!),
+        ];
 
-Object _typed(Object? v) => v == null ? const ['n']
-  : v is int ? ['i', v]
-  : v is double ? ['r', v.toString()]
-  : v is String ? ['t', v]
-  : v is Uint8List ? ['b', base64Encode(v)]
-  : ['x', '${v.runtimeType}:$v'];
+  final List<(String, ArchiveColumn)> _columns;
 
+  String rowAt(int row) {
+    final text = StringBuffer('[');
+    var separator = '';
+    for (final (prefix, column) in _columns) {
+      text.write(separator);
+      text.write(prefix);
+      text.write(_typedJson(column.valueAt(row)));
+      text.write(']');
+      separator = ',';
+    }
+    text.write(']');
+    return text.toString();
+  }
+}
+
+String _typedJson(Object? value) => switch (value) {
+  null => '["n"]',
+  int v => '["i",$v]',
+  double v => '["r","$v"]',
+  String v => '["t",${jsonEncode(v)}]',
+  Uint8List v => '["b","${base64Encode(v)}"]',
+  _ => jsonEncode(['x', '${value.runtimeType}:$value']),
+};
 
 /// Human record-family grouping shared by progress and the omission report.
 String exportRecordFamily(String table) => const {
