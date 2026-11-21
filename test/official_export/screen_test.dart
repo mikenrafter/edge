@@ -62,6 +62,47 @@ void main() {
       expect(tester.takeException(),isNull);
     });
   }
+  // Emulator 2026-11-20: the wearer scrolled to the progress line; the failure
+  // then rendered below Export, off screen, and the page looked idle.
+  testWidgets('a failure that ends the run is on screen where the progress was',(tester)async {
+    tester.view.physicalSize=const Size(412,480);tester.view.devicePixelRatio=1;
+    addTearDown(tester.view.reset);
+    final root=(await tester.runAsync(()=>Directory.systemTemp.createTemp('export_fail_ui_')))!;
+    final coordinator=OfficialExportCoordinator();
+    // Completers made in the fake zone never fire inside runAsync.
+    final source=(await tester.runAsync(()async=>_FailingCapture()))!;
+    late Future<OfficialExportOutcome> running;
+    try {
+      await tester.runAsync(()async {
+        final free=Space();
+        running=coordinator.export(snapshot:source,privateRoot:Directory('${root.path}/private'),
+          destination:Destination(root,free),space:ExportSpaceBudget(source:free),prompts:Prompts(()async=>'pw',(_)async=>false));
+        await Future.any([source.entered.future,running]).timeout(const Duration(seconds:30));
+      });
+      expect(coordinator.active,isTrue);
+      await tester.pumpWidget(MaterialApp(theme:buildTheme(Brightness.light),
+        localizationsDelegates:AppLocalizations.localizationsDelegates,supportedLocales:AppLocalizations.supportedLocales,
+        home:OfficialExportScreen(coordinator:coordinator)));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Cancel'),250,scrollable:find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
+      source.release.complete();
+      await tester.runAsync(()=>running.timeout(const Duration(seconds:30)));
+      await tester.pumpAndSettle();
+      expect(coordinator.outcome,isA<OfficialExportFailed>());
+      final message=find.text('Could not complete this step');
+      expect(message,findsOneWidget);
+      final shown=tester.getRect(message);
+      expect(shown.top>=0 && shown.bottom<=480,isTrue,reason:'failure at $shown is outside the 480 px viewport');
+      expect(find.text('Retry').hitTestable(),findsOneWidget);
+      expect(tester.takeException(),isNull);
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      if(!source.release.isCompleted)source.release.complete();
+      await tester.runAsync(()async{await running.catchError((_)=>coordinator.outcome!);await coordinator.finish();await root.delete(recursive:true);});
+      coordinator.dispose();
+    }
+  });
   for(final recovery in [false,true]) {
     testWidgets('production saved report and recovery choice $recovery',(tester)async {
       final fx=(await tester.runAsync(RichFixture.build))!;
@@ -158,4 +199,13 @@ Future<void> capture(WidgetTester tester,GlobalKey key,String name) async {
       await File('$path/$name.png').writeAsBytes(png!.buffer.asUint8List());
     }finally{image.dispose();}
   });
+}
+
+class _FailingCapture implements OfficialSnapshotSource {
+  final entered=Completer<void>(),release=Completer<void>();
+  @override Future<ExportEstimate> estimate()async=>const ExportEstimate(1024,0,0);
+  @override Future<SnapshotReceipt> capture(Directory dir,ExportSpaceBudget space,ExportCancellation cancellation)async {
+    entered.complete();await release.future;
+    throw const FileSystemException('provider went away');
+  }
 }
