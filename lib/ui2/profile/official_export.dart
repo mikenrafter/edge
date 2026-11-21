@@ -21,7 +21,15 @@ import '../onboarding/welcome.dart' show askBackupPassphrase,PassphraseCancelled
 import '../ui2.dart';
 import 'profile.dart' show SettingsAccordion;
 
-final officialExportCoordinator=OfficialExportCoordinator()..exclusive=DerivationEngine.whileIdle;
+final officialExportCoordinator=OfficialExportCoordinator()..exclusive=const _DeriveHold();
+// The derive latch: a pass in flight finishes first, passes that try meanwhile
+// take the ordinary busy skip. A wedged pass (over two minutes) is not waited
+// for, as for "Delete everything".
+class _DeriveHold implements ExportHold {
+  const _DeriveHold();
+  @override Future<bool> acquire()=>DerivationEngine.acquireForReset();
+  @override void release()=>DerivationEngine.releaseForReset();
+}
 bool _routeOpen=false;
 Future<void> openOfficialExport(BuildContext context,{bool newerOfficialAvailable=false,DateTime? checkedAt}) async {
   if(_routeOpen)return;
@@ -95,7 +103,7 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
       await coordinator.export(snapshot:LocalDbExportSnapshot(),privateRoot:Directory('${support.path}/official-export'),
         destination:_destination!,space:ExportSpaceBudget(source:AndroidExportFreeSpace()),prompts:this);
     } catch(error,stack){
-      debugPrint('[official-export] screen error: ${error.runtimeType}: $error\n$stack');
+      debugPrintThrottled('[official-export] screen error: ${error.runtimeType}: $error\n$stack');
       if(mounted)setState((){_error=error;});
     }
     finally {

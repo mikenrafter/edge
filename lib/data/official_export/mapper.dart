@@ -198,10 +198,7 @@ class _Mapper {
   final Set<(Object?,String)> _writtenFrames = {};
   /// Milliseconds per archive step, reported through onPhase for profiling.
   final Map<String,int> archiveTimings = {};
-  Future<T> _timed<T>(String step, Future<T> Function() body) async {
-    final clock = Stopwatch()..start();
-    try { return await body(); } finally { archiveTimings[step] = (archiveTimings[step] ?? 0) + clock.elapsedMilliseconds; }
-  }
+  void _spent(String step, Stopwatch clock) { archiveTimings[step] = (archiveTimings[step] ?? 0) + clock.elapsedMilliseconds; }
   final LocalCalendar calendar;
   final void Function(String,int)? onProgress;
   final Database src;
@@ -588,7 +585,9 @@ class _Mapper {
       onProgress?.call('substrate_archive',outcomes.length);
       final device = meta['device_id'] as String;
       for (var ahead = index + 1; ahead < metas.length && ahead <= index + _archiveLookahead; ahead++) { loadAt(ahead); }
-      final (blob, loaded) = await _timed('load_wait', () => loadAt(index));
+      final waited = Stopwatch()..start();
+      final (blob, loaded) = await loadAt(index);
+      _spent('load_wait', waited);
       loads.remove(index);
       if (blob == null) { outcomes[id] = 'missing archive bytes'; continue; }
       final decoded = loaded!;
@@ -624,7 +623,9 @@ class _Mapper {
         continue;
       }
       if (group.isEmpty || group.device != device || lo > group.hi! || hi < group.lo!) {
-        await _timed('settle', () => _settleGroup(group, flushed, outcomes));
+        final settled = Stopwatch()..start();
+        await _settleGroup(group, flushed, outcomes);
+        _spent('settle', settled);
         group.start(device);
       }
       group.add(id, meta, lo, hi);
@@ -636,9 +637,13 @@ class _Mapper {
         batch.writeRow('archive_claims', {...c, 'bucket_id': id});
       }
       await space?.requireAvailable(usable.length * 512 + 65536);
-      await _timed('claim_write', batch.flush);
+      final wrote = Stopwatch()..start();
+      await batch.flush();
+      _spent('claim_write', wrote);
     }
-    await _timed('settle', () => _settleGroup(group, flushed, outcomes));
+    final settled = Stopwatch()..start();
+    await _settleGroup(group, flushed, outcomes);
+    _spent('settle', settled);
     for (final id in outcomes.keys.toList()..sort()) { ledger.add(id, outcomes[id]!); }
     archiveAccounting.addAll([for (final e in archiveLedgers.entries)
       {'bucket': e.key, ...e.value.toJson()}]);
@@ -714,7 +719,9 @@ class _Mapper {
             '${lastIndex == null ? '' : 'AND row_index>?'} ORDER BY row_index LIMIT 20000', [bucket, ?lastIndex]);
         if (selected.isEmpty) { break; }
         final kept = {bucket: [for (final row in selected) row['row_index'] as int]};
-        final expanded = await _timed('unpack_worker', () async => runMappingWorker(MappingInput('unpack', '', await _bucketBlobs(group, kept.keys, kept))));
+        final unpacked = Stopwatch()..start();
+        final expanded = await runMappingWorker(MappingInput('unpack', '', await _bucketBlobs(group, kept.keys, kept)));
+        _spent('unpack_worker', unpacked);
         final acceptedParents=<(Object?,Object?)>{};
         for (var offset = 0; offset < expanded.rows.length; offset += 1024) {
           final batch = file.beginBatch();
@@ -735,7 +742,9 @@ class _Mapper {
             expectedCounts[table] = (expectedCounts[table] ?? 0) + 1;
           }
           await space?.requireAvailable(slice.length * 4096 + 65536);
-          await _timed('expand_write', batch.flush);
+          final wrote = Stopwatch()..start();
+          await batch.flush();
+          _spent('expand_write', wrote);
         }
         lastIndex = selected.last['row_index'] as int;
       }

@@ -112,9 +112,7 @@ void main() {
     final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('export_exclusive_');
     try {
       final free=Space();var held=false;final seen=<String>[];
-      final coordinator=OfficialExportCoordinator()..exclusive=<T>(Future<T> Function() body) async {
-        held=true;try {return await body();} finally {held=false;}
-      };
+      final coordinator=OfficialExportCoordinator()..exclusive=_FlagHold((v)=>held=v);
       final snapshot=_SpySnapshot(fx.forkPath,()=>seen.add('capture held=$held'));
       final outcome=await coordinator.export(snapshot:snapshot,privateRoot:Directory('${root.path}/private'),
         destination:Destination(root,free),space:ExportSpaceBudget(source:free),
@@ -564,4 +562,10 @@ class _SpySnapshot extends Snapshot {
   @override Future<SnapshotReceipt> capture(Directory dir,ExportSpaceBudget space,ExportCancellation cancellation) {
     onCapture();return super.capture(dir,space,cancellation);
   }
+}
+class _FlagHold implements ExportHold {
+  _FlagHold(this.set);
+  final void Function(bool) set;
+  @override Future<bool> acquire() async {set(true);return true;}
+  @override void release()=>set(false);
 }

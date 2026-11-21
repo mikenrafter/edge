@@ -25,6 +25,13 @@ class AndroidTreeStorageOpener implements TreeStorageOpener {
   @override CipherBackupStorage open(BackupFolder folder)=>AndroidCipherBackupStorage(folder);
 }
 
+/// A lock other heavy database work also takes. [acquire] waits for current
+/// holders and is true when the hold was taken; only then is [release] called.
+abstract interface class ExportHold {
+  Future<bool> acquire();
+  void release();
+}
+
 abstract interface class ExportPrompts {
   Future<String?> askPassphrase();
   Future<bool> askRecovery(OfficialExportSaved saved);
@@ -274,7 +281,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
   // Stage changes and failures also reach logcat under a stable tag, release
   // builds included, so a device run names the step that took the time or failed.
   Duration _tracedAt=Duration.zero;
-  static void _trace(String line)=>debugPrint('[official-export] $line');
+  static void _trace(String line)=>debugPrintThrottled('[official-export] $line');
   void _progress(ExportStage stage,{ExportArtifact artifact=ExportArtifact.official,int done=0,int? total,String? family}) {
     _cancellation.check();
     if(stage!=progress.stage || artifact!=progress.artifact || family!=progress.family) {
@@ -287,10 +294,9 @@ class OfficialExportCoordinator extends ChangeNotifier {
     progress=ExportProgress(stage,artifact:artifact,done:done,total:total,family:family,elapsed:_elapsed.elapsed);
     notifyListeners();
   }
-  static Future<T> _direct<T>(Future<T> Function() body)=>body();
-  /// Runs capture and mapping with other database work held off; the app
-  /// passes the derive latch ([DerivationEngine.whileIdle]).
-  Future<T> Function<T>(Future<T> Function() body)? exclusive;
+  /// Holds other database work off during capture and mapping; the app passes
+  /// the derive latch.
+  ExportHold? exclusive;
   Future<OfficialExportOutcome> export({required OfficialSnapshotSource snapshot,
       required Directory privateRoot,required CipherBackupStorage destination,
       required ExportSpaceBudget space,required ExportPrompts prompts}) {
@@ -435,7 +441,8 @@ class OfficialExportCoordinator extends ChangeNotifier {
       // Android every SQLite connection shares sqflite's one worker thread, so
       // derive passes made capture 17x slower and themselves failed with
       // SQLITE_BUSY, persisting partial days (emulator, 2026-11-20).
-      await (exclusive??_direct)(() async {
+      final held=await exclusive?.acquire()??false;
+      try {
         _snapshot=await source.capture(_session!,space,_cancellation);
         extrasOmissions=_snapshot.omissions;
         final canonical=await File(_snapshot.path).resolveSymbolicLinks();
@@ -444,7 +451,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
         report=await mapOfficialSnapshot(snapshotPath:_snapshot.path,outputPath:'${_session!.path}/official.db',space:space,
           snapshotReceipt:_snapshot.toJson(),exportId:_id,onPhase:(phase,ms)=>_trace('mapping phase $phase $ms ms'),
           onProgress:(family,done)=>_progress(ExportStage.mapping,family:family,done:done));
-      });
+      } finally {if(held)exclusive!.release();}
       _hasOmissions=(await omissionSummary()).isNotEmpty;
       _cancellation.check();_passphrase=await prompts.askPassphrase();
       if(_passphrase==null)throw const ExportCancelled();
