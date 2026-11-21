@@ -352,25 +352,38 @@ class _Mapper {
         last = page.last['__export_rowid'] as int;
       }
     }
+    // backup_files is D and never reaches SELECT *, so an oversized attached
+    // recording cannot overflow Android's CursorWindow.
+    final projection=[for (final c in shape.columns)
+      if (policy.clear.contains(c.name) || (policy.omit.contains(c.name) && name!='alarm_schedule'))
+        'CASE WHEN ${_q(c.name)} IS NULL THEN NULL ELSE 1 END AS ${_q(c.name)}'
+      else _q(c.name)].join(',');
+    // Narrow, long tables are read and projected [_fetchRows] at a time
+    // (one query, one worker hop) but still written, accounted and
+    // committed in the same 256-row pages, so the file bytes are unchanged:
+    // per-page query and isolate hops made decoded_rr take 131 s on the
+    // emulator. The next read and projection of the closed snapshot run while
+    // this one is written. [xe fixture parity]
+    final fetchRows = _wideFetch.contains(name) ? _fetchRows : 256;
+    Future<(List<Map<String, Object?>>, MappingOutput?)> read(int? from) async {
+      final rows = await src.rawQuery('SELECT ${_q(shape.rowidAlias!)} AS __export_rowid,$projection FROM ${_q(name)} '
+          '${from == null ? '' : 'WHERE ${_q(shape.rowidAlias!)} > ?'} ORDER BY ${_q(shape.rowidAlias!)} LIMIT $fetchRows',
+          [?from]);
+      if (rows.isEmpty) { return (rows, null); }
+      return (rows, await runMappingWorker(MappingInput('page', name, rows, legacySmartWakeActive: legacyWake)));
+    }
+    // Per table, not per row: the target's columns and NOT NULL defaults.
+    final targetColumns = target.tables[policy.dest]?.columnNames;
+    final defaulted = {for (final c in target.tables[policy.dest]?.columns ?? <ColumnShape>[])
+      if (c.notNull && c.defaultValue != null) c.name};
     int? after;
+    var ahead = read(null);
     while (true) {
-      // backup_files is D and never reaches SELECT *, so an oversized attached
-      // recording cannot overflow Android's CursorWindow.
-      final projection=[for (final c in shape.columns)
-        if (policy.clear.contains(c.name) || (policy.omit.contains(c.name) && name!='alarm_schedule'))
-          'CASE WHEN ${_q(c.name)} IS NULL THEN NULL ELSE 1 END AS ${_q(c.name)}'
-        else _q(c.name)].join(',');
-      // Narrow, long tables are read and projected [_fetchRows] at a time
-      // (one query, one worker hop) but still written, accounted and
-      // committed in the same 256-row pages, so the file bytes are unchanged:
-      // per-page query and isolate hops made decoded_rr take 131 s on the
-      // emulator. [mapper_parity_test]
-      final fetchRows = _wideFetch.contains(name) ? _fetchRows : 256;
-      final fetched = await src.rawQuery('SELECT ${_q(shape.rowidAlias!)} AS __export_rowid,$projection FROM ${_q(name)} '
-          '${after == null ? '' : 'WHERE ${_q(shape.rowidAlias!)} > ?'} ORDER BY ${_q(shape.rowidAlias!)} LIMIT $fetchRows',
-          [?after]);
+      final (fetched, projectedRead) = await ahead;
       if (fetched.isEmpty) { break; }
       after = fetched.last['__export_rowid'] as int;
+      ahead = read(after);
+      unawaited(ahead.then((_) {}, onError: (Object _, StackTrace _) {})); // awaited next iteration
       Set<(Object?,Object?)>? liveBeatParents;
       if(name=='decoded_rr') {
         // decoded_onehz is complete in the target before decoded_rr starts.
@@ -384,7 +397,7 @@ class _Mapper {
           liveBeatParents.addAll([for(final row in metadata.rows) (row['device_id'],row['ts_ms'])]);
         }
       }
-      final projectedAll = await runMappingWorker(MappingInput('page', name, fetched, legacySmartWakeActive: legacyWake));
+      final projectedAll = projectedRead!;
       final notes = {for (final n in projectedAll.notes) n['rowid'] as int: n};
       final sliceOf = <Object?, int>{for (var i = 0; i < fetched.length; i++) fetched[i]['__export_rowid']: i ~/ 256};
       final projectedSlices = [for (var i = 0; i < fetched.length; i += 256) <Map<String,Object?>>[]];
@@ -440,9 +453,7 @@ class _Mapper {
         final lostLink = (name == 'hyrox_segment' || name == 'triathlon_segment') &&
             row['workout_id'] != null && !await parentExists('sessions','id',row['workout_id']);
         if (lostLink) { row['workout_id'] = null; }
-        final columns = target.tables[policy.dest]?.columnNames ?? row.keys.toSet();
-        final defaulted = {for (final c in target.tables[policy.dest]?.columns ?? <ColumnShape>[])
-          if (c.notNull && c.defaultValue != null) c.name};
+        final columns = targetColumns ?? row.keys.toSet();
         row.removeWhere((key, value) => !columns.contains(key) || (value == null && defaulted.contains(key) && policy.clear.contains(key)));
         final invalid = invalidTargetRow(row, target.tables[policy.dest!]);
         if (invalid != null) { decisions[id] = (invalid,const [],null); continue; }
