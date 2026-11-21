@@ -106,6 +106,23 @@ void main() {
       await dir.delete(recursive:true);
     }
   });
+  // Emulator 2026-11-20: derive passes sharing sqflite's one Android worker
+  // made capture 17x slower and failed with SQLITE_BUSY (partial days).
+  test('capture and mapping run inside the exclusive hold, the passphrase prompt outside it',()async {
+    final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('export_exclusive_');
+    try {
+      final free=Space();var held=false;final seen=<String>[];
+      final coordinator=OfficialExportCoordinator()..exclusive=<T>(Future<T> Function() body) async {
+        held=true;try {return await body();} finally {held=false;}
+      };
+      final snapshot=_SpySnapshot(fx.forkPath,()=>seen.add('capture held=$held'));
+      final outcome=await coordinator.export(snapshot:snapshot,privateRoot:Directory('${root.path}/private'),
+        destination:Destination(root,free),space:ExportSpaceBudget(source:free),
+        prompts:Prompts(()async{seen.add('prompt held=$held');return 'pw';},(_)async=>false));
+      expect(outcome,isA<OfficialExportSaved>());
+      expect(seen,['capture held=true','prompt held=false']);
+    } finally {await root.delete(recursive:true);await fx.dispose();}
+  });
   // Emulator 2026-11-20: reopening after an ordinary failure said "The
   // previous export was interrupted". Only a run that stopped mid-way is.
   test('a failed or cancelled export is not reported as interrupted after restart',()async {
@@ -540,4 +557,11 @@ class _ThrowingCapture implements OfficialSnapshotSource {
   @override Future<ExportEstimate> estimate()async=>const ExportEstimate(1024,0,0);
   @override Future<SnapshotReceipt> capture(Directory dir,ExportSpaceBudget space,ExportCancellation cancellation)async=>
     throw const FileSystemException('provider went away');
+}
+class _SpySnapshot extends Snapshot {
+  _SpySnapshot(super.path,this.onCapture);
+  final void Function() onCapture;
+  @override Future<SnapshotReceipt> capture(Directory dir,ExportSpaceBudget space,ExportCancellation cancellation) {
+    onCapture();return super.capture(dir,space,cancellation);
+  }
 }

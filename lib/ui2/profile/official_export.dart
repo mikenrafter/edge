@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../compute/derivation_engine.dart' show DerivationEngine;
 import '../../data/backup_storage.dart';
 import '../../data/official_export/coordinator.dart';
 import '../../data/official_export/mapping_worker.dart' show exportRecordFamily;
@@ -20,7 +21,7 @@ import '../onboarding/welcome.dart' show askBackupPassphrase,PassphraseCancelled
 import '../ui2.dart';
 import 'profile.dart' show SettingsAccordion;
 
-final officialExportCoordinator=OfficialExportCoordinator();
+final officialExportCoordinator=OfficialExportCoordinator()..exclusive=DerivationEngine.whileIdle;
 bool _routeOpen=false;
 Future<void> openOfficialExport(BuildContext context,{bool newerOfficialAvailable=false,DateTime? checkedAt}) async {
   if(_routeOpen)return;

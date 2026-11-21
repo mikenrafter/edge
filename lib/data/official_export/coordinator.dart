@@ -287,6 +287,10 @@ class OfficialExportCoordinator extends ChangeNotifier {
     progress=ExportProgress(stage,artifact:artifact,done:done,total:total,family:family,elapsed:_elapsed.elapsed);
     notifyListeners();
   }
+  static Future<T> _direct<T>(Future<T> Function() body)=>body();
+  /// Runs capture and mapping with other database work held off; the app
+  /// passes the derive latch ([DerivationEngine.whileIdle]).
+  Future<T> Function<T>(Future<T> Function() body)? exclusive;
   Future<OfficialExportOutcome> export({required OfficialSnapshotSource snapshot,
       required Directory privateRoot,required CipherBackupStorage destination,
       required ExportSpaceBudget space,required ExportPrompts prompts}) {
@@ -427,13 +431,19 @@ class OfficialExportCoordinator extends ChangeNotifier {
       _cancellation.check();
       _id='${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1<<32).toRadixString(16)}';
       _session=await Directory('${root.path}/session-$_id').create();
-      _snapshot=await source.capture(_session!,space,_cancellation);
-      extrasOmissions=_snapshot.omissions;
-      final canonical=await File(_snapshot.path).resolveSymbolicLinks();
-      if(!canonical.startsWith('${await _session!.resolveSymbolicLinks()}/'))throw StateError('Snapshot is outside its private session');
-      _progress(ExportStage.mapping);
-      report=await mapOfficialSnapshot(snapshotPath:_snapshot.path,outputPath:'${_session!.path}/official.db',space:space,
-        snapshotReceipt:_snapshot.toJson(),exportId:_id,onProgress:(family,done)=>_progress(ExportStage.mapping,family:family,done:done));
+      // Capture and mapping run with background derivation held off: on
+      // Android every SQLite connection shares sqflite's one worker thread, so
+      // derive passes made capture 17x slower and themselves failed with
+      // SQLITE_BUSY, persisting partial days (emulator, 2026-11-20).
+      await (exclusive??_direct)(() async {
+        _snapshot=await source.capture(_session!,space,_cancellation);
+        extrasOmissions=_snapshot.omissions;
+        final canonical=await File(_snapshot.path).resolveSymbolicLinks();
+        if(!canonical.startsWith('${await _session!.resolveSymbolicLinks()}/'))throw StateError('Snapshot is outside its private session');
+        _progress(ExportStage.mapping);
+        report=await mapOfficialSnapshot(snapshotPath:_snapshot.path,outputPath:'${_session!.path}/official.db',space:space,
+          snapshotReceipt:_snapshot.toJson(),exportId:_id,onProgress:(family,done)=>_progress(ExportStage.mapping,family:family,done:done));
+      });
       _hasOmissions=(await omissionSummary()).isNotEmpty;
       _cancellation.check();_passphrase=await prompts.askPassphrase();
       if(_passphrase==null)throw const ExportCancelled();
