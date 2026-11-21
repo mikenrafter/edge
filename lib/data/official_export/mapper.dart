@@ -2,6 +2,7 @@
 // paging and inserts; payload decoding/projection runs in mapping_worker.dart.
 // The caller supplies a CLOSED immutable snapshot, never a live database path.
 // CLAIM(official-export-source-unchanged) [mapper_test; owner proof].
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' show min;
 import 'dart:typed_data';
@@ -101,6 +102,7 @@ Future<OfficialMapReport> mapOfficialSnapshot({
     await builder.captureLiveDays();
     lap('live_tables');
     if (catalog.tables.containsKey('substrate_archive')) { await builder.expandArchives(); }
+    for (final e in builder.archiveTimings.entries) { onPhase?.call('archive.${e.key}', e.value); }
     lap('archive_expansion');
     await targetFile.applySql('DROP TABLE live_parent');
     final forkRow = catalog.tables.containsKey('sync_cursor')
@@ -188,10 +190,18 @@ Future<int?> oldestMappedExactSec(DatabaseExecutor db) async =>
 /// 2 MB CursorWindow); every other table keeps 256.
 const _wideFetch = {'decoded_onehz', 'decoded_rr', 'samples', 'raw_archive_frames', 'raw_archive_legacy'};
 const _fetchRows = 2048;
+/// Archive buckets decoded ahead of the one being written (each ~85k seconds).
+const _archiveLookahead = 2;
 
 class _Mapper {
   _Mapper(this.src, this.file, this.source, this.target, this.space, this.calendar, this.onProgress);
   final Set<(Object?,String)> _writtenFrames = {};
+  /// Milliseconds per archive step, reported through onPhase for profiling.
+  final Map<String,int> archiveTimings = {};
+  Future<T> _timed<T>(String step, Future<T> Function() body) async {
+    final clock = Stopwatch()..start();
+    try { return await body(); } finally { archiveTimings[step] = (archiveTimings[step] ?? 0) + clock.elapsedMilliseconds; }
+  }
   final LocalCalendar calendar;
   final void Function(String,int)? onProgress;
   final Database src;
@@ -557,14 +567,31 @@ class _Mapper {
         'ORDER BY device_id,from_ts,to_ts,rowid');
     final group = _ArchiveGroup();
     final flushed = <String, List<(int, int)>>{};
-    for (final meta in metas) {
+    // Reading and decoding a bucket touch only the closed snapshot, so the
+    // next buckets are fetched and decoded in their own isolates while this
+    // one is written; results are consumed in metadata order, unchanged.
+    Future<(Uint8List?, MappingOutput?)> load(Map<String, Object?> meta) async {
+      final blob = await SubstrateArchive.readBlob(src, meta['device_id'] as String, meta['utc_day'] as int);
+      if (blob == null) { return (null, null); }
+      return (blob, await runMappingWorker(MappingInput('archive', '', const [], blob: blob,
+          codec: meta['codec'] as int, fingerprint: meta['fingerprint'] as int)));
+    }
+    final loads = <int, Future<(Uint8List?, MappingOutput?)>>{};
+    Future<(Uint8List?, MappingOutput?)> loadAt(int index) => loads.putIfAbsent(index, () {
+      final f = load(metas[index]);
+      unawaited(f.then((_) {}, onError: (Object _, StackTrace _) {})); // awaited in order below
+      return f;
+    });
+    for (var index = 0; index < metas.length; index++) {
+      final meta = metas[index];
       final id = meta['__export_rowid'] as int;
       onProgress?.call('substrate_archive',outcomes.length);
       final device = meta['device_id'] as String;
-      final blob = await SubstrateArchive.readBlob(src, device, meta['utc_day'] as int);
+      for (var ahead = index + 1; ahead < metas.length && ahead <= index + _archiveLookahead; ahead++) { loadAt(ahead); }
+      final (blob, loaded) = await _timed('load_wait', () => loadAt(index));
+      loads.remove(index);
       if (blob == null) { outcomes[id] = 'missing archive bytes'; continue; }
-      final decoded = await runMappingWorker(MappingInput('archive', '', const [], blob: blob,
-          codec: meta['codec'] as int, fingerprint: meta['fingerprint'] as int));
+      final decoded = loaded!;
       if (decoded.rows.isEmpty && decoded.notes.any((n) => n['reason'] == 'unreadable codec or fingerprint mismatch')) {
         outcomes[id] = 'unreadable codec or fingerprint mismatch'; continue;
       }
@@ -597,7 +624,7 @@ class _Mapper {
         continue;
       }
       if (group.isEmpty || group.device != device || lo > group.hi! || hi < group.lo!) {
-        await _settleGroup(group, flushed, outcomes);
+        await _timed('settle', () => _settleGroup(group, flushed, outcomes));
         group.start(device);
       }
       group.add(id, meta, lo, hi);
@@ -609,9 +636,9 @@ class _Mapper {
         batch.writeRow('archive_claims', {...c, 'bucket_id': id});
       }
       await space?.requireAvailable(usable.length * 512 + 65536);
-      await batch.flush();
+      await _timed('claim_write', batch.flush);
     }
-    await _settleGroup(group, flushed, outcomes);
+    await _timed('settle', () => _settleGroup(group, flushed, outcomes));
     for (final id in outcomes.keys.toList()..sort()) { ledger.add(id, outcomes[id]!); }
     archiveAccounting.addAll([for (final e in archiveLedgers.entries)
       {'bucket': e.key, ...e.value.toJson()}]);
@@ -687,7 +714,7 @@ class _Mapper {
             '${lastIndex == null ? '' : 'AND row_index>?'} ORDER BY row_index LIMIT 20000', [bucket, ?lastIndex]);
         if (selected.isEmpty) { break; }
         final kept = {bucket: [for (final row in selected) row['row_index'] as int]};
-        final expanded = await runMappingWorker(MappingInput('unpack', '', await _bucketBlobs(group, kept.keys, kept)));
+        final expanded = await _timed('unpack_worker', () async => runMappingWorker(MappingInput('unpack', '', await _bucketBlobs(group, kept.keys, kept))));
         final acceptedParents=<(Object?,Object?)>{};
         for (var offset = 0; offset < expanded.rows.length; offset += 1024) {
           final batch = file.beginBatch();
@@ -708,7 +735,7 @@ class _Mapper {
             expectedCounts[table] = (expectedCounts[table] ?? 0) + 1;
           }
           await space?.requireAvailable(slice.length * 4096 + 65536);
-          await batch.flush();
+          await _timed('expand_write', batch.flush);
         }
         lastIndex = selected.last['row_index'] as int;
       }

@@ -442,7 +442,8 @@ class OfficialExportCoordinator extends ChangeNotifier {
         if(!canonical.startsWith('${await _session!.resolveSymbolicLinks()}/'))throw StateError('Snapshot is outside its private session');
         _progress(ExportStage.mapping);
         report=await mapOfficialSnapshot(snapshotPath:_snapshot.path,outputPath:'${_session!.path}/official.db',space:space,
-          snapshotReceipt:_snapshot.toJson(),exportId:_id,onProgress:(family,done)=>_progress(ExportStage.mapping,family:family,done:done));
+          snapshotReceipt:_snapshot.toJson(),exportId:_id,onPhase:(phase,ms)=>_trace('mapping phase $phase $ms ms'),
+          onProgress:(family,done)=>_progress(ExportStage.mapping,family:family,done:done));
       });
       _hasOmissions=(await omissionSummary()).isNotEmpty;
       _cancellation.check();_passphrase=await prompts.askPassphrase();
