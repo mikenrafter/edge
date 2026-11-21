@@ -198,6 +198,13 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
             ExportNoticeKind.leftover=>l.officialExportLeftover(notice.file!,notice.folder!),
             ExportNoticeKind.journalUnreadable=>l.officialExportJournalUnreadable})),
         if(coordinator.notices.isNotEmpty)button(l.officialExportDismiss,busy?null:()=>coordinator.dismissNotices()),
+        // The result takes the progress line's place. Below the buttons it sat
+        // off screen once the wearer had scrolled to the progress, and the
+        // page looked idle (emulator, 2026-11-20).
+        if(!busy && outcome is OfficialExportRefused)...[Semantics(liveRegion:true,child:Text(_failure(l,outcome.reason))),button(l.officialExportRetry,_start)],
+        if(!busy && outcome is OfficialExportFailed)...[Semantics(liveRegion:true,child:Text(_failure(l,outcome.reason))),button(l.officialExportRetry,_start)],
+        if(!busy && outcome is OfficialExportCancelled)...[Semantics(liveRegion:true,child:Text(l.officialExportCancelled)),button(l.officialExportRetry,_start)],
+        if(_error!=null)Semantics(liveRegion:true,child:Text(_failure(l,_error!))),
         if(!busy && official==null)...[
           button(l.officialExportChooseFolder,_chooseFolder),
           if(_destination!=null)Text(_destination!.label),
@@ -235,10 +242,6 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
             button(l.officialExportRetryRecovery,coordinator.active?null:_retryRecovery),
           ],
         ],
-        if(outcome is OfficialExportRefused)...[Text(_failure(l,outcome.reason)),button(l.officialExportRetry,_start)],
-        if(outcome is OfficialExportFailed)...[Text(_failure(l,outcome.reason)),button(l.officialExportRetry,_start)],
-        if(outcome is OfficialExportCancelled)...[Text(l.officialExportCancelled),button(l.officialExportRetry,_start)],
-        if(_error!=null)Text(_failure(l,_error!)),
         if(coordinator.report!=null)...[
           button(l.officialExportOmissions,()=>Navigator.of(context).push(MaterialPageRoute<void>(builder:(_)=>_Omissions(coordinator:coordinator)))),
           button(l.officialExportDays,()=>Navigator.of(context).push(MaterialPageRoute<void>(builder:(_)=>_Days(coordinator:coordinator)))),

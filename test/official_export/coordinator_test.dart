@@ -15,6 +15,7 @@ import 'package:openstrap_edge/data/official_export/space_budget.dart';
 import 'rich_fixture.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'session_fixture.dart';
+import 'package:openstrap_edge/sync/dev_log.dart';
 
 class StaleReceiptSnapshot extends Snapshot {
  StaleReceiptSnapshot(super.path);
@@ -85,6 +86,26 @@ class FinishSpyCoordinator extends OfficialExportCoordinator {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // Emulator 2026-11-20: a release run failed with nothing in logcat or the
+  // dev log, so the step and the error could not be named afterwards.
+  test('a failed export leaves its stage and error in the dev log',()async {
+    final dir=await Directory.systemTemp.createTemp('export_fail_log_');
+    final old=DevLog.instance;
+    DevLog.instance=DevLog(baseDir:()async=>dir,devMode:()async=>false);
+    try {
+      final free=Space();
+      final outcome=await OfficialExportCoordinator().export(snapshot:_ThrowingCapture(),privateRoot:Directory('${dir.path}/private'),
+        destination:Destination(Directory('${dir.path}/saved')..createSync(),free),space:ExportSpaceBudget(source:free),
+        prompts:Prompts(()async=>'pw',(_)async=>false));
+      expect(outcome,isA<OfficialExportFailed>());
+      await DevLog.instance.flush();
+      final lines=[for(final f in dir.listSync(recursive:true))if(f is File && f.path.endsWith('.log'))...f.readAsLinesSync()];
+      expect(lines.where((l)=>l.contains('[export] official export failed at preparing') && l.contains('provider went away')),hasLength(1),reason:'$lines');
+    } finally {
+      DevLog.instance=old;
+      await dir.delete(recursive:true);
+    }
+  });
   // WHY: review F2. Extras omissions come from the snapshot, so neither saved
   // file holds them; each reason keeps its own group instead of "unsupported".
   test('extras omissions keep their true reason and family',()async {
@@ -491,4 +512,10 @@ void main() {
       expect(File('${private.path}/leftovers.json').existsSync()?File('${private.path}/leftovers.json').readAsStringSync():'',isNot(contains('x.db.osbk')));
     }finally{await coordinator.finish();coordinator.dispose();await root.delete(recursive:true);await fx.dispose();}
   },timeout:const Timeout(Duration(minutes:4)));
+}
+
+class _ThrowingCapture implements OfficialSnapshotSource {
+  @override Future<ExportEstimate> estimate()async=>const ExportEstimate(1024,0,0);
+  @override Future<SnapshotReceipt> capture(Directory dir,ExportSpaceBudget space,ExportCancellation cancellation)async=>
+    throw const FileSystemException('provider went away');
 }

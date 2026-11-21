@@ -7,6 +7,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../import/backup_stream.dart';
+import '../../sync/dev_log.dart';
 import '../backup_storage.dart';
 import '../attach_copy.dart';
 import '../db.dart';
@@ -415,6 +416,9 @@ class OfficialExportCoordinator extends ChangeNotifier {
       return outcome=OfficialExportCancelled(receipt:official);
     } catch(error) {
       final stage=progress.stage;progress=ExportProgress(ExportStage.failed,artifact:progress.artifact);
+      // The screen shows one generic line; the step and error stay findable
+      // in the dev log, which release builds keep (logcat does not).
+      unawaited(DevLog.write('[export] official export failed at ${stage.name} after ${_elapsed.elapsed.inSeconds} s: ${error.runtimeType}: $error',always:true));
       return outcome=OfficialExportFailed(stage,error,receipt:official);
     } finally {
       await _cleanIncomplete();
