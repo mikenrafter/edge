@@ -431,6 +431,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
       _incomplete=null;_publicationName=null;
       _progress(ExportStage.preparing);
       _estimate=await source.estimate();
+      _trace('estimate ${_estimate.sqlBytes} B at ${_elapsed.elapsed.inMilliseconds} ms');
       try {await space.requireAvailable(_estimate.peakBytes);} on ExportSpaceExhausted catch(error) {
         if(source is! PartialExportSnapshotSource)return outcome=OfficialExportRefused(error);
         _estimate=await source.estimateWithoutSavedFiles();
@@ -446,8 +447,10 @@ class OfficialExportCoordinator extends ChangeNotifier {
       // derive passes made capture 17x slower and themselves failed with
       // SQLITE_BUSY, persisting partial days (emulator, 2026-11-20).
       final held=await exclusive?.acquire()??false;
+      _trace('hold ${held?'taken':'not taken'} at ${_elapsed.elapsed.inMilliseconds} ms');
       try {
         _snapshot=await source.capture(_session!,space,_cancellation);
+        _trace('captured at ${_elapsed.elapsed.inMilliseconds} ms');
         extrasOmissions=_snapshot.omissions;
         final canonical=await File(_snapshot.path).resolveSymbolicLinks();
         if(!canonical.startsWith('${await _session!.resolveSymbolicLinks()}/'))throw StateError('Snapshot is outside its private session');
