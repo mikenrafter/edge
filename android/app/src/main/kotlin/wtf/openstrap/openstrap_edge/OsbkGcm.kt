@@ -10,7 +10,8 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * Streaming AES-256-GCM (96-bit nonce, 128-bit tag) for OSBK files, byte-identical to the Dart
- * pointycastle path in lib/import/backup_crypto.dart for the same key, nonce and header.
+ * pointycastle path in lib/import/backup_crypto.dart for the same key, nonce and header, including
+ * pointycastle's 32-bit ciphertext length above 512 MiB (see [Ghash.tag]).
  *
  * Why not Cipher "AES/GCM/NoPadding": Android's provider (Conscrypt) buffers the whole input until
  * doFinal, which is an out-of-memory crash on a ~1 GB export. AES/CTR streams and uses the
@@ -122,7 +123,10 @@ class OsbkGcm(key: ByteArray, private val nonce: ByteArray, private val aad: Byt
         fun tag(): ByteArray {
             pad()
             zh = zh xor aadBits
-            zl = zl xor dataBits
+            // pointycastle 3.9 (what every OSBK reader, official v0.12.2 included, runs) stores the
+            // ciphertext bit length in a Uint32, so above 512 MiB its tag covers the length mod 2^32.
+            // Standard GCM would make those files unreadable there; match the format, not the RFC.
+            zl = zl xor (dataBits and 0xffffffffL)
             mult()
             val out = ByteArray(16)
             put64(out, 0, zh); put64(out, 8, zl)
