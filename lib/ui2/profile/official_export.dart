@@ -1,6 +1,7 @@
 // One immediate route shared by Profile > Data and the release checker.
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show debugPrintThrottled;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
