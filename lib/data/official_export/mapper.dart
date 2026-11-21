@@ -102,7 +102,7 @@ Future<OfficialMapReport> mapOfficialSnapshot({
     await builder.captureLiveDays();
     lap('live_tables');
     if (catalog.tables.containsKey('substrate_archive')) { await builder.expandArchives(); }
-    for (final e in builder.archiveTimings.entries) { onPhase?.call('archive.${e.key}', e.value); }
+    for (final e in builder.archiveTimings.entries) { if (e.value >= 500) { onPhase?.call(e.key.startsWith('live.') ? e.key : 'archive.${e.key}', e.value); } }
     lap('archive_expansion');
     await targetFile.applySql('DROP TABLE live_parent');
     final forkRow = catalog.tables.containsKey('sync_cursor')
@@ -379,7 +379,9 @@ class _Mapper {
     int? after;
     var ahead = read(null);
     while (true) {
+      final readWait = Stopwatch()..start();
       final (fetched, projectedRead) = await ahead;
+      _spent('live.$name.read_wait', readWait);
       if (fetched.isEmpty) { break; }
       after = fetched.last['__export_rowid'] as int;
       ahead = read(after);
@@ -410,6 +412,7 @@ class _Mapper {
       final decisions = <int, (String, List, Object?)>{};
       final queuedFrames=<(Object?,String),Map<String,Object?>>{};
       var written = 0;
+      final accounting = Stopwatch()..start();
       for (final row in projectedSlices[slice]) {
         final id = row.remove('__export_rowid') as int;
         final original = originals[id]!;
@@ -472,7 +475,10 @@ class _Mapper {
       }
       onProgress?.call(name,ledger.accounted);
       await space?.requireAvailable(256 * 32768);
+      _spent('live.$name.account', accounting);
+      final wrote = Stopwatch()..start();
       await batch.flush();
+      _spent('live.$name.write', wrote);
       if (name.startsWith('raw_archive')) { _writtenFrames.addAll(queuedFrames.keys); }
       expectedCounts[policy.dest!] = (expectedCounts[policy.dest!] ?? 0) + written;
       }

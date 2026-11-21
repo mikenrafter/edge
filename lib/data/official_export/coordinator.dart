@@ -433,9 +433,10 @@ class OfficialExportCoordinator extends ChangeNotifier {
       _estimate=await source.estimate();
       _trace('estimate ${_estimate.sqlBytes} B at ${_elapsed.elapsed.inMilliseconds} ms');
       try {await space.requireAvailable(_estimate.peakBytes);} on ExportSpaceExhausted catch(error) {
-        if(source is! PartialExportSnapshotSource)return outcome=OfficialExportRefused(error);
+        if(source is! PartialExportSnapshotSource) {_trace('refused: $error');return outcome=OfficialExportRefused(error);}
         _estimate=await source.estimateWithoutSavedFiles();
         try {await space.requireAvailable(_estimate.peakBytes);} on ExportSpaceExhausted catch(error) {
+          _trace('refused: $error');
           return outcome=OfficialExportRefused(error);
         }
       }
