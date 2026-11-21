@@ -713,15 +713,25 @@ class _Mapper {
     // CLAIM(official-export-bounded-unpack) [archive_claims_test; review N2].
     for (final bucket in group.metas.keys) {
       var expandedParents = 0;
-      int? lastIndex;
-      while (true) {
-        final selected = await dst.rawQuery('SELECT row_index FROM archive_claims WHERE bucket_id=? AND verdict=0 '
-            '${lastIndex == null ? '' : 'AND row_index>?'} ORDER BY row_index LIMIT 20000', [bucket, ?lastIndex]);
-        if (selected.isEmpty) { break; }
-        final kept = {bucket: [for (final row in selected) row['row_index'] as int]};
+      // Verdicts are final here and expansion writes never touch
+      // archive_claims, so the next page is selected and unpacked in its
+      // worker while this page is written. Same pages, same write order.
+      Future<List<Map<String, Object?>>> select(int? after) => dst.rawQuery(
+          'SELECT row_index FROM archive_claims WHERE bucket_id=? AND verdict=0 '
+          '${after == null ? '' : 'AND row_index>?'} ORDER BY row_index LIMIT 20000', [bucket, ?after]);
+      Future<MappingOutput> unpack(List<Map<String, Object?>> rows) async {
+        final kept = {bucket: [for (final row in rows) row['row_index'] as int]};
+        return runMappingWorker(MappingInput('unpack', '', await _bucketBlobs(group, kept.keys, kept)));
+      }
+      var selected = await select(null);
+      Future<MappingOutput>? pending = selected.isEmpty ? null : unpack(selected);
+      while (pending != null) {
         final unpacked = Stopwatch()..start();
-        final expanded = await runMappingWorker(MappingInput('unpack', '', await _bucketBlobs(group, kept.keys, kept)));
+        final expanded = await pending;
         _spent('unpack_worker', unpacked);
+        final next = await select(selected.last['row_index'] as int);
+        pending = next.isEmpty ? null : unpack(next);
+        if (pending != null) { unawaited(pending.then((_) {}, onError: (Object _, StackTrace _) {})); }
         final acceptedParents=<(Object?,Object?)>{};
         for (var offset = 0; offset < expanded.rows.length; offset += 1024) {
           final batch = file.beginBatch();
@@ -746,7 +756,7 @@ class _Mapper {
           await batch.flush();
           _spent('expand_write', wrote);
         }
-        lastIndex = selected.last['row_index'] as int;
+        selected = next;
       }
       if (expandedParents == 0) { outcomes[bucket] = 'no admissible archive parents; fully withheld'; }
     }

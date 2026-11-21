@@ -349,7 +349,12 @@ class OfficialExportCoordinator extends ChangeNotifier {
     _cancellation.check();
     final size=await plain.length();
     await _space.requireAvailable(size*2+8*1024*1024);
-    final expected=(await runMappingWorker(MappingInput('fileHash','',const [],json:plain.path))).text!;
+    final destination=_destination;
+    final native=destination is NativeOsbkCipher?destination as NativeOsbkCipher:null;
+    // The platform cipher hashes exactly the bytes it encrypts, and the full
+    // read-back must reproduce that hash, so a separate pre-pass over the
+    // private plaintext (~870 MB) adds nothing there.
+    final String? preHash=native!=null?null:(await runMappingWorker(MappingInput('fileHash','',const [],json:plain.path))).text!;
     _progress(ExportStage.encrypting,artifact:artifact,total:size);
     final incompleteName='$name.incomplete';
     if((await _destination.listCiphertext()).any((file)=>file.name==incompleteName))throw const FileSystemException('Filename is already in use');
@@ -362,8 +367,6 @@ class OfficialExportCoordinator extends ChangeNotifier {
     _publicationName=null;await _journal();
     // The platform cipher writes the same OSBK bytes ~100x faster than the
     // Dart one and keeps ciphertext off the channel. [OsbkGcmTest, stream_test]
-    final destination=_destination;
-    final native=destination is NativeOsbkCipher?destination as NativeOsbkCipher:null;
     final OsbkKey? key=native==null?null:await prepareBackupKey(_passphrase!);
     final String encryptedHash;
     if(native!=null) {
@@ -377,6 +380,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
         await _destination.appendCiphertext(_incomplete!,chunk);
       },checkCancelled:_cancellation.check,onBytes:(n)=>_progress(ExportStage.encrypting,artifact:artifact,done:n,total:size));
     }
+    final expected=preHash??encryptedHash;
     if(encryptedHash!=expected)throw StateError('Plaintext changed while encrypting');
     await _destination.closeCiphertext(_incomplete!);
     await _verify(_incomplete!,expected,size,artifact,native:native,key:key);
