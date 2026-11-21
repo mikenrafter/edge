@@ -16,6 +16,7 @@ import java.io.InputStream
 import java.io.OutputStream
 import android.os.StatFs
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 
 /** SAF operations for a chosen backup folder. No broad storage permission.
  * Registered on the cached engine so writes do not depend on an Activity.
@@ -23,11 +24,16 @@ import java.util.concurrent.Executors
  */
 object BackupFolderBridge {
     private const val REQUEST_PICK_FOLDER = 0x5A41
+    private const val PROBE = 64L * 1024
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private val cipherWrites = mutableMapOf<String, Pair<String, OutputStream>>()
     private val cipherReads = mutableMapOf<String, Pair<String, InputStream>>()
     private var pendingPick: MethodChannel.Result? = null
+    // Progress and cancellation of the one running OSBK pass, read and set from the main thread
+    // while the worker is busy with it.
+    private val cipherBytes = AtomicLong(0)
+    @Volatile private var cipherCancelled = false
 
     fun register(engine: FlutterEngine, context: Context) {
         val app = context.applicationContext
@@ -35,7 +41,12 @@ object BackupFolderBridge {
             .setMethodCallHandler { call, result ->
                 if (call.method == "pick") {
                     pick(result)
-                } else if (call.method in setOf("list", "write", "rename", "delete", "release", "freeSpace", "openCiphertext", "appendCiphertext", "closeCiphertext", "readCiphertext", "closeCiphertextRead", "shareCiphertext")) {
+                } else if (call.method == "cipherProgress") {
+                    result.success(cipherBytes.get())
+                } else if (call.method == "cipherCancel") {
+                    cipherCancelled = true
+                    result.success(null)
+                } else if (call.method in setOf("list", "write", "rename", "delete", "release", "freeSpace", "openCiphertext", "appendCiphertext", "closeCiphertext", "readCiphertext", "closeCiphertextRead", "shareCiphertext", "encryptCiphertext", "verifyCiphertext", "probeCiphertext")) {
                     run(result) { dispatch(app, call) }
                 } else {
                     result.notImplemented()
@@ -252,6 +263,51 @@ object BackupFolderBridge {
                     throw e
                 }
                 null
+            }
+            "encryptCiphertext", "verifyCiphertext" -> {
+                val uri = call.argument<String>("uri") ?: ""
+                val gcm = OsbkGcm(call.argument<ByteArray>("key") ?: throw IllegalArgumentException("Missing key"),
+                    call.argument<ByteArray>("nonce") ?: throw IllegalArgumentException("Missing nonce"),
+                    call.argument<ByteArray>("header") ?: throw IllegalArgumentException("Missing header"))
+                cipherBytes.set(0); cipherCancelled = false
+                val progress = { n: Long -> cipherBytes.set(n) }
+                val cancelled = { cipherCancelled }
+                if (call.method == "encryptCiphertext") {
+                    val pending = cipherWrites[uri] ?: throw IOException("Export stream is closed")
+                    if (pending.first != tree) throw SecurityException("Export belongs to another folder")
+                    val source = File(call.argument<String>("source") ?: throw IllegalArgumentException("Missing source"))
+                    try {
+                        source.inputStream().use { gcm.encrypt(it, pending.second, progress, cancelled) }
+                    } catch (e: Exception) {
+                        cipherWrites.remove(uri)
+                        try { pending.second.close() } catch (_: Exception) {}
+                        throw e
+                    }
+                } else {
+                    val info = child(context, root, uri)
+                    val stream = context.contentResolver.openInputStream(info.uri) ?: throw IOException("Could not read export")
+                    stream.use { gcm.verify(it.buffered(OsbkGcm.CHUNK), progress, cancelled) }
+                }
+            }
+            "probeCiphertext" -> {
+                // Size plus SHA-256 of the first and last 64 KiB: a cheap identity check of a
+                // published document against the fully verified one it was renamed from.
+                val info = child(context, root, call.argument<String>("uri") ?: "")
+                val pfd = context.contentResolver.openFileDescriptor(info.uri, "r") ?: throw IOException("Could not read export")
+                pfd.use {
+                    java.io.FileInputStream(it.fileDescriptor).channel.use { ch ->
+                        val size = ch.size()
+                        fun sha(at: Long): String {
+                            val n = minOf(PROBE, size - at).toInt()
+                            val buf = java.nio.ByteBuffer.allocate(n)
+                            ch.position(at)
+                            while (buf.hasRemaining() && ch.read(buf) >= 0) {}
+                            if (buf.hasRemaining()) throw IOException("Could not read export")
+                            return java.security.MessageDigest.getInstance("SHA-256").digest(buf.array()).joinToString("") { b -> "%02x".format(b) }
+                        }
+                        mapOf("size" to size, "head" to sha(0), "tail" to sha(maxOf(0L, size - PROBE)))
+                    }
+                }
             }
             "readCiphertext" -> {
                 val uri = call.argument<String>("uri") ?: ""

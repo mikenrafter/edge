@@ -57,6 +57,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
   String? _publicationName;
   String? _passphrase;
   bool _retryAvailable=false;
+  bool _ended=false;
   bool _hasOmissions=false;
   List<Map<String,Object?>>? _omissionGroups;
   Map<String,Object?>? _interruption;
@@ -298,7 +299,9 @@ class OfficialExportCoordinator extends ChangeNotifier {
   }
   Future<void> _journal() async {
     final text=(await runMappingWorker(MappingInput('json','',const [],json:{
-      'version':1,'folder':_destination.label,'finished':progress.stage==ExportStage.complete,
+      // Only a run that stopped mid-way (process death) is unfinished; one that
+      // failed or was cancelled ended, and its cleanup names below still travel.
+      'version':1,'folder':_destination.label,'finished':_ended || progress.stage==ExportStage.complete,
       // If the separate list could not be saved, replacing this receipt must
       // still retain its cleanup names. [coordinator_test, R2-1]
       if(_leftovers.isNotEmpty)'leftovers':_leftovers,
@@ -347,20 +350,41 @@ class OfficialExportCoordinator extends ChangeNotifier {
       _publicationName=null;await _journal();rethrow;
     }
     _publicationName=null;await _journal();
-    final encryptedHash=await encryptBackupStream(plain,_passphrase!, (chunk)async {
-      _cancellation.check();await _space.requireAvailable(chunk.length+65536);
-      await _destination.appendCiphertext(_incomplete!,chunk);
-    },checkCancelled:_cancellation.check,onBytes:(n)=>_progress(ExportStage.encrypting,artifact:artifact,done:n,total:size));
+    // The platform cipher writes the same OSBK bytes ~100x faster than the
+    // Dart one and keeps ciphertext off the channel. [OsbkGcmTest, stream_test]
+    final destination=_destination;
+    final native=destination is NativeOsbkCipher?destination as NativeOsbkCipher:null;
+    final OsbkKey? key=native==null?null:await prepareBackupKey(_passphrase!);
+    final String encryptedHash;
+    if(native!=null) {
+      // One reservation covers the whole ciphertext: header, data and tag.
+      await _space.requireAvailable(size+54+65536);
+      encryptedHash=await native.encryptFileInto(_incomplete!,plain.path,key!,checkCancelled:_cancellation.check,
+        onBytes:(n)=>_progress(ExportStage.encrypting,artifact:artifact,done:n,total:size));
+    } else {
+      encryptedHash=await encryptBackupStream(plain,_passphrase!, (chunk)async {
+        _cancellation.check();await _space.requireAvailable(chunk.length+65536);
+        await _destination.appendCiphertext(_incomplete!,chunk);
+      },checkCancelled:_cancellation.check,onBytes:(n)=>_progress(ExportStage.encrypting,artifact:artifact,done:n,total:size));
+    }
     if(encryptedHash!=expected)throw StateError('Plaintext changed while encrypting');
     await _destination.closeCiphertext(_incomplete!);
-    await _verify(_incomplete!,expected,size,artifact);
+    await _verify(_incomplete!,expected,size,artifact,native:native,key:key);
+    final probe=native==null?null:await native.probeFile(_incomplete!);
     _progress(ExportStage.publishing,artifact:artifact);
     await _space.requireAvailable(size+54);
     _publicationName=name;await _journal();
     _incomplete=await _destination.publishCiphertext(_incomplete!,name);
     await _journal();
     // Provider rename may copy bytes or change identity, a new trust boundary.
-    await _verify(_incomplete!,expected,size,artifact);
+    // With the platform cipher the renamed document must match the verified
+    // one in size and in its first and last 64 KiB; otherwise a full pass.
+    if(probe!=null) {
+      _progress(ExportStage.verifying,artifact:artifact,total:size+54);
+      if(await native!.probeFile(_incomplete!)!=probe)throw StateError('Saved file differs from verified copy');
+    } else {
+      await _verify(_incomplete!,expected,size,artifact);
+    }
     final saved=VerifiedExportFile(_incomplete!,_destination.label,expected,size+54);
     _incomplete=null;_publicationName=null;
     if(artifact==ExportArtifact.official)official=saved;
@@ -368,10 +392,12 @@ class OfficialExportCoordinator extends ChangeNotifier {
     await plain.delete();
     return saved;
   }
-  Future<void> _verify(BackupFile file,String expected,int size,ExportArtifact artifact) async {
+  Future<void> _verify(BackupFile file,String expected,int size,ExportArtifact artifact,{NativeOsbkCipher? native,OsbkKey? key}) async {
     _progress(ExportStage.verifying,artifact:artifact,total:size+54);
-    final hash=await verifyBackupStream(_destination.readCiphertext(file),_passphrase!,checkCancelled:_cancellation.check,
-      onBytes:(n)=>_progress(ExportStage.verifying,artifact:artifact,done:n,total:size+54));
+    void onBytes(int n)=>_progress(ExportStage.verifying,artifact:artifact,done:n,total:size+54);
+    final hash=native!=null && key!=null
+      ?await native.verifyFile(file,key,checkCancelled:_cancellation.check,onBytes:onBytes)
+      :await verifyBackupStream(_destination.readCiphertext(file),_passphrase!,checkCancelled:_cancellation.check,onBytes:onBytes);
     if(hash!=expected)throw StateError('Saved file differs from verified copy');
   }
   Future<OfficialExportOutcome> _run(OfficialSnapshotSource source,Directory root,
@@ -380,7 +406,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
     await finish();
     _root=root;_destination=destination;_space=space;
     _recoveryChoice=null;_omissionGroups=null;official=null;report=null;outcome=null;extrasOmissions=const [];
-    _elapsed..reset()..start();
+    _elapsed..reset()..start();_ended=false;
     try {
       if(await FileSystemEntity.type(root.path,followLinks:false)==FileSystemEntityType.link)throw StateError('Unsafe private directory');
       await root.create(recursive:true);await cleanupAbandoned(root);
@@ -435,6 +461,7 @@ class OfficialExportCoordinator extends ChangeNotifier {
       unawaited(DevLog.write('[export] official export failed at ${stage.name} after ${_elapsed.elapsed.inSeconds} s: ${error.runtimeType}: $error',always:true));
       return outcome=OfficialExportFailed(stage,error,receipt:official);
     } finally {
+      _ended=true;
       await _cleanIncomplete();
       if(_session!=null) {try {await _journal();} catch(_) { /* Keep earlier interruption metadata if storage is unavailable. */ }}
       if(!_retryAvailable)await finish();
@@ -474,7 +501,10 @@ class OfficialExportCoordinator extends ChangeNotifier {
   }
   Future<OfficialExportOutcome> _retryRecovery() async {
     await _noticeChanges; // ↳ CLAIM(official-export-cleanup-owner)
-    final result=await _recover();outcome=result;
+    _ended=false;
+    final OfficialExportOutcome result;
+    try {result=await _recover();} finally {_ended=true;}
+    outcome=result;
     if(!_retryAvailable)await finish();
     progress=const ExportProgress(ExportStage.complete);notifyListeners();return result;
   }

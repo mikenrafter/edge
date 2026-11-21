@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import '../import/backup_crypto.dart' show OsbkKey;
 
 /// A document-tree grant, not a filesystem path. Kept on this device only.
 class BackupFolder {
@@ -202,7 +203,19 @@ class LocalCipherBackupStorage implements CipherBackupStorage {
   @override Future<void> deleteCiphertext(BackupFile file) async {await (await _file(file)).delete();}
 }
 
-class AndroidCipherBackupStorage implements CipherBackupStorage {
+/// A destination that runs the OSBK cipher natively, file to document, so no
+/// ciphertext crosses the platform channel. Output bytes equal
+/// [encryptBackupStream]'s for the same [OsbkKey]. Both return the plaintext
+/// SHA-256 (hex); verification also authenticates the GCM tag.
+abstract interface class NativeOsbkCipher {
+  Future<String> encryptFileInto(BackupFile file,String plainPath,OsbkKey key,{void Function(int)? onBytes,void Function()? checkCancelled});
+  Future<String> verifyFile(BackupFile file,OsbkKey key,{void Function(int)? onBytes,void Function()? checkCancelled});
+  /// Size and hashes of the first and last 64 KiB; equal probes before and
+  /// after a rename mean the provider kept the verified bytes.
+  Future<String> probeFile(BackupFile file);
+}
+
+class AndroidCipherBackupStorage implements CipherBackupStorage, NativeOsbkCipher {
   const AndroidCipherBackupStorage(this.folder);
   final BackupFolder folder;
   @override String get label=>folder.name;
@@ -228,5 +241,46 @@ class AndroidCipherBackupStorage implements CipherBackupStorage {
     } finally {await AndroidBackupStorage.channel.invokeMethod<void>('closeCiphertextRead',_args(file));}
   }
   @override Future<BackupFile> publishCiphertext(BackupFile file,String name)=>AndroidBackupStorage(folder).rename(file,name);
+  @override Future<String> encryptFileInto(BackupFile file,String plainPath,OsbkKey key,{void Function(int)? onBytes,void Function()? checkCancelled})=>
+    _nativePass('encryptCiphertext',{..._args(file),'source':plainPath,'key':key.key,'nonce':key.nonce,'header':key.header},onBytes,checkCancelled);
+  @override Future<String> verifyFile(BackupFile file,OsbkKey key,{void Function(int)? onBytes,void Function()? checkCancelled})=>
+    _nativePass('verifyCiphertext',{..._args(file),'key':key.key,'nonce':key.nonce,'header':key.header},onBytes,checkCancelled);
+  @override Future<String> probeFile(BackupFile file) async {
+    final probe=await AndroidBackupStorage.channel.invokeMapMethod<String,Object?>('probeCiphertext',_args(file));
+    if(probe==null)throw const FileSystemException('Could not read saved file');
+    return '${probe['size']}:${probe['head']}:${probe['tail']}';
+  }
+  // One pass runs on the bridge's worker; progress and cancellation go
+  // through main-thread calls polled here, so the pass never blocks the UI.
+  Future<String> _nativePass(String method,Map<String,Object?> args,void Function(int)? onBytes,void Function()? checkCancelled) async {
+    final channel=AndroidBackupStorage.channel;
+    var done=false;
+    Object? stop;
+    final poll=() async {
+      while(!done) {
+        await Future<void>.delayed(const Duration(milliseconds:500));
+        if(done)break;
+        try {
+          checkCancelled?.call();
+          final n=await channel.invokeMethod<int>('cipherProgress');
+          if(!done && n!=null)onBytes?.call(n);
+        } on MissingPluginException {return;}
+          on PlatformException { /* Progress is advisory; the pass reports its own failure. */ }
+          catch(error) {
+          // Cancellation (thrown by either callback) stops the native pass.
+          stop??=error;
+          try {await channel.invokeMethod<void>('cipherCancel');} catch(_) { /* The pass ends on its own. */ }
+        }
+      }
+    }();
+    try {
+      final hash=await channel.invokeMethod<String>(method,args);
+      if(hash==null)throw const FileSystemException('Export cipher returned nothing');
+      return hash;
+    } on PlatformException {
+      if(stop!=null)throw stop!;
+      rethrow;
+    } finally {done=true;await poll;}
+  }
   @override Future<void> deleteCiphertext(BackupFile file)=>AndroidBackupStorage(folder).delete(file);
 }

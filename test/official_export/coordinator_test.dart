@@ -106,6 +106,28 @@ void main() {
       await dir.delete(recursive:true);
     }
   });
+  // Emulator 2026-11-20: reopening after an ordinary failure said "The
+  // previous export was interrupted". Only a run that stopped mid-way is.
+  test('a failed or cancelled export is not reported as interrupted after restart',()async {
+    final root=await Directory.systemTemp.createTemp('export_fail_receipt_');
+    try {
+      final free=Space();final private=Directory('${root.path}/private');
+      final destination=Destination(Directory('${root.path}/saved')..createSync(),free);
+      final failed=await OfficialExportCoordinator().export(snapshot:_ThrowingCapture(),privateRoot:private,
+        destination:destination,space:ExportSpaceBudget(source:free),prompts:Prompts(()async=>'pw',(_)async=>false));
+      expect(failed,isA<OfficialExportFailed>());
+      final restarted=OfficialExportCoordinator();await restarted.loadInterruption(private);
+      expect(restarted.wasInterrupted,isFalse);
+      final fx=await RichFixture.build();
+      try {
+        final cancelled=await OfficialExportCoordinator().export(snapshot:Snapshot(fx.forkPath),privateRoot:private,
+          destination:destination,space:ExportSpaceBudget(source:free),prompts:Prompts(()async=>null,(_)async=>false));
+        expect(cancelled,isA<OfficialExportCancelled>());
+      } finally {await fx.dispose();}
+      final again=OfficialExportCoordinator();await again.loadInterruption(private);
+      expect(again.wasInterrupted,isFalse);
+    } finally {await root.delete(recursive:true);}
+  });
   // WHY: review F2. Extras omissions come from the snapshot, so neither saved
   // file holds them; each reason keeps its own group instead of "unsupported".
   test('extras omissions keep their true reason and family',()async {

@@ -370,6 +370,21 @@ Future<String> verifyBackupStream(Stream<List<int>> source, String passphrase, {
 }) => _runBackupStream('verify', '', source, passphrase, null,
     onBytes, checkCancelled, kDefaultIterations);
 
+/// A fresh OSBK header with its derived key, for a platform cipher that writes
+/// the same bytes as [encryptBackupStream]. The key never leaves the process.
+class OsbkKey {
+  const OsbkKey(this.header, this.key);
+  final Uint8List header, key;
+  Uint8List get nonce => Uint8List.sublistView(header, 10 + kSaltBytes, BackupHeader.byteLength);
+}
+
+/// Derives the key off the UI isolate (PBKDF2 is the slow step by design).
+Future<OsbkKey> prepareBackupKey(String passphrase, {int iterations = kDefaultIterations}) async {
+  final text = await _runBackupStream('key', '', null, passphrase, null, null, null, iterations);
+  final parts = base64.decode(text);
+  return OsbkKey(Uint8List.sublistView(parts, 0, BackupHeader.byteLength), Uint8List.sublistView(parts, BackupHeader.byteLength));
+}
+
 Future<String> _runBackupStream(String mode, String path, Stream<List<int>>? source,
     String passphrase, Future<void> Function(List<int>)? write,
     void Function(int)? onBytes, void Function()? checkCancelled, int iterations) async {
@@ -428,6 +443,13 @@ Future<void> backupStreamHeavy((WorkerInputs,SendPort,SendPort?,int,String,Strin
   final hash=hashes.sha256.startChunkedConversion(digestOutput);
   var processed=0;
   try {
+    if(request.$5=='key') {
+      if(request.$7.isEmpty)throw const BackupFormatException('a backup needs a passphrase');
+      final header=BackupHeader(version:kBackupFormatVersion,kdf:kKdfPbkdf2HmacSha256,
+          iterations:request.$8,salt:randomBytes(kSaltBytes),nonce:randomBytes(kNonceBytes));
+      reply.send(['done',base64.encode([...header.toBytes(),...deriveKey(request.$7,header.salt,request.$8)])]);
+      return;
+    }
     if(request.$5=='encrypt') {
       Stream<List<int>> plain() async* {
         await for(final chunk in File(request.$6).openRead()) {
