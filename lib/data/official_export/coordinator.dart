@@ -350,7 +350,9 @@ class OfficialExportCoordinator extends ChangeNotifier {
     final size=await plain.length();
     await _space.requireAvailable(size*2+8*1024*1024);
     final destination=_destination;
-    final native=destination is NativeOsbkCipher?destination as NativeOsbkCipher:null;
+    // An older bridge may carry the file methods without the cipher ones; it
+    // then takes the Dart stream, decided before any staging file is opened.
+    final NativeOsbkCipher? native=destination is NativeOsbkCipher && await (destination as NativeOsbkCipher).nativeAvailable()?destination as NativeOsbkCipher:null;
     // The platform cipher hashes exactly the bytes it encrypts, and the full
     // read-back must reproduce that hash, so a separate pre-pass over the
     // private plaintext (~870 MB) adds nothing there.

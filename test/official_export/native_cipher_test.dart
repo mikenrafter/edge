@@ -27,6 +27,8 @@ GCMBlockCipher _gcm(bool encrypt,OsbkKey key)=>GCMBlockCipher(AESEngine())
 class NativeDestination extends Destination implements NativeOsbkCipher {
   NativeDestination(super.root,super.space);
   int encrypts=0,verifies=0,appends=0;
+  // A bridge built before the platform cipher answers false here.
+  bool nativeSupported=true;
   // A rename that keeps the length and both ends but changes one byte in the middle.
   bool flipMiddleOnRename=false;
   @override Future<void> appendCiphertext(BackupFile file,List<int> bytes){appends++;return super.appendCiphertext(file,bytes);}
@@ -44,6 +46,7 @@ class NativeDestination extends Destination implements NativeOsbkCipher {
     expect(bytes.sublist(0,BackupHeader.byteLength),key.header);
     return hashes.sha256.convert(_gcm(false,key).process(Uint8List.sublistView(bytes,BackupHeader.byteLength))).toString();
   }
+  @override Future<bool> nativeAvailable()async=>nativeSupported;
   @override Future<BackupFile> publishCiphertext(BackupFile file,String name) async {
     final published=await super.publishCiphertext(file,name);
     if(flipMiddleOnRename) {
@@ -101,5 +104,27 @@ void main() {
       expect(outcome,isA<OfficialExportSaved>());
       expect(destination.verifies,2);
     } finally {await root.delete(recursive:true);await fx.dispose();}
+  });
+  test('an older bridge without the cipher methods exports through the Dart stream',()async {
+    final fx=await RichFixture.build();final root=await Directory.systemTemp.createTemp('native_cipher_old_');
+    try {
+      final free=Space();final destination=NativeDestination(root,free)..nativeSupported=false;
+      final outcome=await OfficialExportCoordinator().export(snapshot:Snapshot(fx.forkPath),privateRoot:Directory('${root.path}/private'),
+        destination:destination,space:ExportSpaceBudget(source:free),prompts:Prompts(()async=>'pw',(_)async=>false));
+      expect(outcome,isA<OfficialExportSaved>());
+      expect((destination.encrypts,destination.verifies),(0,0));
+      expect(destination.appends,greaterThan(0));
+      final saved=(outcome as OfficialExportSaved).receipt;
+      expect(await verifyBackupStream(File(saved.file.path).openRead(),'pw'),saved.plainSha256);
+    } finally {await root.delete(recursive:true);await fx.dispose();}
+  });
+  test('the Android destination reads the cipher capability off the bridge: an older bridge answers false',()async {
+    final messenger=TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    final storage=const AndroidCipherBackupStorage(BackupFolder(uri:'content://tree',name:'Documents'));
+    // No handler: every call is a MissingPluginException, as on a bridge built before the cipher.
+    expect(await storage.nativeAvailable(),isFalse);
+    messenger.setMockMethodCallHandler(AndroidBackupStorage.channel,(call)async=>call.method=='cipherProgress'?0:null);
+    try {expect(await storage.nativeAvailable(),isTrue);}
+    finally {messenger.setMockMethodCallHandler(AndroidBackupStorage.channel,null);}
   });
 }

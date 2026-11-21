@@ -210,6 +210,9 @@ class LocalCipherBackupStorage implements CipherBackupStorage {
 abstract interface class NativeOsbkCipher {
   Future<String> encryptFileInto(BackupFile file,String plainPath,OsbkKey key,{void Function(int)? onBytes,void Function()? checkCancelled});
   Future<String> verifyFile(BackupFile file,OsbkKey key,{void Function(int)? onBytes,void Function()? checkCancelled});
+  /// False on a bridge built before the platform cipher: the caller then uses
+  /// the Dart stream and never calls the methods above.
+  Future<bool> nativeAvailable();
 }
 
 class AndroidCipherBackupStorage implements CipherBackupStorage, NativeOsbkCipher {
@@ -242,6 +245,16 @@ class AndroidCipherBackupStorage implements CipherBackupStorage, NativeOsbkCiphe
     _nativePass('encryptCiphertext',{..._args(file),'source':plainPath,'key':key.key,'nonce':key.nonce,'header':key.header},onBytes,checkCancelled);
   @override Future<String> verifyFile(BackupFile file,OsbkKey key,{void Function(int)? onBytes,void Function()? checkCancelled})=>
     _nativePass('verifyCiphertext',{..._args(file),'key':key.key,'nonce':key.nonce,'header':key.header},onBytes,checkCancelled);
+  // cipherProgress ships with the cipher methods, so a bridge that lacks it
+  // (a build older than the platform cipher) answers MissingPluginException.
+  @override Future<bool> nativeAvailable() async {
+    try {
+      await AndroidBackupStorage.channel.invokeMethod<int>('cipherProgress');
+      return true;
+    } on MissingPluginException {
+      return false;
+    }
+  }
   // One pass runs on the bridge's worker; progress and cancellation go
   // through main-thread calls polled here, so the pass never blocks the UI.
   Future<String> _nativePass(String method,Map<String,Object?> args,void Function(int)? onBytes,void Function()? checkCancelled) async {
