@@ -270,8 +270,19 @@ class OfficialExportCoordinator extends ChangeNotifier {
   Future<bool> waitForRecoveryChoice() => (_recoveryChoice??=Completer<bool>()).future;
   void chooseRecovery(bool yes) {if(awaitingRecoveryChoice)_recoveryChoice!.complete(yes);}
   void cancel(){_cancellation.cancel();chooseRecovery(false);}
+  // Stage changes and failures also reach logcat under a stable tag, release
+  // builds included, so a device run names the step that took the time or failed.
+  Duration _tracedAt=Duration.zero;
+  static void _trace(String line)=>debugPrint('[official-export] $line');
   void _progress(ExportStage stage,{ExportArtifact artifact=ExportArtifact.official,int done=0,int? total,String? family}) {
     _cancellation.check();
+    if(stage!=progress.stage || artifact!=progress.artifact || family!=progress.family) {
+      _trace('stage ${artifact.name}/${stage.name}${family==null?'':'/$family'} at ${_elapsed.elapsed.inMilliseconds} ms');
+      _tracedAt=_elapsed.elapsed;
+    } else if(_elapsed.elapsed-_tracedAt>=const Duration(seconds:30)) {
+      _trace('progress ${stage.name} $done/${total??'-'} at ${_elapsed.elapsed.inMilliseconds} ms');
+      _tracedAt=_elapsed.elapsed;
+    }
     progress=ExportProgress(stage,artifact:artifact,done:done,total:total,family:family,elapsed:_elapsed.elapsed);
     notifyListeners();
   }
@@ -410,12 +421,15 @@ class OfficialExportCoordinator extends ChangeNotifier {
       // Recovery cancellation is already a saved result with its own retry;
       // a terminal update must not rethrow it as cancellation of the official file.
       progress=ExportProgress(ExportStage.complete,elapsed:_elapsed.elapsed);
+      _trace('complete after ${_elapsed.elapsed.inMilliseconds} ms');
       notifyListeners();return outcome=result;
     } on ExportCancelled {
+      _trace('cancelled at ${progress.stage.name} after ${_elapsed.elapsed.inMilliseconds} ms');
       progress=const ExportProgress(ExportStage.cancelled);
       return outcome=OfficialExportCancelled(receipt:official);
-    } catch(error) {
+    } catch(error,stack) {
       final stage=progress.stage;progress=ExportProgress(ExportStage.failed,artifact:progress.artifact);
+      _trace('failed at ${stage.name} after ${_elapsed.elapsed.inMilliseconds} ms: ${error.runtimeType}: $error\n$stack');
       // The screen shows one generic line; the step and error stay findable
       // in the dev log, which release builds keep (logcat does not).
       unawaited(DevLog.write('[export] official export failed at ${stage.name} after ${_elapsed.elapsed.inSeconds} s: ${error.runtimeType}: $error',always:true));

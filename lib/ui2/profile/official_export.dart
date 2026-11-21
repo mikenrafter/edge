@@ -93,7 +93,10 @@ class _OfficialExportScreenState extends State<OfficialExportScreen> implements 
       await ScreenWake.hold('official-export');
       await coordinator.export(snapshot:LocalDbExportSnapshot(),privateRoot:Directory('${support.path}/official-export'),
         destination:_destination!,space:ExportSpaceBudget(source:AndroidExportFreeSpace()),prompts:this);
-    } catch(error){if(mounted)setState((){_error=error;});}
+    } catch(error,stack){
+      debugPrint('[official-export] screen error: ${error.runtimeType}: $error\n$stack');
+      if(mounted)setState((){_error=error;});
+    }
     finally {
       await ScreenWake.releaseOwner('official-export');
       // A preexisting/automatic-backup grant is never released by this session.
