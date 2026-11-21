@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../compute/derivation_engine.dart' show DerivationEngine;
+import '../../compute/derive_scheduler.dart' show DeriveScheduler;
 import '../../data/backup_storage.dart';
 import '../../data/official_export/coordinator.dart';
 import '../../data/official_export/mapping_worker.dart' show exportRecordFamily;
@@ -22,14 +23,31 @@ import '../onboarding/welcome.dart' show askBackupPassphrase,PassphraseCancelled
 import '../ui2.dart';
 import 'profile.dart' show SettingsAccordion;
 
-final officialExportCoordinator=OfficialExportCoordinator()..exclusive=const _DeriveHold();
+final officialExportCoordinator=OfficialExportCoordinator()..exclusive=_DeriveHold();
 // The derive latch: a pass in flight finishes first, passes that try meanwhile
 // take the ordinary busy skip. A wedged pass (over two minutes) is not waited
 // for, as for "Delete everything".
 class _DeriveHold implements ExportHold {
-  const _DeriveHold();
-  @override Future<bool> acquire()=>DerivationEngine.acquireForReset();
-  @override void release()=>DerivationEngine.releaseForReset();
+  _DeriveHold();
+  bool _engine=false;
+  // The scheduler is told first, so no job is claimed while the hold waits for
+  // the pass in flight, and a job that races the hold is handed back uncounted.
+  // It stays held even when the engine wait gives up on a wedged pass.
+  @override Future<bool> acquire() async {
+    DeriveScheduler.holdForExport();
+    try {
+      _engine=await DerivationEngine.acquireForReset();
+    } catch(_) {
+      DeriveScheduler.releaseForExport();
+      rethrow;
+    }
+    return true;
+  }
+  @override void release(){
+    if(_engine)DerivationEngine.releaseForReset();
+    _engine=false;
+    DeriveScheduler.releaseForExport();
+  }
 }
 bool _routeOpen=false;
 Future<void> openOfficialExport(BuildContext context,{bool newerOfficialAvailable=false,DateTime? checkedAt}) async {

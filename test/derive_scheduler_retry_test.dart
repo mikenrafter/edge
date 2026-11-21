@@ -422,4 +422,61 @@ void main() {
       expect(kinds, hasLength(2));
     });
   });
+
+  // The official export holds derive work off for its capture and mapping.
+  // [review r1, F3]
+  group('the export hold does not spend retries', () {
+    tearDown(() {
+      while (DeriveScheduler.exportHeld) {
+        DeriveScheduler.releaseForExport();
+      }
+    });
+
+    test('a job on its last attempt, refused busy as the hold lands, is '
+        'requeued uncounted and runs after the release', () async {
+      final kinds = <DeriveJobKind>[];
+      var first = true;
+      build(
+        [_busy, _ok],
+        kinds: kinds,
+        maxAttempts: 1,
+        during: () async {
+          if (!first) return;
+          first = false;
+          DeriveScheduler.holdForExport();
+        },
+      );
+      s.markStoredData();
+      await _until(() => kinds.length == 1);
+      await _until(() => !s.running);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      final job = (await _job())!;
+      expect(job['state'], 'queued', reason: 'not parked as failed');
+      expect(job['attempts'], 0, reason: 'the refusal is not an attempt');
+      expect(kinds, hasLength(1), reason: 'nothing runs under the hold');
+
+      DeriveScheduler.releaseForExport();
+      await _until(() => kinds.length == 2);
+      await _until(() => !s.running);
+      await _jobsSettle((jobs) => jobs.isEmpty);
+      expect(await _jobs(), isEmpty);
+    });
+
+    test('a job queued during the hold waits for it and runs on release',
+        () async {
+      final kinds = <DeriveJobKind>[];
+      build([_ok], kinds: kinds);
+      DeriveScheduler.holdForExport();
+      s.markStoredData();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(kinds, isEmpty);
+      expect((await _job())!['attempts'], 0);
+
+      DeriveScheduler.releaseForExport();
+      await _until(() => kinds.length == 1);
+      await _until(() => !s.running);
+      await _jobsSettle((jobs) => jobs.isEmpty);
+      expect(await _jobs(), isEmpty);
+    });
+  });
 }

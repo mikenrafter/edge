@@ -26,7 +26,9 @@ class DeriveScheduler {
     this.onWaiting,
     this.retryBackoff = deriveRetryBackoff,
     this.maxAttempts = kDeriveMaxAttempts,
-  });
+  }) {
+    _live.add(this);
+  }
 
   /// Runs one pass and says how it ended. A complete outcome deletes the job;
   /// anything else (or a throw) keeps it for a retry, see [retryBackoff].
@@ -352,15 +354,42 @@ class DeriveScheduler {
   /// Anything that keeps a pass from starting, bar the power hold: what the
   /// Eager plug-in sweep (which is not the scheduler's own pass) also waits on.
   bool _sleepEditHeld = false;
+  // The official export holds derive work off while it captures and maps (a
+  // static: one scheduler per app, and the export screen has no AppState). A
+  // pass that races the hold is refused 'busy' without deriving a day, so it is
+  // handed back uncounted instead of spending a retry; releasing re-arms.
+  static int _exportHolds = 0;
+  static int _exportHoldEpoch = 0;
+  static final Set<DeriveScheduler> _live = {};
+  static bool get exportHeld => _exportHolds > 0;
+  static void holdForExport() {
+    _exportHolds++;
+    _exportHoldEpoch++;
+    for (final s in _live) {
+      s._timer?.cancel();
+      s._timer = null;
+    }
+  }
+
+  static void releaseForExport() {
+    if (_exportHolds > 0) _exportHolds--;
+    if (_exportHolds > 0) return;
+    for (final s in List.of(_live)) {
+      unawaited(s._refreshSnapshot().then((_) => s._arm()));
+    }
+  }
+
   void setSleepEditHeld(bool held) {
     _sleepEditHeld = held;
     if (held) { _timer?.cancel(); } else { _arm(); }
   }
   bool get heldBesidesPower =>
-      _offloadActive || _background || _workoutHeld || _manualHeld || _sleepEditHeld;
+      _offloadActive || _background || _workoutHeld || _manualHeld || _sleepEditHeld ||
+      exportHeld;
 
   void dispose() {
     _disposed = true;
+    _live.remove(this);
     _timer?.cancel();
     _timer = null;
     _retryTimer?.cancel();
@@ -440,6 +469,7 @@ class DeriveScheduler {
     _running = true;
     _runningContext = ProcessingContext.decode(job['processing_context']);
     _heavyStartSeq = kind == DeriveJobKind.heavy ? _storedSeq : null;
+    final holdEpoch = _exportHoldEpoch;
     final importPass = kind == DeriveJobKind.heavy && _importPassOwed;
     await _refreshSnapshot();
     log('[derive-scheduler] running ${kind == DeriveJobKind.heavy ? "heavy" : "light"} pass');
@@ -455,7 +485,16 @@ class DeriveScheduler {
         log('[derive-scheduler] ${kind.name} pass failed: $e');
       }
       var ended = outcome != null && outcome.complete;
-      if (id != null && id.isNotEmpty) {
+      if (outcome?.error == 'busy' &&
+          (exportHeld || holdEpoch != _exportHoldEpoch) &&
+          id != null &&
+          id.isNotEmpty) {
+        // The export took the engine between the gate check and the pass: no
+        // day was derived, so this is a deferral, not a failed attempt.
+        log('[derive-scheduler] export hold took the engine — job handed back');
+        await LocalDb.requeueComputeJob(id);
+        ended = false;
+      } else if (id != null && id.isNotEmpty) {
         ended = await _settleJob(id, job, outcome, thrown);
       }
       if (importPass && ended) {
