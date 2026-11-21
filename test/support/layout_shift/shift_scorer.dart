@@ -50,6 +50,44 @@ ShiftSeverity _severity(double v, ShiftPolicy p) => v >= p.errorAt
         ? ShiftSeverity.warning
         : ShiftSeverity.none;
 
+// Moving edges on the viewport boundary are clipped; stationary ones anchor
+// a resize without charging growth beyond that boundary.
+// A lone visible edge carries the translation; averaging it with a clipped
+// edge would halve it. See bot_regressions_test's straddling/hidden-edge cases.
+double _visibleDisplacement(ShiftRect before, ShiftRect after, ShiftRect viewport) {
+  final oldVisible = before.intersect(viewport) != null;
+  final newVisible = after.intersect(viewport) != null;
+  ({double move, double resize}) axis(double start, double end,
+      double nextStart, double nextEnd, double low, double high) {
+    bool seen(double oldEdge, double newEdge) =>
+        (oldVisible && oldEdge > low && oldEdge < high) ||
+        (newVisible && newEdge > low && newEdge < high) ||
+        (oldVisible && newVisible && oldEdge == newEdge &&
+            oldEdge >= low && oldEdge <= high);
+    final startDelta = nextStart - start, endDelta = nextEnd - end;
+    final startSeen = seen(start, nextStart), endSeen = seen(end, nextEnd);
+    if (startSeen && endSeen) {
+      return (move: (startDelta + endDelta) / 2,
+          resize: (endDelta - startDelta).abs() / 2);
+    }
+    if (startSeen) return (move: startDelta, resize: 0);
+    if (endSeen) return (move: endDelta, resize: 0);
+    // A covering panel can translate with both edges offscreen. Their common
+    // movement moves visible content; outward growth alone has no common part.
+    final common = startDelta.sign == endDelta.sign
+        ? startDelta.sign * min(startDelta.abs(), endDelta.abs()) : 0.0;
+    return (move: common, resize: 0);
+  }
+
+  final x = axis(before.left, before.left + before.width,
+      after.left, after.left + after.width,
+      viewport.left, viewport.left + viewport.width);
+  final y = axis(before.top, before.top + before.height,
+      after.top, after.top + after.height,
+      viewport.top, viewport.top + viewport.height);
+  return max(sqrt(x.move * x.move + y.move * y.move), max(x.resize, y.resize));
+}
+
 int _channelDelta(int a, int b, int shift) =>
     (((a >> shift) & 0xFF) - ((b >> shift) & 0xFF)).abs();
 
@@ -113,7 +151,10 @@ ShiftReport score(Scenario s, ShiftPolicy p) {
     int? from;
     for (final f in s.frames) {
       final e = f.elements.where((e) => e.id == id).firstOrNull;
-      if (e == null) continue;
+      if (e == null) {
+        from = null;
+        continue;
+      }
       if (!e.enabled) {
         from ??= f.atMs;
       } else if (from != null) {
@@ -121,7 +162,7 @@ ShiftReport score(Scenario s, ShiftPolicy p) {
         if (len >= p.disabledShieldMinMs &&
             len <= p.disabledShieldMaxMs &&
             t >= from &&
-            t <= f.atMs) {
+            t < f.atMs) {
           return true;
         }
         from = null;
@@ -130,13 +171,18 @@ ShiftReport score(Scenario s, ShiftPolicy p) {
     return false;
   }
 
+  // A driver's baseline is captured before the action, even at the same ms.
+  // Keep it with the preceding interaction in every scoring pass.
+  bool follows(Interaction ix, int index) => s.frames[index].atMs >= ix.atMs &&
+      (ix.afterFrameIndex == null || index > ix.afterFrameIndex!);
+
   for (var i = 1; i < s.frames.length; i++) {
     final before = {for (final e in s.frames[i - 1].elements) e.id: e};
     final frame = s.frames[i];
     final now = {for (final e in frame.elements) e.id: e};
     final t = frame.atMs;
     final ix = s.interactions
-        .where((x) => x.atMs <= t)
+        .where((x) => follows(x, i))
         .fold<Interaction?>(null, (m, x) => m == null || x.atMs >= m.atMs ? x : m);
 
     bool touches(AnimationSpan n, String id) =>
@@ -214,9 +260,13 @@ ShiftReport score(Scenario s, ShiftPolicy p) {
               .map((sh) => _channelDelta(e.colorArgb, o.colorArgb, sh))
               .reduce(max) /
           255;
-      final base = o.rect.union(e.rect).area / vpArea *
-              (o.rect.distanceTo(e.rect) / vpSide) +
-          e.rect.area / vpArea * colorDelta * p.colorWeight;
+      final oldVisible = o.rect.intersect(s.viewport);
+      final visible = e.rect.intersect(s.viewport);
+      if (oldVisible == null && visible == null) continue;
+      final displacement = _visibleDisplacement(o.rect, e.rect, s.viewport);
+      final impact = o.rect.union(e.rect).intersect(s.viewport)?.area ?? 0;
+      final base = impact / vpArea * (displacement / vpSide) +
+          (visible?.area ?? 0) / vpArea * colorDelta * p.colorWeight;
       if (base <= 0) continue;
 
       final dense = e.role == ElementRole.control &&
@@ -248,7 +298,7 @@ ShiftReport score(Scenario s, ShiftPolicy p) {
         }
         v *= 1 + p.focusDistanceWeight * dFocus;
       }
-      if (e.focused) v *= p.focusedMultiplier;
+      if (o.focused || e.focused) v *= p.focusedMultiplier;
       if (dense) v *= p.denseMultiplier;
       final shield = e.focused && shielded(e.id, t);
       if (shield) v *= p.disabledDiscount;
@@ -275,11 +325,18 @@ ShiftReport score(Scenario s, ShiftPolicy p) {
       if (o != null && e.rect.area <= o.rect.area) continue;
       for (final f in frame.elements) {
         if (!f.focusable || f.id == e.id || f.rect.area <= 0 ||
-            f.ancestorIds.contains(e.id)) { continue; }
-        double frac(ShiftRect r) => (r.intersect(f.rect)?.area ?? 0) / f.rect.area;
-        final fraction = frac(e.rect);
+            (f.ancestorIds.contains(e.id) || e.ancestorIds.contains(f.id))) { continue; }
+        double frac(ShiftRect cover, ShiftRect target) {
+          final visible = target.intersect(s.viewport);
+          if (visible == null) return 0;
+          return (cover.intersect(visible)?.area ?? 0) / visible.area;
+        }
+        final fraction = frac(e.rect, f.rect);
+        final previousTarget = before[f.id];
+        final previousFraction = o == null || previousTarget == null
+            ? 0 : frac(o.rect, previousTarget.rect);
         if (fraction < p.coverMinFraction ||
-            (o != null && frac(o.rect) >= p.coverMinFraction)) {
+            previousFraction >= p.coverMinFraction) {
           continue;
         }
         out.add(finding(
@@ -314,15 +371,18 @@ ShiftReport score(Scenario s, ShiftPolicy p) {
     return false;
   }
 
-  final ixs = [...s.interactions]..sort((a, b) => a.atMs.compareTo(b.atMs));
+  final ixs = s.interactions.indexed.toList()..sort((a, b) {
+    final time = a.$2.atMs.compareTo(b.$2.atMs);
+    return time != 0 ? time : a.$1.compareTo(b.$1);
+  });
   for (var k = 0; k < ixs.length; k++) {
-    final ix = ixs[k];
-    final until = k + 1 < ixs.length ? ixs[k + 1].atMs : null;
+    final ix = ixs[k].$2;
+    final until = k + 1 < ixs.length ? ixs[k + 1].$2 : null;
     int? lastChange;
     var lastFrameChanged = false;
     for (var i = 1; i < s.frames.length; i++) {
       final t = s.frames[i].atMs;
-      if (t < ix.atMs || (until != null && t >= until)) continue;
+      if (!follows(ix, i) || (until != null && follows(until, i))) continue;
       lastFrameChanged = changed(s.frames[i - 1], s.frames[i]);
       if (lastFrameChanged) lastChange = t;
     }
@@ -356,13 +416,14 @@ ShiftReport score(Scenario s, ShiftPolicy p) {
   // a different one is not a fill but a swap, so only placeholders cover. The
   // first frame at/after the interaction is the initial paint and is free.
   for (var k = 0; k < ixs.length; k++) {
-    final ix = ixs[k];
-    final until = k + 1 < ixs.length ? ixs[k + 1].atMs : null;
-    final first = s.frames.indexWhere((f) => f.atMs >= ix.atMs);
+    final ix = ixs[k].$2;
+    final until = k + 1 < ixs.length ? ixs[k + 1].$2 : null;
+    final first = ix.afterFrameIndex ?? s.frames.indexWhere((f) => f.atMs >= ix.atMs);
     if (first < 0) continue;
     for (var i = first + 1; i < s.frames.length; i++) {
       final t = s.frames[i].atMs;
-      if (until != null && t >= until) break;
+      if (until != null && follows(until, i)) break;
+      if (!follows(ix, i)) continue;
       final prevIds = {for (final e in s.frames[i - 1].elements) e.id};
       final nowIds = {for (final e in s.frames[i].elements) e.id};
       final vanished = s.frames[i - 1].elements
@@ -378,7 +439,7 @@ ShiftReport score(Scenario s, ShiftPolicy p) {
         final covered = _unionArea(
             [for (final v in vanished) ?visible.intersect(v.rect)]);
         final uncovered = max(0.0, visible.area - covered);
-        if (uncovered / visible.area <= 1 - p.appearCoveredFree) continue;
+        if (covered / visible.area >= p.appearCoveredFree) continue;
         final v = p.appearWeight *
             (p.roleWeight[e.role] ?? 1) *
             uncovered /
@@ -406,8 +467,6 @@ ShiftReport compareLayouts(Frame a, Frame b, ShiftPolicy p,
   final vpSide = max(viewport.width, viewport.height);
   final inA = {for (final e in a.elements) e.id: e};
   final inB = {for (final e in b.elements) e.id: e};
-  // Filtered once through `where`: invoking the callback directly is an
-  // unresolved invocation for the heavy-work guard (test/guards).
   final keep = only == null ? null : {...inA.keys, ...inB.keys}.where(only).toSet();
   bool kept(String id) => keep == null || keep.contains(id);
   final out = <ShiftFinding>[];

@@ -11,6 +11,9 @@ import 'tasker_play.dart';
 class TaskerBridge {
   static const _ch = MethodChannel('openstrap/tasker');
 
+  static Future<void> _noopBuzz(int _) async {}
+
+  final Future<void> Function()? deliverPending;
   final Future<void> Function(int pattern) buzzPattern;
 
   /// Plays what a `tasker_play` call asked for (a slot or a pattern) as an
@@ -24,11 +27,13 @@ class TaskerBridge {
   final void Function(String line)? log;
 
   TaskerBridge({
-    required this.buzzPattern,
+    this.deliverPending,
+    Future<void> Function(int pattern)? buzzPattern,
     this.playRequest,
     bool Function()? connectionOn,
     this.log,
-  }) : connectionOn = connectionOn ?? (() => Prefs.taskerConnectionOn) {
+  })  : buzzPattern = buzzPattern ?? _noopBuzz,
+        connectionOn = connectionOn ?? (() => Prefs.taskerConnectionOn) {
     _ch.setMethodCallHandler(_onMethodCall);
   }
 
@@ -57,12 +62,14 @@ class TaskerBridge {
     }
     if (call.method == 'buzz_strap') {
       try {
-        final args = call.arguments;
-        debugPrint('[tasker] _onMethodCall args=$args (${args.runtimeType})');
-        final map = args is Map ? args : <dynamic, dynamic>{};
-        final pattern = (map['pattern'] as int?) ?? 2;
-        debugPrint('[tasker] buzz pattern=$pattern');
-        await buzzPattern(pattern);
+        if (deliverPending != null) {
+          await deliverPending!();
+        } else {
+          final args = call.arguments;
+          final map = args is Map ? args : <dynamic, dynamic>{};
+          final pattern = (map['pattern'] as int?) ?? 2;
+          await buzzPattern(pattern);
+        }
       } catch (e, st) {
         debugPrint('[tasker] buzz failed: $e\n$st');
       }
@@ -88,9 +95,10 @@ class TaskerBridge {
   /// (see AppState._checkPendingTaskerBuzz) — never as part of the read —
   /// so a request that couldn't be sent yet (no BLE connection) survives to
   /// the next attempt instead of being silently dropped.
-  static Future<void> clearPendingBuzz() async {
+  static Future<void> clearPendingBuzz({int? requestedAtMs}) async {
     try {
-      await _ch.invokeMethod('clear_pending_buzz');
+      await _ch.invokeMethod('clear_pending_buzz',
+          requestedAtMs == null ? null : {'requestedAtMs': requestedAtMs});
     } catch (_) {}
   }
 

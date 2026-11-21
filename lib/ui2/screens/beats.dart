@@ -162,7 +162,13 @@ class BeatsData {
   /// stay empty): the stored night's own rows, which are cheap. The beats are
   /// the slow read and come separately — [readBeats], [withBeats] — so the
   /// panels that do not need them can be drawn first.
+  // One decode of each day bundle per load, not one per getter (see
+  // LocalRepository.sharingDayReads).
   static Future<BeatsData> loadShell(LocalRepository repo,
+          {String? want, ({String? day, List<String> days})? night}) =>
+      repo.sharingDayReads(InlineAsyncWork(() => _readShell(repo, want: want, night: night)));
+
+  static Future<BeatsData> _readShell(LocalRepository repo,
       {String? want, ({String? day, List<String> days})? night}) async {
     final (:day, :days) = night ?? await pickNight(repo, want: want);
     if (day == null) return BeatsData(days: days);
@@ -282,6 +288,9 @@ class _BeatsState extends State<Beats>
   BeatsData? _d;
   bool _loading = true;
   bool _paused = false;
+  // The last read threw. The old day's numbers must not stay up under the
+  // new day's label, and a first read that failed is not an empty day.
+  bool _failed = false;
   String? _day;
   List<String> _navDays = const [];
 
@@ -371,6 +380,7 @@ class _BeatsState extends State<Beats>
           _shell = null;
           _beats = null;
           _beatsFailed = false;
+          _failed = false;
           _cachedAt = null;
           _loading = true;
         });
@@ -411,6 +421,7 @@ class _BeatsState extends State<Beats>
         _shell = shell;
         _loading = false;
         _paused = false;
+        _failed = false;
         _compose();
       });
       if (slow == null) return;
@@ -432,11 +443,13 @@ class _BeatsState extends State<Beats>
       });
     } catch (e) {
       // An interrupted read must not leave "reading the night's beats" up:
-      // the panel is left out (failed) and, during an import, says why.
+      // during an import say why; otherwise surface the read failure with retry.
       if (stillNewest(#beats, t)) {
+        final paused = e is ReadPaused || ImportFocus.active.value;
         setState(() => (_loading = false,
             _beatsFailed = _beats == null,
-            _paused = e is ReadPaused || ImportFocus.active.value));
+            _paused = paused,
+            _failed = !paused));
       }
     }
   }
@@ -468,6 +481,7 @@ class _BeatsState extends State<Beats>
       _shell = null;
       _beats = null;
       _beatsFailed = false;
+      _failed = false;
       _cachedAt = null;
       _loading = true;
     });
@@ -505,7 +519,24 @@ class _BeatsState extends State<Beats>
               const PendingContent(pending: true, child: PendingRows(count: 3)),
             ]),
           )
-        else if (d.day == null)
+        else if (_failed) ...[
+          const SizedBox(height: S.x2),
+          StatusCard(
+            (_day ?? d.day) == null
+                ? (l?.wellnessLoadFailedTitle ?? 'This could not be read')
+                : (l?.homeDayLoadFailedTitle(prettyDay(_day ?? d.day, l)) ??
+                    '${prettyDay(_day ?? d.day, l)} could not be read'),
+            l?.homeLoadFailedBody ??
+                'The stored day failed to load. Nothing was deleted — this is a '
+                    'read that went wrong, not missing data.',
+            fix: l?.homeTryAgain ?? 'Try again',
+            icon: LucideIcons.databaseZap,
+            onFix: () {
+              setState(() => (_loading = true, _failed = false));
+              _load();
+            },
+          ),
+        ] else if (d.day == null)
           StatusCard(
             l?.beatsNoNightTitle ?? 'No night to draw yet',
             l?.beatsNoNightBody ??
@@ -533,7 +564,7 @@ class _BeatsState extends State<Beats>
       // WHICH NIGHT, in the app's one day format. Every panel below describes
       // this one night; saying so once at the top is what lets them sit
       // together without each having to date itself.
-      sub: d.day == null
+      sub: d.day == null || _failed || _loading
           ? '\u00a0'
           : (l?.beatsNightOf(prettyDay(d.day, l)) ??
               'Night of ${prettyDay(d.day, l)}'), framed: true,

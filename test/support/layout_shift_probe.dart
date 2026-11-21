@@ -2,8 +2,8 @@
 //
 // Only elements whose widget has a `ValueKey<String>` are tracked; the key's
 // value is the element id. Role is inferred from the keyed widget and its
-// subtree: a 'skeleton:' key, an InlineLoading at, in or around it =>
-// placeholder (wins over text: InlineLoading carries a status line),
+// subtree: a 'skeleton:' key or an isPending match at, in or around it =>
+// placeholder, before text-based roles,
 // Text/RichText => paragraph, EditableText => input, Semantics
 // button or Focus with canRequestFocus => control, otherwise other. Colour is
 // the nearest ColoredBox/DecoratedBox colour at or below the keyed element
@@ -12,10 +12,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/layout_shift/layout_shift.dart';
 import 'package:openstrap_edge/ui2/inline_loading.dart';
 import 'package:openstrap_edge/ui2/skeleton/async_section.dart';
 import 'package:openstrap_edge/ui2/skeleton/unit_paint.dart' show GuideUnitMark;
+import 'layout_shift/layout_shift.dart';
 
 class ShiftProbe {
   /// Opt-in: also track widgets WITHOUT a `ValueKey<String>` under a stable
@@ -39,6 +39,12 @@ class ShiftProbe {
   /// Deterministic: the same initial tree gives the same ids.
   final bool trackUnkeyed;
 
+  /// Recognizes application-specific loading widgets without importing them.
+  final bool Function(Widget)? isPending;
+
+  /// Paint-only wrappers excluded from synthetic structural identity.
+  final bool Function(Widget)? isPaintOnly;
+
   /// When set, elements whose rect does not intersect it are dropped (a
   /// lazily built list item far below the fold is not a visible shift).
   final ShiftRect? visibleOnly;
@@ -52,7 +58,9 @@ class ShiftProbe {
   ShiftProbe(
       {this.trackUnkeyed = false,
       this.visibleOnly,
-      this.skipCoveredRoutes = false});
+      this.skipCoveredRoutes = false,
+      this.isPending,
+      this.isPaintOnly});
 
   Map<Element, String> _ids = {};
 
@@ -95,12 +103,11 @@ class ShiftProbe {
         id = k.value;
         // Shared chart internals repeat on a page. A marker on the night plot
         // must not become the overnight plot's marker when a tail exposes it.
-        if (id.startsWith('chart-panel') || id.startsWith('chart-key')) {
+        if (id.startsWith('chart-panel')) {
           for (final ancestor in _ancestors(e)) {
             final key = ancestor.widget.key;
             if (key is ValueKey<String> &&
-                !key.value.startsWith('chart-panel') &&
-                !key.value.startsWith('chart-key')) {
+                !key.value.startsWith('chart-panel')) {
               id = '$id@${key.value}';
               break;
             }
@@ -203,8 +210,8 @@ class ShiftProbe {
 
   /// Which unkeyed widgets are worth tracking: text, inputs, tappable
   /// controls and card/material surfaces.
-  static String? _synthKind(Widget w) {
-    if (w is PendingContent && w.pending) return 'pending';
+  String? _synthKind(Widget w) {
+    if (isPending != null ? isPending!(w) : (w is PendingContent && w.pending)) return 'pending';
     if (w is Text) return 'text';
     if (w is EditableText) return 'input';
     if (w is ButtonStyleButton || w is InkResponse) return 'ctl';
@@ -216,22 +223,6 @@ class ShiftProbe {
   String? _synthId(Element e, Map<String, int> seen) {
     final kind = _synthKind(e.widget);
     if (kind == null) return null;
-    // A readout value owns one fixed slot. Glyph widths inside its FittedBox
-    // change with the number, while the keyed slot is what governs layout.
-    if (kind == 'text') {
-      var ownedValue = false;
-      e.visitAncestorElements((a) {
-        final key = a.widget.key;
-        if (a.widget is FittedBox &&
-            key is ValueKey<String> &&
-            key.value.startsWith('chart-key-value:')) {
-          ownedValue = true;
-          return false;
-        }
-        return true;
-      });
-      if (ownedValue) return null;
-    }
     // A control wrapped by another control within 16 levels (Semantics and
     // InkWell around a button) is the same control: track the outer one only.
     // Bounded so a page-level tap handler does not swallow every control.
@@ -271,11 +262,7 @@ class ShiftProbe {
         scope = k.value;
         return false;
       }
-      // CLAIM(guide-probe-control-identity): paint-only marks must not displace
-      // the structural ancestor that distinguishes sibling controls. Otherwise
-      // enabling an arrow renames the date picker [probe_test]. Geometry still
-      // comes from the control's own box in _slotBox.
-      if (a.widget is GuideUnitMark) return true;
+      if (isPaintOnly != null ? isPaintOnly!(a.widget) : a.widget is GuideUnitMark) return true;
       if (types.length < 3) types.add(a.widget.runtimeType.toString());
       return true;
     });
@@ -396,13 +383,13 @@ class ShiftProbe {
     return n;
   }
 
-  /// A loading stand-in: a 'skeleton:' key, or an InlineLoading in its
+  /// A loading stand-in: a 'skeleton:' key, or an isPending match in its
   /// subtree or within a few levels above it (the spinner and status text an
   /// unkeyed probe tracks inside one are part of the placeholder).
-  static bool _isPlaceholder(Element e, List<Element> sub) {
+  bool _isPlaceholder(Element e, List<Element> sub) {
     final k = e.widget.key;
     if (k is ValueKey<String> && k.value.startsWith('skeleton:')) return true;
-    bool pending(Widget w) => w is InlineLoading || w is PendingContent && w.pending;
+    bool pending(Widget w) => isPending != null ? isPending!(w) : (w is InlineLoading || w is PendingContent && w.pending);
     if (sub.any((x) => pending(x.widget))) return true;
     var inside = false;
     var depth = 0;
@@ -413,7 +400,7 @@ class ShiftProbe {
     return inside;
   }
 
-  static bool _ownsControl(Element e) {
+  bool _ownsControl(Element e) {
     var current = e;
     for (var depth = 0; depth < 30; depth++) {
       final w = current.widget;
@@ -434,7 +421,7 @@ class ShiftProbe {
     return parents;
   }
 
-  static ElementRole _role(Widget w, List<Element> sub, bool canFocus) {
+  ElementRole _role(Widget w, List<Element> sub, bool canFocus) {
     if (w is Text || w is RichText) return ElementRole.paragraph;
     if (sub.any((x) => x.widget is EditableText)) return ElementRole.input;
     if (_synthKind(w) == 'ctl' || w is Semantics && (w.properties.button ?? false)) {

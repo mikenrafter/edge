@@ -54,6 +54,17 @@ Future<Map<String, dynamic>> _scalars() async =>
             as Map)['scalars'] as Map)
         .cast<String, dynamic>();
 
+/// A scale answers the clock read with UTC wall time at [nowSec]; without an
+/// answer the adapter treats the clock as unknown and stamps at arrival.
+Map<String, List<int>> scaleClockAt(int nowSec) {
+  final t = DateTime.fromMillisecondsSinceEpoch(nowSec * 1000, isUtc: true);
+  return {
+    kCurrentTimeChar: [
+      t.year & 0xff, t.year >> 8, t.month, t.day, t.hour, t.minute, t.second,
+    ],
+  };
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
@@ -174,6 +185,7 @@ void main() {
     await SessionLink.miScaleComposition.ingestForTest(
       _scale,
       nowSeconds: () => SyntheticDay.sec(DateTime(2026, 10, 4, 22, 30)),
+      reads: scaleClockAt(SyntheticDay.sec(DateTime(2026, 10, 4, 22, 30))),
       pushes: [
         (kMiScaleBodyCompositionChar,
             [0x02, 0x22, ...dt, ohm & 0xff, ohm >> 8, raw & 0xff, raw >> 8]),
@@ -258,6 +270,7 @@ void main() {
     await SessionLink.miScaleComposition.ingestForTest(
       _scale,
       nowSeconds: () => SyntheticDay.sec(DateTime(2026, 10, 4, 22, 30)),
+      reads: scaleClockAt(SyntheticDay.sec(DateTime(2026, 10, 4, 22, 30))),
       pushes: [
         (kMiScaleBodyCompositionChar, [
           0x02, 0x22, later.year & 0xff, later.year >> 8, later.month,

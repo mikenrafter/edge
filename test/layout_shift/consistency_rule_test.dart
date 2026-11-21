@@ -27,7 +27,7 @@
 // Standard policy: roleWeight control 1.5, paragraph 2, other 1;
 // consistencyMoveScore .1, consistencyRefPx 8, warnAt .05, errorAt .25.
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/layout_shift/layout_shift.dart';
+import '../support/layout_shift/layout_shift.dart';
 
 import '../support/shift_builders.dart';
 
@@ -114,7 +114,8 @@ void main() {
           el('skeleton:rings', _dx(_card, 4), role: ElementRole.placeholder)
         ]));
     final scores = r.findings.map((f) => f.score);
-    expect(scores.every((v) => v < 0.01), isTrue, reason: '$scores');
+    expect(scores, hasLength(1));
+    expect(scores.single, allOf(greaterThan(0), lessThan(0.01)));
   });
 
   group('tolerance (consistencyTolerancePx = 1)', () {

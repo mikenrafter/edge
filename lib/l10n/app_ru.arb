@@ -358,7 +358,7 @@
   "devicesWhatItDoes": "Возможности",
   "devicesLastData": "Последние данные",
   "devicesTimeUnknown": "Время неизвестно",
-  "devicesClockNotSetSub": "Браслет записал данные, но его часы не настроены",
+  "devicesClockNotSetSub": "Браслет записал данные, но его часы не установлены",
   "devicesNothingBankedYet": "Пока нет сохранённых данных",
   "devicesSyncNow": "Синхронизировать",
   "devicesSyncNowSub": "Загрузить накопленные данные",
@@ -1804,7 +1804,7 @@
   },
   "nutritionDayCountsRule": "День учитывается, когда у каждого приёма пищи указана энергетическая ценность.",
   "nutritionDaysLoggedLabel": "Дни с записями",
-  "nutritionPartialExcluded": "{partial} неполных дней не вошли в средние",
+  "nutritionPartialExcluded": "{partial, plural, one{{partial} день с неполными записями исключён} few{{partial} дня с неполными записями исключены} many{{partial} дней с неполными записями исключены} other{{partial} дня с неполными записями исключены}} из всех средних ниже",
   "@nutritionPartialExcluded": {
     "placeholders": {
       "partial": {
@@ -1834,7 +1834,7 @@
     }
   },
   "nutritionEnergyLoggedTitle": "Записанные калории",
-  "nutritionPartialFootnote": "{n} неполных дней исключено из средних ниже.",
+  "nutritionPartialFootnote": "{n, plural, one{{n} неполный день исключён} few{{n} неполных дня исключены} many{{n} неполных дней исключены} other{{n} неполного дня исключены}} из средних ниже.",
   "@nutritionPartialFootnote": {
     "placeholders": {
       "n": {
@@ -2221,7 +2221,7 @@
   "investigateDipDepthQuartiles": "Глубина снижения, квартили",
   "investigateNotEnoughNightsAcross": "Недостаточно ночей для сравнения",
   "investigateNeedsSeveralNights": "Нужны несколько ночей с несколькими часами наблюдений в каждой.",
-  "investigateDroppedIrregular": "{count, plural, one{Исключена # ночь из-за сигнала проверки нерегулярного ритма} few{Исключены # ночи из-за сигнала проверки нерегулярного ритма} many{Исключено # ночей из-за сигнала проверки нерегулярного ритма} other{Исключено # ночи из-за сигнала проверки нерегулярного ритма}}",
+  "investigateDroppedIrregular": "{count, plural, one{Исключена {count} ночь из-за сигнала проверки нерегулярного ритма} few{Исключены {count} ночи из-за сигнала проверки нерегулярного ритма} many{Исключено {count} ночей из-за сигнала проверки нерегулярного ритма} other{Исключено {count} ночи из-за сигнала проверки нерегулярного ритма}}",
   "@investigateDroppedIrregular": {
     "placeholders": {
       "count": {
@@ -2229,7 +2229,7 @@
       }
     }
   },
-  "investigateDroppedThin": "{count, plural, one{Исключена # ночь из-за малого числа часов наблюдения} few{Исключены # ночи из-за малого числа часов наблюдения} many{Исключено # ночей из-за малого числа часов наблюдения} other{Исключено # ночи из-за малого числа часов наблюдения}}",
+  "investigateDroppedThin": "{count, plural, one{Исключена {count} ночь из-за малого числа часов наблюдения} few{Исключены {count} ночи из-за малого числа часов наблюдения} many{Исключено {count} ночей из-за малого числа часов наблюдения} other{Исключено {count} ночи из-за малого числа часов наблюдения}}",
   "@investigateDroppedThin": {
     "placeholders": {
       "count": {
@@ -2315,7 +2315,7 @@
   "calmBreathingRingLeads": "Следуйте кольцу. Отложите телефон.",
   "calmBreathingScoredPill": "Оценено",
   "calmBreathingHowLong": "Длительность",
-  "calmBreathingMinutesSemantic": "{m, plural, one{# минута} few{# минуты} many{# минут} other{# минуты}}",
+  "calmBreathingMinutesSemantic": "{m, plural, one{{m} минута} few{{m} минуты} many{{m} минут} other{{m} минуты}}",
   "@calmBreathingMinutesSemantic": {
     "placeholders": {
       "m": {
@@ -2667,7 +2667,7 @@
       }
     }
   },
-  "metricDetailDaysWithWithout": "{withCount} дней с записью · {withoutCount} без",
+  "metricDetailDaysWithWithout": "{withCount, plural, one{{withCount} день} few{{withCount} дня} many{{withCount} дней} other{{withCount} дня}} с записью · {withoutCount} без",
   "@metricDetailDaysWithWithout": {
     "placeholders": {
       "withCount": {
@@ -2791,7 +2791,7 @@
     }
   },
   "cycleWhatYouUsuallyNotice": "Что вы обычно замечаете",
-  "cycleSymptomShapeSummary": "Одно значение на неделю цикла, от отмеченных вами начал. Учитываются только {daysByWeek} отмеченных дней каждой недели за {cycles} циклов.",
+  "cycleSymptomShapeSummary": "Одно значение на неделю цикла, от отмеченных вами начал. Учитываются только отмеченные дни (по неделям: {daysByWeek}) за {cycles, plural, one{{cycles} цикл} few{{cycles} цикла} many{{cycles} циклов} other{{cycles} цикла}}.",
   "@cycleSymptomShapeSummary": {
     "placeholders": {
       "daysByWeek": {
@@ -2837,7 +2837,7 @@
       }
     }
   },
-  "cycleMiddleOfNCycles": "Центральное значение {n} циклов для каждого дня.",
+  "cycleMiddleOfNCycles": "Центральное значение по {n, plural, one{{n} циклу} few{{n} циклам} many{{n} циклам} other{{n} цикла}} для каждого дня.",
   "@cycleMiddleOfNCycles": {
     "placeholders": {
       "n": {
@@ -3570,7 +3570,7 @@
       }
     }
   },
-  "homeSyncedTimeUnknown": "Данные браслета, часы не настроены",
+  "homeSyncedTimeUnknown": "Данные с браслета, часы не установлены",
   "homeSyncedNever": "Данных браслета пока нет",
   "homeSyncingTitle": "Синхронизация с браслетом",
   "homeSyncingBody": "Загрузка данных. Если накопилось много записей, это может занять несколько минут.",
@@ -3911,7 +3911,7 @@
   "wellnessWhichDayOfWeek": "День недели",
   "wellnessHigher": "выше",
   "wellnessLower": "ниже",
-  "wellnessHeadlineBinary": "В {n} дней с записью «{field}» показатель «{outcome}» был на {amount} {direction}",
+  "wellnessHeadlineBinary": "В дни с записью «{field}» (всего {n}) показатель «{outcome}» был на {amount} {direction}",
   "@wellnessHeadlineBinary": {
     "placeholders": {
       "n": {
@@ -3931,7 +3931,7 @@
       }
     }
   },
-  "wellnessHeadlineNoSlope": "В {n} дней с записью «{field}» большее количество сопровождалось {direction} значением «{outcome}»",
+  "wellnessHeadlineNoSlope": "В дни с записью «{field}» (всего {n}) большее количество сопровождалось {direction} значением «{outcome}»",
   "@wellnessHeadlineNoSlope": {
     "placeholders": {
       "n": {
@@ -3948,7 +3948,7 @@
       }
     }
   },
-  "wellnessHeadlineSlope": "В {n} дней с записью «{field}» показатель «{outcome}» был на {amount} {direction} на каждые {step}",
+  "wellnessHeadlineSlope": "В дни с записью «{field}» (всего {n}) показатель «{outcome}» был на {amount} {direction} на каждые {step}",
   "@wellnessHeadlineSlope": {
     "placeholders": {
       "n": {
@@ -5065,11 +5065,14 @@
   },
   "activitySummaryTimeInZonesTitle": "Время в зонах",
   "activitySummaryTopSet": "Лучший подход",
-  "activitySummaryOneRepMax": "Оценка 1RM: {kg} кг",
+  "activitySummaryOneRepMax": "Оценка 1RM: {value} {unit, select, lb{фунт.} other{кг}}",
   "@activitySummaryOneRepMax": {
     "placeholders": {
-      "kg": {
+      "value": {
         "type": "int"
+      },
+      "unit": {
+        "type": "String"
       }
     }
   },
@@ -7599,7 +7602,7 @@
   "activityStepsFoodTitle": "Шаги и питание",
   "activityStepsSub": "Сегодня и все предыдущие дни",
   "activityNutritionSub": "Записывайте еду и смотрите белок за сегодня",
-  "homeBackToToday": "Вернуться к сегодня",
+  "homeBackToToday": "Вернуться к сегодняшнему дню",
   "homeSomeDataMissingTitle": "Часть сегодняшних данных отсутствует",
   "homeFirstWeekTitle": "Ваши первые недели",
   "homeFirstWeekWear": "Наденьте браслет на ночь",
@@ -8720,26 +8723,26 @@
     }
   },
   "@guideRemoveStep1": {
-  "placeholders": {
-    "tab": {
-      "type": "String",
-      "description": "Today tab name"
-    },
-    "card": {
-      "type": "String",
-      "description": "Title of the Detected activities card"
+    "placeholders": {
+      "tab": {
+        "type": "String",
+        "description": "Today tab name"
+      },
+      "card": {
+        "type": "String",
+        "description": "Title of the Detected activities card"
+      }
     }
-  }
-},
+  },
   "@guideRemoveStep2": {
-  "description": "Step 2 caption. {discard} is the in-app name of the Discard button; every pending item has its own and the highlight shows the choices.",
-  "placeholders": {
-    "discard": {
-      "type": "String",
-      "description": "Name of the Discard button"
+    "description": "Step 2 caption. {discard} is the in-app name of the Discard button; every pending item has its own and the highlight shows the choices.",
+    "placeholders": {
+      "discard": {
+        "type": "String",
+        "description": "Name of the Discard button"
+      }
     }
-  }
-},
+  },
   "@guideRemoveSavedBody": {
     "description": "Footer card body. Bold words are in-app labels.",
     "placeholders": {
@@ -8762,13 +8765,13 @@
     }
   },
   "@guideRemoveMissingTitle": {
-  "placeholders": {
-    "card": {
-      "type": "String",
-      "description": "Title of the Detected activities card"
+    "placeholders": {
+      "card": {
+        "type": "String",
+        "description": "Title of the Detected activities card"
+      }
     }
-  }
-},
+  },
   "@guideRemoveMissingBody": {
     "description": "Footer card body. Bold words are in-app labels; > separates the taps.",
     "placeholders": {
@@ -9001,13 +9004,13 @@
   "guideAddNapMissingBody": "**{naps}** находится под вашей ночью. Прокрутите вниз, чтобы найти эту кнопку.",
   "guideRemoveStep2Still": "У каждого пункта своя кнопка **{discard}**. Нажмите её у дневного сна или тренировки, которых не было; рамка отмечает первый пункт.",
   "@guideRemoveStep2Still": {
-  "placeholders": {
-    "discard": {
-      "type": "String",
-      "description": "Name of the Discard button"
+    "placeholders": {
+      "discard": {
+        "type": "String",
+        "description": "Name of the Discard button"
+      }
     }
-  }
-},
+  },
   "helpLookingForSomething": "Что-то ищете?",
   "helpAllGuides": "Все руководства",
   "helpTopicEmpty": "Для этой вкладки пока нет руководств.",
@@ -20747,8 +20750,186 @@
       }
     }
   },
-  "@officialExportLeftover": {"placeholders": {"file": {"type": "String"}, "folder": {"type": "String"}}},
-  "@updatesLastChecked": {"placeholders": {"time": {"type": "String"}}},
-  "@updatesRetryAfter": {"placeholders": {"time": {"type": "String"}}},
-  "@updatesReleaseLabel": {"placeholders": {"source": {"type": "String"}, "version": {"type": "String"}, "channel": {"type": "String"}}}
+  "@officialExportLeftover": {
+    "placeholders": {
+      "file": {
+        "type": "String"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "@updatesLastChecked": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "@updatesRetryAfter": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "@updatesReleaseLabel": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      },
+      "version": {
+        "type": "String"
+      },
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "devicePickerBlurbGarmin": "Часы Garmin. Синхронизируют пульс, шаги, сон и ВСР. Экспериментально.",
+  "devicePickerNoMatch": "Поблизости нет устройств, подходящих под этот поиск.",
+  "settingsUnitsMetric": "Метрическая",
+  "settingsUnitsImperial": "Имперская",
+  "settingsAppearanceLight": "Светлая",
+  "settingsAppearanceDark": "Тёмная",
+  "settingsBackupDaily": "Ежедневно",
+  "settingsBackupWeekly": "Еженедельно",
+  "settingsAppearanceSystem": "Системная",
+  "devicesBatteryUnderAnHourLeft": "меньше часа",
+  "devicesBatteryHoursLeft": "осталось около {hours} ч",
+  "@devicesBatteryHoursLeft": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "devicesBatteryDaysLeft": "осталось около {days} дн.",
+  "@devicesBatteryDaysLeft": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "devicesChargesLogged": "{n, plural, one{{n} зарядка записана} few{{n} зарядки записаны} many{{n} зарядок записано} other{{n} зарядки записано}}",
+  "@devicesChargesLogged": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "devicesChargeUpToMv": "до {mv} мВ",
+  "@devicesChargeUpToMv": {
+    "placeholders": {
+      "mv": {
+        "type": "int"
+      }
+    }
+  },
+  "devicesCalibrationSub": "Показатели, зависящие от датчика, используют собственные константы этого браслета, поэтому два разных браслета могут дать разные уровни при одинаковой физиологии.",
+  "devicesCalibrationNotStated": "Пока не указано",
+  "devicesCalibrationNotStatedSub": "Браслет не сообщил своё поколение, а импортированные или старые дни не сообщат никогда. Показатели, зависящие от датчика, не рассчитываются, а не берут значения другого браслета.",
+  "importSourceEncryptedBackup": "Зашифрованная резервная копия",
+  "importSourceOpenStrapBackup": "Резервная копия OpenStrap",
+  "importSourceRawSensor": "Экспорт сырых данных датчика",
+  "importSourceVendorCsv": "Экспорт CSV от производителя",
+  "importSourceJournalCsv": "CSV дневника",
+  "importSourceLabCsv": "CSV результатов анализов",
+  "importSourceFilePicker": "Выбор файлов",
+  "importSourceImport": "Импорт",
+  "importSourceNothingSelected": "Ничего не выбрано",
+  "welcomeEncryptedBackupUseSettings": "Этот файл — зашифрованная резервная копия. Откройте его в разделе Настройки → Ваши данные, там можно ввести пароль.",
+  "welcomeNotUtf8": "{file}: сохранён не в UTF-8. Сохраните как «CSV UTF-8» и импортируйте снова",
+  "@welcomeNotUtf8": {
+    "placeholders": {
+      "file": {
+        "type": "String"
+      }
+    }
+  },
+  "welcomeCorruptTables": "Не удалось прочитать {tables}: SQLite сообщает, что файл повреждён в этих таблицах. Все остальные таблицы импортированы нормально.",
+  "@welcomeCorruptTables": {
+    "placeholders": {
+      "tables": {
+        "type": "String"
+      }
+    }
+  },
+  "welcomeRejectsMore": "{shown}; и ещё {count}.",
+  "@welcomeRejectsMore": {
+    "placeholders": {
+      "shown": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "notifLookbackFlaggedBody": "На этой неделе отмечено: {items}. Подробности в разделе «Здоровье».",
+  "@notifLookbackFlaggedBody": {
+    "description": "Weekly lookback notification body listing the week's flags; {items} is a comma-separated list of the flag phrases below.",
+    "placeholders": {
+      "items": {
+        "type": "String"
+      }
+    }
+  },
+  "notifLookbackIllness": "пульс в покое повышен ×{count}",
+  "@notifLookbackIllness": {
+    "description": "Weekly lookback flag phrase: nights with raised resting heart rate.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "notifLookbackAnomaly": "необычные показатели ×{count}",
+  "@notifLookbackAnomaly": {
+    "description": "Weekly lookback flag phrase: nights with unusual physiology.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "notifLookbackTemp": "повышенная температура кожи ×{count}",
+  "@notifLookbackTemp": {
+    "description": "Weekly lookback flag phrase: nights with elevated skin temperature.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "notifLookbackRhrHigherBody": "К концу недели пульс в покое был примерно на {bpm} уд/мин выше, чем в начале.",
+  "@notifLookbackRhrHigherBody": {
+    "description": "Weekly lookback notification body: resting heart rate drifted up over the week.",
+    "placeholders": {
+      "bpm": {
+        "type": "int"
+      }
+    }
+  },
+  "notifLookbackRhrLowerBody": "К концу недели пульс в покое был примерно на {bpm} уд/мин ниже, чем в начале.",
+  "@notifLookbackRhrLowerBody": {
+    "description": "Weekly lookback notification body: resting heart rate drifted down over the week.",
+    "placeholders": {
+      "bpm": {
+        "type": "int"
+      }
+    }
+  },
+  "notifSyncStaleBody": "Новых данных нет примерно {hours} ч. Откройте OpenStrap, чтобы переподключиться, — фоновая синхронизация могла остановиться.",
+  "@notifSyncStaleBody": {
+    "description": "OS notification body when the band has not synced for several hours.",
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  }
 }

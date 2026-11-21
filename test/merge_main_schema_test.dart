@@ -33,7 +33,7 @@ Map<String, Object?> _nightRow() {
     'day_id': '2026-11-15', 'algo_version': kAlgoVersion,
     'fmt': nightCheckpointFormat, 'ctx_sig': 'official-night-context',
     'cp_rec_ts': boundary, 'rev_vec': revisions,
-    'state': encoded.bytes, 'night_ref': null, 'computed_at': 7,
+    'state': encoded, 'night_ref': null, 'computed_at': 7,
   };
   expect(decodeNightCheckpointHeavy(row, '2026-11-15', kAlgoVersion,
       'official-night-context', from, from + 1999, const {}).rejection, isNull,

@@ -140,6 +140,7 @@ class StagingProvenance {
     required this.wipeEpoch,
     required this.openCount,
     this.priority = const {},
+    this.useHmmStages = false,
   });
 
   final int fromSec, toSec;
@@ -150,6 +151,7 @@ class StagingProvenance {
   final Map<InputSignal, List<OwnedSpan>> ownership;
   final int wipeEpoch, openCount;
   final Map<InputSignal, List<String>> priority;
+  final bool useHmmStages;
 }
 
 /// The UTC offset in force at an instant. The process zone by default; tests
@@ -240,6 +242,7 @@ List<List<int>> nightZoneOffsets(
     p.toSec,
     p.wipeEpoch,
     p.openCount,
+    if (p.useHmmStages) 'hmm',
     [for (final b in revKeys) [b, p.revs[b]]],
     [
       for (final sig in InputSignal.values)
@@ -353,6 +356,7 @@ String stagingInputKey({
   required List<VendorNight> vendorNights,
   required (String, String)? activeWearable,
   bool prefixContext = false,
+  bool useHmmStages = false,
 }) {
   // Count local midnights, including DST days, rather than dividing by 86400.
   var walked = 0;
@@ -392,6 +396,7 @@ String stagingInputKey({
   final now = DateTime.now();
   return jsonEncode([
     fromSec, toSec, prefixContext ? const [] : revisions,
+    if (useHmmStages) 'hmm',
     [for (final sig in InputSignal.values) [sig.name,
       [for (final o in ownership[sig] ?? const <OwnedSpan>[])
         [o.start, o.end, o.deviceId]], priority[sig]]],

@@ -94,18 +94,10 @@ class TaskerReceiver : BroadcastReceiver() {
         val pattern = intent.getIntExtra(EXTRA_PATTERN, DEFAULT_PATTERN)
         Log.i(TAG, "pattern=$pattern")
 
-        if (engine != null) {
-            Log.i(TAG, "engine alive, invoking method channel")
-            val args = java.util.HashMap<String, Any>()
-            args["pattern"] = pattern
-            MethodChannel(
-                engine.dartExecutor.binaryMessenger,
-                NativeChannels.TASKER_CHANNEL
-            ).invokeMethod("buzz_strap", args)
-            return
-        }
-
-        Log.i(TAG, "engine dead, persisting pending flag")
+        // Persist first, on both paths (#872). A cached engine is no promise of
+        // delivery: a just-created engine may not have registered the Dart
+        // handler yet, and a long-lived one may have no band link. Dart clears
+        // the flag only once the buzz actually reached the strap.
         val prefs = context.getSharedPreferences(
             "openstrap_runtime",
             Context.MODE_PRIVATE
@@ -113,15 +105,19 @@ class TaskerReceiver : BroadcastReceiver() {
         prefs.edit()
             .putBoolean(PENDING_BUZZ_KEY, true)
             .putInt(PENDING_PATTERN_KEY, pattern)
-            // A buzz is a time-bound cue (rest timer over, reminder). Without
-            // the request time a queued buzz would fire on whatever reconnect
-            // comes next, possibly hours later; Dart drops it once stale.
             .putLong(PENDING_AT_KEY, System.currentTimeMillis())
-            // commit, not apply: if the service start below is refused the
-            // flag is the only record of this buzz, and the next app launch
-            // replays it from disk.
             .commit()
 
+        if (engine != null) {
+            Log.i(TAG, "engine alive, nudging Dart to deliver the pending buzz")
+            MethodChannel(
+                engine.dartExecutor.binaryMessenger,
+                NativeChannels.TASKER_CHANNEL
+            ).invokeMethod("buzz_strap", null)
+            return
+        }
+
+        Log.i(TAG, "engine dead, starting service to deliver the pending buzz")
         EdgeTrackingService.startFromBackground(context, TAG)
     }
 

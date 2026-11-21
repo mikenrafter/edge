@@ -114,7 +114,8 @@ class CircadianData {
   /// motion gate catches a slow climb.
   static double _median(List<double> xs) {
     final s = [...xs]..sort();
-    return s[s.length ~/ 2];
+    final m = s.length ~/ 2;
+    return s.length.isOdd ? s[m] : (s[m - 1] + s[m]) / 2;
   }
 
   /// Reads the artifact fresh from the repository's own readers: what the

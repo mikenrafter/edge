@@ -12,6 +12,7 @@ import '../screens/home_screen.dart' show repoOf;
 import '../screens/journal_compose.dart' show OsTextField;
 import '../screens/metric_detail.dart' show detailScaffold;
 import '../ui2.dart';
+import 'catalogue.dart' show activityByName;
 
 
 // HEART-RATE ZONES — the ceiling, the two anchors, and (only sometimes) the
@@ -269,9 +270,7 @@ class _ZonesDetailState extends State<ZonesDetail> {
       ),
     );
     final typed = [for (final ctl in ctrls) Typed.of(ctl.text)];
-    for (final ctl in ctrls) {
-      ctl.dispose();
-    }
+    // Not disposed: the sheet's exit animation still builds the fields after this returns.
     if (saved != true || !c.mounted) return;
     final bad = [
       for (var i = 0; i < 5; i++) if (typed[i].bad) 'Z${i + 1}',
@@ -400,14 +399,18 @@ _zones(p, l, d)),
         icon: LucideIcons.heartPulse,
       );
     }
+    final session = d.ceilingSession == null
+        ? null
+        : _midSentence(
+            activityByName(d.ceilingSession)?.localizedName(l) ??
+                d.ceilingSession!.replaceAll('_', ' '),
+            l);
     final where = [
       if (d.ceilingDate != null)
         l?.activityZonesCeilingOnDate(_prettyDay(d.ceilingDate!, l)) ??
             'on ${_prettyDay(d.ceilingDate!, l)}',
-      if (d.ceilingSession != null)
-        l?.activityZonesCeilingDuringSession(
-                d.ceilingSession!.toLowerCase()) ??
-            'during ${d.ceilingSession!.toLowerCase()}',
+      if (session != null)
+        l?.activityZonesCeilingDuringSession(session) ?? 'during $session',
     ].join(', ');
     return Surface(
       child: Column(
@@ -490,7 +493,7 @@ _zones(p, l, d)),
                           SizedBox(
                             width: double.infinity,
                             child: Text(
-                              'Z${z.zone} · ${z.name}',
+                              'Z${z.zone} · ${localizedText(l, z.name)}',
                               style: F.body.copyWith(color: p.ink),
                             ),
                           ),
@@ -643,3 +646,7 @@ _zones(p, l, d)),
       );
 }
 
+
+// Lowercase only for English; other locales (e.g. German nouns) keep casing.
+String _midSentence(String name, AppLocalizations? l) =>
+    (l == null || l.localeName.startsWith('en')) ? name.toLowerCase() : name;

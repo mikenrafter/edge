@@ -276,11 +276,11 @@ Object? _comparable(Object? v) => switch (v) {
 Map<String, dynamic> _cardio116Projection(Map<String, dynamic> snapshot) {
   // Stale pin: 120-126 followed (c8d538334 is v126); the byte comparison below
   // still proves a cardio night's stored output is unchanged by them.
-  expect(kAlgoVersion, 126);
+  expect(kAlgoVersion, 127);
   final out = (jsonDecode(jsonEncode(snapshot)) as Map).cast<String, dynamic>();
   for (final table in ['day_result', 'metric_series_version', 'wake_day_features']) {
     for (final row in out[table] as List) {
-      expect(row['algo_version'], 126);
+      expect(row['algo_version'], 127);
       row['algo_version'] = 116;
     }
   }

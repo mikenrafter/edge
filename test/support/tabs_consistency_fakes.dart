@@ -10,7 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'package:openstrap_edge/data/journal_fields.dart';
-import 'package:openstrap_edge/layout_shift/layout_shift.dart';
+import 'layout_shift/layout_shift.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart';

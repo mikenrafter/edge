@@ -1293,9 +1293,9 @@ bool _isNextDay(String a, String b) {
         // time-of-day, not the user's wall clock - the exact mistake
         // _localTodMin (right here in this same file, used correctly at
         // line ~100) already exists to avoid.
-        final startMin = _localTodMin(start.round()).floor();
+        final startMin = _nightClockMin(start.round(), d).floor();
         // end is exclusive of the segment's trailing edge; cover [start,end).
-        final endMinRaw = _localTodMin(end.round()).ceil();
+        final endMinRaw = _nightClockMin(end.round(), d).ceil();
         // WRAP, don't clamp. Both bounds are clock-minutes-of-day in [0,1440),
         // so a segment crossing local midnight reads e.g. start=1430,
         // end=20 — and the old `for (m = startMin; m < endMin; m++)` simply

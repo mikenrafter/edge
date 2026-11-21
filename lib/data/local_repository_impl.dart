@@ -1729,6 +1729,7 @@ class LocalRepositoryImpl extends LocalRepository {
       if (napPeriods.isEmpty) {
         return {
           'has_sleep': false,
+          ...stagingProvenanceOf(_sub(b, 'sleep')),
           'absence_reason': ?absence,
           'sleep_source': assertion?['source'] ?? sleepSource,
           ...savedWindow,
@@ -1737,6 +1738,7 @@ class LocalRepositoryImpl extends LocalRepository {
       }
       return {
         'has_sleep': false,
+        ...stagingProvenanceOf(_sub(b, 'sleep')),
         'absence_reason': ?absence,
         'sleep_source': assertion?['source'] ?? sleepSource,
         ...savedWindow,
@@ -3897,13 +3899,9 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<Map<String, dynamic>> endWorkout(String workoutId) async {
     // Mark done + stamp end_ts; final stats (calories/strain/etc) are written by
     // app_state.stopWorkout from the LiveWorkoutState (it has the live tallies).
-    final r = await LocalDb.session(workoutId);
-    if (r != null) {
-      await LocalDb.putSession({
-        ...r,
-        'status': 'done',
-        'end_ts': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      });
+    final ended = await LocalDb.endLiveSession(
+        workoutId, DateTime.now().millisecondsSinceEpoch ~/ 1000);
+    if (ended > 0) {
       // This is the choke point the AI coach's `end_workout` tool reaches
       // directly (bypassing AppState.stopWorkout, the only other place this
       // used to happen) — without it a coach-ended workout never reached
@@ -3919,7 +3917,7 @@ class LocalRepositoryImpl extends LocalRepository {
     _focusCheck('savedSessionSpans');
     // Everything ever logged — the overlap check has to see a session from any
     // date the athlete might be back-filling into, not just a recent window.
-    final rows = await LocalDb.sessionsInRange(0, 1 << 40);
+    final rows = await LocalDb.sessionSpans();
     final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     return [
       for (final r in rows)
@@ -4011,6 +4009,14 @@ class LocalRepositoryImpl extends LocalRepository {
       throw const ManualWindowException(
           ManualWindowError.scoreNotRecomputable);
     }
+    final invalid = validateManualWindow(
+      startSec: startTs,
+      endSec: endTs,
+      nowSec: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      existing: await savedSessionSpans(),
+      editingId: id,
+    );
+    if (invalid != null) throw ManualWindowException(invalid);
     // Clear the OLD Health window before the retimed row overwrites it — the
     // caller's subsequent exportWorkoutId only deletes inside the NEW window,
     // so a narrowed/moved retime would otherwise leave the previous sample
@@ -4479,7 +4485,9 @@ class LocalRepositoryImpl extends LocalRepository {
     try {
       // 'rhr' is the `metric_series` key the derivation engine writes nightly
       // resting HR under (see _BaselineHistoryCache.keys).
-      final vals = await LocalDb.trailingSeriesValues('rhr', 7);
+      final now = DateTime.now();
+      final vals = await LocalDb.trailingSeriesValues('rhr', 1,
+          since: dayLabelOf(DateTime(now.year, now.month, now.day - 7)));
       if (vals.isEmpty) return null;
       return vals.last;
     } catch (_) {
@@ -5360,7 +5368,7 @@ class LocalRepositoryImpl extends LocalRepository {
     // the same false single date wearing a range's clothes. So the band needs
     // two gaps (three logged starts); below that the screen says a point and
     // says why it can't say a width.
-    double? medianLength, gapSpread;
+    double? medianLength, gapSpread, longestGap;
     var gapCount = 0;
     if (startDates.length >= 2) {
       final gaps = <double>[];
@@ -5374,6 +5382,7 @@ class LocalRepositoryImpl extends LocalRepository {
       if (gaps.isNotEmpty) {
         gapCount = gaps.length;
         medianLength = ana.median(gaps);
+        longestGap = gaps.reduce(math.max);
         if (gaps.length >= 2) gapSpread = ana.mad(gaps, scaled: false);
       }
     }
@@ -5425,7 +5434,11 @@ class LocalRepositoryImpl extends LocalRepository {
     final ovDay = (medianLength == null || medianLength.round() < 10)
         ? null
         : (medianLength - 14).round().clamp(10, medianLength.round());
-    if (phaseOk && ovDay != null && cycleDay != null && lastStart != null) {
+    if (phaseOk &&
+        ovDay != null &&
+        cycleDay != null &&
+        lastStart != null &&
+        cycleDay <= longestGap! + 1) {
       if (cycleDay <= 5) {
         phase = 'menstrual';
       } else if (cycleDay < ovDay) {
@@ -5848,9 +5861,10 @@ class LocalRepositoryImpl extends LocalRepository {
   static String? intensityShape(double easy, double moderate, double hard) {
     final total = easy + moderate + hard;
     if (total <= 0) return null;
-    if (easy < moderate || easy < hard) return 'middle-heavy';
-    if (moderate >= hard) return 'pyramidal';
-    return 'polarised';
+    if (easy >= moderate && easy >= hard) {
+      return moderate >= hard ? 'pyramidal' : 'polarised';
+    }
+    return moderate >= hard ? 'middle-heavy' : null;
   }
 
   static double? _median(List<double> xs) {

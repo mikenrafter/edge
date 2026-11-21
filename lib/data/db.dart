@@ -2702,12 +2702,12 @@ class LocalDb {
   /// lat/lng point of a removed import would stay on disk unreachable.
   static Future<void> deleteImportedWorkout(String uuid) async {
     final db = await instance;
-    await db.delete('imported_workout', where: 'uuid = ?', whereArgs: [uuid]);
-    await db.delete(
-      'workout_route',
-      where: 'session_id = ?',
-      whereArgs: [uuid],
-    );
+    await db.transaction((txn) async {
+      await txn.delete('imported_workout',
+          where: 'uuid = ?', whereArgs: [uuid]);
+      await txn.delete('workout_route',
+          where: 'session_id = ?', whereArgs: [uuid]);
+    });
   }
 
   /// Replace an imported workout with the band session scored over its window
@@ -4943,7 +4943,10 @@ class LocalDb {
   static Future<void> setSignalPriority(
     InputSignal signal,
     List<String> order,
-  ) => _ldbSetSignalPriority(signal, order);
+  ) async {
+    await _ldbSetSignalPriority(signal, order);
+    deviceRowChanged.add('');
+  }
 
   /// Back to physics for one signal. NOT a write of the computed order — that
   /// would freeze today's ladder into the table and stop tracking the adapter
@@ -4955,6 +4958,7 @@ class LocalDb {
       where: 'signal = ? AND user_set = 1',
       whereArgs: [signal.name],
     );
+    deviceRowChanged.add('');
   }
 
   /// The signals whose order the USER set by hand, so the editor can offer a
@@ -5501,7 +5505,9 @@ class LocalDb {
     return db.rawQuery(
       // Main's ordered version stream stops after N served non-skipped days;
       // a normal JOIN can fetch/sort every old large row before the LIMIT.
-      'SELECT r.day_id AS day_id, r.window_json AS window_json, v.rev AS rev '
+      'SELECT r.day_id AS day_id, r.window_json AS window_json, v.rev AS rev, '
+      "CASE WHEN r.window_json LIKE '%offset_ms%' THEN NULL "
+      'ELSE r.payload_json END AS payload_json '
       'FROM ($_servedVersions ORDER BY day_id DESC) m '
       'CROSS JOIN day_result r $_servedOn '
       "LEFT JOIN row_rev v ON v.kind = 'day_result' AND v.k1 = r.day_id "
@@ -6411,7 +6417,9 @@ class LocalDb {
     int? limit,
     bool measuredOnly = false,
     bool ownOnly = false,
-  }) => _ldbMetricSeries(key, limit: limit, measuredOnly: measuredOnly, ownOnly: ownOnly);
+    String? from,
+    DatabaseExecutor? executor,
+  }) => _ldbMetricSeries(key, limit: limit, measuredOnly: measuredOnly, ownOnly: ownOnly, from: from, executor: executor);
 
   /// Everything a multi-chart screen needs from the derived series, in ONE
   /// read transaction (one slot on the single serialized handle, not ~4 per
@@ -6470,7 +6478,8 @@ class LocalDb {
     int n, {
     bool measuredOnly = true,
     String? before,
-  }) => _ldbTrailingSeriesValues(key, n, measuredOnly: measuredOnly, before: before);
+    String? since,
+  }) => _ldbTrailingSeriesValues(key, n, measuredOnly: measuredOnly, before: before, since: since);
 
   static Future<Map<String, dynamic>?> baseline(String key,
       {DatabaseExecutor? executor}) async {
@@ -7803,20 +7812,63 @@ class LocalDb {
     return [for (final r in rows) r['id'] as String];
   }
 
+  static Future<Map<String, Object?>> _pastDayFreshnessFacts(
+    String dayId,
+    Object? algoVersion,
+  ) async {
+    final db = await instance;
+    final rows = await db.rawQuery(
+      "SELECT json_type(p, '\$.skipped') = 'true' AS skipped, "
+      "COALESCE(json_type(p, '\$.sleep.accounting.value.tst_sec'), 'null') "
+      "<> 'null' AS has_sleep, "
+      "CASE WHEN json_type(p, '\$.flags') = 'array' THEN EXISTS ("
+      "SELECT 1 FROM json_each(p, '\$.flags') "
+      "WHERE value IN ('NO_SLEEP_DETECTED', 'SLEEP_REJECTED')) END "
+      'AS no_sleep, '
+      "json_type(p, '\$.scalars.readiness') IN ('integer', 'real') "
+      'AS readiness '
+      'FROM (SELECT payload_json AS p FROM day_result '
+      'WHERE day_id = ? AND algo_version = ?) WHERE json_valid(p)',
+      [dayId, algoVersion],
+    );
+    return rows.isEmpty ? const {} : rows.first;
+  }
+
+  static Future<int> endLiveSession(String id, int endTs) async {
+    final db = await instance;
+    return db.transaction((tx) async {
+      final rows = await tx.query('sessions',
+          columns: ['start_ts'],
+          where: "id = ? AND status = 'live'",
+          whereArgs: [id]);
+      if (rows.isEmpty) return 0;
+      await tx.update('sessions', {'status': 'done', 'end_ts': endTs},
+          where: 'id = ?', whereArgs: [id]);
+      final start = (rows.first['start_ts'] as num?)?.toInt();
+      if (start != null) {
+        await ActivityStore.supersede(tx, ActivityKind.workout, start, endTs);
+      }
+      return 1;
+    });
+  }
+
+  static Future<List<Map<String, dynamic>>> sessionSpans() async =>
+      (await instance)
+          .query('sessions', columns: ['id', 'start_ts', 'end_ts']);
+
   static Future<void> deleteSession(String id) async {
     final db = await instance;
-    await db.delete('sessions', where: 'id = ?', whereArgs: [id]);
-    await db.delete('session_sensor',
-        where: 'session_id = ?', whereArgs: [id]);
-    // Cascade: a route belongs to its session (on-device only, no FK enforced).
-    await db.delete('workout_route', where: 'session_id = ?', whereArgs: [id]);
-    // …and its frozen per-km splits (CV-01), same reason.
-    await db.delete('workout_split', where: 'session_id = ?', whereArgs: [id]);
-    // …and so do its typed sets. These used to survive the delete, so a
-    // mistyped 200 kg set on a deleted workout kept coming back as "previous"
-    // and "best" on the strength screen (recentSetsFor reads strength_set with
-    // no session-existence filter) and kept exporting under a dead session_id.
-    await db.delete('strength_set', where: 'session_id = ?', whereArgs: [id]);
+    await db.transaction((txn) async {
+      await txn.delete('sessions', where: 'id = ?', whereArgs: [id]);
+      await txn.delete('session_sensor',
+          where: 'session_id = ?', whereArgs: [id]);
+      await txn.delete('workout_route',
+          where: 'session_id = ?', whereArgs: [id]);
+      await txn.delete('workout_split',
+          where: 'session_id = ?', whereArgs: [id]);
+      await txn.delete('strength_set',
+          where: 'session_id = ?', whereArgs: [id]);
+    });
   }
 
   // ── workout GPS routes (run/ride/walk) I/O ─────────────────────────────────
@@ -9798,8 +9850,8 @@ class LocalDb {
   }
 
   static Future<bool> _finalizedDayIndexExists() async =>
-      (await (await instance).rawQuery("SELECT 1 FROM sqlite_master WHERE "
-          "type='index' AND name='idx_day_result_finalized_payload'")).isNotEmpty;
+      (await (await instance).rawQuery("SELECT name FROM sqlite_master WHERE "
+          "type='index' AND name IN ('idx_day_result_finalized_payload', 'idx_day_result_served')")).length == 2;
 
   static Future<void> _buildFinalizedDayIndex() async {
     if (!_foreground) return;
@@ -9828,6 +9880,10 @@ class LocalDb {
             "ON day_result(algo_version, finalized, "
             "(CASE WHEN json_valid(payload_json) THEN "
             "COALESCE(json_type(payload_json, '\$.imported') = 'true', 0) ELSE 0 END), day_id)",
+          );
+          await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_day_result_served '
+            'ON day_result(algo_version, day_id, skipped, partial)',
           );
         } finally {
           _finalizedDayIndexBuilding.value = false;

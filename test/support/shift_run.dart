@@ -7,8 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/layout_shift/layout_shift.dart';
 import 'package:openstrap_edge/ui2/skeleton/settling_height.dart';
+import 'layout_shift/layout_shift.dart';
 
 import 'layout_shift_probe.dart';
 
@@ -25,18 +25,25 @@ void phoneSurface(WidgetTester t) {
 }
 
 class ShiftRun {
-  ShiftRun(this.t, {bool skipCoveredRoutes = false, bool trackUnkeyed = true})
+  ShiftRun(this.t, {bool skipCoveredRoutes = false, bool trackUnkeyed = true,
+      this.rejectIndeterminateProgress = false,
+      bool Function(Widget)? isPending, bool Function(Widget)? isPaintOnly})
       : probe = ShiftProbe(
             trackUnkeyed: trackUnkeyed,
+            isPending: isPending,
+            isPaintOnly: isPaintOnly,
             visibleOnly: shiftViewport,
             skipCoveredRoutes: skipCoveredRoutes);
   final WidgetTester t;
   final ShiftProbe probe;
+
+  /// Opt in when a scenario forbids indeterminate loading indicators.
+  final bool rejectIndeterminateProgress;
   int now = 0;
 
   /// Captures the current tree at [now] without pumping.
   void snap() {
-    expectNoIndeterminateProgress();
+    if (rejectIndeterminateProgress) expectNoIndeterminateProgress();
     probe.capture(t, atMs: now);
   }
 
@@ -45,7 +52,7 @@ class ShiftRun {
   /// not charged as unprompted movement.
   void opened([String id = 'screen-open']) {
     snap();
-    probe.interactions.add(Interaction(now, id));
+    probe.interactions.add(Interaction(now, id, afterFrameIndex: probe.frames.length - 1));
   }
 
   /// Pumps to each offset (relative to the current [now]) and captures.
@@ -71,7 +78,8 @@ class ShiftRun {
     snap();
     final src = probe.idOf(t, f) ?? 'unknown-source';
     final target = intent == null ? null : probe.idOf(t, intent);
-    probe.interactions.add(Interaction(now, src, intentTargetId: target));
+    probe.interactions.add(Interaction(now, src, intentTargetId: target,
+        afterFrameIndex: probe.frames.length - 1));
     await t.tap(f);
     await frames(offsets);
   }

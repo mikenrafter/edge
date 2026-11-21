@@ -193,19 +193,14 @@ class _Session {
   /// and the next connection drains normally from the band's checkpoint.
   bool historyStuck = false;
 
-  /// When [historyStuck] latched. Drives [historyStuckActive].
-  DateTime? historyStuckAt;
+  /// Started when [historyStuck] latched. Drives [historyStuckActive].
+  /// Monotonic, so a phone clock step cannot stretch or shrink the window.
+  Stopwatch? historyStuckFor;
 
-  /// Whether the latch is still refusing work.
-  ///
-  /// Read this, never [historyStuck] directly, on any path that decides whether
-  /// to refuse a drain, drop a marker or suppress a terminal. [historyStuck]
-  /// stays true as a session diagnostic ("this connection hit Stuck at least
-  /// once") after the window has passed.
   bool get historyStuckActive {
-    final at = historyStuckAt;
-    if (!historyStuck || at == null) return false;
-    return DateTime.now().difference(at) < kHistoryStuckCooldown;
+    final since = historyStuckFor;
+    if (!historyStuck || since == null) return false;
+    return since.elapsed < kHistoryStuckCooldown;
   }
 
   /// Markers dropped, and drain triggers refused, by [historyStuck]
@@ -414,6 +409,27 @@ class BurstStats {
   void onConsole() => _consoleCount++;
 
   void onUnknown() => _unknownCount++;
+
+  BurstStats snapshot() {
+    final c = BurstStats()
+      .._eventCount = _eventCount
+      .._consoleCount = _consoleCount
+      .._unknownCount = _unknownCount
+      .._revision16Count = _revision16Count
+      .._revision19Count = _revision19Count
+      .._revision22Count = _revision22Count
+      .._revision25Count = _revision25Count
+      .._revision26Count = _revision26Count;
+    c._dataPacketCountsByRevision.addAll(_dataPacketCountsByRevision);
+    _sequenceByRevision.forEach((k, v) {
+      c._sequenceByRevision[k] = SequenceState(firstSequence: v.firstSequence)
+        ..lastSequence = v.lastSequence
+        ..gapCount = v.gapCount
+        ..missingCount = v.missingCount
+        ..backwardCount = v.backwardCount;
+    });
+    return c;
+  }
 
   void reset() {
     _dataPacketCountsByRevision.clear();

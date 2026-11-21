@@ -9,8 +9,10 @@ import 'substrate.dart';
 
 @SendableShape('populated substrate columns; sendable_segmentCalendarDaysHeavy_test')
 class CalendarDaysInput {
-  const CalendarDaysInput(this.substrate);
+  const CalendarDaysInput(this.substrate, {this.targetDay, this.skipUnusedDays = false});
   final Substrate substrate;
+  final String? targetDay;
+  final bool skipUnusedDays;
 }
 
 @SendableShape('day bounds and analytics sleep objects; sendable_segmentCalendarDaysHeavy_test')
@@ -24,7 +26,8 @@ CalendarDaysResult segmentCalendarDaysHeavy(WorkerInputs worker, CalendarDaysInp
   WorkerInit.ensure(worker);
   assertWorker();
   WorkerAudit.entered('segmentCalendarDaysHeavy');
-  return CalendarDaysResult(calendarDaysHeavy(input.substrate));
+  return CalendarDaysResult(calendarDaysHeavy(input.substrate,
+      targetDay: input.targetDay, skipUnusedDays: input.skipUnusedDays));
 }
 
 // Keep the dispatch closure outside an engine lock's async context: capturing

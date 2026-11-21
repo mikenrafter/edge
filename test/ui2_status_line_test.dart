@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'package:openstrap_edge/data/import_progress.dart';
-import 'package:openstrap_edge/layout_shift/layout_shift.dart';
+import 'support/layout_shift/layout_shift.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/derive_progress.dart';
 import 'package:openstrap_edge/ui2/shared_slot.dart';

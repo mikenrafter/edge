@@ -181,6 +181,22 @@ extension _EngineDayCompute on DerivationEngine {
       sleepRrTsMs: sleepSub.rrTsMs,
       sleepRrMs: sleepSub.rrMs,
       sleepSkinTemp: sleepSub.skinTemp,
+      // Per-second ENMO over the sleep window (gravity vector magnitude − 1 g),
+      // for the hybrid HMM input. Absent accel (0,0,0 sentinel) -> -1.0.
+      sleepEnmo: [
+        for (var i = 0; i < sleepSub.length; i++)
+          sleepSub.accelPresentAt(i)
+              ? math.max(
+                  0.0,
+                  math.sqrt(
+                        sleepSub.ax[i] * sleepSub.ax[i] +
+                            sleepSub.ay[i] * sleepSub.ay[i] +
+                            sleepSub.az[i] * sleepSub.az[i],
+                      ) -
+                      1.0,
+                )
+              : -1.0,
+      ],
       sleepJson: day.sleepJson,
       hypnoStages: day.hypnoStages,
       sleepOnsetSec: day.sleepOnsetSec,
@@ -197,6 +213,7 @@ extension _EngineDayCompute on DerivationEngine {
       // guess — sleep-onset latency only means what people think it means on a
       // forced window.
       sleepSource: day.sleepSource,
+      useHmmStages: day.useHmmStages,
     );
     final withHistory = _attachHistory(input, history);
 
@@ -262,7 +279,7 @@ extension _EngineDayCompute on DerivationEngine {
     var candidateState = workerResult.dayState;
     if (workerResult.resumed) debugCheckpoints.hits++;
     if (workerResult.rejected) {
-      debugCheckpoints.rejections.add('checkpoint night prefix/window');
+      debugCheckpoints.reject('checkpoint night prefix/window');
       debugCheckpoints.misses++;
     }
     if (diagnostics != null) debugNightStreams = workerResult.diagnostics;
@@ -1176,6 +1193,8 @@ extension _EngineDayCompute on DerivationEngine {
         // EVERY day (even during the bootstrap window where skin_temp_z is null)
         // so the baseline fills and z begins computing from ~day 4.
         'skin_temp_adc': sc('skin_temp_adc'),
+        if (((bundle['sleep'] as Map?)?['stager_enmo_median'] as num?)?.toDouble() case final v?)
+          if (v >= 0) 'enmo_median_night': v,
         'dip_pct': sc('dip_pct'),
         // Headline 0–21 strain (for trend/sparkline); raw TRIMP kept too.
         // Written even when NULL: an abstaining day must overwrite a value a
@@ -1311,7 +1330,7 @@ extension _EngineDayCompute on DerivationEngine {
               'day_id': day.date, 'algo_version': kAlgoVersion,
               'fmt': nightCheckpointFormat, 'ctx_sig': checkpointContext,
               'cp_rec_ts': checkpointBoundary, 'rev_vec': checkpointVector,
-              'state': checkpoint.bytes, 'night_ref': null,
+              'state': checkpoint, 'night_ref': null,
               'computed_at': DateTime.now().millisecondsSinceEpoch,
             }, conflictAlgorithm: ConflictAlgorithm.replace);
             await txn.rawDelete('DELETE FROM night_checkpoint WHERE day_id NOT IN '
@@ -1319,8 +1338,6 @@ extension _EngineDayCompute on DerivationEngine {
               'ORDER BY day_id DESC LIMIT 3) OR algo_version != ?', [kAlgoVersion]);
           });
           debugCheckpoints.writes++;
-          debugCheckpoints.lastEncodedPayload = checkpoint.bytes;
-          debugCheckpoints.lastDecodedPayload = checkpoint.payload;
         }
       } catch (_) {
         // Disposable scratch is never required to commit a day result.

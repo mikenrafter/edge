@@ -1998,7 +1998,9 @@
     "description": "Time picker helper text for logging when a manual nap ended."
   },
   "napsInvalidWindow": "การงีบต้องยาว 5 นาทีถึง 3 ชั่วโมง หากนานกว่านั้นถือเป็นการนอนหลักและควรอยู่ในคืนนั้นเพื่ออ่านระยะการนอน",
-  "@napsInvalidWindow": {"description": "Validation error when a manually logged nap window is outside 5 minutes to 3 hours."},
+  "@napsInvalidWindow": {
+    "description": "Validation error when a manually logged nap window is outside 5 minutes to 3 hours."
+  },
   "napsOverlap": "เวลาทับซ้อนกับการงีบที่มีอยู่ในวันนี้ โปรดลบรายการเดิมก่อนเพื่อไม่นับชั่วโมงซ้ำ",
   "@napsOverlap": {
     "description": "Validation error when a manually logged nap overlaps an existing one."
@@ -10596,7 +10598,7 @@
   },
   "activitySummaryHardMinutesNote": "{min} นาทีที่เกิน 80% ของค่าสูงสุดของคุณ",
   "@activitySummaryHardMinutesNote": {
-    "description": "Heart-rate chart footnote naming minutes spent above 80% of max heart rate",
+    "description": "Heart-rate chart footnote naming minutes spent in heart-rate zones 4 and 5",
     "placeholders": {
       "min": {
         "type": "int"
@@ -10611,7 +10613,7 @@
   "@activitySummaryTopSet": {
     "description": "Section title above the heaviest logged set on a strength session"
   },
-  "activitySummaryOneRepMax": "ประมาณ 1RM {kg} กก.",
+  "activitySummaryOneRepMax": "ประมาณ 1RM {value} {unit, select, lb{ปอนด์} other{กก.}}",
   "@activitySummaryOneRepMax": {
     "description": "Estimated one-rep-max caption under the top set exercise name",
     "placeholders": {
@@ -17204,14 +17206,14 @@
   },
   "guideRemoveStep2Still": "แต่ละรายการมีปุ่ม **{discard}** ของตัวเอง แตะที่การงีบหรือการออกกำลังกายที่ไม่ได้เกิดขึ้นจริง เส้นกรอบจะชี้รายการแรก",
   "@guideRemoveStep2Still": {
-  "description": "Step 2 caption under reduced motion, where the outline (not the moving highlight) marks the first item. {discard} is the in-app name of the Discard button.",
-  "placeholders": {
-    "discard": {
-      "type": "String",
-      "description": "Name of the Discard button"
+    "description": "Step 2 caption under reduced motion, where the outline (not the moving highlight) marks the first item. {discard} is the in-app name of the Discard button.",
+    "placeholders": {
+      "discard": {
+        "type": "String",
+        "description": "Name of the Discard button"
+      }
     }
-  }
-},
+  },
   "profileHelpRow": "วิธีใช้",
   "helpLookingForSomething": "กำลังมองหาอะไรอยู่ไหม?",
   "helpAllGuides": "คู่มือทั้งหมด",
@@ -17552,14 +17554,14 @@
   "momentReviewRangeEnd": "The end has to be after the start.",
   "activityTrackYes": "Yes",
   "@guideRemoveStep2": {
-  "description": "Step 2 caption. {discard} is the in-app name of the Discard button; every pending item has its own and the highlight shows the choices.",
-  "placeholders": {
-    "discard": {
-      "type": "String",
-      "description": "Name of the Discard button"
+    "description": "Step 2 caption. {discard} is the in-app name of the Discard button; every pending item has its own and the highlight shows the choices.",
+    "placeholders": {
+      "discard": {
+        "type": "String",
+        "description": "Name of the Discard button"
+      }
     }
-  }
-},
+  },
   "@experimentalSleepHmm": {
     "description": "Opt-in experimental offline HMM sleep staging setting."
   },
@@ -18458,18 +18460,18 @@
   },
   "wakeJournalGroup": "Wake-up {start}–{end} · {minutes} min to wake",
   "@guideRemoveStep1": {
-  "description": "Step 1 caption. Bold words are in-app labels: {tab} is the Today tab name, {card} the title of the card.",
-  "placeholders": {
-    "tab": {
-      "type": "String",
-      "description": "Today tab name"
-    },
-    "card": {
-      "type": "String",
-      "description": "Title of the Detected activities card"
+    "description": "Step 1 caption. Bold words are in-app labels: {tab} is the Today tab name, {card} the title of the card.",
+    "placeholders": {
+      "tab": {
+        "type": "String",
+        "description": "Today tab name"
+      },
+      "card": {
+        "type": "String",
+        "description": "Title of the Detected activities card"
+      }
     }
-  }
-},
+  },
   "gesturesSectionBodyMulti": "Works only while the app is connected and awake. Turn on as many actions as you like; with every action off, a double-tap does nothing. If you tap while your phone is away, the band stores the tap and sends it later. A late tap runs only an action that says it can.",
   "@symptomSeveritySevere": {
     "description": "Symptom describer: severity \"severe\" (lower case; also used inside the sentence)"
@@ -18687,14 +18689,14 @@
   "tracksBloodPressure": "Blood pressure",
   "tracksQuickLog": "Log a track",
   "@guideRemoveMissingTitle": {
-  "description": "Footer card title: the user cannot see the card. {card} is its in-app title.",
-  "placeholders": {
-    "card": {
-      "type": "String",
-      "description": "Title of the Detected activities card"
+    "description": "Footer card title: the user cannot see the card. {card} is its in-app title.",
+    "placeholders": {
+      "card": {
+        "type": "String",
+        "description": "Title of the Detected activities card"
+      }
     }
-  }
-},
+  },
   "loadingWeightEntries": "Reading your weight entries",
   "@symptomSideBoth": {
     "description": "Symptom describer: side \"both\" (lower case; shown in parentheses after the area)"
@@ -21377,6 +21379,120 @@
     "placeholders": {
       "tag": {
         "type": "String"
+      }
+    }
+  },
+  "devicesBatteryUnderAnHourLeft": "เหลือไม่ถึงหนึ่งชั่วโมง",
+  "devicesBatteryHoursLeft": "เหลือประมาณ {hours} ชม.",
+  "devicesBatteryDaysLeft": "เหลือประมาณ {days} วัน",
+  "devicesChargesLogged": "{n, plural, other{บันทึกการชาร์จ {n} ครั้ง}}",
+  "devicesChargeUpToMv": "สูงสุด {mv} mV",
+  "devicesCalibrationSub": "ค่าที่ขึ้นกับเซนเซอร์ใช้ค่าคงที่ของสายรัดนี้เอง สายรัดสองเส้นจึงอาจได้ระดับต่างกันแม้สรีรวิทยาเหมือนกัน",
+  "devicesCalibrationNotStated": "ยังไม่ระบุ",
+  "devicesCalibrationNotStatedSub": "สายรัดนี้ยังไม่บอกว่าเป็นรุ่นใด และวันที่นำเข้าหรือวันเก่าจะไม่มีวันบอก ค่าที่ขึ้นกับเซนเซอร์จะงดแสดงแทนการยืมตัวเลขของสายรัดอื่น",
+  "devicePickerBlurbGarmin": "นาฬิกา Garmin ซิงค์อัตราการเต้นหัวใจ ก้าว การนอน และ HRV ยังอยู่ระหว่างทดลอง",
+  "devicePickerNoMatch": "ไม่มีอุปกรณ์ใกล้เคียงที่ตรงกับการค้นหานี้",
+  "settingsUnitsMetric": "เมตริก",
+  "@settingsUnitsMetric": {
+    "description": "Units value: metric"
+  },
+  "settingsUnitsImperial": "อิมพีเรียล",
+  "@settingsUnitsImperial": {
+    "description": "Units value: imperial"
+  },
+  "settingsAppearanceLight": "สว่าง",
+  "@settingsAppearanceLight": {
+    "description": "Appearance value: light theme"
+  },
+  "settingsAppearanceDark": "มืด",
+  "@settingsAppearanceDark": {
+    "description": "Appearance value: dark theme"
+  },
+  "settingsBackupDaily": "ทุกวัน",
+  "@settingsBackupDaily": {
+    "description": "Automatic backup frequency: once a day"
+  },
+  "settingsBackupWeekly": "ทุกสัปดาห์",
+  "@settingsBackupWeekly": {
+    "description": "Automatic backup frequency: once a week"
+  },
+  "settingsAppearanceSystem": "ตามระบบ",
+  "@settingsAppearanceSystem": {
+    "description": "Appearance value: follow the operating system light/dark setting"
+  },
+  "importSourceEncryptedBackup": "ข้อมูลสำรองที่เข้ารหัส",
+  "importSourceOpenStrapBackup": "ข้อมูลสำรอง OpenStrap",
+  "importSourceRawSensor": "ไฟล์ส่งออกข้อมูลดิบจากเซ็นเซอร์",
+  "importSourceVendorCsv": "ไฟล์ CSV ที่ส่งออกจากผู้ผลิต",
+  "importSourceJournalCsv": "CSV บันทึกประจำวัน",
+  "importSourceLabCsv": "CSV ผลตรวจทางห้องแล็บ",
+  "importSourceFilePicker": "ตัวเลือกไฟล์",
+  "importSourceImport": "การนำเข้า",
+  "importSourceNothingSelected": "ไม่ได้เลือกอะไร",
+  "welcomeEncryptedBackupUseSettings": "ไฟล์นี้เป็นข้อมูลสำรองที่เข้ารหัส เปิดจาก การตั้งค่า → ข้อมูลของคุณ ซึ่งจะถามรหัสผ่านได้",
+  "welcomeNotUtf8": "{file}: ไม่ได้บันทึกเป็น UTF-8 ให้บันทึกเป็น \"CSV UTF-8\" แล้วนำเข้าอีกครั้ง",
+  "welcomeCorruptTables": "อ่าน {tables} ไม่ได้ SQLite รายงานว่าไฟล์เสียหายในตารางเหล่านั้น ตารางอื่นทั้งหมดนำเข้าได้ตามปกติ",
+  "welcomeRejectsMore": "{shown}; และอีก {count} รายการ",
+  "notifLookbackFlaggedBody": "สัปดาห์นี้มีการแจ้งเตือน: {items} ดูรายละเอียดได้ที่สุขภาพ",
+  "@notifLookbackFlaggedBody": {
+    "description": "Weekly lookback notification body listing the week's flags; {items} is a comma-separated list of the flag phrases below.",
+    "placeholders": {
+      "items": {
+        "type": "String"
+      }
+    }
+  },
+  "notifLookbackIllness": "อัตราการเต้นของหัวใจขณะพักสูงขึ้น ×{count}",
+  "@notifLookbackIllness": {
+    "description": "Weekly lookback flag phrase: nights with raised resting heart rate.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "notifLookbackAnomaly": "สรีรวิทยาผิดปกติ ×{count}",
+  "@notifLookbackAnomaly": {
+    "description": "Weekly lookback flag phrase: nights with unusual physiology.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "notifLookbackTemp": "อุณหภูมิผิวสูงขึ้น ×{count}",
+  "@notifLookbackTemp": {
+    "description": "Weekly lookback flag phrase: nights with elevated skin temperature.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "notifLookbackRhrHigherBody": "ช่วงปลายสัปดาห์อัตราการเต้นของหัวใจขณะพักสูงกว่าช่วงต้นสัปดาห์ประมาณ {bpm} bpm",
+  "@notifLookbackRhrHigherBody": {
+    "description": "Weekly lookback notification body: resting heart rate drifted up over the week.",
+    "placeholders": {
+      "bpm": {
+        "type": "int"
+      }
+    }
+  },
+  "notifLookbackRhrLowerBody": "ช่วงปลายสัปดาห์อัตราการเต้นของหัวใจขณะพักต่ำกว่าช่วงต้นสัปดาห์ประมาณ {bpm} bpm",
+  "@notifLookbackRhrLowerBody": {
+    "description": "Weekly lookback notification body: resting heart rate drifted down over the week.",
+    "placeholders": {
+      "bpm": {
+        "type": "int"
+      }
+    }
+  },
+  "notifSyncStaleBody": "ไม่มีข้อมูลใหม่มาประมาณ {hours} ชั่วโมงแล้ว เปิด OpenStrap เพื่อเชื่อมต่อใหม่ การซิงค์เบื้องหลังอาจหยุดทำงาน",
+  "@notifSyncStaleBody": {
+    "description": "OS notification body when the band has not synced for several hours.",
+    "placeholders": {
+      "hours": {
+        "type": "int"
       }
     }
   }

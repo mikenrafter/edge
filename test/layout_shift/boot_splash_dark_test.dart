@@ -1,7 +1,7 @@
 // Flashbang rule: the cold-start cover is dark even for light-mode users.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/layout_shift/layout_shift.dart';
+import '../support/layout_shift/layout_shift.dart';
 import 'package:openstrap_edge/ui2/onboarding/splash.dart';
 
 Widget _app({required bool ready, bool reduced = false}) => MaterialApp(

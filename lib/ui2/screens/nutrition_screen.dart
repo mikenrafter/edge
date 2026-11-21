@@ -71,6 +71,7 @@ class _NutritionScreenState extends State<NutritionScreen>
   double _assumedMl = 0;
   bool _loading = true;
   bool _paused = false;
+  bool _failed = false;
 
   /// The local profile map, read once per load. Targets live here rather than
   /// in a new table: they are two numbers the user typed, the same shape as
@@ -119,7 +120,12 @@ class _NutritionScreenState extends State<NutritionScreen>
       await _loadToday();
     } on ReadPaused {
       // An import has the database: today is not readable yet, and not wrong.
-      if (mounted) setState(() => (_loading = false, _paused = true));
+      if (mounted) {
+        setState(() => (_loading = false, _paused = true, _failed = false));
+      }
+    } catch (_) {
+      // A locked or busy database used to leave the tab on a loader forever.
+      if (mounted) setState(() => (_loading = false, _failed = true));
     }
   }
 
@@ -138,10 +144,14 @@ class _NutritionScreenState extends State<NutritionScreen>
             if (weekDates.contains(r['date']))
               r['date'] as String: (r['value'] as num).toDouble(),
         };
-    final burnedByDate = weekOf(
-        await LocalDb.metricSeries('calories_total', measuredOnly: true));
+    final from = weekDates.isEmpty
+        ? null
+        : (weekDates.toList()..sort()).first;
+    final burnedByDate = weekOf(await LocalDb.metricSeries('calories_total',
+        measuredOnly: true, from: from));
     if (!stillNewest(#nutrition, t)) return;
-    final wornMinByDate = weekOf(await LocalDb.metricSeries('worn_min'));
+    final wornMinByDate =
+        weekOf(await LocalDb.metricSeries('worn_min', from: from));
     if (!stillNewest(#nutrition, t)) return;
     Metric? burned;
     double? water;
@@ -173,6 +183,7 @@ class _NutritionScreenState extends State<NutritionScreen>
       _profile = {...?app.user};
       _loading = false;
       _paused = false;
+      _failed = false;
     });
     if (repo != null) {
       _refresh.afterPaint(repo, pending).then((landed) {
@@ -298,6 +309,19 @@ class _NutritionScreenState extends State<NutritionScreen>
         else if (_loading)
           InlineLoading(
               status: l?.loadingNutrition ?? 'Reading your meals and water')
+        else if (_failed)
+          StatusCard(
+            l?.wellnessLoadFailedTitle ?? 'This could not be read',
+            l?.wellnessLoadFailedBody ??
+                'Reading your stored data failed. Nothing was deleted — this '
+                    'is a read that went wrong, not missing data.',
+            fix: l?.homeTryAgain ?? 'Try again',
+            icon: LucideIcons.databaseZap,
+            onFix: () {
+              setState(() => (_loading = true, _failed = false));
+              _load();
+            },
+          )
         else
           [_todayTab, _weekTab, _goalsTab][_tab](c),
       ],

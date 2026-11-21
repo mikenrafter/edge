@@ -1218,6 +1218,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// Tasker integration bridge — listens for Android broadcast intents from
   /// Tasker and buzzes the strap. Wired in the constructor.
   late final TaskerBridge taskerBridge = TaskerBridge(
+    deliverPending: _checkPendingTaskerBuzz,
     buzzPattern: (p) => _dispatchBandAlert('tasker', pattern: p),
     playRequest: _playFromTasker,
     log: _log,
@@ -1364,8 +1365,12 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// Re-read the sensor rows. Call after pairing or forgetting one; also runs
   /// whenever a paired device's row changes (a sync, a battery report).
   Future<void> refreshSensors() async {
-    _deviceRowSub ??=
-        LocalDb.deviceRowChanged.stream.listen((_) => unawaited(refreshSensors()));
+    _deviceRowSub ??= LocalDb.deviceRowChanged.stream.listen((_) {
+      unawaited(refreshSensors().catchError((_) async {
+        await Future<void>.delayed(const Duration(seconds: 2));
+        if (!_disposed) await refreshSensors().catchError((_) {});
+      }));
+    });
     final rows = await LocalDb.deviceRows();
     _sensors = [
       for (final r in rows)
@@ -1718,13 +1723,25 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       try {
         counts = await LocalDb.importFromDbFile(path,
             onProgress: (p) => importProgress.value = p);
-        await _adoptRestoredSettings(counts);
-        await LocalDb.refitAllLiveStepGains();
-      } finally {
+      } catch (_) {
         invalidateLiveStepCalibration();
-        // A partial merge can have banked alarm/calibration rows before failing.
         await _loadAlarmSchedule();
         if (isConnected) await _armNextAlarmOccurrence();
+        rethrow;
+      }
+      try {
+        await _adoptRestoredSettings(counts);
+        await LocalDb.refitAllLiveStepGains();
+      } catch (e) {
+        importRollupError = '$e';
+      } finally {
+        invalidateLiveStepCalibration();
+        try {
+          await _loadAlarmSchedule();
+          if (isConnected) await _armNextAlarmOccurrence();
+        } catch (e) {
+          importRollupError ??= '$e';
+        }
       }
       await _reloadProfile();
       // Session drafts were built against the data before this import: their
@@ -2258,18 +2275,35 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       // consent records we post; someone who has consented to nothing has
       // nothing to stamp, so fetching it was a launch-time call to the
       // operator's server on behalf of a user who had opted out of all of it.
-      if (telemetryConsent || healthShareConsent) {
-        final status = await CompanionClient.getStatus();
-        final v = status?['terms']?['version'];
-        if (v is int && v > 0) {
-          termsVersion = v;
-          t.consentVersion = v;
-          HealthUploader.instance.consentVersion = v;
-        }
-      }
+      if (telemetryConsent || healthShareConsent) await _refreshTermsVersion();
     } catch (e) {
       _log('[companion] init failed (non-fatal): $e');
     }
+  }
+
+  Future<void> _refreshTermsVersion() async {
+    final status = await CompanionClient.getStatus();
+    final v = status?['terms']?['version'];
+    if (v is int && v > 0) {
+      termsVersion = v;
+      TelemetryService.instance.consentVersion = v;
+      HealthUploader.instance.consentVersion = v;
+    }
+  }
+
+  Future<void> _postConsent(String scope, bool on) async {
+    if (on) {
+      await _refreshTermsVersion();
+      if (!(scope == 'telemetry' ? telemetryConsent : healthShareConsent)) {
+        return;
+      }
+    }
+    await CompanionClient.postConsent(
+      deviceId: deviceId,
+      scope: scope,
+      granted: on,
+      termsVersion: termsVersion,
+    );
   }
 
   /// The live band fields folded into each telemetry batch's device snapshot.
@@ -2297,15 +2331,9 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     await prefs.setBool(_kConsentChosen, true);
     TelemetryService.instance.applyConsent(on);
     notifyListeners();
-    unawaited(
-      CompanionClient.postConsent(
-        deviceId: deviceId,
-        scope: 'telemetry',
-        granted: on,
-        termsVersion: termsVersion,
-      ),
-    );
-    if (on) unawaited(TelemetryService.instance.flush());
+    unawaited(_postConsent('telemetry', on).whenComplete(() {
+      if (on && telemetryConsent) unawaited(TelemetryService.instance.flush());
+    }));
   }
 
   /// Toggle full-.db health-data contribution. Persists + records server consent.
@@ -2316,14 +2344,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     await prefs.setBool(_kHealthShareConsent, on);
     await prefs.setBool(_kConsentChosen, true);
     notifyListeners();
-    unawaited(
-      CompanionClient.postConsent(
-        deviceId: deviceId,
-        scope: 'health_data',
-        granted: on,
-        termsVersion: termsVersion,
-      ),
-    );
+    unawaited(_postConsent('health_data', on));
   }
 
   /// Adopts the newest weighing a paired scale banked as the profile's weight
@@ -2385,8 +2406,17 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       throw StateError('profile write cancelled by reset');
     }
     final goalBefore = user?['step_goal'];
-    user = {...?user, ...fields};
-    await prefs.setString(_kProfile, jsonEncode(user));
+    final before = user;
+    final merged = {...?user, ...fields};
+    user = merged;
+    try {
+      await prefs.setString(_kProfile, jsonEncode(merged));
+    } catch (_) {
+      // A failed write must not leave unsaved values in memory, or a retry
+      // sees "no change". Only roll back if nobody else updated meanwhile.
+      if (identical(user, merged)) user = before;
+      rethrow;
+    }
     // The profile is a catalogued input (design 06 1c): stamp the change.
     unawaited(bumpInputRev('profile', '').catchError((Object _) {}));
     // Days held open for a missing profile field re-derive on a heavy pass.
@@ -2691,6 +2721,11 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       }
       _savedAlarm = null;
       _armGeneration++;
+      // The alarm cache too: wipeAll emptied the table, and a re-pair in this
+      // process would otherwise arm the deleted schedule on the new band.
+      _schedule = fillDefaultAlarmSchedule(const []);
+      _smartWakeFiredForEpoch = null;
+      _alarmFiredAt = null;
 
       // 4 · the in-memory mirrors of what we just deleted. These are plain
       // fields, restored only by the profile load at launch, so leaving them
@@ -3704,7 +3739,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       if (row == null || LocalDb.storeReplacedSince(generation)) return;
       final dayId = (row['day_id'] ?? row['date'])?.toString();
       if (dayId == null || dayId.isEmpty) return;
-      final score = (row['readiness'] as num?)?.round();
+      // The pinned headline wins, same as Home: a later re-derive can move
+      // day_result's readiness off the number every other surface shows.
+      final score = await LocalDb.headlinePinFor(dayId) ??
+          (row['readiness'] as num?)?.round();
       if (score == null) {
         return; // recovery not computed (no nocturnal HRV) → no fire
       }
@@ -3844,6 +3882,12 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// HERE, on the first foreground of the morning/evening window, so the Today
   /// card + breakdown open instantly. Cached per day+period; rate-limited so a
   /// failing provider never gets hammered.
+  /// The resolved nightly-sweep slot (minutes from midnight), same value the
+  /// notification and [_maybeGenerateBriefing] use.
+  Future<int> eveningSlotMin() async => (await AiPrefs.load())
+      .resolvedEveningMin(
+          bedtimeMinOfDay: (await _readCrossdaySummary()).bedtimeMin);
+
   Future<void> _maybeGenerateBriefing({DateTime? now}) async {
     final cfg = coachConfig;
     final r = repo;
@@ -3868,7 +3912,13 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       } else if (ai.morningEnabled && minOfDay >= AiPrefs.morningFloorMin) {
         want = BriefingPeriod.morning;
       }
-      if (want == null || BriefingStore.read(want) != null) return;
+      if (want == null) return;
+      final cached = BriefingStore.read(want);
+      if (cached != null &&
+          !(want == BriefingPeriod.morning &&
+              briefingIsProvisional(cached.inputs))) {
+        return;
+      }
       if (want == BriefingPeriod.morning) {
         // Don't opportunistically write (and permanently cache) a morning
         // briefing off a still-syncing/truncated overnight — e.g. the band
@@ -4334,7 +4384,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
 
   /// Replaces the engine's activity-review refresh. Tests only.
   @visibleForTesting
-  Future<bool> Function(Profile profile)? debugRefreshActivityReviews;
+  Future<bool?> Function(Profile profile)? debugRefreshActivityReviews;
 
   // The activity-review retry chain. Owned here: the merged DeriveCoordinator
   // has no review hooks, so the host keeps the backoff state and the resume
@@ -4354,14 +4404,16 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       bumpInsights();
     }
     try {
-      if (await (debugRefreshActivityReviews?.call(_profile) ??
-          _derive.refreshActivityReviews(_profile))) {
+      final landed = await (debugRefreshActivityReviews?.call(_profile) ??
+          _derive.refreshActivityReviews(_profile));
+      if (landed != false) {
         _activityReviewAttempts = 0;
-        bumpInsights();
+        if (landed == true) bumpInsights();
         return;
       }
     } catch (e) {
       _log('[activity-review] refresh deferred: $e');
+      if (_activityReviewAttempts == 0) bumpInsights();
     }
     // A long derive holds the engine; back off 2s → 30s instead of polling,
     // and stop after a few minutes so a rollup that keeps failing is left to
@@ -4745,37 +4797,52 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   // the _init()-triggered call is still in its bounded wait) must no-op
   // rather than race a second concurrent buzz/clear.
   bool _taskerBuzzCheckInFlight = false;
+  bool _taskerBuzzRerun = false;
 
   Future<void> _checkPendingTaskerBuzz() async {
-    if (!Platform.isAndroid || _taskerBuzzCheckInFlight) return;
+    if (!Platform.isAndroid) return;
+    if (_taskerBuzzCheckInFlight) {
+      _taskerBuzzRerun = true;
+      return;
+    }
     _taskerBuzzCheckInFlight = true;
     try {
-      final pending = await TaskerBridge.peekPendingBuzz();
-      if (pending == null) return;
-      if (!pending.isFresh(DateTime.now())) {
-        _log('[tasker] dropping stale pending buzz (pattern=${pending.pattern}, '
-            'requestedAtMs=${pending.requestedAtMs})');
-        await TaskerBridge.clearPendingBuzz();
-        return;
-      }
-      // Same bounded reconnect grace as main. A fresh request remains queued
-      // after timeout; the connection transition retries it. Never replace its
-      // source time with now or discard a timestamped request as legacy.
-      for (var i = 0; i < 40 && !engine.isConnected; i++) {
-        if (_disposed || ResetGate.active || !Prefs.taskerConnectionOn) return;
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-      }
-      if (!engine.isConnected || _disposed || ResetGate.active ||
-          !Prefs.taskerConnectionOn) { return; }
-      if (!pending.isFresh(DateTime.now())) {
-        _log('[tasker] pending buzz went stale waiting for a connection');
-        await TaskerBridge.clearPendingBuzz();
-        return;
-      }
-      await _dispatchBandAlert('tasker', pattern: pending.pattern);
-      await TaskerBridge.clearPendingBuzz();
+      do {
+        _taskerBuzzRerun = false;
+        await _checkPendingTaskerBuzzOnce();
+      } while (_taskerBuzzRerun);
     } finally {
       _taskerBuzzCheckInFlight = false;
+    }
+  }
+
+  Future<void> _checkPendingTaskerBuzzOnce() async {
+    final pending = await TaskerBridge.peekPendingBuzz();
+    if (pending == null) return;
+    if (!pending.isFresh(DateTime.now())) {
+      _log('[tasker] dropping stale pending buzz (pattern=${pending.pattern}, '
+          'requestedAtMs=${pending.requestedAtMs})');
+      await TaskerBridge.clearPendingBuzz(requestedAtMs: pending.requestedAtMs);
+      return;
+    }
+    for (var i = 0; i < 40 && !engine.isConnected; i++) {
+      if (_disposed || ResetGate.active || !Prefs.taskerConnectionOn) return;
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+    if (!engine.isConnected || _disposed || ResetGate.active ||
+        !Prefs.taskerConnectionOn) { return; }
+    final latest = await TaskerBridge.peekPendingBuzz();
+    if (latest == null) return;
+    if (!latest.isFresh(DateTime.now())) {
+      _log('[tasker] pending buzz went stale waiting for a connection');
+      await TaskerBridge.clearPendingBuzz(requestedAtMs: latest.requestedAtMs);
+      return;
+    }
+    await _dispatchBandAlert('tasker', pattern: latest.pattern);
+    await TaskerBridge.clearPendingBuzz(requestedAtMs: latest.requestedAtMs);
+    final after = await TaskerBridge.peekPendingBuzz();
+    if (after != null && after.requestedAtMs != latest.requestedAtMs) {
+      _taskerBuzzRerun = true;
     }
   }
 
@@ -5882,6 +5949,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// to be. Two devices reporting in the same second are two samples; one
   /// device reporting the same stamp twice is one.
   final Map<String, int> _liveHrTraceAt = {};
+  final Map<String, int> _liveHrClearedAt = {};
 
   /// One device's recent readings, newest last, bpm only — the shape
   /// `LiveHrCard` already draws. Null [deviceId] means [liveHrDeviceId], the
@@ -5982,7 +6050,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// `liveHrMultiDevice` disagree with the chart. Returns true when it took
   /// the sample, i.e. when a listener has something new to draw.
   bool _appendLiveHr(String deviceId, int? hr, int? at) {
-    if (hr == null || hr <= 0 || at == null || at == _liveHrTraceAt[deviceId]) {
+    if (hr == null || hr <= 0 || at == null || at == _liveHrTraceAt[deviceId] || at == _liveHrClearedAt[deviceId]) {
       return false;
     }
     _liveHrTraceAt[deviceId] = at;
@@ -6013,7 +6081,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   bool _clearLiveHrTrace(String deviceId) {
     if (!_liveHrTraceAt.containsKey(deviceId)) return false;
     _liveHrTrace.removeWhere((e) => e.deviceId == deviceId);
-    _liveHrTraceAt.remove(deviceId);
+    _liveHrClearedAt[deviceId] = _liveHrTraceAt.remove(deviceId)!;
     liveHrTraceRev++;
     return true;
   }
@@ -6147,7 +6215,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     if (healed != null) {
       paired = healed;
       unawaited(PairedDevice.save(healed.remoteId, healed.serial,
-          generation: s.generation));
+          generation: s.generation, onlyIfPaired: true));
     }
     // Pin the discovered generation onto the pairing record (HEAL ONLY — same
     // rule as the serial above: never CREATE a pairing here). A known-device
@@ -6160,7 +6228,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       paired =
           PairedDevice(p.remoteId, p.serial, generation: s.generation);
       unawaited(
-          PairedDevice.save(p.remoteId, p.serial, generation: s.generation));
+          PairedDevice.save(p.remoteId, p.serial, generation: s.generation, onlyIfPaired: true));
     }
     // WHOOP MG identity, remembered per serial so the ECG entry survives a
     // disconnect. Set only from a positive revision-1 MAVERICK hello — never
@@ -8860,8 +8928,8 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       }
       _rhr28 = await LocalDb.trailingSeriesValues('rhr', 28);
       final vals = await LocalDb.trailingSeriesValues('rhr', 7);
+      _nightlyRhr = vals.isEmpty ? null : vals.last;
       if (vals.isEmpty) return;
-      _nightlyRhr = vals.last;
       // Adopt it into a session that started before this read completed, but
       // only to FILL A GAP — overwriting an anchor a running session was
       // already scored against would move its number mid-workout.
@@ -8964,15 +9032,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   Future<void> _toggleWorkoutFromGesture(StrapEvent _) async {
     try {
       if (activeWorkout != null) {
-        final id = activeWorkout!.workoutId;
         await stopWorkout();
-        if (id != null) {
-          try {
-            await repo?.endWorkout(id);
-          } catch (_) {
-            /* seam not implemented yet; local already stopped */
-          }
-        }
       } else {
         String? id;
         try {
@@ -9110,13 +9170,20 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       final r = await _phonePedometer.syncRecent(
         days: days,
         onDayBanked: (day, changed) {
+          // A rewrite that left the total alone needs no derive: a resume
+          // with nothing moved used to queue a full light pass.
+          if (!changed) return;
           progress.days++;
-          if (changed && day != todayLabel()) progress.pastDayChanged = true;
+          if (day != todayLabel()) progress.pastDayChanged = true;
           // A day committing after its read was retired is still real.
           if (progress.retired) _queuePhoneDerive(progress);
         },
       );
-      if (stale()) return 0;
+      if (stale()) {
+        // Rows already committed are real even if a newer read took over.
+        if (progress.days > 0) _queuePhoneDerive(progress);
+        return 0;
+      }
       phoneStepsLastSyncedDays = r.daysRead;
       phoneStepsLastTotal = r.totalSteps;
       await _refreshPhoneStepsToday();

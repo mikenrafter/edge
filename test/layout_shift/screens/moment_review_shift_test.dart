@@ -11,7 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/moment_follow_ups.dart';
 import 'package:openstrap_edge/gestures/moment_review_service.dart';
 import 'package:openstrap_edge/gestures/moment_review_store.dart';
-import 'package:openstrap_edge/layout_shift/layout_shift.dart';
+import '../../support/layout_shift/layout_shift.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/screens/moment_follow_up.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';

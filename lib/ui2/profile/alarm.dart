@@ -420,7 +420,8 @@ class AlarmScreenView extends StatefulWidget {
   static String _whichDay(BuildContext c, DateTime d, DateTime now) {
     final l = AppLocalizations.of(c);
     final days = calendarDaysBetween(now, d);
-    if (days < 0) {
+    // same calendar day but already passed is spent too, not "later today"
+    if (days < 0 || !d.isAfter(now)) {
       return l?.alarmInThePast ?? 'Already passed';
     }
     if (days == 0) return l?.alarmLaterToday ?? 'Later today';

@@ -1,6 +1,6 @@
 # Layout shift budget (design note)
 
-Owner request 2026-10-17. A tunable layout-shift scorer for `lib/ui2`, the
+A tunable layout-shift scorer for `lib/ui2`, the
 Flutter counterpart of the web's Cumulative Layout Shift (CLS) with extra
 rules for focus, controls, colour, motion and launch brightness.
 
@@ -12,27 +12,23 @@ analyzer plugin knows which widget combinations move content after the first
 frame. So the parts that are generic are borrowed (the web CLS impact formula:
 impact fraction × distance fraction) and the rest is ours:
 
-- `lib/layout_shift/` — pure Dart, no Flutter import. Policy, model, scorer,
+- `test/support/layout_shift/` — pure Dart, no Flutter import. Policy, model, scorer,
   launch and motion checks. Deterministic: every time is an explicit
   millisecond offset; nothing reads a clock.
-- `test/support/layout_shift_probe.dart` — widget-test probe that snapshots the
-  render tree each pumped frame into the model, so a widget test can score a
-  real screen and fail on `error` findings.
-- `test/layout_shift/` — scorer law/example tests, probe tests, and a guard
-  that the native launch backgrounds stay dark.
+- `test/layout_shift/` — scorer laws and hand-built example fixtures.
 
-## Model (`lib/layout_shift/shift_model.dart`)
+## Model (`test/support/layout_shift/shift_model.dart`)
 
 All times are ms since the scenario start. Rects are logical pixels.
 
 - `ShiftRect(left, top, width, height)` with `area`, `center`, `intersect`,
   `union` bounds, `distanceTo(other)` (centre to centre).
 - `ElementRole { paragraph, input, control, media, decorative, other,
-  placeholder }`. `placeholder` is a loading stand-in (a skeleton, an
-  `InlineLoading`) that holds the space its content will fill.
+  placeholder }`. `placeholder` is a loading stand-in (a skeleton, a
+  loading widget) that holds the space its content will fill.
 - `ElementSnapshot(id, rect, role, colorArgb, focusable, focused, enabled)`.
 - `Frame(atMs, elements)` — one painted frame.
-- `Interaction(atMs, sourceId, intentTargetId?)` — a user action. `sourceId`
+- `Interaction(atMs, sourceId, intentTargetId?, afterFrameIndex?)` — a user action. `sourceId`
   is the element acted on (the copy button); `intentTargetId` is the element
   the action is meant to affect (the copied text). Together they form an
   action + intent pair.
@@ -41,10 +37,12 @@ All times are ms since the scenario start. Rects are logical pixels.
   sharing a `chainId` form a chain.
 - `Scenario(viewport, frames, interactions, focus, animations)`.
 
-## Policy (`lib/layout_shift/shift_policy.dart`)
+## Policy (`test/support/layout_shift/shift_policy.dart`)
 
-Immutable, `copyWith`, three presets: `ShiftPolicy.standard`,
-`ShiftPolicy.strict`, `ShiftPolicy.lenient`. Defaults (`standard`):
+`copyWith` and three constant presets: `ShiftPolicy.standard`,
+`ShiftPolicy.strict`, `ShiftPolicy.lenient`. Custom policies retain caller-supplied
+curve lists and role-weight maps; callers must not mutate those collections.
+Defaults (`standard`):
 
 | knob | default | meaning |
 |---|---|---|
@@ -57,8 +55,8 @@ Immutable, `copyWith`, three presets: `ShiftPolicy.standard`,
 | `animationGraceMs` | 100 | …this many extra free ms (curve evaluated at `t − grace`) |
 | `interactionWindowMs` | 500 | shifts later than this after the last interaction are out of window |
 | `outOfWindowCost` | 1.0 | latency multiplier for out-of-window shifts |
-| `chainRangeMs` | 75..2000 | a chain qualifies if it starts ≥75 ms… and ends ≤2000 ms after the interaction |
-| `chainCycleMs` | 200..400 | …and every span in it lasts within this range |
+| `chainStartMinMs` / `chainEndMaxMs` | 75..2000 | a chain qualifies if it starts ≥75 ms… and ends ≤2000 ms after the interaction |
+| `chainCycleMinMs` / `chainCycleMaxMs` | 200..400 | …and every span in it lasts within this range |
 | `chainDiscount` | 0.5 | multiplier on shifts during a qualifying chain |
 | `roleWeight` | paragraph 2, input 3, control 1.5, media 1, decorative .5, other 1, placeholder .5 | |
 | `colorWeight` | 0.5 | colour change counts as a shift of `area × colorDelta × colorWeight` |
@@ -73,7 +71,7 @@ Immutable, `copyWith`, three presets: `ShiftPolicy.standard`,
 | `sourceShiftFloor` | 0.5 (strict .75, lenient .3) | minimum latency multiplier for the interaction's source, or a control within `denseGapPx` of it |
 | `focusShiftFloor` | 0.5 (strict .75, lenient .3) | …for an element focused before/after the frame, or with focus history of recency weight ≥ .5 |
 | `denseShiftFloor` | 0.3 (strict .5, lenient .15) | …for a control that receives `denseMultiplier` |
-| `disabledShieldMs` | 400..1000 | a shifted focused control visibly disabled for this long… |
+| `disabledShieldMinMs` / `disabledShieldMaxMs` | 400..1000 | a shifted focused control visibly disabled for this long… |
 | `disabledDiscount` | 0.8 | …earns this multiplier (small benefit) |
 | `controlMoveScore` | 0.1 (strict .15, lenient .06) | minimum score of a control with a hazard (source, packed sibling of source, focused or recently focused, dense) that moved a full `controlMoveRefPx` |
 | `controlMoveRefPx` | 48 (strict 40, lenient 64) | one touch target; displacement at or past it earns the full `controlMoveScore` |
@@ -84,16 +82,33 @@ Immutable, `copyWith`, three presets: `ShiftPolicy.standard`,
 | `warnAt` / `errorAt` | 0.05 / 0.25 | per-finding severity thresholds |
 | `firstPaintMaxMs` / `firstPaintMaxArgb` | 20 / 0xFF222222 | launch: first paint by 20 ms, no brighter than #222 (relative luminance) |
 | `reducedMaxAnimationMs` | 150 | reduced motion: animations ≤150 ms or none |
-| `reducedChainCycleMs` | 750..2000 | reduced motion: chain cycles in this range |
+| `reducedChainCycleMinMs` / `reducedChainCycleMaxMs` | 750..2000 | reduced motion: chain cycles in this range |
 
-## Scoring (`lib/layout_shift/shift_scorer.dart`)
+## Scoring (`test/support/layout_shift/shift_scorer.dart`)
 
 `ShiftReport score(Scenario s, ShiftPolicy p)` compares each consecutive frame
-pair by element id. Per moved/resized/recoloured element:
+pair by element id. An interaction may supply `afterFrameIndex`, the index of
+its last pre-action baseline. Only later frames belong to that interaction:
+pre-tap changes keep the preceding interaction even at the same timestamp.
+Shift, load and appearance use this boundary consistently. With no boundary,
+hand-built scenarios retain timestamp-only attribution. Equal-time interactions
+retain their recorded order. Per moved/resized/recoloured element:
 
 1. **base** = `(union(before, after).area / viewport.area) × (distance / max(viewport.w, viewport.h))`
    + `area/viewport.area × colorDelta × colorWeight` (colorDelta = max RGB
-   channel delta / 255).
+   channel delta / 255). Impact and colour areas are clipped to the viewport;
+   elements invisible in both frames contribute nothing. Distance is the larger
+   of centre displacement and half the largest dimension change when both edges
+   are visible. Per axis, use original edge movements for edges inside the
+   viewport in either frame: average two visible edges for centre movement and
+   take half their difference for resizing; a lone visible edge supplies the
+   full movement. Stationary boundary edges anchor a resize; moving boundary
+   edges are clipped, so growth hidden below the fold is free. If neither edge
+   is visible, retain their common translation (the
+   smaller same-direction movement), so a panel covering the viewport can still
+   move. Opposite-direction hidden growth contributes nothing. The tests in
+   `bot_regressions_test.dart` pin straddling translation, one-pixel exit,
+   covering-panel translation and hidden growth.
 2. **× roleWeight**.
 3. **× latency** (raised to the hazard floor, below): curve at `t = frame.atMs − lastInteraction.atMs` (with the
    animation grace shift), or `outOfWindowCost` beyond the window / with no
@@ -101,10 +116,10 @@ pair by element id. Per moved/resized/recoloured element:
 4. **× chainDiscount** if inside a qualifying chain.
 5. **focus**: element is the last interaction's intent target ⇒ `× pairedDiscount`
    and `× (1 + pairDistanceWeight × d(source, intent))`; otherwise
-   `× (1 + focusDistanceWeight × dFocus)`. Focused ⇒ `× focusedMultiplier`.
+   `× (1 + focusDistanceWeight × dFocus)`. Focused in either frame ⇒ `× focusedMultiplier`.
 6. **dense**: two controls within `denseGapPx` before the frame whose relative
    offset changed ⇒ `× denseMultiplier` on both; a focused control disabled for
-   a span inside `disabledShieldMs` covering the shift ⇒ `× disabledDiscount`.
+   a span inside `disabledShieldMinMs` / `disabledShieldMaxMs` covering the shift ⇒ `× disabledDiscount`.
 
 **Hazard floor.** The 100 ms free window is about response timing: the screen
 may react to a tap that quickly. It says nothing about where things land. A
@@ -135,7 +150,9 @@ controls). The intent target of the last interaction is exempt. Defaults: a
 
 Coverage: an element appearing (or growing) over a focusable element by at
 least `coverMinFraction` of its area adds `coverCost × fraction × latency`
-(× focusedMultiplier when focused).
+(× focusedMultiplier when focused). Ancestor–descendant pairs are excluded
+in both directions: a control owns its descendants, and a container does not
+occlude its own child.
 
 Each contribution is a `ShiftFinding(rule, elementId, atMs, score, severity)`
 with severity `none | warning | error` from `warnAt` / `errorAt`.
@@ -172,7 +189,8 @@ The `appear` rule charges content that lands in space nothing reserved for it.
 
 For each interaction, take the frames after the first frame at/after the
 interaction (that first frame is the initial paint and is free) and before the
-next interaction. An element present in frame i but absent (by id) in frame
+next interaction. With an explicit frame boundary, that baseline replaces the
+initial-paint frame and each later frame is eligible. An element present in frame i but absent (by id) in frame
 i-1 appears at `t` = frame i's `atMs`:
 
 - `visible` = the element's rect clipped to the viewport (nothing visible ⇒ no
@@ -240,10 +258,9 @@ differs from the remembered one is wrong whenever it shows up.
 
 Uses:
 
-- **Cross-screen**: settled frames of two screens, `only: shared:*`. Mark a
-  thing shared on every screen with `SharedSlot('avatar', child: …)`
-  (`lib/ui2/shared_slot.dart`), which keys its child `shared:avatar`; one id
-  per shared thing.
+- **Cross-screen**: settled frames of two screens, `only: (id) => id.startsWith('shared:')`. Give
+  matching elements a `ValueKey<String>` such as `shared:avatar`, and capture
+  each element's geometry under that id.
 - **Revisit**: visit 1 vs visit 2 of one screen, all ids. Charged even if a
   sync landed between visits: only small things (text inside a fixed box) may
   change with the data.
@@ -253,36 +270,44 @@ Uses:
 ## Launch and motion checks
 
 - `checkFirstPaint(atMs, argb, policy)` — error if later than `firstPaintMaxMs`
-  or brighter than `firstPaintMaxArgb`. Native launch windows (Android
-  `launch_background`, iOS `LaunchBackground` colour set) are the first paint,
-  in BOTH light and dark mode; a guard test parses them.
+  or brighter than `firstPaintMaxArgb`. The caller supplies the paint time and colour; this function does not
+  measure a device launch.
 - `checkReducedMotion(animations, policy)` — error per span longer than
   `reducedMaxAnimationMs` unless it belongs to a chain whose cycles sit in
-  `reducedChainCycleMs`.
+  `reducedChainCycleMinMs` / `reducedChainCycleMaxMs`.
 
 ## Not covered (yet)
 
 - A static analyzer rule for risky widget combinations. Needs an analyzer
   plugin (`custom_lint`) and a catalogue built from probe findings first.
 - Device-level timing: the probe sees pumped frames in a test, not real
-  vsync. First-paint timing on device is checked by the launch colour guard
-  (the native window paints before Dart runs), not measured.
+  vsync. Native launch colours and device timing need separate checks; neither is
+  measured by the pure scorer.
 
-## Measured screens (Phase 17)
+## Scorer change checklist
 
-`test/layout_shift/screens/` measures Home, Health, Readiness detail (open and
-the refresh landing after the stored-row paint), Wellness, a route push, and a
-scrolled Home reload. No error-level shifts, so there are no Known findings.
-Warnings seen (fake pumps, standard policy): Health refresh landing, 2
-warnings (top: a card column at 500 ms, 0.06); Readiness refresh landing, 9
-warnings (top: a control at 500 ms, 0.16 - the "building" block gives way to
-the chart key and breakdown). Phase 18 fixed both: Readiness detail and Health (Last night) hold the landed
-layout while the refresh is pending (ring box with a dash, dash rows, no tail
-until it lands), and both refresh-landing tests now assert no shift finding.
-Route pushes use `ShiftProbe(skipCoveredRoutes:
-true)`: the covered page is not scored, because its slide is the framework's
-transition.
+- When changing geometry scoring, run `bot_regressions_test.dart` alongside the
+  layout suite: preserve full translation at each viewport edge and on exit,
+  covering-panel translation, hidden-growth abstention and anchored-resize cost.
 
-## Known findings
+## Widget measurement
 
-None.
+`ShiftProbe` in `test/support/layout_shift_probe.dart` captures keyed render
+boxes at explicit millisecond offsets. Set `trackUnkeyed: true` to include
+text, controls, inputs and card slots. Hidden and clipped content is excluded;
+`skipCoveredRoutes: true` excludes the page under a pushed route.
+
+Application loading widgets can be recognized with `isPending`. Paint-only
+wrappers can be excluded from structural identity with `isPaintOnly`. These
+callbacks keep the probe independent of application widget classes.
+
+`ShiftRun` in `test/support/shift_run.dart` records taps and pumps the requested
+offsets. It captures intermediate animation frames. Call `opened()` before
+measuring initial loading, then `frames()` and `expectNoErrors('scenario')`.
+For a data refresh without a user action, capture with `snap()` and `frames()`.
+The driver captures indeterminate progress indicators by default. Set
+`rejectIndeterminateProgress: true` when a scenario forbids them.
+
+The scores are project policy, not browser CLS or a validated perceptual scale.
+The launch checks classify supplied times and colours; they do not measure
+startup speed. Widget tests use a fake clock and do not establish device timing.

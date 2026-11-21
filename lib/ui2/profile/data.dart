@@ -364,7 +364,8 @@ class _DataScreenState extends State<DataScreen> {
     final outcome = await runImport(app, paths,
         askPassphrase: () async => mounted
             ? askBackupPassphrase(context)
-            : null);
+            : null,
+        l: l);
     if (!mounted) return ('', false);
     setState(() => _outcome = outcome);
     return ('', false);
@@ -710,7 +711,12 @@ class DataScreenView extends StatelessWidget {
                       sub: l?.dataHowOftenSub(folder == null ? kBackupDirName : folderLabel, kBackupsKept) ??
                           'Saves an unencrypted copy to '
                               '${folder == null ? kBackupDirName : folderLabel} and keeps the last $kBackupsKept.',
-                      value: cadence.label,
+                      value: switch (cadence) {
+                        BackupCadence.off => l?.stateOff,
+                        BackupCadence.daily => l?.settingsBackupDaily,
+                        BackupCadence.weekly => l?.settingsBackupWeekly,
+                      } ??
+                          cadence.label,
                       onTap: busy ? null : onCycleCadence),
                   if (defaultTargetPlatform == TargetPlatform.android)
                     SetRow(LucideIcons.folder, C.purple,

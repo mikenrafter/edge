@@ -70,6 +70,12 @@ class UnresolvedOk {
 /// another package; those closures stay in the guard baseline until each
 /// reader becomes a persisted artifact.
 const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#inflateZipMemberHeavy, dispatcher: Dispatcher.run,
+    reason: 'streams a single ZIP archive member directly to disk off the UI isolate; initialized worker with primitive path/index args'),
+  WorkerEntry(#gzipFileHeavy, dispatcher: Dispatcher.run,
+    reason: 'streams file gzip compression and SHA-256 digest off the UI isolate; initialized worker with primitive path arg and Uint8List/String result'),
+  WorkerEntry(#rescaleStressRowHeavy, dispatcher: Dispatcher.run,
+    reason: 'decodes, rescales Baevsky stress score and re-encodes stored day_result JSON off the UI isolate; initialized worker with primitive String in/out'),
   WorkerEntry(#compactPulseRefusalsHeavy, dispatcher: Dispatcher.run,
     reason: 'Pulse checkpoint refusal replacement and range coalescing outside the write lock; real isolate round trip'),
   WorkerEntry(#detectPulseEpisodesHeavy, dispatcher: Dispatcher.run,

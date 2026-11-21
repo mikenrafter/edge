@@ -676,15 +676,19 @@ List<double> valuesOf(List<ChartPoint> pts) => [for (final p in pts) p.v];
 /// four-day sync gap the newest point sat at the right-hand edge under the
 /// label "Today", and the line ran straight through the missing week as though
 /// it had been measured.
-List<double?> denseDays(List<ChartPoint> pts, int days) =>
-    [for (final p in denseChartPoints(pts, days)) p?.v];
+List<double?> denseDays(List<ChartPoint> pts, int days, {DateTime? asOf}) =>
+    [for (final p in denseChartPoints(pts, days, asOf: asOf)) p?.v];
 
 /// The point behind each [denseDays] slot, flag included: a slot's value and
 /// its provenance are one object, so they cannot be read from different days.
-List<ChartPoint?> denseChartPoints(List<ChartPoint> pts, int days) {
+List<ChartPoint?> denseChartPoints(List<ChartPoint> pts, int days,
+    {DateTime? asOf}) {
   final out = List<ChartPoint?>.filled(days, null);
   for (final p in pts) {
-    final behind = daysBehind(p.t);
+    final behind = asOf == null
+        ? daysBehind(p.t)
+        : calendarDaysBetween(
+            DateTime.fromMillisecondsSinceEpoch(p.t * 1000), asOf);
     if (behind == null || behind < 0 || behind >= days) continue;
     out[days - 1 - behind] = p;
   }

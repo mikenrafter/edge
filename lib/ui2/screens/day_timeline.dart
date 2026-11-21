@@ -903,7 +903,24 @@ class TimelineData {
 
   static int _loadSequence = 0;
 
+  // One decode of each day bundle per load, not one per getter (see
+  // LocalRepository.sharingDayReads).
   static Future<TimelineData> load(
+    LocalRepository repo, {
+    String? want,
+    AppLocalizations? l,
+    void Function(Set<String>)? onPending,
+    FutureOr<void> Function(TimelineData)? onPrimary,
+  }) =>
+      repo.sharingDayReads(InlineAsyncWork(() => _read(
+            repo,
+            want: want,
+            l: l,
+            onPending: onPending,
+            onPrimary: onPrimary,
+          )));
+
+  static Future<TimelineData> _read(
     LocalRepository repo, {
     String? want,
     AppLocalizations? l,

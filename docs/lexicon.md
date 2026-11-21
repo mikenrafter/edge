@@ -267,3 +267,7 @@ in the same change that introduces it (AGENTS.md §6).
   hand-off keeps it consumed.
 - **release page**: the canonical `https://github.com/<repo>/releases/tag/<tag>`
   URL rebuilt locally from a checked source and tag. The only thing the app opens.
+
+## Sleep staging
+
+- Staging provenance: a night's requested method, effective method and observed seconds that retained the original labels after an HMM abstention. `hmm_cardio` means HMM and cardio both contributed; `hmm_vendor_staged` means HMM and a paired device both contributed. An absent field means unknown; it does not mean cardio or zero fallback. Avoid calling the requested method the effective method.

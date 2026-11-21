@@ -58,10 +58,11 @@ bool lateWakeProtection({
   required double baselineHr,
   required double recentHr,
   int minutes = 5,
+  double arousalBpm = 0.0,
 }) =>
     endMs > nowMs &&
     endMs - nowMs <= minutes * 60000 &&
-    (recentHr - baselineHr).abs() <= 2;
+    (recentHr - baselineHr) <= arousalBpm + 2.0;
 
 /// Engineering thresholds, see docs/wake-port-evidence.md. Missing or thin
 /// evidence vetoes early delivery. The historical baseline is independent of
@@ -103,6 +104,7 @@ bool evaluateLegacyWakeHeavy(
     baselineHr: baseline,
     recentHr: recent,
     minutes: profile.protectionMinutes,
+    arousalBpm: profile.hrArousalBpm,
   )) {
     return false;
   }

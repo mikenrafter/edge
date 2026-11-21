@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/layout_shift/layout_shift.dart';
+import '../support/layout_shift/layout_shift.dart';
 
 const _p = ShiftPolicy.standard;
 
@@ -66,7 +66,7 @@ void main() {
         AnimationSpan(0, 1000, chainId: 'c'),
         AnimationSpan(1000, 3500, chainId: 'c'),
       ], _p);
-      expect(f, isNotEmpty);
+      expect(f.map((finding) => finding.atMs), contains(1000));
     });
     test('reducedMaxAnimationMs 200 admits a 151 ms span', () {
       final p = _p.copyWith(reducedMaxAnimationMs: 200);

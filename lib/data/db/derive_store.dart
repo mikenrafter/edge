@@ -830,19 +830,19 @@ Future<({double floorG, String frozenOn, int days})?> _ldbGetMovementFloor() asy
     }
   }
 
-Future<List<Map<String, dynamic>>> _ldbMetricSeries(String key, {required int? limit, required bool measuredOnly, required bool ownOnly}) async {
+Future<List<Map<String, dynamic>>> _ldbMetricSeries(String key, {required int? limit, required bool measuredOnly, required bool ownOnly, String? from, DatabaseExecutor? executor}) async {
     InputReads.note('metric_series', '');
-    return LocalDb.readerRun((db) async {
-    return db.query(
+    Future<List<Map<String, dynamic>>> read(DatabaseExecutor db) => db.query(
       'metric_series',
-      where: 'key = ? AND value IS NOT NULL${LocalDb._validSql(key)}'
+      where: 'key = ? AND value IS NOT NULL'
+          '${from != null ? ' AND date >= ?' : ''}${LocalDb._validSql(key)}'
           '${measuredOnly ? ' AND date NOT IN (${LocalDb._importedDatesSql})' : ''}'
           '${ownOnly ? LocalDb._ownOnlySql : ''}',
-      whereArgs: [key],
+      whereArgs: [key, ?from],
       orderBy: 'date ASC',
       limit: limit,
     );
-    });
+    return executor == null ? LocalDb.readerRun(read) : read(executor);
   }
 
 Future<
@@ -891,16 +891,17 @@ Future<
     });
   }
 
-Future<List<double>> _ldbTrailingSeriesValues(String key, int n, {required bool measuredOnly, required String? before}) async {
+Future<List<double>> _ldbTrailingSeriesValues(String key, int n, {required bool measuredOnly, required String? before, String? since}) async {
     InputReads.note('metric_series', '');
     return LocalDb.readerRun((db) async {
     final rows = await db.rawQuery(
       'SELECT value FROM metric_series '
       'WHERE key = ? AND value IS NOT NULL '
       '${before != null ? 'AND date < ? ' : ''}'
+      '${since != null ? 'AND date >= ? ' : ''}'
       '${measuredOnly ? 'AND date NOT IN (${LocalDb._importedDatesSql}) ' : ''}'
       'ORDER BY date DESC LIMIT ?',
-      [key, ?before, n],
+      [key, ?before, ?since, n],
     );
     return [for (final r in rows.reversed) (r['value'] as num).toDouble()];
     });
@@ -1370,6 +1371,26 @@ Future<void> _ldbPrivComputeAndWriteFreshness() async {
     for (var row in recent) {
       final dayId = (row['day_id'] ?? row['date'])?.toString();
       if (dayId == null || dayId.isEmpty) continue;
+      if (dayId != today) {
+        final f = await LocalDb._pastDayFreshnessFacts(dayId, row['algo_version']);
+        if (f['skipped'] == 1) continue;
+        if (latestOvernightDay == null &&
+            (f['has_sleep'] == 1 || f['no_sleep'] == 1)) {
+          latestOvernightDay = dayId;
+          latestOvernightComputedAt = (row['computed_at'] as num?)?.toInt();
+        }
+        if (latestRecoveryDay == null &&
+            ((row['readiness'] as num?) != null || f['readiness'] == 1)) {
+          latestRecoveryDay = dayId;
+          latestRecoveryComputedAt = (row['computed_at'] as num?)?.toInt();
+        }
+        if (latestOvernightDay != null &&
+            latestRecoveryDay != null &&
+            (todayRow != null || dayId.compareTo(today) < 0)) {
+          break;
+        }
+        continue;
+      }
       final paired = await LocalDb._freshnessRead(dayId, row);
       if (paired == null) continue; // deleted while it was being read
       row = paired.row;

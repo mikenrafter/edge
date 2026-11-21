@@ -44,8 +44,10 @@ extension _EnginePrepare on DerivationEngine {
             rrResume == null
         ? _UnionHolder()
         : null;
+    final useHmmStages = await DerivationEngine._hmmStagesOn();
     final candidate = await _sleepCandidateForDay(dayId,
-        stats: stats, banked: banked, union: unionHolder);
+        stats: stats, banked: banked, union: unionHolder,
+        useHmmStages: useHmmStages);
 
     // M5: resolve ownership ONCE, over the union of every window this method
     // loads, and pass the same span lists to both the row filter and the
@@ -159,6 +161,7 @@ extension _EnginePrepare on DerivationEngine {
       sleepOffsetSec: candidate.present ? candidate.sleepOffsetSec : 0,
     );
     final prepared = candidate.toPreparedDay(
+      useHmmStages: useHmmStages,
       daySub: daySub,
       napSub: napSub,
       sleepSub: sleepSub,
@@ -191,7 +194,9 @@ extension _EnginePrepare on DerivationEngine {
     // search window's cut is the first, so the union is loaded here and left
     // in the holder for the day and staged-night windows.
     _UnionHolder? union,
+    bool? useHmmStages,
   }) async {
+    final hmmStages = useHmmStages ?? await DerivationEngine._hmmStagesOn();
     // A user sleep override is the source of truth — never serve the cached auto
     // candidate, and don't cache the override result (so a later edit / clear is
     // not shadowed by a stale artifact). The auto path keeps its finalized cache.
@@ -267,8 +272,6 @@ extension _EnginePrepare on DerivationEngine {
           for (final state in _nightStates.values) { state.clear(); }
           _cardioRowChunks.clear();
           _checkpointPlans.clear();
-          debugCheckpoints.lastEncodedPayload = null;
-          debugCheckpoints.lastDecodedPayload = null;
         }
         _checkpointGeneration = generation;
         final rows = await db.rawQuery(
@@ -322,6 +325,7 @@ extension _EnginePrepare on DerivationEngine {
           priority: searchPriority,
           wipeEpoch: gen.wipeEpoch,
           openCount: gen.openCount,
+          useHmmStages: hmmStages,
         );
       } catch (e) {
         provenance = null;
@@ -500,12 +504,11 @@ extension _EnginePrepare on DerivationEngine {
                 DerivationEngine._workerInputs(), job, _perDayTimeout,
                 'checkpoint-read $dayId')).value;
             if (restored.rejection != null) {
-              debugCheckpoints.rejections.add(restored.rejection!);
+              debugCheckpoints.reject(restored.rejection!);
               debugCheckpoints.misses++;
             } else if (LocalDb.cacheGeneration == checkpointPlan.generation &&
                 rowsEpoch == _retentionEpoch) {
               checkpointPlan.restored = restored.night;
-              debugCheckpoints.lastDecodedPayload = restored.payload;
               if (restored.cardio != null) rowBytes.add(restored.cardio!);
             }
           }

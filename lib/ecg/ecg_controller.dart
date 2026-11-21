@@ -471,6 +471,9 @@ class EcgController extends ChangeNotifier {
     if (wrist == null) return;
     _retriesUsed = 1;
     await begin(wrist);
+    // begin() consumes the budget only once it holds a lease; a retry that
+    // bailed on a precondition must not leak it into the next fresh reading.
+    _retriesUsed = 0;
   }
 
   /// Back / explicit cancel. Cleans up; the band stops generating.
@@ -899,27 +902,37 @@ class EcgController extends ChangeNotifier {
     _timer?.cancel();
     _timer = null;
     var incomplete = false;
-    if (!_cleanupDone) {
-      _cleanupDone = true;
-      _set(_state.copyWith(phase: EcgCapturePhase.cleaningUp, reason: reason));
-      final res = await transport.cleanup(lease);
-      final serial = _serial;
-      if (res.allSucceeded && serial != null) {
-        if (!await guard.clear(serial)) {
-          log('[ECG] guard clear was not acknowledged — retained.');
+    try {
+      if (!_cleanupDone) {
+        _cleanupDone = true;
+        _set(_state.copyWith(phase: EcgCapturePhase.cleaningUp, reason: reason));
+        final res = await transport.cleanup(lease);
+        final serial = _serial;
+        if (res.allSucceeded && serial != null) {
+          if (!await guard.clear(serial)) {
+            log('[ECG] guard clear was not acknowledged — retained.');
+            incomplete = true;
+          }
+        } else {
+          log('[ECG] cleanup incomplete ($res) — guard retained.');
           incomplete = true;
         }
-      } else {
-        log('[ECG] cleanup incomplete ($res) — guard retained.');
-        incomplete = true;
       }
+    } catch (e) {
+      log('[ECG] cleanup threw ($e) — guard retained.');
+      incomplete = true;
+    } finally {
+      try {
+        if (_screenHeld) {
+          _screenHeld = false;
+          await releaseScreen(screenOwner);
+        }
+      } catch (e) {
+        log('[ECG] releaseScreen threw ($e).');
+      }
+      transport.release(lease);
+      if (identical(_lease, lease)) _lease = null;
     }
-    if (_screenHeld) {
-      _screenHeld = false;
-      await releaseScreen(screenOwner);
-    }
-    transport.release(lease);
-    if (identical(_lease, lease)) _lease = null;
     _set(
       _state.copyWith(
         phase: phase,

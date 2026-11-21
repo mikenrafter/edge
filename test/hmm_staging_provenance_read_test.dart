@@ -1,9 +1,3 @@
-// HMM staging fix, edge side, read/export paths (spec §7 items 1-3): the
-// repository hands the staging provenance to the Sleep screen, a selected-day
-// export and a full export both carry it into a restore, an older payload
-// without the keys reads as before, and a value this build does not know is
-// kept without being believed. Real repository over a real database.
-
 import 'dart:convert';
 import 'dart:io';
 
@@ -37,13 +31,17 @@ class _FakePathProvider extends PathProviderPlatform {
   Future<String?> getDownloadsPath() async => root;
 }
 
-Future<void> _put(String day, Map<String, dynamic> staging) =>
+Future<void> _put(String day, Map<String, dynamic> staging, {bool nap = false}) =>
     LocalDb.putDayResult(
       dayId: day,
       algoVersion: kAlgoVersion,
       payloadJson: jsonEncode({
         'date': day,
         'sleep_source': 'auto',
+        if (nap) 'sleep_periods': {'periods': [
+          {'onset_ts': 1779278400, 'wake_ts': 1779280200,
+            'duration_min': 30, 'is_main': false},
+        ]},
         'sleep': {
           'accounting': {
             'value': {
@@ -61,9 +59,9 @@ Future<void> _put(String day, Map<String, dynamic> staging) =>
     );
 
 const _fallback = <String, dynamic>{
-  'staging_method': 'hmm628',
+  'staging_method': 'hmm',
   'staging_effective_method': 'cardio',
-  'staging_fallback': 'hmm628_degenerate',
+  'staging_fallback': 'hmm_unavailable',
   'staging_fallback_sec': 28437,
   'staging_note': 'claim and fallback',
 };
@@ -111,30 +109,36 @@ void main() {
     await db.delete('day_result');
   });
 
+  // why: stored provenance must survive reads and exports without fabrication.
+  // # catches: dropping or blindly casting the stored provenance keys.
   test('the night map carries the provenance of a fallback night', () async {
     await _put(_day, _fallback);
     final n = await repo.getDaySleepV2(_day);
     expect(_picked(n), {
-      'staging_method': 'hmm628',
+      'staging_method': 'hmm',
       'staging_effective_method': 'cardio',
-      'staging_fallback': 'hmm628_degenerate',
+      'staging_fallback': 'hmm_unavailable',
       'staging_fallback_sec': 28437,
     });
   });
 
+  // why: stored provenance must survive reads and exports without fabrication.
+  // # catches: dropping or blindly casting the stored provenance keys.
   test('an ordinary experimental night has the method and no fallback',
       () async {
     await _put(_day, {
-      'staging_method': 'hmm628',
-      'staging_effective_method': 'hmm628',
+      'staging_method': 'hmm',
+      'staging_effective_method': 'hmm',
     });
     final n = await repo.getDaySleepV2(_day);
     expect(_picked(n), {
-      'staging_method': 'hmm628',
-      'staging_effective_method': 'hmm628',
+      'staging_method': 'hmm',
+      'staging_effective_method': 'hmm',
     });
   });
 
+  // why: stored provenance must survive reads and exports without fabrication.
+  // # catches: dropping or blindly casting the stored provenance keys.
   test('an older payload without the keys reads as before: nothing invented',
       () async {
     await _put(_day, {'staging_note': 'old'});
@@ -142,40 +146,58 @@ void main() {
     expect(n['has_sleep'], isTrue);
     expect(_picked(n), isEmpty);
     // An older experimental night: the requested method is all it has.
-    await _put('2026-05-21', {'staging_method': 'hmm628'});
+    await _put('2026-05-21', {'staging_method': 'hmm'});
     expect(_picked(await repo.getDaySleepV2('2026-05-21')),
-        {'staging_method': 'hmm628'});
+        {'staging_method': 'hmm'});
   });
 
+  // why: stored provenance must survive reads and exports without fabrication.
+  // # catches: dropping or blindly casting the stored provenance keys.
   test('an unknown fallback value is passed on as text, never as a method',
       () async {
     await _put(_day, {
       ..._fallback,
-      'staging_fallback': 'hmm628_from_the_future',
+      'staging_fallback': 'hmm_from_the_future',
     });
     final n = await repo.getDaySleepV2(_day);
-    expect(n['staging_fallback'], 'hmm628_from_the_future');
+    expect(n['staging_fallback'], 'hmm_from_the_future');
     expect(n['has_sleep'], isTrue, reason: 'the estimate is still shown');
   });
 
+  // why: stored provenance must survive reads and exports without fabrication.
+  // # catches: dropping or blindly casting the stored provenance keys.
   test('a hand-edited row degrades to unknown, never to a wrong value',
       () async {
     await _put(_day, {
-      'staging_method': 'hmm628',
+      'staging_method': 'hmm',
       'staging_effective_method': 7,
       'staging_fallback': {'x': 1},
       'staging_fallback_sec': -5,
     });
     final n = await repo.getDaySleepV2(_day);
-    expect(_picked(n), {'staging_method': 'hmm628'});
+    expect(_picked(n), {'staging_method': 'hmm'});
     await _put('2026-05-21', {
-      'staging_method': 'hmm628',
-      'staging_fallback': 'hmm628_degenerate',
+      'staging_method': 'hmm',
+      'staging_fallback': 'hmm_unavailable',
       'staging_fallback_sec': 'soon',
     });
     final m = await repo.getDaySleepV2('2026-05-21');
-    expect(m['staging_fallback'], 'hmm628_degenerate');
+    expect(m['staging_fallback'], 'hmm_unavailable');
     expect(m.containsKey('staging_fallback_sec'), isFalse);
+  });
+
+  // why: a no-sleep result still explains why HMM abstained.
+  test('no-sleep maps retain stored fallback provenance', () async {
+    for (final nap in [false, true]) {
+      await _put(_day, {
+        ..._fallback,
+        'accounting': {'value': <String, dynamic>{}},
+      }, nap: nap);
+      final n = await repo.getDaySleepV2(_day);
+      expect(n['has_sleep'], isFalse);
+      expect(n['periods'], nap ? hasLength(1) : isNull);
+      expect(_picked(n), {for (final k in _keys) k: _fallback[k]});
+    }
   });
 
   Future<Map<String, dynamic>> storedSleep(String dbPath, String day) async {
@@ -195,6 +217,8 @@ void main() {
     }
   }
 
+  // why: stored provenance must survive reads and exports without fabrication.
+  // # catches: dropping or blindly casting the stored provenance keys.
   test('a selected-day export carries the keys and a restore brings them back',
       () async {
     await _put(_day, _fallback);
@@ -214,10 +238,12 @@ void main() {
     });
   });
 
+  // why: stored provenance must survive reads and exports without fabrication.
+  // # catches: dropping or blindly casting the stored provenance keys.
   test('a full export carries the keys and a restore brings them back',
       () async {
     await _put(_day, _fallback);
-    final path = await LocalDb.exportCopy(includeSubstrateArchive: false);
+    final path = await LocalDb.exportCopy();
     addTearDown(() => databaseFactory.deleteDatabase(path));
     final sleep = await storedSleep(path, _day);
     for (final k in _keys) {

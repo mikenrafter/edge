@@ -402,6 +402,14 @@ String? healthExportCursorBefore(String cursor, String date) {
   return dayLabelOf(DateTime(d.year, d.month, d.day - 1));
 }
 
+bool dropHealthExportStampsFrom(Map<String, dynamic> retryState, String date) {
+  final before = retryState.length;
+  retryState.removeWhere(
+    (d, v) => d.compareTo(date) >= 0 && v is Map && v['ok_ms'] != null,
+  );
+  return retryState.length != before;
+}
+
 class HealthExportSingleFlight {
   Future<int>? _inFlight;
 
@@ -573,6 +581,14 @@ class HealthExporter {
           await LocalDb.setCursorUnlessReplaced(
             'health_export_through',
             next,
+            generation,
+          );
+        }
+        final retryState = await shared._loadRetryState();
+        if (dropHealthExportStampsFrom(retryState, date)) {
+          await LocalDb.setCursorUnlessReplaced(
+            _kRetryCursor,
+            jsonEncode(retryState),
             generation,
           );
         }
@@ -1196,7 +1212,12 @@ class HealthExporter {
               newestFirstDays: [priorityDay],
               write: (bundle) async {
                 if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
-                final wrote = await _androidSleep.replace(bundle);
+                final wrote = await _androidSleep.replace(
+                  bundle,
+                  previousWake: await _previousWake(
+                    _localMidnight(priorityDay!.key) ?? DateTime.now(),
+                  ),
+                );
                 requireSameStore();
                 return wrote;
               },
@@ -1225,13 +1246,6 @@ class HealthExporter {
             if (!finalized) prefixContiguous = false;
             continue;
           }
-          final bundle = await bundleFor(date);
-          if (bundle == null || bundle['skipped'] == true) {
-            if (!finalized) prefixContiguous = false;
-            continue;
-          }
-          // The priority night's sleep was written from the bundle read earlier;
-          // a re-derive since means that write is stale.
           final sleepWritten =
               date == androidSleepAlreadyWritten && rederivedDate != date;
 
@@ -1283,6 +1297,11 @@ class HealthExporter {
             // Not due for retry yet — don't hammer the health store on every
             // drain/derive pass; counts as "not done" for the cursor below.
           } else {
+            final bundle = await bundleFor(date);
+            if (bundle == null || bundle['skipped'] == true) {
+              if (!finalized) prefixContiguous = false;
+              continue;
+            }
             _dayHeldForPurge = false;
             ok = await _exportDay(
               date,
@@ -1420,6 +1439,20 @@ class HealthExporter {
     });
   }
 
+  Future<DateTime?> _previousWake(DateTime dayStart) async {
+    try {
+      final prev = DateTime(dayStart.year, dayStart.month, dayStart.day - 1);
+      final read = await BundleStore.shared.read(
+        BundleSource.day(dayLabelOf(prev)),
+      );
+      final pb = read is BundleOk ? bundleReaderMap(read.view) : null;
+      return pb == null ? null : normalizeHealthSleepSession(pb)?.end;
+    } catch (e) {
+      debugPrintSynchronously('[health] previous wake lookup: $e');
+      return null;
+    }
+  }
+
   /// Write one day's metrics. DELETES our prior samples for the day window first
   /// (so a re-derive overwrites instead of duplicating). Best-effort; never throws,
   /// except [_StoreReplacedDuringExport] (the pass stops, see [_requireSameStore]).
@@ -1479,11 +1512,7 @@ class HealthExporter {
         if (!await _androidSleep.replace(
           b,
           dayStart: dayStart,
-          // Only the no-night clear reads it; skip decoding yesterday's
-          // bundle on every other day of a long first export.
-          previousWake: normalizeHealthSleepSession(b) == null
-              ? await previousWake()
-              : null,
+          previousWake: await previousWake(),
         )) {
           debugPrintSynchronously('[health] write Android sleep session returned false');
           success = false;

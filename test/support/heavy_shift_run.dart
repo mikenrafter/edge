@@ -17,7 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:openstrap_edge/data/db.dart';
-import 'package:openstrap_edge/layout_shift/layout_shift.dart';
+import 'layout_shift/layout_shift.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 
 import 'as_of_recalc_fakes.dart';

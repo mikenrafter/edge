@@ -13,6 +13,9 @@ import 'package:openstrap_edge/util/worker_entries.dart';
 
 /// Substring of `Symbol.toString()` -> expected dispatcher.
 const kExpected = <String, Dispatcher>{
+  'inflateZipMemberHeavy': Dispatcher.run,
+  'gzipFileHeavy': Dispatcher.run,
+  'rescaleStressRowHeavy': Dispatcher.run,
   'officialMappingHeavy': Dispatcher.run,
   'segmentCalendarDaysHeavy': Dispatcher.run,
   'buildCrossDayArtifactHeavy': Dispatcher.cancellable,

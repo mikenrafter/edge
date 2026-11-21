@@ -8,6 +8,7 @@ import 'older_version.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/gestures.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../data/journal_fields.dart' show formatMinuteOfDay;
@@ -105,6 +106,13 @@ class Pressable extends StatefulWidget {
 
 class _PressableState extends State<Pressable> {
   bool _down = false;
+  bool _focused = false;
+
+  @override
+  void didUpdateWidget(Pressable old) {
+    super.didUpdateWidget(old);
+    if (widget.onTap == null) _focused = false;
+  }
   int? _pointer;
   void _activate() {
     final action = widget.onTap;
@@ -178,16 +186,38 @@ class _PressableState extends State<Pressable> {
       button: !widget.link,
       link: widget.link,
       label: widget.semanticLabel,
-      child: GuideUnitMark(component: c, child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap == null ? null : _activate,
-        onTapDown: (_) => setState(() => _down = true),
-        onTapUp: (_) => setState(() => _down = false),
-        onTapCancel: () => setState(() => _down = false),
-        child: AnimatedScale(
-          scale: _down ? .975 : 1,
-          duration: motion(c, Motion.fast),
-          child: out,
+      // Enter/Space (ActivateIntent is bound to both by default) fire onTap, and
+      // a ring shows while focus is keyboard-driven.
+      child: GuideUnitMark(component: c, child: FocusableActionDetector(
+        onShowFocusHighlight: (v) => setState(() => _focused = v),
+        actions: {
+          ActivateIntent: CallbackAction<ActivateIntent>(
+            onInvoke: (_) {
+              _activate();
+              return null;
+            },
+          ),
+        },
+        child: DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            borderRadius: R.rMd,
+            border: _focused
+                ? Border.all(color: P.of(c).ink, width: 2)
+                : null,
+          ),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onTap == null ? null : _activate,
+            onTapDown: (_) => setState(() => _down = true),
+            onTapUp: (_) => setState(() => _down = false),
+            onTapCancel: () => setState(() => _down = false),
+            child: AnimatedScale(
+              scale: _down ? .975 : 1,
+              duration: motion(c, Motion.fast),
+              child: out,
+            ),
+          ),
         ),
       )),
     );
@@ -3576,15 +3606,25 @@ class _SubTabsState extends State<SubTabs> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _reveal();
+  }
+
+  TextScaler? _scaler;
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _reveal();
+    final s = MediaQuery.textScalerOf(context);
+    if (_scaler != null && _scaler != s) _reveal();
+    _scaler = s;
   }
 
   @override
   void didUpdateWidget(SubTabs oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.index != widget.index || oldWidget.items != widget.items) {
+    if (oldWidget.index != widget.index ||
+        !listEquals(oldWidget.items, widget.items)) {
       _reveal();
     }
   }

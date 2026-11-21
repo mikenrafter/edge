@@ -23,7 +23,7 @@
       "inputs_used": [
        "rr_cleaned"
       ],
-      "note": "PRV not ECG-HRV; RMSSD/pNN50 are quantization-sensitive at 1 Hz — lead with SDNN/SDANN"
+      "note": "PRV not ECG-HRV; RMSSD/pNN50 are quantization-sensitive at 1 Hz \u2014 lead with SDNN/SDANN"
      },
      "cv": 6.9,
      "irregular": {
@@ -31,7 +31,7 @@
       "sd2": 107.6,
       "flag": false,
       "confidence": 0.9,
-      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
+      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincar\u00e9 SD1/SD2 + pNN70. PRV not ECG \u2014 wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
       "sd1_sd2": 0.211,
       "pnn_pct": 1.8,
       "n_beats": 24019,
@@ -80,7 +80,7 @@
       "inputs_used": [
        "rr_cleaned"
       ],
-      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
+      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincar\u00e9 SD1/SD2 + pNN70. PRV not ECG \u2014 wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
       "diagnostics": {
        "version": 1,
        "abstain": null,
@@ -284,7 +284,7 @@
       "note": "GLASS-BOX readiness: disclosed weights autonomic (HRV+RHR, mean of their z) 0.70 > RR 0.20 > temp 0.10, renormalized over present inputs. Drivers are definitional within the formula (correction, not inferred cause). calibrating:have=0,need=14."
      },
      "strain": {
-      "value": "—",
+      "value": "\u2014",
       "confidence": 0,
       "tier": "ESTIMATE",
       "inputs_used": [
@@ -4128,7 +4128,7 @@
        "rr_cleaned",
        "beat_times"
       ],
-      "note": "RSA HF-peak respiratory rate (Lomb-Scargle on native beat times, median of 175 300.0s sub-windows, 175 of them within 2.0 br/min of it — brpm, peak_hz and power all come from the medoid sub-window); PRV-derived; this window could resolve up to 26.548673 br/min"
+      "note": "RSA HF-peak respiratory rate (Lomb-Scargle on native beat times, median of 175 300.0s sub-windows, 175 of them within 2.0 br/min of it \u2014 brpm, peak_hz and power all come from the medoid sub-window); PRV-derived; this window could resolve up to 26.548673 br/min"
      },
      "cvhr_apnea": {
       "value": {
@@ -4154,10 +4154,10 @@
        "rr_cleaned",
        "beat_times"
       ],
-      "note": "CVHR/ACAT (Hayano) apnea SCREEN — NOT a diagnosis, NOT an AHI; single-night CVHR has substantial night-to-night variability, interpret as a trend over multiple nights"
+      "note": "CVHR/ACAT (Hayano) apnea SCREEN \u2014 NOT a diagnosis, NOT an AHI; single-night CVHR has substantial night-to-night variability, interpret as a trend over multiple nights"
      },
      "odi": {
-      "value": "—",
+      "value": "\u2014",
       "confidence": 0.0,
       "tier": "RELATIVE",
       "inputs_used": [
@@ -4293,7 +4293,7 @@
       "rr_cleaned",
       "beat_times"
      ],
-     "note": "per-bin RMSSD (30-min bins, PRV not ECG-HRV) — a DESCRIPTION of the night, never a cause. A low first third is equally consistent with alcohol, a late meal, late training, a warm room, illness onset, or nothing. Render each bin as a band, not a point.",
+     "note": "per-bin RMSSD (30-min bins, PRV not ECG-HRV) \u2014 a DESCRIPTION of the night, never a cause. A low first third is equally consistent with alcohol, a late meal, late training, a warm room, illness onset, or nothing. Render each bin as a band, not a point.",
      "origin_ms": 1783898090938.0
     },
     "wellness": {
@@ -4305,12 +4305,12 @@
        "skin_temp_raw",
        "skin_temp_c"
       ],
-      "note": "Deviation (z-score) from your baseline, in raw sensor units. Absolute °C is not available."
+      "note": "Deviation (z-score) from your baseline, in raw sensor units. Absolute \u00b0C is not available."
      }
     },
     "stress": {
-     "value": 61.0,
-     "score": 61.0,
+     "value": 72.3,
+     "score": 72.3,
      "si": 159.44,
      "level": "elevated",
      "lf_hf": 0.151,
@@ -4320,7 +4320,7 @@
      "inputs_used": [
       "rr_cleaned"
      ],
-     "note": "Baevsky Stress Index scaled to 0–100, from resting pulse rate variability (PRV)."
+     "note": "Baevsky Stress Index \u2192 0\u2013100; resting autonomic tension (PRV)."
     },
     "spo2": {
      "disabled": true,
@@ -23089,7 +23089,7 @@
      "dip_pct": 27.601235828808456,
      "trimp": 227.58418327980579,
      "odi_per_hour": null,
-     "stress": 61.03520288391907,
+     "stress": 72.31807947699996,
      "stress_si": 159.4387755102041,
      "spo2": null,
      "calories": 551.2625051784576,
@@ -24551,7 +24551,7 @@
      }
     ],
     "hr_ceiling": {
-     "value": "—",
+     "value": "\u2014",
      "confidence": 0.0,
      "tier": "HIGH",
      "inputs_used": [
@@ -24986,7 +24986,7 @@
       "inputs_used": [
        "rr_cleaned"
       ],
-      "note": "PRV not ECG-HRV; RMSSD/pNN50 are quantization-sensitive at 1 Hz — lead with SDNN/SDANN"
+      "note": "PRV not ECG-HRV; RMSSD/pNN50 are quantization-sensitive at 1 Hz \u2014 lead with SDNN/SDANN"
      },
      "cv": 6.9,
      "irregular": {
@@ -24994,7 +24994,7 @@
       "sd2": 107.6,
       "flag": false,
       "confidence": 0.9,
-      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
+      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincar\u00e9 SD1/SD2 + pNN70. PRV not ECG \u2014 wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
       "sd1_sd2": 0.211,
       "pnn_pct": 1.8,
       "n_beats": 24019,
@@ -25043,7 +25043,7 @@
       "inputs_used": [
        "rr_cleaned"
       ],
-      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
+      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincar\u00e9 SD1/SD2 + pNN70. PRV not ECG \u2014 wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
       "diagnostics": {
        "version": 1,
        "abstain": null,
@@ -25247,7 +25247,7 @@
       "note": "GLASS-BOX readiness: disclosed weights autonomic (HRV+RHR, mean of their z) 0.70 > RR 0.20 > temp 0.10, renormalized over present inputs. Drivers are definitional within the formula (correction, not inferred cause). calibrating:have=1,need=14."
      },
      "strain": {
-      "value": "—",
+      "value": "\u2014",
       "confidence": 0,
       "tier": "ESTIMATE",
       "inputs_used": [
@@ -29091,7 +29091,7 @@
        "rr_cleaned",
        "beat_times"
       ],
-      "note": "RSA HF-peak respiratory rate (Lomb-Scargle on native beat times, median of 175 300.0s sub-windows, 175 of them within 2.0 br/min of it — brpm, peak_hz and power all come from the medoid sub-window); PRV-derived; this window could resolve up to 26.548673 br/min"
+      "note": "RSA HF-peak respiratory rate (Lomb-Scargle on native beat times, median of 175 300.0s sub-windows, 175 of them within 2.0 br/min of it \u2014 brpm, peak_hz and power all come from the medoid sub-window); PRV-derived; this window could resolve up to 26.548673 br/min"
      },
      "cvhr_apnea": {
       "value": {
@@ -29117,10 +29117,10 @@
        "rr_cleaned",
        "beat_times"
       ],
-      "note": "CVHR/ACAT (Hayano) apnea SCREEN — NOT a diagnosis, NOT an AHI; single-night CVHR has substantial night-to-night variability, interpret as a trend over multiple nights"
+      "note": "CVHR/ACAT (Hayano) apnea SCREEN \u2014 NOT a diagnosis, NOT an AHI; single-night CVHR has substantial night-to-night variability, interpret as a trend over multiple nights"
      },
      "odi": {
-      "value": "—",
+      "value": "\u2014",
       "confidence": 0.0,
       "tier": "RELATIVE",
       "inputs_used": [
@@ -29256,7 +29256,7 @@
       "rr_cleaned",
       "beat_times"
      ],
-     "note": "per-bin RMSSD (30-min bins, PRV not ECG-HRV) — a DESCRIPTION of the night, never a cause. A low first third is equally consistent with alcohol, a late meal, late training, a warm room, illness onset, or nothing. Render each bin as a band, not a point.",
+     "note": "per-bin RMSSD (30-min bins, PRV not ECG-HRV) \u2014 a DESCRIPTION of the night, never a cause. A low first third is equally consistent with alcohol, a late meal, late training, a warm room, illness onset, or nothing. Render each bin as a band, not a point.",
      "origin_ms": 1783984490938.0
     },
     "wellness": {
@@ -29268,12 +29268,12 @@
        "skin_temp_raw",
        "skin_temp_c"
       ],
-      "note": "Deviation (z-score) from your baseline, in raw sensor units. Absolute °C is not available."
+      "note": "Deviation (z-score) from your baseline, in raw sensor units. Absolute \u00b0C is not available."
      }
     },
     "stress": {
-     "value": 61.0,
-     "score": 61.0,
+     "value": 72.3,
+     "score": 72.3,
      "si": 159.44,
      "level": "elevated",
      "lf_hf": 0.151,
@@ -29283,7 +29283,7 @@
      "inputs_used": [
       "rr_cleaned"
      ],
-     "note": "Baevsky Stress Index scaled to 0–100, from resting pulse rate variability (PRV)."
+     "note": "Baevsky Stress Index \u2192 0\u2013100; resting autonomic tension (PRV)."
     },
     "spo2": {
      "disabled": true,
@@ -47872,7 +47872,7 @@
      "dip_pct": 27.885325793318177,
      "trimp": 221.15132594116335,
      "odi_per_hour": null,
-     "stress": 61.03520288391907,
+     "stress": 72.31807947699996,
      "stress_si": 159.4387755102041,
      "spo2": null,
      "calories": 551.2625051784576,
@@ -49313,7 +49313,7 @@
       "accel_1hz",
       "device_family"
      ],
-     "note": "OBSERVED ceiling, not physiological HRmax — an underestimate if you have never gone truly hard, and it will keep creeping up. Label it with its date. Wrist PPG at intensity is biased by skin tone (published up to ~11.8 bpm) and that rides into every zone built on this number.",
+     "note": "OBSERVED ceiling, not physiological HRmax \u2014 an underestimate if you have never gone truly hard, and it will keep creeping up. Label it with its date. Wrist PPG at intensity is biased by skin tone (published up to ~11.8 bpm) and that rides into every zone built on this number.",
      "session_id": "freeze-run-2026-07-14",
      "session_type": "run"
     },
@@ -49742,7 +49742,7 @@
       "inputs_used": [
        "rr_cleaned"
       ],
-      "note": "PRV not ECG-HRV; RMSSD/pNN50 are quantization-sensitive at 1 Hz — lead with SDNN/SDANN"
+      "note": "PRV not ECG-HRV; RMSSD/pNN50 are quantization-sensitive at 1 Hz \u2014 lead with SDNN/SDANN"
      },
      "cv": 6.9,
      "irregular": {
@@ -49750,7 +49750,7 @@
       "sd2": 107.6,
       "flag": false,
       "confidence": 0.9,
-      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
+      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincar\u00e9 SD1/SD2 + pNN70. PRV not ECG \u2014 wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
       "sd1_sd2": 0.211,
       "pnn_pct": 1.8,
       "n_beats": 24019,
@@ -49799,7 +49799,7 @@
       "inputs_used": [
        "rr_cleaned"
       ],
-      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
+      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincar\u00e9 SD1/SD2 + pNN70. PRV not ECG \u2014 wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
       "diagnostics": {
        "version": 1,
        "abstain": null,
@@ -50009,7 +50009,7 @@
       "note": "GLASS-BOX readiness: disclosed weights autonomic (HRV+RHR, mean of their z) 0.70 > RR 0.20 > temp 0.10, renormalized over present inputs. Drivers are definitional within the formula (correction, not inferred cause). calibrating:have=2,need=14."
      },
      "strain": {
-      "value": "—",
+      "value": "\u2014",
       "confidence": 0,
       "tier": "ESTIMATE",
       "inputs_used": [
@@ -53853,7 +53853,7 @@
        "rr_cleaned",
        "beat_times"
       ],
-      "note": "RSA HF-peak respiratory rate (Lomb-Scargle on native beat times, median of 175 300.0s sub-windows, 175 of them within 2.0 br/min of it — brpm, peak_hz and power all come from the medoid sub-window); PRV-derived; this window could resolve up to 26.548673 br/min"
+      "note": "RSA HF-peak respiratory rate (Lomb-Scargle on native beat times, median of 175 300.0s sub-windows, 175 of them within 2.0 br/min of it \u2014 brpm, peak_hz and power all come from the medoid sub-window); PRV-derived; this window could resolve up to 26.548673 br/min"
      },
      "cvhr_apnea": {
       "value": {
@@ -53879,10 +53879,10 @@
        "rr_cleaned",
        "beat_times"
       ],
-      "note": "CVHR/ACAT (Hayano) apnea SCREEN — NOT a diagnosis, NOT an AHI; single-night CVHR has substantial night-to-night variability, interpret as a trend over multiple nights"
+      "note": "CVHR/ACAT (Hayano) apnea SCREEN \u2014 NOT a diagnosis, NOT an AHI; single-night CVHR has substantial night-to-night variability, interpret as a trend over multiple nights"
      },
      "odi": {
-      "value": "—",
+      "value": "\u2014",
       "confidence": 0.0,
       "tier": "RELATIVE",
       "inputs_used": [
@@ -54018,7 +54018,7 @@
       "rr_cleaned",
       "beat_times"
      ],
-     "note": "per-bin RMSSD (30-min bins, PRV not ECG-HRV) — a DESCRIPTION of the night, never a cause. A low first third is equally consistent with alcohol, a late meal, late training, a warm room, illness onset, or nothing. Render each bin as a band, not a point.",
+     "note": "per-bin RMSSD (30-min bins, PRV not ECG-HRV) \u2014 a DESCRIPTION of the night, never a cause. A low first third is equally consistent with alcohol, a late meal, late training, a warm room, illness onset, or nothing. Render each bin as a band, not a point.",
      "origin_ms": 1784070890938.0
     },
     "wellness": {
@@ -54030,12 +54030,12 @@
        "skin_temp_raw",
        "skin_temp_c"
       ],
-      "note": "Deviation (z-score) from your baseline, in raw sensor units. Absolute °C is not available."
+      "note": "Deviation (z-score) from your baseline, in raw sensor units. Absolute \u00b0C is not available."
      }
     },
     "stress": {
-     "value": 61.0,
-     "score": 61.0,
+     "value": 72.3,
+     "score": 72.3,
      "si": 159.44,
      "level": "elevated",
      "lf_hf": 0.151,
@@ -54045,7 +54045,7 @@
      "inputs_used": [
       "rr_cleaned"
      ],
-     "note": "Baevsky Stress Index scaled to 0–100, from resting pulse rate variability (PRV)."
+     "note": "Baevsky Stress Index \u2192 0\u2013100; resting autonomic tension (PRV)."
     },
     "spo2": {
      "disabled": true,
@@ -71250,7 +71250,7 @@
      "dip_pct": 29.23441483806156,
      "trimp": 218.15549360346523,
      "odi_per_hour": null,
-     "stress": 61.03520288391907,
+     "stress": 72.31807947699996,
      "stress_si": 159.4387755102041,
      "spo2": null,
      "calories": 551.2625051784576,
@@ -72496,7 +72496,7 @@
      }
     ],
     "hr_ceiling": {
-     "value": "—",
+     "value": "\u2014",
      "confidence": 0.0,
      "tier": "HIGH",
      "inputs_used": [
@@ -73093,7 +73093,7 @@
   {
    "date": "2026-07-13",
    "key": "stress",
-   "value": 61.03520288391907
+   "value": 72.31807947699996
   },
   {
    "date": "2026-07-13",
@@ -73303,7 +73303,7 @@
   {
    "date": "2026-07-14",
    "key": "stress",
-   "value": 61.03520288391907
+   "value": 72.31807947699996
   },
   {
    "date": "2026-07-14",
@@ -73513,7 +73513,7 @@
   {
    "date": "2026-07-15",
    "key": "stress",
-   "value": 61.03520288391907
+   "value": 72.31807947699996
   },
   {
    "date": "2026-07-15",
@@ -77833,7 +77833,7 @@
    "confidence": 0.0
   },
   "load": {
-   "value": "—",
+   "value": "\u2014",
    "confidence": 0.0,
    "tier": "ESTIMATE",
    "inputs_used": [
@@ -77870,21 +77870,21 @@
    "inputs_used": [
     "sleep_wake_epochs"
    ],
-   "note": "epoch-by-epoch 24-h concordance (Phillips 2017), SRI=200·agreement/cases−100; NOT SD-of-midsleep"
+   "note": "epoch-by-epoch 24-h concordance (Phillips 2017), SRI=200\u00b7agreement/cases\u2212100; NOT SD-of-midsleep"
   },
   "overreaching": {
-   "value": "—",
+   "value": "\u2014",
    "confidence": 0.0,
    "tier": "ESTIMATE",
    "inputs_used": [
     "daily_trimp",
     "rhr"
    ],
-   "note": "no load history to compare against. TWO FACTS, no score: recent load against your usual load, and recent nights against your usual nights. NOT a diagnosis of overreaching — that needs a performance decrement measured over weeks and cannot come from a wrist. Illness, travel, altitude, alcohol and a run of poor sleep all produce this same pair. In-app only: no notification, no rest-day instruction."
+   "note": "no load history to compare against. TWO FACTS, no score: recent load against your usual load, and recent nights against your usual nights. NOT a diagnosis of overreaching \u2014 that needs a performance decrement measured over weeks and cannot come from a wrist. Illness, travel, altitude, alcohol and a run of poor sleep all produce this same pair. In-app only: no notification, no rest-day instruction."
   },
   "session_cost": {
    "rhr": {
-    "value": "—",
+    "value": "\u2014",
     "confidence": 0.0,
     "tier": "ESTIMATE",
     "inputs_used": [
@@ -77892,10 +77892,10 @@
      "sessions",
      "coverage"
     ],
-    "note": "need_sessions:need=10 per type. Your own history, per session type, n printed with every row. ASSOCIATION ONLY — hard sessions cluster with late nights, alcohol, stress and travel, and none of that is separable here. Never a claim that a session type is costing you recovery, never a suggestion to skip one. Multi-session days and low-coverage nights are excluded."
+    "note": "need_sessions:need=10 per type. Your own history, per session type, n printed with every row. ASSOCIATION ONLY \u2014 hard sessions cluster with late nights, alcohol, stress and travel, and none of that is separable here. Never a claim that a session type is costing you recovery, never a suggestion to skip one. Multi-session days and low-coverage nights are excluded."
    },
    "rmssd": {
-    "value": "—",
+    "value": "\u2014",
     "confidence": 0.0,
     "tier": "ESTIMATE",
     "inputs_used": [
@@ -77903,31 +77903,31 @@
      "sessions",
      "coverage"
     ],
-    "note": "need_sessions:need=10 per type. Your own history, per session type, n printed with every row. ASSOCIATION ONLY — hard sessions cluster with late nights, alcohol, stress and travel, and none of that is separable here. Never a claim that a session type is costing you recovery, never a suggestion to skip one. Multi-session days and low-coverage nights are excluded."
+    "note": "need_sessions:need=10 per type. Your own history, per session type, n printed with every row. ASSOCIATION ONLY \u2014 hard sessions cluster with late nights, alcohol, stress and travel, and none of that is separable here. Never a claim that a session type is costing you recovery, never a suggestion to skip one. Multi-session days and low-coverage nights are excluded."
    }
   },
   "social_jetlag": {
-   "value": "—",
+   "value": "\u2014",
    "confidence": 0.0,
    "tier": "HIGH",
    "inputs_used": [
     "mid_sleep_free",
     "mid_sleep_work"
    ],
-   "note": "need ≥2 free-day and ≥2 work-day nights to compare"
+   "note": "need \u22652 free-day and \u22652 work-day nights to compare"
   },
   "chronotype": {
-   "value": "—",
+   "value": "\u2014",
    "confidence": 0.0,
    "tier": "HIGH",
    "inputs_used": [
     "mid_sleep_free",
     "sleep_duration"
    ],
-   "note": "chronotype needs ≥14 days with ≥2 free days"
+   "note": "chronotype needs \u226514 days with \u22652 free days"
   },
   "circadian_rhythm": {
-   "value": "—",
+   "value": "\u2014",
    "confidence": 0.0,
    "tier": "HIGH",
    "inputs_used": [
@@ -77936,7 +77936,7 @@
    "note": "need_baseline:have=2,need=7"
   },
   "circadian_cosinor": {
-   "value": "—",
+   "value": "\u2014",
    "confidence": 0.0,
    "tier": "HIGH",
    "inputs_used": [
@@ -77963,10 +77963,10 @@
     "sleep_duration_recent",
     "sleep_duration_free"
    ],
-   "note": "no free night yet — cannot honestly estimate your sleep need"
+   "note": "no free night yet \u2014 cannot honestly estimate your sleep need"
   },
   "readiness_glassbox": {
-   "value": "—",
+   "value": "\u2014",
    "confidence": 0.0,
    "tier": "ESTIMATE",
    "inputs_used": [
@@ -77991,7 +77991,7 @@
   },
   "sleep_coach": {
    "need": {
-    "value": "—",
+    "value": "\u2014",
     "confidence": 0.0,
     "tier": "ESTIMATE",
     "inputs_used": [
@@ -78002,7 +78002,7 @@
    "nap_credit_min": null,
    "strain_bonus_min": null,
    "performance": {
-    "value": "—",
+    "value": "\u2014",
     "confidence": 0.0,
     "tier": "ESTIMATE",
     "inputs_used": [
@@ -78012,7 +78012,7 @@
     "note": "need_baseline:have=0,need=1"
    },
    "bedtime": {
-    "value": "—",
+    "value": "\u2014",
     "confidence": 0.0,
     "tier": "ESTIMATE",
     "inputs_used": [
@@ -78023,7 +78023,7 @@
     "note": "need_baseline:have=0,need=1"
    },
    "wake": {
-    "value": "—",
+    "value": "\u2014",
     "confidence": 0.0,
     "tier": "ESTIMATE",
     "inputs_used": [
@@ -78035,7 +78035,7 @@
    }
   },
   "strain_coach": {
-   "value": "—",
+   "value": "\u2014",
    "confidence": 0.0,
    "tier": "ESTIMATE",
    "inputs_used": [
@@ -78044,7 +78044,7 @@
   },
   "percentiles": {
    "rmssd": {
-    "value": "—",
+    "value": "\u2014",
     "confidence": 0.0,
     "tier": "RELATIVE",
     "inputs_used": [
@@ -78053,7 +78053,7 @@
     "note": "need more of your own history for a percentile-of-you"
    },
    "rhr": {
-    "value": "—",
+    "value": "\u2014",
     "confidence": 0.0,
     "tier": "RELATIVE",
     "inputs_used": [
@@ -78062,7 +78062,7 @@
     "note": "need more of your own history for a percentile-of-you"
    },
    "readiness": {
-    "value": "—",
+    "value": "\u2014",
     "confidence": 0.0,
     "tier": "RELATIVE",
     "inputs_used": [

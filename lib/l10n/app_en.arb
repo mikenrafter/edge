@@ -2212,7 +2212,9 @@
     "description": "Time picker helper text for logging when a manual nap ended."
   },
   "napsInvalidWindow": "A nap is between 5 minutes and 3 hours. Anything longer is a sleep, and it belongs in the night where the stages can be read.",
-  "@napsInvalidWindow": {"description": "Validation error when a manually logged nap window is outside 5 minutes to 3 hours."},
+  "@napsInvalidWindow": {
+    "description": "Validation error when a manually logged nap window is outside 5 minutes to 3 hours."
+  },
   "napsOverlap": "That overlaps an existing nap.",
   "@napsOverlap": {
     "description": "Validation error when a manually logged nap overlaps an existing one."
@@ -5246,7 +5248,7 @@
   "@investigateNeedsSeveralNights": {
     "description": "Status card fallback body: needs several qualifying nights"
   },
-  "investigateDroppedIrregular": "{count, plural, one{# night left out because the irregular-rhythm screen flagged it} other{# nights left out because the irregular-rhythm screen flagged them}}",
+  "investigateDroppedIrregular": "{count, plural, one{{count} night left out because the irregular-rhythm screen flagged it} other{{count} nights left out because the irregular-rhythm screen flagged them}}",
   "@investigateDroppedIrregular": {
     "description": "Note listing nights excluded because the irregular-rhythm screen flagged them",
     "placeholders": {
@@ -5255,7 +5257,7 @@
       }
     }
   },
-  "investigateDroppedThin": "{count, plural, one{# night left out for too few observed hours} other{# nights left out for too few observed hours}}",
+  "investigateDroppedThin": "{count, plural, one{{count} night left out for too few observed hours} other{{count} nights left out for too few observed hours}}",
   "@investigateDroppedThin": {
     "description": "Note listing nights excluded for too few observed hours",
     "placeholders": {
@@ -5461,7 +5463,7 @@
   "@calmBreathingHowLong": {
     "description": "Section title for choosing session length"
   },
-  "calmBreathingMinutesSemantic": "{m, plural, one{# minute} other{# minutes}}",
+  "calmBreathingMinutesSemantic": "{m, plural, one{{m} minute} other{{m} minutes}}",
   "@calmBreathingMinutesSemantic": {
     "description": "Semantic label for a minute-duration option button",
     "placeholders": {
@@ -10855,12 +10857,15 @@
   "@activitySummaryTopSet": {
     "description": "Section title above the heaviest logged set on a strength session"
   },
-  "activitySummaryOneRepMax": "1RM estimate {kg} kg",
+  "activitySummaryOneRepMax": "1RM estimate {value} {unit, select, lb{lb} other{kg}}",
   "@activitySummaryOneRepMax": {
     "description": "Estimated one-rep-max caption under the top set exercise name",
     "placeholders": {
-      "kg": {
+      "value": {
         "type": "int"
+      },
+      "unit": {
+        "type": "String"
       }
     }
   },
@@ -14685,7 +14690,7 @@
   "@supplementNoTrendYetNotEnoughc23fe5": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
-  "supplementNotTaken3d2bc8": "not_taken",
+  "supplementNotTaken3d2bc8": "not taken",
   "@supplementNotTaken3d2bc8": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
@@ -17674,28 +17679,28 @@
   },
   "guideRemoveStep1": "On the **{tab}** tab, tap the **{card}** card. It only shows while something is waiting for you.",
   "@guideRemoveStep1": {
-  "description": "Step 1 caption. Bold words are in-app labels: {tab} is the Today tab name, {card} the title of the card.",
-  "placeholders": {
-    "tab": {
-      "type": "String",
-      "description": "Today tab name"
-    },
-    "card": {
-      "type": "String",
-      "description": "Title of the Detected activities card"
+    "description": "Step 1 caption. Bold words are in-app labels: {tab} is the Today tab name, {card} the title of the card.",
+    "placeholders": {
+      "tab": {
+        "type": "String",
+        "description": "Today tab name"
+      },
+      "card": {
+        "type": "String",
+        "description": "Title of the Detected activities card"
+      }
     }
-  }
-},
+  },
   "guideRemoveStep2": "Every item has its own **{discard}**. Tap it on the nap or workout that didn't happen; the highlight shows the choices.",
   "@guideRemoveStep2": {
-  "description": "Step 2 caption. {discard} is the in-app name of the Discard button; every pending item has its own and the highlight shows the choices.",
-  "placeholders": {
-    "discard": {
-      "type": "String",
-      "description": "Name of the Discard button"
+    "description": "Step 2 caption. {discard} is the in-app name of the Discard button; every pending item has its own and the highlight shows the choices.",
+    "placeholders": {
+      "discard": {
+        "type": "String",
+        "description": "Name of the Discard button"
+      }
     }
-  }
-},
+  },
   "guideRemoveSavedTitle": "Already saved?",
   "@guideRemoveSavedTitle": {
     "description": "Footer card title: the nap or workout was already accepted earlier."
@@ -17724,14 +17729,14 @@
   },
   "guideRemoveMissingTitle": "Don't see \"{card}\"?",
   "@guideRemoveMissingTitle": {
-  "description": "Footer card title: the user cannot see the card. {card} is its in-app title.",
-  "placeholders": {
-    "card": {
-      "type": "String",
-      "description": "Title of the Detected activities card"
+    "description": "Footer card title: the user cannot see the card. {card} is its in-app title.",
+    "placeholders": {
+      "card": {
+        "type": "String",
+        "description": "Title of the Detected activities card"
+      }
     }
-  }
-},
+  },
   "guideRemoveMissingBody": "The card is only there while something is waiting for your answer. Once it has been answered, look under **{sleep}** > **{naps}** for naps, or **{activity}** > **{history}** for workouts.",
   "@guideRemoveMissingBody": {
     "description": "Footer card body. Bold words are in-app labels; > separates the taps.",
@@ -18046,14 +18051,14 @@
   },
   "guideRemoveStep2Still": "Every item has its own **{discard}**. Tap it on the nap or workout that didn't happen; the outline marks the first one.",
   "@guideRemoveStep2Still": {
-  "description": "Step 2 caption under reduced motion, where the outline (not the moving highlight) marks the first item. {discard} is the in-app name of the Discard button.",
-  "placeholders": {
-    "discard": {
-      "type": "String",
-      "description": "Name of the Discard button"
+    "description": "Step 2 caption under reduced motion, where the outline (not the moving highlight) marks the first item. {discard} is the in-app name of the Discard button.",
+    "placeholders": {
+      "discard": {
+        "type": "String",
+        "description": "Name of the Discard button"
+      }
     }
-  }
-},
+  },
   "helpLookingForSomething": "Looking for something?",
   "@helpLookingForSomething": {
     "description": "Quiet button at the bottom of each main tab that opens Help for that tab."
@@ -21461,21 +21466,45 @@
     "description": "A successful dated cached check, without starting new network work."
   },
   "officialExportSkippedHeader": "Not in the official file or the recovery file. Export again after the cause is fixed.",
-  "@officialExportSkippedHeader": {"description": "Official-app export flow."},
+  "@officialExportSkippedHeader": {
+    "description": "Official-app export flow."
+  },
   "officialExportSkippedSpace": "Skipped to keep space for new recordings",
-  "@officialExportSkippedSpace": {"description": "Official-app export flow."},
+  "@officialExportSkippedSpace": {
+    "description": "Official-app export flow."
+  },
   "officialExportSkippedUnfinished": "Recording not finished",
-  "@officialExportSkippedUnfinished": {"description": "Official-app export flow."},
+  "@officialExportSkippedUnfinished": {
+    "description": "Official-app export flow."
+  },
   "officialExportSkippedUnreadable": "Could not be read",
-  "@officialExportSkippedUnreadable": {"description": "Official-app export flow."},
+  "@officialExportSkippedUnreadable": {
+    "description": "Official-app export flow."
+  },
   "officialExportSkippedValue": "Value type could not be saved",
-  "@officialExportSkippedValue": {"description": "Official-app export flow."},
+  "@officialExportSkippedValue": {
+    "description": "Official-app export flow."
+  },
   "officialExportLeftover": "An earlier export left a file that could not be checked or removed: {file} in {folder}. It may be incomplete. Delete it yourself.",
-  "@officialExportLeftover": {"description": "Official-app export flow.", "placeholders": {"file": {"type": "String"}, "folder": {"type": "String"}}},
+  "@officialExportLeftover": {
+    "description": "Official-app export flow.",
+    "placeholders": {
+      "file": {
+        "type": "String"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
   "officialExportJournalUnreadable": "An earlier export could not be checked. You can still export again.",
-  "@officialExportJournalUnreadable": {"description": "Official-app export flow."},
+  "@officialExportJournalUnreadable": {
+    "description": "Official-app export flow."
+  },
   "officialExportDismiss": "Dismiss",
-  "@officialExportDismiss": {"description": "Official-app export flow."},
+  "@officialExportDismiss": {
+    "description": "Official-app export flow."
+  },
   "updatesTitle": "App updates",
   "updatesConsent": "Check GitHub for official and fork releases about once a day on an unmetered connection. GitHub receives your IP address and request time. Your health data stays on this device.",
   "updatesAutomatic": "Automatic checks",
@@ -21555,6 +21584,227 @@
     "placeholders": {
       "tag": {
         "type": "String"
+      }
+    }
+  },
+  "devicesBatteryUnderAnHourLeft": "under an hour left",
+  "@devicesBatteryUnderAnHourLeft": {
+    "description": "Band page battery/calibration row sub-line."
+  },
+  "devicesBatteryHoursLeft": "about {hours} h left",
+  "@devicesBatteryHoursLeft": {
+    "description": "Band page battery/calibration row sub-line.",
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "devicesBatteryDaysLeft": "about {days} days left",
+  "@devicesBatteryDaysLeft": {
+    "description": "Band page battery/calibration row sub-line.",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "devicesChargesLogged": "{n, plural, =1{1 charge logged} other{{n} charges logged}}",
+  "@devicesChargesLogged": {
+    "description": "Band page battery/calibration row sub-line.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "devicesChargeUpToMv": "up to {mv} mV",
+  "@devicesChargeUpToMv": {
+    "description": "Band page battery/calibration row sub-line.",
+    "placeholders": {
+      "mv": {
+        "type": "int"
+      }
+    }
+  },
+  "devicesCalibrationSub": "Metrics that depend on the sensor use this band’s own constants, so two different bands can land on different tiers for the same physiology.",
+  "@devicesCalibrationSub": {
+    "description": "Band page battery/calibration row sub-line."
+  },
+  "devicesCalibrationNotStated": "Not stated yet",
+  "@devicesCalibrationNotStated": {
+    "description": "Band page battery/calibration row sub-line."
+  },
+  "devicesCalibrationNotStatedSub": "This band has not said which generation it is, and imported or older days never will. Metrics that depend on the sensor abstain rather than borrow another band’s numbers.",
+  "@devicesCalibrationNotStatedSub": {
+    "description": "Band page battery/calibration row sub-line."
+  },
+  "devicePickerBlurbGarmin": "A Garmin watch. Syncs heart rate, steps, sleep and HRV. Experimental.",
+  "@devicePickerBlurbGarmin": {
+    "description": "Category row subtitle for a Garmin watch."
+  },
+  "devicePickerNoMatch": "Nothing nearby matches that search.",
+  "@devicePickerNoMatch": {
+    "description": "Shown in place of the Nearby list when the search box hides every found device."
+  },
+  "settingsUnitsMetric": "Metric",
+  "@settingsUnitsMetric": {
+    "description": "Units value: metric"
+  },
+  "settingsUnitsImperial": "Imperial",
+  "@settingsUnitsImperial": {
+    "description": "Units value: imperial"
+  },
+  "settingsAppearanceLight": "Light",
+  "@settingsAppearanceLight": {
+    "description": "Appearance value: light theme"
+  },
+  "settingsAppearanceDark": "Dark",
+  "@settingsAppearanceDark": {
+    "description": "Appearance value: dark theme"
+  },
+  "settingsBackupDaily": "Daily",
+  "@settingsBackupDaily": {
+    "description": "Automatic backup frequency: once a day"
+  },
+  "settingsBackupWeekly": "Weekly",
+  "@settingsBackupWeekly": {
+    "description": "Automatic backup frequency: once a week"
+  },
+  "settingsAppearanceSystem": "System",
+  "@settingsAppearanceSystem": {
+    "description": "Appearance value: follow the operating system light/dark setting"
+  },
+  "notifLookbackFlaggedBody": "This week flagged: {items}. Details live on Health.",
+  "@notifLookbackFlaggedBody": {
+    "description": "Weekly lookback notification body listing the week's flags; {items} is a comma-separated list of the flag phrases below.",
+    "placeholders": {
+      "items": {
+        "type": "String"
+      }
+    }
+  },
+  "notifLookbackIllness": "resting heart rate raised ×{count}",
+  "@notifLookbackIllness": {
+    "description": "Weekly lookback flag phrase: nights with raised resting heart rate.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "notifLookbackAnomaly": "unusual physiology ×{count}",
+  "@notifLookbackAnomaly": {
+    "description": "Weekly lookback flag phrase: nights with unusual physiology.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "notifLookbackTemp": "elevated skin temperature ×{count}",
+  "@notifLookbackTemp": {
+    "description": "Weekly lookback flag phrase: nights with elevated skin temperature.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "notifLookbackRhrHigherBody": "Resting heart rate ran about {bpm} bpm higher late in the week than early.",
+  "@notifLookbackRhrHigherBody": {
+    "description": "Weekly lookback notification body: resting heart rate drifted up over the week.",
+    "placeholders": {
+      "bpm": {
+        "type": "int"
+      }
+    }
+  },
+  "notifLookbackRhrLowerBody": "Resting heart rate ran about {bpm} bpm lower late in the week than early.",
+  "@notifLookbackRhrLowerBody": {
+    "description": "Weekly lookback notification body: resting heart rate drifted down over the week.",
+    "placeholders": {
+      "bpm": {
+        "type": "int"
+      }
+    }
+  },
+  "notifSyncStaleBody": "No new data for about {hours} hours. Open OpenStrap to reconnect — background sync may have stalled.",
+  "@notifSyncStaleBody": {
+    "description": "OS notification body when the band has not synced for several hours.",
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "importSourceEncryptedBackup": "Encrypted backup",
+  "@importSourceEncryptedBackup": {
+    "description": "Import report source: an encrypted backup file."
+  },
+  "importSourceOpenStrapBackup": "OpenStrap backup",
+  "@importSourceOpenStrapBackup": {
+    "description": "Import report source: an OpenStrap backup file."
+  },
+  "importSourceRawSensor": "Raw sensor export",
+  "@importSourceRawSensor": {
+    "description": "Import report source: a raw sensor data export."
+  },
+  "importSourceVendorCsv": "Vendor CSV export",
+  "@importSourceVendorCsv": {
+    "description": "Import report source: a CSV export from the device maker."
+  },
+  "importSourceJournalCsv": "Journal CSV",
+  "@importSourceJournalCsv": {
+    "description": "Import report source: our own journal CSV export."
+  },
+  "importSourceLabCsv": "Lab results CSV",
+  "@importSourceLabCsv": {
+    "description": "Import report source: our own lab results CSV export."
+  },
+  "importSourceFilePicker": "File picker",
+  "@importSourceFilePicker": {
+    "description": "Import report source when the file picker itself failed."
+  },
+  "importSourceImport": "Import",
+  "@importSourceImport": {
+    "description": "Import report source when the whole import failed."
+  },
+  "importSourceNothingSelected": "Nothing selected",
+  "@importSourceNothingSelected": {
+    "description": "Import report source when no file was used."
+  },
+  "welcomeEncryptedBackupUseSettings": "That file is an encrypted backup. Open it from Settings → Your data, where the passphrase can be asked for.",
+  "@welcomeEncryptedBackupUseSettings": {
+    "description": "An encrypted backup was picked where no passphrase can be asked."
+  },
+  "welcomeNotUtf8": "{file}: not saved as UTF-8 — save it as \"CSV UTF-8\" and import it again",
+  "@welcomeNotUtf8": {
+    "description": "A journal or lab CSV saved in another encoding.",
+    "placeholders": {
+      "file": {
+        "type": "String"
+      }
+    }
+  },
+  "welcomeCorruptTables": "{tables} could not be read — SQLite reported the file itself as corrupted for those tables. Every other table imported normally.",
+  "@welcomeCorruptTables": {
+    "description": "Some tables in an imported backup were corrupted.",
+    "placeholders": {
+      "tables": {
+        "type": "String"
+      }
+    }
+  },
+  "welcomeRejectsMore": "{shown}; and {count} more.",
+  "@welcomeRejectsMore": {
+    "description": "Tail of the refused-rows list: the first few, then how many more.",
+    "placeholders": {
+      "shown": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
       }
     }
   }

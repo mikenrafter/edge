@@ -30,6 +30,10 @@ import 'package:openstrap_edge/compute/crossday_artifact_worker.dart';
 // declared argument/result SHAPES, and their behaviour is covered by the tests
 // of the library that owns them.
 
+import 'package:archive/archive_io.dart';
+import 'package:openstrap_edge/compute/stress_backfill.dart';
+import 'package:openstrap_edge/import/import_container.dart';
+import 'package:openstrap_edge/telemetry/health_uploader.dart';
 import 'package:openstrap_edge/tracks/learning_worker.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -411,14 +415,14 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
       final job = NightCheckpointInput(<String, Object?>{
         'day_id': '2026-11-15', 'algo_version': 125,
         'fmt': nightCheckpointFormat, 'ctx_sig': 'context',
-        'cp_rec_ts': boundary, 'rev_vec': revisions, 'state': encoded.bytes,
+        'cp_rec_ts': boundary, 'rev_vec': revisions, 'state': encoded,
         'night_ref': null, 'computed_at': 7,
       }, '2026-11-15', 125, 'context', from, from + 1999, const {}, rr, times);
       await expectIsolateRoundTrip(job, project: (i) => [i.row, i.searchRr,
           i.searchTimes, i.context, i.from, i.through]);
       await _sameInWorker(() => restoreNightCheckpointHeavy(inputs, job),
         json: (r) => [r.value.rejection, r.value.night?.retainedNightBeats,
-          r.value.payload, r.value.cardio]);
+          r.value.cardio]);
     },
   ),
   'segmentCalendarDaysHeavy': (
@@ -805,6 +809,43 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
           r.samples,
         ],
       );
+    },
+  ),
+  'inflateZipMemberHeavy': (
+    roundTrip: () async {
+      final tmp = await Directory.systemTemp.createTemp('entry_sample_zip');
+      addTearDown(() => tmp.delete(recursive: true));
+      final zipFile = File('${tmp.path}/in.zip');
+      final dest = '${tmp.path}/out.txt';
+      final arc = Archive()..addFile(ArchiveFile('a.txt', 5, [1, 2, 3, 4, 5]));
+      zipFile.writeAsBytesSync(ZipEncoder().encode(arc));
+      await Isolate.run(
+          () => inflateZipMemberHeavy(sampleHeavyInputs, zipFile.path, 0, dest));
+      expect(File(dest).readAsBytesSync(), [1, 2, 3, 4, 5]);
+    },
+  ),
+  'gzipFileHeavy': (
+    roundTrip: () async {
+      final tmp = await Directory.systemTemp.createTemp('entry_sample_gz');
+      addTearDown(() => tmp.delete(recursive: true));
+      final src = File('${tmp.path}/in.txt')..writeAsStringSync('hello world');
+      final (gz, sha) = await Isolate.run(
+          () => gzipFileHeavy(sampleHeavyInputs, src.path));
+      expect(gzip.decode(gz), utf8.encode('hello world'));
+      expect(sha.length, 64);
+    },
+  ),
+  'rescaleStressRowHeavy': (
+    roundTrip: () async {
+      final payload = jsonEncode({
+        'stress': {'si': 20.0, 'score': 0.0, 'value': 0.0},
+        'scalars': {'stress': 0.0},
+      });
+      final res = await Isolate.run(
+          () => rescaleStressRowHeavy(sampleHeavyInputs, payload));
+      expect(res.skipped, isFalse);
+      expect(res.nextScore, greaterThan(20.0));
+      expect(res.encodedPayload, isNotNull);
     },
   ),
   'decryptBackupFile': (

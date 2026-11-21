@@ -45,6 +45,7 @@ import 'dart:math' as math;
 
 import 'quiet_level_seed.dart' show seedQuietHrrHistoryOnce;
 import 'strain_backfill.dart' show backfillStrainScale;
+import 'stress_backfill.dart' show backfillStressScale;
 import 'readiness_calibration_backfill.dart'
     show
         backfillReadinessCalibration,
@@ -2035,7 +2036,15 @@ part 'engine/settled.dart';
 // episode closure; Edge stores each episode and its evidence in pulse_ep_*
 // under this version. Day payloads, sleep staging and every existing metric are
 // unchanged; the version separates episode output from earlier calculations.
-const int kAlgoVersion = 126;
+// 126 → 127 (upstream main @ 093943562 merge, no sibling repin):
+// - Upstream 124 → 125: readiness calibration backfill re-keyed for strain-rescaled rows (#792).
+// - Upstream 125 → 126 (#631 / #899): stress score recalibration — `kStressScoreFloorSi`
+//   lowered from 20 to 5 so genuinely low nights stop clamping to 0; `stress_backfill.dart`
+//   rescales stored history in place from each day's stored `stress.si` (SI 160: ~61 -> ~72).
+// - Upstream #898: hybrid HMM sleep staging opt-in (ENMO + gen5 skin temp + multi-night
+//   baselines via `enmo_median_night` + AASM 15s wake rules + staging provenance).
+// - Upstream #892: crossday chronotype pairs free mid-sleep with duration; SRI on lived clock.
+const int kAlgoVersion = 127;
 
 enum SleepEditCalculation { complete, incomplete, superseded }
 
@@ -3319,6 +3328,26 @@ class DerivationEngine {
       } catch (e) {
         _log('[derive] strain rescale failed (kept old values): $e');
       }
+      // Same one-shot shape as the strain rescale and for the same reason:
+      // low nights older than `rawRetentionDays` keep a floor-20 score that a
+      // version bump alone cannot reach. Pure function of each day's stored
+      // `stress.si`, so it needs no baseline (#631).
+      _diag['stage'] = 'stress_rescale';
+      var stressRescaled = false;
+      try {
+        final rescaled = await backfillStressScale();
+        if (rescaled.didWork) {
+          stressRescaled = true;
+          _log('[derive] stress rescale: ${rescaled.bundleDays} row(s), '
+              '${rescaled.seriesDays} trend point(s) rescaled in place, '
+              '${rescaled.skipped} skipped (no stored index or imported)');
+        }
+      } catch (e) {
+        // Each day commits on its own, so days before the failure stay
+        // rescaled; the marker is not written, so the next pass resumes.
+        stressRescaled = true;
+        _log('[derive] stress rescale stopped, will retry next pass: $e');
+      }
       // ONE-SHOT, after the sweep for the same reason as the strain rescale:
       // the rest of the readiness_z history, then a re-score of every day
       // below v112 that has no raw substrate left (substrate days were just
@@ -3354,7 +3383,7 @@ class DerivationEngine {
       }
       // Main bd492a39d9/82ac847bcd: rescaling happens after the sweep's
       // rollup. Rebuild it unless calibration actually rebuilt it successfully.
-      if (strainRescaled && !crossDayRebuilt) {
+      if ((strainRescaled || stressRescaled) && !crossDayRebuilt) {
         try {
           await _refreshBaselines();
           await _runCrossDay(profile);
@@ -4616,7 +4645,12 @@ class DerivationEngine {
     return _withRunLock(0, () async {
       // Imported payloads need the same worker-only staging as a BLE derive.
       final worker = _workerInputs();
-      final input = CalendarDaysInput(sub);
+      // One date (every NoopIngest call): stage only that night, like the
+      // live path. The full walk re-staged the buffered prior evening and
+      // threw it away, so an import paid two nights per day.
+      final target = dates.length == 1 ? dates.single : null;
+      final input = CalendarDaysInput(sub,
+          targetDay: target, skipUnusedDays: target != null);
       final result = await segmentImportedCalendarDays(worker, input);
       final days = result.days;
       final dataNowSec = sub.lastTs ?? 0;
@@ -4682,13 +4716,14 @@ class DerivationEngine {
   }
 
   /// Durable review jobs outlive a busy derive or a terminated process.
-  Future<bool> refreshActivityReviews(Profile profile) async {
+  /// true = reviews landed, false = retry later, null = nothing was pending.
+  Future<bool?> refreshActivityReviews(Profile profile) async {
     if (_running) return false;
     _running = true;
     beginWearableDayIndexPass();
     try {
       final revisions = await LocalDb.applyPendingActivityReviews();
-      if (revisions.isEmpty) return true;
+      if (revisions.isEmpty) return null;
       // Rebuild from the accepted day rows, including when an input artifact
       // was already cached today. A failed rollup must leave the work durable.
       if (!await _runCrossDay(profile)) return false;
@@ -4753,6 +4788,7 @@ class DerivationEngine {
     );
     return (await _deriveReviewedDay(
       PreparedDerivationDay(
+        useHmmStages: await _hmmStagesOn(),
         date: day.date,
         endSec: day.endSec,
         confidence: day.confidence,
@@ -5726,6 +5762,8 @@ class DerivationEngine {
     // mismatch that left z permanently null. The raw mean is stored every day so
     // this series fills and z starts computing once ≥3 days exist.
     m['skin_temp_adc_history'] = before('skin_temp_adc');
+    // Per-night stable-core ENMO medians (written only for HMM-staged nights).
+    m['enmo_history'] = before('enmo_median_night');
     // TS-03/TS-04 — the observed ceiling this day's ZONES are banded on. A max,
     // not a window (see [maxBefore]), and strictly before today so a day is
     // never banded on a ceiling its own session set.
@@ -10020,8 +10058,7 @@ class DerivationEngine {
     _cardioRowChunks.clear();
     _nightStates.clear();
     _checkpointPlans.clear();
-    debugCheckpoints.lastEncodedPayload = null;
-    debugCheckpoints.lastDecodedPayload = null;
+
     debugNightStreams?.nightState.clear();
   }
   @visibleForTesting
@@ -10083,7 +10120,20 @@ class DerivationEngine {
   @visibleForTesting
   Future<SleepSessionCandidate> debugSleepCandidate(String day) =>
       _sleepCandidateForDay(day);
-  @visibleForTesting
+  /// EXPERIMENTAL, default off: re-stage the sleep window with the hybrid HMM
+  /// classifier inside [deriveDayBundle]. Read from the pref on every pass so
+  /// the foreground engine and every headless one agree, and a toggle takes
+  /// effect without a relaunch. Any failure reads as off.
+  static Future<bool> _hmmStagesOn() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      return prefs.getBool(kSleepHmmStagesPref) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<PreparedDerivationDay?> debugPrepareDay(String day) =>
       _prepareTargetDay(day);
   @visibleForTesting
@@ -10248,6 +10298,7 @@ class DerivationEngine {
   ) async {
     if (dayId == todayLabel()) return null;
     final stagingMethod = await Prefs.refreshSleepStagingMethod();
+    final useHmmStages = await _hmmStagesOn();
     final dayStart = _localDayLabelToSec(dayId);
     final dayEnd = _localNextDayLabelToSec(dayId);
     final wearable = await activeWearable();
@@ -10266,6 +10317,7 @@ class DerivationEngine {
     final head = [
       'v${debugFingerprintAlgoVersion ?? kAlgoVersion}',
       stagingMethod.name,
+      if (useHmmStages) 'hmm',
       dataNowSec,
       // The edges a day is aged against (band and wearable; see
       // [_agingEdgeFor]), from the pass's own memo.
@@ -10494,7 +10546,12 @@ class DerivationEngine {
     if (raw is! String || raw.isEmpty) return false;
     try {
       final decoded = await JsonPayloadLane.shared.decodeUncached(raw);
-      return decoded is Map && decoded['zone'] != crossDayZoneStamp();
+      // A rollup from another algorithm version is rejected by its readers
+      // (`getInsights`), so it is as stale as one from another zone: rebuild it
+      // from stored days even when nothing else in the pass has work.
+      return decoded is Map &&
+          (decoded['zone'] != crossDayZoneStamp() ||
+              (decoded['algo_version'] as num?)?.toInt() != kAlgoVersion);
     } catch (_) {
       return false;
     }

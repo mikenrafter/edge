@@ -354,6 +354,21 @@ class SyncController {
     _backfillTimer = null;
   }
 
+  Future<void> _throttledWakeWindowRefresh() async {
+    final lastRefresh = _lastWakeWindowRefreshAt;
+    if (lastRefresh != null) {
+      final elapsed = DateTime.now().difference(lastRefresh);
+      if (!elapsed.isNegative && elapsed < const Duration(minutes: 25)) return;
+    }
+    _lastWakeWindowRefreshAt = DateTime.now();
+    try {
+      await _refreshHighFreqWakeWindow();
+    } catch (e) {
+      _log('Wake-window refresh failed: $e');
+      _lastWakeWindowRefreshAt = null;
+    }
+  }
+
   Future<void> _runPeriodicBackfill() async {
     if (!_keepAlive || paired == null || busy || _reconnecting) return;
     if (!engine.isConnected) return;
@@ -377,17 +392,7 @@ class SyncController {
       // changes at most once a day, and the window it arms is 90 min wide —
       // a ~30-min check still opens it with ≥60 min of lead. Re-running the
       // 14-day DB read + JSON decode every 10 min all night bought nothing.
-      final lastRefresh = _lastWakeWindowRefreshAt;
-      if (lastRefresh == null ||
-          DateTime.now().difference(lastRefresh) >=
-              const Duration(minutes: 25)) {
-        _lastWakeWindowRefreshAt = DateTime.now();
-        try {
-          await _refreshHighFreqWakeWindow();
-        } catch (e) {
-          _log('Wake-window refresh failed: $e');
-        }
-      }
+      await _throttledWakeWindowRefresh();
       _log('Periodic history refresh skipped — backgrounded; the engine\'s '
           'floored 15-min backfill owns the offload.');
       return;
@@ -396,8 +401,8 @@ class SyncController {
       _log('Periodic history refresh skipped — a sync burst is already running.');
       return;
     }
+    await _throttledWakeWindowRefresh();
     try {
-      await _refreshHighFreqWakeWindow();
       _log('Periodic history refresh — requesting another offload.');
       final report = await _kickSyncBurst(kickFirst: true);
       _log(
@@ -506,18 +511,22 @@ class SyncController {
       );
       clean = report.complete && !backlogRemains;
       if (frontierAdvanced) _lastBurstAdvanced = true;
-      await LocalDb.upsertSyncLedgerEntry(
-        status: report.complete ? 'complete' : 'session_end',
-        metaPatch: {
-          'frontier_before_ts': frontierBefore,
-          'frontier_after_ts': frontierAfter,
-          'frontier_advanced': frontierAdvanced,
-          'strap_history_newest_ts': strapNewest,
-          'backlog_remains': backlogRemains,
-          'session_index': i + 1,
-          'max_sessions': maxSessions,
-        },
-      );
+      try {
+        await LocalDb.upsertSyncLedgerEntry(
+          status: report.complete ? 'complete' : 'session_end',
+          metaPatch: {
+            'frontier_before_ts': frontierBefore,
+            'frontier_after_ts': frontierAfter,
+            'frontier_advanced': frontierAdvanced,
+            'strap_history_newest_ts': strapNewest,
+            'backlog_remains': backlogRemains,
+            'session_index': i + 1,
+            'max_sessions': maxSessions,
+          },
+        );
+      } catch (e) {
+        _log('Sync ledger write failed (continuing burst): $e');
+      }
       // The wait gave up (timeout / no progress) but the task did not end:
       // a report only carries progress not reported yet, so nothing new in
       // it says nothing about the drain. Wait on the same task again — only

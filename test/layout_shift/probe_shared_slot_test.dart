@@ -7,7 +7,7 @@
 // Test surface: 800 x 600 logical.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/layout_shift/layout_shift.dart';
+import '../support/layout_shift/layout_shift.dart';
 import 'package:openstrap_edge/ui2/shared_slot.dart';
 
 import '../support/layout_shift_probe.dart';

@@ -26,7 +26,7 @@ void main() {
         'context', from, boundary, revisions)!;
     final row = <String, Object?>{'day_id': '2026-11-15', 'algo_version': 125,
       'fmt': nightCheckpointFormat, 'ctx_sig': 'context', 'cp_rec_ts': boundary,
-      'rev_vec': revisions, 'state': encoded.bytes, 'night_ref': null, 'computed_at': 7};
+      'rev_vec': revisions, 'state': encoded, 'night_ref': null, 'computed_at': 7};
     final job = NightCheckpointInput(row, '2026-11-15', 125, 'context', from,
         from + 1999, const {}, rr, times);
     await expectIsolateRoundTrip(job, project: (i) => [i.row, i.day, i.context,
@@ -35,8 +35,8 @@ void main() {
     expect(result.value.rejection, isNull);
     expect(result.value.night!.retainedNightBeats, 1800);
     await expectIsolateRoundTrip(result, project: (r) => [r.value.rejection,
-      r.value.night!.retainedNightBeats, r.value.payload, r.value.cardio]);
-    encoded.bytes[40] ^= 1;
+      r.value.night!.retainedNightBeats, r.value.cardio]);
+    encoded[40] ^= 1;
     final refused = await Isolate.run(() => restoreNightCheckpointHeavy(_inputs, job));
     expect(refused.value.rejection, isNotNull);
     expect(refused.value.night, isNull);

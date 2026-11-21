@@ -180,7 +180,12 @@ class HealthData {
     }
   }
 
-  static Future<HealthData> load(LocalRepository repo) async {
+  // One decode of each day bundle per load, not one per getter (see
+  // LocalRepository.sharingDayReads).
+  static Future<HealthData> load(LocalRepository repo) =>
+      repo.sharingDayReads(InlineAsyncWork(() => _read(repo)));
+
+  static Future<HealthData> _read(LocalRepository repo) async {
     // Started first and awaited last: first paint waits for the slowest read,
     // not the sum. A failed read is null (no card), never a failed load.
     final wearableRead = _wearableOrNull(repo);
@@ -325,7 +330,12 @@ class VitalsData {
     this.hrv = const {},
   });
 
-  static Future<VitalsData> load(LocalRepository repo, {String? want}) async {
+  // One decode of each day bundle per load, not one per getter (see
+  // LocalRepository.sharingDayReads).
+  static Future<VitalsData> load(LocalRepository repo, {String? want}) =>
+      repo.sharingDayReads(InlineAsyncWork(() => _read(repo, want)));
+
+  static Future<VitalsData> _read(LocalRepository repo, String? want) async {
     final today = await repo.getTodayStored();
     final days = await repo.availableDays();
     final day = pickDay(

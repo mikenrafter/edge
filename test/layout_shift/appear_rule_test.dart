@@ -7,14 +7,14 @@
 // (400,.1) (1000,.3) (2000,.6) (4000,1), loadWeight .25, errorAt .25,
 // appearWeight .5, appearCoveredFree .9.
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/layout_shift/layout_shift.dart';
+import '../support/layout_shift/layout_shift.dart';
 
 import '../support/shift_builders.dart';
 
 const _vp = ShiftRect(0, 0, 400, 800);
 const _card = ShiftRect(0, 0, 400, 300);
-// A 22 x 22 spinner centred where the card will go. It is a loading
-// indicator (InlineLoading), so it is a placeholder: the space it held is free.
+// A 22 x 22 loading indicator centred where the card will go. It is a
+// placeholder, so the space it held is free.
 const _spinner = ShiftRect(189, 139, 22, 22);
 
 List<ShiftFinding> _appear(ShiftReport r) =>

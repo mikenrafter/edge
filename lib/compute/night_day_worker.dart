@@ -37,7 +37,7 @@ class NightDayResult {
   final NightRrState? night;
   final Ed2bStreamDiagnostics? diagnostics;
   final bool resumed, rejected;
-  final NightCheckpointWrite? checkpoint;
+  final Uint8List? checkpoint;
   final DayCalculationState dayState;
 }
 
@@ -66,7 +66,7 @@ NightDayResult deriveNightDayHeavy(WorkerInputs inputs, NightDayInput job) {
   final dayState = job.previous ?? DayCalculationState();
   final bundle = deriveDayBundle(job.json, state: dayState, mode: job.mode,
       streamDiagnostics: job.diagnostics, nightState: state);
-  NightCheckpointWrite? checkpoint;
+  Uint8List? checkpoint;
   if (job.canCheckpoint) {
     try {
       checkpoint = encodeNightCheckpointHeavy(state, job.chunks, job.day,

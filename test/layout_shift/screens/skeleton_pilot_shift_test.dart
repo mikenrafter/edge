@@ -11,7 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/day_label.dart' show dayLabelBefore;
-import 'package:openstrap_edge/layout_shift/layout_shift.dart';
+import '../../support/layout_shift/layout_shift.dart';
 import '../../backup/backup_support.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/activity/day_strain.dart';

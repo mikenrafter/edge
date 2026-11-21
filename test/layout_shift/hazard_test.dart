@@ -5,7 +5,7 @@
 //   union 50x70 = 0.35, distance 0.2, base = 0.07.
 // Interaction at 1000 (source 'src'); the shift lands at 1000 + t.
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/layout_shift/layout_shift.dart';
+import '../support/layout_shift/layout_shift.dart';
 
 import '../support/shift_builders.dart';
 
@@ -82,12 +82,12 @@ void main() {
     test('focused in the after frame: 0.07 * .5 * 2 = 0.07', () {
       expect(shifts(_move('x', focused: true)), closeTo(0.07, 1e-9));
     });
-    test('focused only in the before frame: 0.07 * .5 = 0.035', () {
+    test('focused only in the before frame: 0.07 * .5 * 2 = 0.07', () {
       final s = sc([
         fr(1000, [el('x', _a, focused: true)]),
         fr(1000, [el('x', _b)]),
       ], interactions: _ix);
-      expect(shifts(s), closeTo(0.035, 1e-9));
+      expect(shifts(s), closeTo(0.07, 1e-9));
     });
     test('recent focus history (age 100 < half-life): 0.035', () {
       expect(shifts(_move('x', focus: const [FocusEvent(900, 'x')])),

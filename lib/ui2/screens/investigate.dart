@@ -135,14 +135,21 @@ class InvestigateData {
     if (day == null) return InvestigateData(days: days);
 
     final spec = specOf(key);
-    final hrv = await repo.getDayHrv(day);
-    final heart = await repo.getDayHeart(day);
-    final wear = await repo.getDayWear(day);
-    final lungs = await repo.getDayLungs(day);
+    // One bundle decode shared by the getters, not four.
+    final (hrv, heart, wear, lungs, block) =
+        await repo.sharingDayReads(InlineAsyncWork(() async => (
+              await repo.getDayHrv(day),
+              await repo.getDayHeart(day),
+              await repo.getDayWear(day),
+              await repo.getDayLungs(day),
+              await repo.getDayBlock(day, [
+                'imported',
+                'source',
+                'steps',
+                if (key == 'stress') 'stress',
+              ]),
+            )));
     final row = await LocalDb.dayResultMeta(day);
-    final block = await repo.getDayBlock(day, [
-      'imported', 'source', 'steps', if (key == 'stress') 'stress',
-    ]);
     final win = lungs['sleep_window'];
     // Points, not bare doubles: each value keeps the older-calculation flag it
     // was stored with, so the statistics below can say when they lean on one.
@@ -1351,7 +1358,13 @@ class _InvestigateState extends State<Investigate> {
         (l?.investigateLatest ?? 'Latest', star(n(s.last), latestOlder)),
         (l?.investigateMean ?? 'Mean', star(n(mean), anyOlder)),
         (l?.investigateMedian ?? 'Median',
-            star(n(sorted[sorted.length ~/ 2]), anyOlder)),
+            star(
+                n(sorted.length.isOdd
+                    ? sorted[sorted.length ~/ 2]
+                    : (sorted[sorted.length ~/ 2 - 1] +
+                            sorted[sorted.length ~/ 2]) /
+                        2),
+                anyOlder)),
         (l?.investigateSd ?? 'SD', star(n(sd), anyOlder)),
         (l?.investigateMin ?? 'Min', star(n(sorted.first), anyOlder)),
         (l?.investigateMax ?? 'Max', star(n(sorted.last), anyOlder)),

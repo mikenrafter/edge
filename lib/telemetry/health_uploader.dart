@@ -1,8 +1,14 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
+
+import '../util/heavy.dart';
+import '../util/worker_init.dart';
+import 'dart:typed_data';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:crypto/crypto.dart' show sha256;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../cloud/companion_client.dart';
@@ -111,8 +117,7 @@ class HealthUploader {
           includeSubstrateArchive: false, extras: BackupExtras.none);
       final file = File(path);
       try {
-        final bytes = await file.readAsBytes();
-        final gz = gzip.encode(bytes);
+        final (gz, digest) = await gzipFile(path);
         String? appVersion;
         try {
           appVersion = (await PackageInfo.fromPlatform()).version;
@@ -124,7 +129,7 @@ class HealthUploader {
           consentVersion: consentVersion,
           appVersion: appVersion,
           // Integrity of what was sent, so the server can record it.
-          sha256: sha256.convert(gz).toString(),
+          sha256: digest,
         );
         // Counted locally (into the next contributed database), so a broken
         // uploader shows up as failures instead of as silence.
@@ -143,6 +148,19 @@ class HealthUploader {
     } finally {
       _running = false;
     }
+  }
+
+  /// Gzip [path] and hash the result off the UI isolate. The file is
+  /// streamed through the encoder, so the raw database is never held in
+  /// memory whole, and the result comes back without a copy.
+  @visibleForTesting
+  static Future<(Uint8List, String)> gzipFile(String path) {
+    final inputs = WorkerInputs(
+      nowEpochMs: DateTime.now().millisecondsSinceEpoch,
+      zoneId: 'UTC',
+      localeTag: 'en',
+    );
+    return Isolate.run(() => gzipFileHeavy(inputs, path));
   }
 
   Future<bool> _onWifi() async {
@@ -165,3 +183,15 @@ class HealthUploader {
   }
 }
 
+
+@heavy
+Future<(Uint8List, String)> gzipFileHeavy(
+  WorkerInputs inputs,
+  String path,
+) async {
+  WorkerInit.ensure(inputs);
+  final out = BytesBuilder(copy: false);
+  await File(path).openRead().transform(gzip.encoder).forEach(out.add);
+  final gz = out.takeBytes();
+  return (gz, sha256.convert(gz).toString());
+}

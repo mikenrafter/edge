@@ -109,13 +109,14 @@ class DayStrainData {
 
   bool get hasCurve => curve.any((v) => v != null);
 
-  static Future<DayStrainData> load(LocalRepository repo, {String? forDay}) async {
-    final daysRead = repo.availableDays();
+  static Future<DayStrainData> load(LocalRepository repo,
+      {String? forDay, List<String>? days}) async {
+    final daysRead = days != null ? Future.value(days) : repo.availableDays();
     final flagsRead = loadRhrAnnotations(repo);
     final asked = forDay ?? todayLabel();
     final s = await repo.getDayStrain(asked);
-    final days = await daysRead;
-    if (s.isEmpty) return DayStrainData(days: days);
+    final stepDays = await daysRead;
+    if (s.isEmpty) return DayStrainData(days: stepDays);
 
     final pts = <(int, double)>[
       for (final e in (s['curve'] as List? ?? const []))
@@ -170,7 +171,7 @@ class DayStrainData {
       // The headline absence's reason, at the top level of the payload — the
       // same string as `absent.strain`.
       note: s['note'] as String?,
-      days: days,
+      days: stepDays,
     );
   }
 
@@ -259,7 +260,14 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
           setState(() => _hasWear = (wear['worn_min'] as num? ?? 0) > 0);
         }
       });
-      final (_, d) = await (wearRead, DayStrainData.load(repo, forDay: day)).wait;
+      // The stepper's list doesn't change between steps; reuse it unless the
+      // first read came back empty.
+      final known = _d?.days;
+      final (_, d) = await (
+        wearRead,
+        DayStrainData.load(repo,
+            forDay: day, days: known == null || known.isEmpty ? null : known),
+      ).wait;
       if (mounted && token == _loadToken) setState(() => (_d = d, _readFailed = false, _loading = false));
     } catch (_) {
       // Keep the selected date available after a failed read.

@@ -1,7 +1,7 @@
 // Layout shift budget on MetricDetail: open (loading -> chart) then switching a
 // range chip (an Interaction on the chip). Measurement test.
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/layout_shift/layout_shift.dart';
+import '../../support/layout_shift/layout_shift.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 

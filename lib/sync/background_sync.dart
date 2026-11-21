@@ -273,7 +273,8 @@ Future<void> prepareHeadlessLink(BleEngine engine, PairedDevice paired) async {
   // otherwise re-probe the connect route on every wake forever.
   final gen = engine.state.generation;
   if ((gen == 'gen4' || gen == 'gen5') && gen != paired.generation) {
-    await PairedDevice.save(paired.remoteId, paired.serial, generation: gen);
+    await PairedDevice.save(paired.remoteId, paired.serial,
+        generation: gen, onlyIfPaired: true);
   }
   // Read BEFORE the (possibly long) sync; the re-arm re-reads the schedule
   // fresh on its own (see PR #403).
@@ -751,8 +752,7 @@ Future<void> checkSyncStaleness({bool allowPermissionPrompt = false}) async {
         // event was actually presented.
         priority: NotifPriority.normal,
         title: "Your band has not synced",
-        body: 'No new data for about $hoursStale hours. Open OpenStrap to '
-            'reconnect the band.',
+        body: staleSyncBody(hoursStale),
         date: dayLabelOf(now),
         // Home: its day card carries the synced-through line and the sync
         // button this body points at. Profile shows neither.
@@ -820,3 +820,9 @@ Future<void> rearmHeadlessAlarm(BleEngine engine, PairedDevice paired, {String p
     _bgLog('[bgsync] [alarm] headless arm ($phase) skipped: $e');
   }
 }
+
+/// Notification body when background sync has gone stale. Kept top-level so
+/// tests can verify wording without a notification host.
+String staleSyncBody(int hours) =>
+    'No new data for about $hours hours. Open OpenStrap to '
+    'reconnect — background sync may have stalled.';
