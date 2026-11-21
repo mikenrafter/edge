@@ -384,21 +384,15 @@ class OfficialExportCoordinator extends ChangeNotifier {
     if(encryptedHash!=expected)throw StateError('Plaintext changed while encrypting');
     await _destination.closeCiphertext(_incomplete!);
     await _verify(_incomplete!,expected,size,artifact,native:native,key:key);
-    final probe=native==null?null:await native.probeFile(_incomplete!);
     _progress(ExportStage.publishing,artifact:artifact);
     await _space.requireAvailable(size+54);
     _publicationName=name;await _journal();
     _incomplete=await _destination.publishCiphertext(_incomplete!,name);
     await _journal();
-    // Provider rename may copy bytes or change identity, a new trust boundary.
-    // With the platform cipher the renamed document must match the verified
-    // one in size and in its first and last 64 KiB; otherwise a full pass.
-    if(probe!=null) {
-      _progress(ExportStage.verifying,artifact:artifact,total:size+54);
-      if(await native!.probeFile(_incomplete!)!=probe)throw StateError('Saved file differs from verified copy');
-    } else {
-      await _verify(_incomplete!,expected,size,artifact);
-    }
+    // Provider rename may copy bytes or change identity, a new trust boundary:
+    // the published document is authenticated in full, as a stream, so a
+    // provider that cannot seek is read the same way. [review r1 F1, F2]
+    await _verify(_incomplete!,expected,size,artifact,native:native,key:key);
     final saved=VerifiedExportFile(_incomplete!,_destination.label,expected,size+54);
     _incomplete=null;_publicationName=null;
     if(artifact==ExportArtifact.official)official=saved;

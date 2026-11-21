@@ -210,9 +210,6 @@ class LocalCipherBackupStorage implements CipherBackupStorage {
 abstract interface class NativeOsbkCipher {
   Future<String> encryptFileInto(BackupFile file,String plainPath,OsbkKey key,{void Function(int)? onBytes,void Function()? checkCancelled});
   Future<String> verifyFile(BackupFile file,OsbkKey key,{void Function(int)? onBytes,void Function()? checkCancelled});
-  /// Size and hashes of the first and last 64 KiB; equal probes before and
-  /// after a rename mean the provider kept the verified bytes.
-  Future<String> probeFile(BackupFile file);
 }
 
 class AndroidCipherBackupStorage implements CipherBackupStorage, NativeOsbkCipher {
@@ -245,11 +242,6 @@ class AndroidCipherBackupStorage implements CipherBackupStorage, NativeOsbkCiphe
     _nativePass('encryptCiphertext',{..._args(file),'source':plainPath,'key':key.key,'nonce':key.nonce,'header':key.header},onBytes,checkCancelled);
   @override Future<String> verifyFile(BackupFile file,OsbkKey key,{void Function(int)? onBytes,void Function()? checkCancelled})=>
     _nativePass('verifyCiphertext',{..._args(file),'key':key.key,'nonce':key.nonce,'header':key.header},onBytes,checkCancelled);
-  @override Future<String> probeFile(BackupFile file) async {
-    final probe=await AndroidBackupStorage.channel.invokeMapMethod<String,Object?>('probeCiphertext',_args(file));
-    if(probe==null)throw const FileSystemException('Could not read saved file');
-    return '${probe['size']}:${probe['head']}:${probe['tail']}';
-  }
   // One pass runs on the bridge's worker; progress and cancellation go
   // through main-thread calls polled here, so the pass never blocks the UI.
   Future<String> _nativePass(String method,Map<String,Object?> args,void Function(int)? onBytes,void Function()? checkCancelled) async {

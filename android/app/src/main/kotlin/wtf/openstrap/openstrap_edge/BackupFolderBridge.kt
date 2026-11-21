@@ -24,7 +24,6 @@ import java.util.concurrent.atomic.AtomicLong
  */
 object BackupFolderBridge {
     private const val REQUEST_PICK_FOLDER = 0x5A41
-    private const val PROBE = 64L * 1024
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private val cipherWrites = mutableMapOf<String, Pair<String, OutputStream>>()
@@ -46,7 +45,7 @@ object BackupFolderBridge {
                 } else if (call.method == "cipherCancel") {
                     cipherCancelled = true
                     result.success(null)
-                } else if (call.method in setOf("list", "write", "rename", "delete", "release", "freeSpace", "openCiphertext", "appendCiphertext", "closeCiphertext", "readCiphertext", "closeCiphertextRead", "shareCiphertext", "encryptCiphertext", "verifyCiphertext", "probeCiphertext")) {
+                } else if (call.method in setOf("list", "write", "rename", "delete", "release", "freeSpace", "openCiphertext", "appendCiphertext", "closeCiphertext", "readCiphertext", "closeCiphertextRead", "shareCiphertext", "encryptCiphertext", "verifyCiphertext")) {
                     run(result) { dispatch(app, call) }
                 } else {
                     result.notImplemented()
@@ -287,26 +286,6 @@ object BackupFolderBridge {
                     val info = child(context, root, uri)
                     val stream = context.contentResolver.openInputStream(info.uri) ?: throw IOException("Could not read export")
                     stream.use { gcm.verify(it.buffered(OsbkGcm.CHUNK), progress, cancelled) }
-                }
-            }
-            "probeCiphertext" -> {
-                // Size plus SHA-256 of the first and last 64 KiB: a cheap identity check of a
-                // published document against the fully verified one it was renamed from.
-                val info = child(context, root, call.argument<String>("uri") ?: "")
-                val pfd = context.contentResolver.openFileDescriptor(info.uri, "r") ?: throw IOException("Could not read export")
-                pfd.use {
-                    java.io.FileInputStream(it.fileDescriptor).channel.use { ch ->
-                        val size = ch.size()
-                        fun sha(at: Long): String {
-                            val n = minOf(PROBE, size - at).toInt()
-                            val buf = java.nio.ByteBuffer.allocate(n)
-                            ch.position(at)
-                            while (buf.hasRemaining() && ch.read(buf) >= 0) {}
-                            if (buf.hasRemaining()) throw IOException("Could not read export")
-                            return java.security.MessageDigest.getInstance("SHA-256").digest(buf.array()).joinToString("") { b -> "%02x".format(b) }
-                        }
-                        mapOf("size" to size, "head" to sha(0), "tail" to sha(maxOf(0L, size - PROBE)))
-                    }
                 }
             }
             "readCiphertext" -> {
