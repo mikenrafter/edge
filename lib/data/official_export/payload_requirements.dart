@@ -94,6 +94,7 @@ List<PayloadViolation> checkPayload(
   }
   final carrierNames = {for (final c in profile.carriers) c.name};
   for (final name in payload.catalog.tables.keys) {
+    if (_platformTables.contains(name)) continue;
     if (!target.tables.containsKey(name) && !carrierNames.contains(name)) {
       out.add(PayloadViolation('unknownTable', name));
     }
@@ -133,7 +134,7 @@ List<PayloadViolation> checkPayload(
       if (e.value.policy.carriesRows) e.value.dest!,
   };
   for (final e in payload.rowCounts.entries) {
-    if (e.value == 0) continue;
+    if (e.value == 0 || _platformTables.contains(e.key)) continue;
     if (!carrying.contains(e.key) && !carrierNames.contains(e.key)) {
       out.add(PayloadViolation('droppedTableHasRows', e.key));
     }
@@ -167,6 +168,13 @@ List<PayloadViolation> checkPayload(
   }
   return out;
 }
+
+/// Tables the platform's SQLite adds to every file it opens: Android's
+/// SQLiteDatabase creates `android_metadata` (one locale row) in the private
+/// target too, so it is neither unknown nor fork data. Every Android SQLite
+/// file has it, the official app's own databases included. The source's copy
+/// is still dropped by its profile. [android_metadata_test]
+const _platformTables = {'android_metadata'};
 
 bool _sameColumns(List<ColumnShape> a, List<ColumnShape> b) =>
     a.length == b.length &&
