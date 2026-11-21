@@ -3,6 +3,7 @@
 // The caller supplies a CLOSED immutable snapshot, never a live database path.
 // CLAIM(official-export-source-unchanged) [mapper_test; owner proof].
 import 'dart:io';
+import 'dart:math' show min;
 import 'dart:typed_data';
 import 'package:sqflite/sqflite.dart';
 import 'mapping_worker.dart';
@@ -183,8 +184,14 @@ Future<int?> oldestMappedExactSec(DatabaseExecutor db) async =>
       'SELECT rec_ts FROM decoded_rr WHERE rec_ts > 0)',
     ));
 
+/// Tables read [_fetchRows] rows per query (narrow rows, far below Android's
+/// 2 MB CursorWindow); every other table keeps 256.
+const _wideFetch = {'decoded_onehz', 'decoded_rr', 'samples', 'raw_archive_frames', 'raw_archive_legacy'};
+const _fetchRows = 2048;
+
 class _Mapper {
   _Mapper(this.src, this.file, this.source, this.target, this.space, this.calendar, this.onProgress);
+  final Set<(Object?,String)> _writtenFrames = {};
   final LocalCalendar calendar;
   final void Function(String,int)? onProgress;
   final Database src;
@@ -346,28 +353,44 @@ class _Mapper {
         if (policy.clear.contains(c.name) || (policy.omit.contains(c.name) && name!='alarm_schedule'))
           'CASE WHEN ${_q(c.name)} IS NULL THEN NULL ELSE 1 END AS ${_q(c.name)}'
         else _q(c.name)].join(',');
-      final page = await src.rawQuery('SELECT ${_q(shape.rowidAlias!)} AS __export_rowid,$projection FROM ${_q(name)} '
-          '${after == null ? '' : 'WHERE ${_q(shape.rowidAlias!)} > ?'} ORDER BY ${_q(shape.rowidAlias!)} LIMIT 256',
+      // Narrow, long tables are read and projected [_fetchRows] at a time
+      // (one query, one worker hop) but still written, accounted and
+      // committed in the same 256-row pages, so the file bytes are unchanged:
+      // per-page query and isolate hops made decoded_rr take 131 s on the
+      // emulator. [mapper_parity_test]
+      final fetchRows = _wideFetch.contains(name) ? _fetchRows : 256;
+      final fetched = await src.rawQuery('SELECT ${_q(shape.rowidAlias!)} AS __export_rowid,$projection FROM ${_q(name)} '
+          '${after == null ? '' : 'WHERE ${_q(shape.rowidAlias!)} > ?'} ORDER BY ${_q(shape.rowidAlias!)} LIMIT $fetchRows',
           [?after]);
-      if (page.isEmpty) { break; }
-      after = page.last['__export_rowid'] as int;
+      if (fetched.isEmpty) { break; }
+      after = fetched.last['__export_rowid'] as int;
       Set<(Object?,Object?)>? liveBeatParents;
       if(name=='decoded_rr') {
-        final matches=await LocalDb.exportMatchingParents(dst,[
-          for(final row in page)
-            if(row['device_id'] is String && row['ts_ms'] is int) (row['device_id'] as String,row['ts_ms'] as int),
-        ]);
-        final metadata=await runMappingWorker(MappingInput('keys','',const [],batch:matches));
-        liveBeatParents={for(final row in metadata.rows) (row['device_id'],row['ts_ms'])};
+        // decoded_onehz is complete in the target before decoded_rr starts.
+        liveBeatParents={};
+        for (var at = 0; at < fetched.length; at += 256) {
+          final matches=await LocalDb.exportMatchingParents(dst,[
+            for(final row in fetched.sublist(at, min(at + 256, fetched.length)))
+              if(row['device_id'] is String && row['ts_ms'] is int) (row['device_id'] as String,row['ts_ms'] as int),
+          ]);
+          final metadata=await runMappingWorker(MappingInput('keys','',const [],batch:matches));
+          liveBeatParents.addAll([for(final row in metadata.rows) (row['device_id'],row['ts_ms'])]);
+        }
       }
-      final projected = await runMappingWorker(MappingInput('page', name, page, legacySmartWakeActive: legacyWake));
+      final projectedAll = await runMappingWorker(MappingInput('page', name, fetched, legacySmartWakeActive: legacyWake));
+      final notes = {for (final n in projectedAll.notes) n['rowid'] as int: n};
+      final sliceOf = <Object?, int>{for (var i = 0; i < fetched.length; i++) fetched[i]['__export_rowid']: i ~/ 256};
+      final projectedSlices = [for (var i = 0; i < fetched.length; i += 256) <Map<String,Object?>>[]];
+      for (final row in projectedAll.rows) { projectedSlices[sliceOf[row['__export_rowid']]!].add(row); }
+      for (var slice = 0; slice < projectedSlices.length; slice++) {
+      final page = fetched.sublist(slice * 256, min(slice * 256 + 256, fetched.length));
+      final pageIds = {for (final row in page) row['__export_rowid']};
       final originals = {for (final row in page) row['__export_rowid']: row};
-      final notes = {for (final n in projected.notes) n['rowid'] as int: n};
       final batch = file.beginBatch();
       final decisions = <int, (String, List, Object?)>{};
       final queuedFrames=<(Object?,String),Map<String,Object?>>{};
       var written = 0;
-      for (final row in projected.rows) {
+      for (final row in projectedSlices[slice]) {
         final id = row.remove('__export_rowid') as int;
         final original = originals[id]!;
         final reason = excluded(name, original) ?? (name == 'decoded_rr'
@@ -396,8 +419,11 @@ class _Mapper {
         if (name.startsWith('raw_archive')) {
           final identity=(row['device_id'],'${row['hash']}');
           final queued=queuedFrames[identity];
-          final existing = queued==null ? await dst.query('raw_archive_frames', where: 'device_id=? AND hash=?',
-              whereArgs: [row['device_id'], row['hash']]) : [queued];
+          // Only this loop writes the target frame table, so an identity it
+          // never wrote cannot be there: skip the lookup (86k queries, 39 s).
+          final existing = queued!=null ? [queued] : !_writtenFrames.contains(identity) ? const <Map<String,Object?>>[]
+              : await dst.query('raw_archive_frames', where: 'device_id=? AND hash=?',
+              whereArgs: [row['device_id'], row['hash']]);
           if (existing.isNotEmpty) {
             decisions[id] = (sameRawFrame(existing.single, row) ? 'exact frame overlap' : 'frame hash collision; withheld incoming frame', const [], null);
             continue;
@@ -418,7 +444,7 @@ class _Mapper {
         decisions[id] = ('mapped', [...(notes[id]?['columns'] as List? ?? const []), if (lostLink) 'workout_id',
           if(napLink && row['linked_id']!=original['linked_id']) 'linked_id'], notes[id]?['key_map']);
       }
-      for (final note in projected.notes.where((n) => n['omitted'] == true)) {
+      for (final note in projectedAll.notes.where((n) => n['omitted'] == true && pageIds.contains(n['rowid']))) {
         decisions[note['rowid'] as int] = (note['reason'] as String, const [], null);
       }
       for (final row in page) {
@@ -429,7 +455,9 @@ class _Mapper {
       onProgress?.call(name,ledger.accounted);
       await space?.requireAvailable(256 * 32768);
       await batch.flush();
+      if (name.startsWith('raw_archive')) { _writtenFrames.addAll(queuedFrames.keys); }
       expectedCounts[policy.dest!] = (expectedCounts[policy.dest!] ?? 0) + written;
+      }
     }
     ledger.verify();
     reports[name] = {
