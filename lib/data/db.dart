@@ -9871,12 +9871,13 @@ class LocalDb {
             'ON day_result(algo_version, day_id, skipped, partial)',
           );
           // Only the imported rows: the measured-series reads exclude imported
-          // days ([_importedDatesSql]) without walking every day bundle. The
-          // partial index WHERE is the reader's term, text for text.
+          // days ([_importedDatesSql]) without walking every day bundle. Keep
+          // this literal equivalent to [_dayResultImportedExpr] (p21 write seam).
           await db.execute(
-            'CREATE INDEX IF NOT EXISTS idx_day_result_imported '
-            'ON day_result(day_id, algo_version) '
-            'WHERE ($_dayResultImportedExpr) = 1',
+            "CREATE INDEX IF NOT EXISTS idx_day_result_imported "
+            "ON day_result(day_id, algo_version) "
+            "WHERE (CASE WHEN json_valid(payload_json) THEN "
+            "COALESCE(json_type(payload_json, '\$.imported') = 'true', 0) ELSE 0 END) = 1",
           );
         } finally {
           _finalizedDayIndexBuilding.value = false;
