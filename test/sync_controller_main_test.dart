@@ -847,6 +847,20 @@ void main() {
         'sched.stored',
       ], reason: 'the foreground tick shares the 25-minute re-plan throttle');
       expect(r.logged('Periodic backlog check: 3 records (complete).'), isTrue);
+
+      // Once the throttle has expired a foreground tick re-plans again, so
+      // dropping the foreground re-plan call cannot pass this case.
+      r.trace.clear();
+      r.c.debugLastWakeWindowRefreshAt =
+          DateTime.now().subtract(const Duration(minutes: 26));
+      tick.fire();
+      await until(() => r.trace.contains('sched.stored'));
+      expect(r.trace, [
+        'wake',
+        'requestHistorySync',
+        'runSync:180',
+        'sched.stored',
+      ], reason: 'an expired throttle lets the foreground tick re-plan');
     }));
   });
 

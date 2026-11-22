@@ -179,6 +179,11 @@ class SyncController {
   /// see the throttle in [_runPeriodicBackfill]).
   DateTime? _lastWakeWindowRefreshAt;
 
+  /// Test seam: when the wake-window re-plan last ran, so a test can age the
+  /// 25-minute throttle without waiting.
+  @visibleForTesting
+  set debugLastWakeWindowRefreshAt(DateTime? at) => _lastWakeWindowRefreshAt = at;
+
   /// True while the app is backgrounded. On iOS we KEEP the BLE connection alive in
   /// this state (see [pauseForBackground]) so the OS keeps resuming us per BLE
   /// notification and the live drain continues.
