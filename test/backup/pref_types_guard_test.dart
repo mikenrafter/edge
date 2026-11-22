@@ -93,7 +93,15 @@ void main() {
     'notif_fallback_destination': 'string',
     'notif_critical_override': 'bool',
     'update_checks_enabled': 'bool',
+    // lib/state/sleep_hmm_choice.dart reads both via sp.get(...) + `is bool`.
+    'sleep_hmm_stages': 'bool',
+    'compute.experimental_sleep_hmm': 'bool',
   };
+  test('validated raw Object? readers keep their import types in kPrefTypes', () {
+    for (final e in validatedRawReads.entries) {
+      expect(expectedPrefType(e.key), e.value, reason: e.key);
+    }
+  });
   final files = Directory('lib').listSync(recursive: true)
       .whereType<File>().where((f) => f.path.endsWith('.dart')).toList();
   final text = {for (final f in files) f.path: f.readAsStringSync()};
