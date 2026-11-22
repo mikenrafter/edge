@@ -5893,17 +5893,21 @@ class LocalDb {
   /// their own baselines, i.e. fabricate a baseline out of a short recent
   /// window, which is the worse fault of the two.
   ///
-  /// A substring match, not `json_extract`: `jsonEncode` emits no spaces and
-  /// this app is the only writer of the flag, so the literal is exact, and it
-  /// does not assume a JSON1-enabled sqlite on every platform we ship to.
+  /// The payload's own top-level boolean ([_dayResultImportedExpr], the same
+  /// test [finalizedDayIds] reads). The foreground maintenance builds a small
+  /// partial index of exactly these rows (`idx_day_result_imported`), so this
+  /// read is a walk of the few imported days; before that it is the scan it
+  /// always was. A substring match would also call a nested or quoted
+  /// `"imported":true` imported.
   ///
   /// The `IS NOT NULL` guards are not decoration. SQLite does not enforce NOT
   /// NULL on a declared PRIMARY KEY column of a legacy rowid table, and a
   /// single NULL inside a `NOT IN (…)` list makes the whole predicate NULL for
   /// EVERY row — one stray row would silently empty every baseline in the app
   /// rather than filter one day out of it.
-  /// THE SERVED VERSION ONLY on the `day_result` half, for the same reason
-  /// every other reader uses [_servedDayJoin]: `PRIMARY KEY (day_id,
+  /// THE SERVED VERSION ONLY on the `day_result` half (the same rule as
+  /// [_servedDayJoin], written as a per-row test so the imported rows drive the
+  /// read instead of every served day): `PRIMARY KEY (day_id,
   /// algo_version)` makes versions siblings, so an imported day that the band
   /// LATER re-derived keeps its old imported row sitting beside the new
   /// measured one. Testing every row made that day imported FOREVER — masked
@@ -5916,8 +5920,9 @@ class LocalDb {
       "WHERE date IS NOT NULL AND source IS NOT NULL AND source <> 'band' "
       'UNION '
       'SELECT r.day_id FROM day_result r '
-      '$_servedDayJoin '
-      "WHERE r.day_id IS NOT NULL AND r.payload_json LIKE '%\"imported\":true%'";
+      'WHERE r.day_id IS NOT NULL AND ($_dayResultImportedExpr) = 1 '
+      'AND r.algo_version = (SELECT MAX(x.algo_version) FROM day_result x '
+      'WHERE x.day_id = r.day_id AND x.algo_version <= $_servedAlgoCeiling)';
 
   /// Day labels whose stored scalars are ANOTHER vendor's derived numbers.
   ///
@@ -9830,7 +9835,8 @@ class LocalDb {
 
   static Future<bool> _finalizedDayIndexExists() async =>
       (await (await instance).rawQuery("SELECT name FROM sqlite_master WHERE "
-          "type='index' AND name IN ('idx_day_result_finalized_payload', 'idx_day_result_served')")).length == 2;
+          "type='index' AND name IN ('idx_day_result_finalized_payload', 'idx_day_result_served', "
+          "'idx_day_result_imported')")).length == 3;
 
   static Future<void> _buildFinalizedDayIndex() async {
     if (!_foreground) return;
@@ -9863,6 +9869,14 @@ class LocalDb {
           await db.execute(
             'CREATE INDEX IF NOT EXISTS idx_day_result_served '
             'ON day_result(algo_version, day_id, skipped, partial)',
+          );
+          // Only the imported rows: the measured-series reads exclude imported
+          // days ([_importedDatesSql]) without walking every day bundle. The
+          // partial index WHERE is the reader's term, text for text.
+          await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_day_result_imported '
+            'ON day_result(day_id, algo_version) '
+            'WHERE ($_dayResultImportedExpr) = 1',
           );
         } finally {
           _finalizedDayIndexBuilding.value = false;
