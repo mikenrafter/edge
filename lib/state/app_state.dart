@@ -4057,6 +4057,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   // subsequent movement — so it only actually fires if the user stays still,
   // uninterrupted, for the full 2h window, and it fires from the OS wall-clock
   // even while the app is closed.
+  static const _stillnessThrottleMs = 10 * 60 * 1000;
   int _lastStillnessScheduleMs = 0;
   DateTime? _stillnessDueAt;
   @visibleForTesting Future<DateTime?> debugRescheduleStillnessNudge(int ms) async { await _rescheduleStillnessNudge(ms); return _stillnessDueAt; }
@@ -4064,7 +4065,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     // Throttle: _ingestLiveMags can call this many times a second while the
     // user is actively moving — the 2h nudge window doesn't need OS-scheduler
     // churn anywhere near that tight.
-    if (nowMs - _lastStillnessScheduleMs < 10 * 60 * 1000) return;
+    if (nowMs - _lastStillnessScheduleMs < _stillnessThrottleMs) return;
     _lastStillnessScheduleMs = nowMs;
     try {
       // Opt-in, off by default. Read here rather than cached because this runs
@@ -4077,7 +4078,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       if (!prefs.phoneDeliveryEnabled('movement')) return;
       await NotificationService.instance.cancel(NotificationService.idStillness);
       final at = NotificationCenter.stillnessNudgeAt(
-          prefs, DateTime.fromMillisecondsSinceEpoch(nowMs),
+          prefs, DateTime.fromMillisecondsSinceEpoch(nowMs + _stillnessThrottleMs),
           sleep: await ReminderSleepGate.load(now: DateTime.fromMillisecondsSinceEpoch(nowMs)));
       _stillnessDueAt = at;
       if (at == null) return;
