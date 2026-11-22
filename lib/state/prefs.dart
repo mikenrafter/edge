@@ -29,29 +29,6 @@ class Prefs {
 
   static SharedPreferences? _sp;
 
-  static const _experimentalSleepHmmKey = 'compute.experimental_sleep_hmm';
-
-  /// Opt-in offline research staging. It never rewrites a frozen day by itself.
-  static bool get experimentalSleepHmm =>
-      Prefs.getBool(_experimentalSleepHmmKey, false);
-  static void setExperimentalSleepHmm(bool on) =>
-      setBool(_experimentalSleepHmmKey, on);
-  static ana.StagingMethod get sleepStagingMethod => experimentalSleepHmm
-      ? ana.StagingMethod.hmm628
-      : ana.StagingMethod.cardio;
-
-  /// Refresh a headless isolate's staging choice. As with [ensureLoaded], an
-  /// unavailable preference store leaves the cached/default choice usable;
-  /// it must not prevent deriving a day (upstream _hmmStagesOn also abstains).
-  static Future<ana.StagingMethod> refreshSleepStagingMethod() async {
-    try {
-      await reload();
-    } catch (_) {
-      // Keep the last known choice, or the explicit default on a cold start.
-    }
-    return sleepStagingMethod;
-  }
-
   static const sleepWakeZoom = 'ui.sleep_wake_zoom';
   static bool get sleepWakeZoomOn => getBool(sleepWakeZoom, true);
   static final sleepWakeZoomRevision = ValueNotifier<int>(0);

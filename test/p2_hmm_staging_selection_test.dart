@@ -1,21 +1,14 @@
-import 'support/sleep_writes.dart';
 import 'dart:convert';
 import 'dart:isolate';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
-import 'package:openstrap_edge/compute/derivation_engine.dart';
-import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/compute/sleep_staging_worker.dart';
 import 'package:openstrap_edge/compute/staged_sleep_cache.dart';
 import 'package:openstrap_edge/compute/substrate.dart';
-import 'package:openstrap_edge/data/db.dart';
-import 'package:openstrap_edge/data/series_codec.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/util/worker_init.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-import 'support/frozen_day_result_fixtures.dart';
 
 const _start = 1782532800;
 const _day = '2026-06-27';
@@ -102,34 +95,21 @@ void main() {
     await Prefs.ensureLoaded();
   });
   tearDown(() {
-    Prefs.setExperimentalSleepHmm(false);
     WorkerInit.resetForTest();
     ana.cardioUserProfile = null;
     ana.cardioRecordObservations = false;
     ana.resetCardioObservations();
   });
 
-  test(
-    'setting defaults to cardio and switches worker method and cache identity',
-    () {
-      expect(Prefs.experimentalSleepHmm, isFalse);
-      expect(Prefs.sleepStagingMethod, ana.StagingMethod.cardio);
-      final off = _input(method: Prefs.sleepStagingMethod);
-      expect(off.method, ana.StagingMethod.cardio);
-      Prefs.setExperimentalSleepHmm(true);
-      expect(Prefs.experimentalSleepHmm, isTrue);
-      expect(Prefs.sleepStagingMethod, ana.StagingMethod.hmm628);
-      final on = _input(method: Prefs.sleepStagingMethod);
-      expect(on.method, ana.StagingMethod.hmm628);
-      expect(
-        _digest(on),
-        isNot(_digest(off)),
-        reason: 'a cached cardio night must not serve HMM',
-      );
-      Prefs.setExperimentalSleepHmm(false);
-      expect(_digest(_input(method: Prefs.sleepStagingMethod)), _digest(off));
-    },
-  );
+  test('the worker method is part of the staged-night cache identity', () {
+    final off = _input(method: ana.StagingMethod.cardio);
+    final on = _input(method: ana.StagingMethod.hmm628);
+    expect(
+      _digest(on),
+      isNot(_digest(off)),
+      reason: 'a cached cardio night must not serve HMM',
+    );
+  });
 
   test(
     'omitted method returns byte-identical cardio candidate and observation',
@@ -143,80 +123,6 @@ void main() {
       expect(implicit.candidateJson, explicit.candidateJson);
       expect(implicit.observationJson, explicit.observationJson);
       expect(implicit.rowsJson, explicit.rowsJson);
-    },
-  );
-
-  test(
-    'real engine reads the setting, stages on its worker, and publishes baselines',
-    () async {
-      final db = await freshDb('p2_hmm_engine_selection_test.db');
-      addTearDown(dropDb);
-      final sub = _night();
-      final batch = db.batch();
-      for (var i = 0; i < sub.length; i++) {
-        final ts = sub.tsSec[i];
-        batch.insert('decoded_onehz', {
-          'device_id': LocalDb.kPrimaryDeviceId,
-          'ts_ms': ts * 1000,
-          'rec_ts': ts,
-          'counter': i,
-          'hr': 60,
-          'ax': 0.0,
-          'ay': 0.0,
-          'az': 1.0,
-          'device_family': 'gen4',
-        });
-      }
-      for (var i = 0; i < sub.rrMs.length; i++) {
-        final tsMs = sub.rrTsMs[i].toInt();
-        final ts = tsMs ~/ 1000;
-        batch.insert('decoded_rr', {
-          'device_id': LocalDb.kPrimaryDeviceId,
-          'ts_ms': ts * 1000,
-          'rec_ts': ts,
-          'beat_index': 0,
-          'rr_ts_ms': tsMs,
-          'rr_ms': sub.rrMs[i].toInt(),
-          'device_family': 'gen4',
-        });
-      }
-      await batch.commit(noResult: true);
-      await TestSleepWrites.putSleepOverride(
-        dayId: _day,
-        onsetTs: _start,
-        offsetTs: _start + 600,
-        source: 'manual',
-      );
-      final engine = DerivationEngine();
-      for (final enabled in [false, true, false]) {
-        Prefs.setExperimentalSleepHmm(enabled);
-        // force is the existing explicit user reanalysis path; switching a
-        // preference alone never authorizes rewriting a finalized day.
-        expect(
-          await engine.runDays(const Profile(ageYears: 35), {
-            _day,
-          }, force: true),
-          1,
-        );
-        final row = (await LocalDb.dayResult(_day))!;
-        final payload = SeriesCodec.decodePayloadJson(
-          row['payload_json'] as String,
-        )!;
-        expect(
-          (payload['sleep'] as Map)['staging_method'],
-          enabled ? 'hmm628' : 'cardio',
-        );
-        expect((payload['scalars'] as Map)['hr_min_night'], 60.0);
-        expect(
-          (payload['scalars'] as Map)['rmssd_mean_night'],
-          closeTo(100.0, 1e-9),
-        );
-        expect(
-          engine.debugStagedSleepCacheSize,
-          1,
-          reason: 'one day is replaced when the selected method changes',
-        );
-      }
     },
   );
 

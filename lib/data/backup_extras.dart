@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import '../compute/derivation_engine.dart' show kAlgoVersion;
 import 'db.dart' show LocalDb;
+import '../state/sleep_hmm_choice.dart';
 import 'official_export/omission_reasons.dart';
 import 'import_reentry_store.dart';
 import 'dart:collection';
@@ -443,8 +444,23 @@ Future<BackupExtrasResult> restoreBackupExtras(
     if (await _hasTable(src, kBackupPrefsTable)) {
       final sp = await SharedPreferences.getInstance();
       await sp.reload();
-      for (final r in await src.query(kBackupPrefsTable)) {
-        final key = '${r['key']}';
+      final rows = await src.query(kBackupPrefsTable);
+      final hasHmmChoice = rows.any((r) => r['key'] == kSleepHmmStagesPref);
+      for (final r in rows) {
+        var key = '${r['key']}';
+        // The fork's older HMM key is retired: it restores into the one
+        // choice, and only when the backup does not carry that choice itself.
+        // The older key is never written.
+        if (key == kLegacySleepHmmPref) {
+          final value = '${r['value']}';
+          if (r['type'] != expectedPrefType(key) ||
+              (value != 'true' && value != 'false')) {
+            refused.add(key);
+            continue;
+          }
+          if (hasHmmChoice || value != 'true') continue;
+          key = kSleepHmmStagesPref;
+        }
         if (!prefsKeyBackedUp(key)) continue;
         if (!freshInstall && sp.containsKey(key)) {
           kept++;

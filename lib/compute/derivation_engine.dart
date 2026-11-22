@@ -36,6 +36,8 @@ import 'meal_candidates.dart';
 import '../data/typical_day_model.dart' show TypicalMealTimes;
 import '../models/activity_suggestion.dart';
 import '../state/prefs.dart';
+import '../state/sleep_hmm_choice.dart';
+export '../state/sleep_hmm_choice.dart' show kSleepHmmStagesPref;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -10129,7 +10131,7 @@ class DerivationEngine {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.reload();
-      return prefs.getBool(kSleepHmmStagesPref) ?? false;
+      return await readSleepHmmChoice(prefs);
     } catch (_) {
       return false;
     }
@@ -10298,7 +10300,6 @@ class DerivationEngine {
     _BaselineHistoryCache history,
   ) async {
     if (dayId == todayLabel()) return null;
-    final stagingMethod = await Prefs.refreshSleepStagingMethod();
     final useHmmStages = await _hmmStagesOn();
     final dayStart = _localDayLabelToSec(dayId);
     final dayEnd = _localNextDayLabelToSec(dayId);
@@ -10317,7 +10318,6 @@ class DerivationEngine {
       ..sort();
     final head = [
       'v${debugFingerprintAlgoVersion ?? kAlgoVersion}',
-      stagingMethod.name,
       if (useHmmStages) 'hmm',
       dataNowSec,
       // The edges a day is aged against (band and wearable; see

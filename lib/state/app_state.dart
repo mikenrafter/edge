@@ -100,6 +100,7 @@ import 'feature_flags.dart';
 import 'power_source.dart';
 import 'locale_controller.dart';
 import 'prefs.dart';
+import 'sleep_hmm_choice.dart';
 import '../ble/adapters/signals.dart' show InputSignal;
 import '../sources/source_catalog.dart' show SourceService;
 import '../ui2/profile/devices.dart';
@@ -1414,6 +1415,9 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     } on Object {
       return; // no preference store (a bare test host): keep what is loaded
     }
+    // Same read as the engine's: a backup restore or an older install lands
+    // here too, so the Labs switch shows the choice the engine will use.
+    sleepHmmStagesEnabled = await readSleepHmmChoice(prefs);
     final raw = prefs.getString(_kProfile);
     if (raw != null) {
       try {
@@ -9109,6 +9113,8 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     bool saved;
     try {
       final prefs = await SharedPreferences.getInstance();
+      // Fold a saved older key first, or it would turn the choice back on.
+      await readSleepHmmChoice(prefs);
       saved = await prefs.setBool(kSleepHmmStagesPref, on);
     } catch (e) {
       _log('[settings] sleep HMM switch not saved: $e');

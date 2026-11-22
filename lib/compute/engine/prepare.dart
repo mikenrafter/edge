@@ -200,9 +200,10 @@ extension _EnginePrepare on DerivationEngine {
     // A user sleep override is the source of truth — never serve the cached auto
     // candidate, and don't cache the override result (so a later edit / clear is
     // not shadowed by a stale artifact). The auto path keeps its finalized cache.
-    // A headless isolate can survive a foreground setting change. Reload
-    // the existing fork preference before choosing its registered stager.
-    final method = await Prefs.refreshSleepStagingMethod();
+    // The coordinator always stages with the default cardio stager. The HMM is
+    // the worker's (`useHmmStages`); the fork's second classifier (hmm628) is
+    // retired, so one night never has two possible HMM owners.
+    const method = ana.StagingMethod.cardio;
     final overrideRow = await LocalDb.getSleepOverride(dayId);
     final override = overrideRow == null
         ? null

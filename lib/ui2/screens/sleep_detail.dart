@@ -2113,7 +2113,11 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   /// when the default estimate replaced it, why. A reason this build does not
   /// know is said generically; the estimate itself is never hidden.
   List<String> _stagingNotes(AppLocalizations? l, Map<String, dynamic> n) {
-    if (n['staging_method'] != 'hmm628') return const [];
+    // 'hmm' is the worker HMM, the one owner; 'hmm628' is how nights stored
+    // before it was retired say the same thing.
+    if (n['staging_method'] != 'hmm' && n['staging_method'] != 'hmm628') {
+      return const [];
+    }
     final fallback = n['staging_fallback'];
     final sec = n['staging_fallback_sec'];
     return [
@@ -2123,14 +2127,15 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       // Scope first (how much of the night), then the reason.
       if (fallback is String)
         switch (n['staging_effective_method']) {
-          'cardio' => fallback == kStagingFallbackDegenerate
+          'cardio' || 'vendor_staged' => fallback == kStagingFallbackDegenerate
               ? l?.sleepDetailStagingFallback ??
                   'The experimental model showed little stage variation, so '
                       'the default estimate is shown.'
               : l?.sleepDetailStagingFallbackGeneric ??
                   'The default estimate is shown for this night instead of '
                       'the experimental model.',
-          'mixed' => fallback != kStagingFallbackDegenerate
+          'mixed' || 'hmm_cardio' || 'hmm_vendor_staged' =>
+            fallback != kStagingFallbackDegenerate
               ? l?.sleepDetailStagingFallbackSomeGeneric ??
                   'For part of this night, the default estimate is shown '
                       'instead of the experimental model.'

@@ -1628,7 +1628,4 @@ class CompactResult {
   int get freedBytes => beforeBytes > afterBytes ? beforeBytes - afterBytes : 0;
 }
 
-/// The experimental HMM sleep staging switch (Settings), default off.
-const kSleepHmmStagesPref = 'sleep_hmm_stages';
-
 typedef _CeilingInput = ({int generation, Map<int, int> revisions});

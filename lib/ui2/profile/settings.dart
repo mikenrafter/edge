@@ -263,10 +263,9 @@ class _MoreSettingsState extends State<MoreSettings> with WidgetsBindingObserver
         AppThemeChoice.dark =>
           AppLocalizations.of(c)?.settingsAppearanceDark ?? theme.choice.label,
       },
-      experimentalSleepHmm: Prefs.experimentalSleepHmm,
-      onToggleExperimentalSleepHmm: () => setState(() {
-        Prefs.setExperimentalSleepHmm(!Prefs.experimentalSleepHmm);
-      }),
+      experimentalSleepHmm: app.sleepHmmStagesEnabled,
+      onToggleExperimentalSleepHmm: () =>
+          app.setSleepHmmStages(!app.sleepHmmStagesEnabled),
       sleepWakeZoom: Prefs.sleepWakeZoomOn,
       onToggleSleepWakeZoom: () => setState(() {
         Prefs.setSleepWakeZoom(!Prefs.sleepWakeZoomOn);
