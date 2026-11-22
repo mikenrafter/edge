@@ -7,6 +7,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/tracks_store.dart';
+import 'package:openstrap_edge/notify/notification_center.dart';
 import 'package:openstrap_edge/notify/notification_event.dart';
 import 'package:openstrap_edge/notify/notification_prefs.dart';
 import 'package:openstrap_edge/notify/notification_service.dart';
@@ -507,6 +508,97 @@ void main() {
       expect(held(), hasLength(21));
       expect(held().last.day, 15);
       expect(others(), 39);
+    });
+  });
+
+  // Fix round 1, F3: the water band is no longer cut at a fixed 24. It gets up
+  // to 40 inside the real pending budget, ahead of experiments (priority: alarm
+  // > medication > wind-down / check-in > water > experiment), on the same
+  // capped fake transport. Pending instants are read back from the fake OS.
+  group('water slots share the pending budget', () {
+    const quietDay = NotificationPrefs(
+      waterEnabled: true,
+      waterIntervalMin: 30,
+      quietEnabled: true,
+      quietStartMin: 22 * 60,
+      quietEndMin: 7 * 60,
+    );
+    const allDay = NotificationPrefs(
+      waterEnabled: true,
+      waterIntervalMin: 30,
+      quietEnabled: false,
+    );
+    final svc = NotificationService.instance;
+    List<int> waterMinutes() => [
+          for (final e in pending.entries)
+            if (NotificationService.isWaterSlot(e.key))
+              e.value.hour * 60 + e.value.minute,
+        ]..sort();
+    // The OS gate reads the saved preferences, so save what the pass is given.
+    Future<void> standing(NotificationPrefs prefs) async {
+      await prefs.save();
+      await NotificationCenter.instance
+          .scheduleStandingReminders(prefs, sleep: const ReminderSleepGate());
+    }
+
+    test('30 minute cadence with quiet 22:00-07:00 arms through 21:30 on iOS, '
+        'and experiments still get their computed share', () async {
+      svc.debugPendingCap = NotificationService.pendingCapIos;
+      cap = NotificationService.pendingCapIos;
+      await standing(quietDay);
+      expect(waterMinutes(), [for (var m = 420; m <= 1290; m += 30) m],
+          reason: 'every slot from 07:00 to 21:30, none cut at 18:30');
+      await startAt(morning, weeks: 4);
+      // 64 - 30 water pending - 7 higher singletons not pending = 27.
+      expect(held(), hasLength(27));
+      expect(waterMinutes(), hasLength(30), reason: 'water displaced nothing');
+      expect(pending.length, lessThanOrEqualTo(64));
+    });
+
+    test('Android arms up to 40 water slots too', () async {
+      svc.debugPendingCap = NotificationService.pendingCapAndroid;
+      cap = NotificationService.pendingCapAndroid;
+      await standing(allDay);
+      expect(waterMinutes(), hasLength(40));
+    });
+
+    test('with meds and singletons pending, water takes 40 and experiments '
+        'take what is left of the 64', () async {
+      svc.debugPendingCap = NotificationService.pendingCapIos;
+      cap = NotificationService.pendingCapIos;
+      await withClock(Clock.fixed(morning), () async {
+        await svc.ensureTimezone();
+        final at = DateTime(2026, 10, 27, 20);
+        for (var i = 0; i < NotificationService.maxMedSlots; i++) {
+          await svc.scheduleOnce(id: NotificationService.idMedsBase + i, category: NotifCategory.reminders, title: 'm', body: 'm', at: at.add(Duration(minutes: i)));
+        }
+        for (final id in [NotificationService.idWindDown, NotificationService.idCheckIn]) {
+          await svc.scheduleOnce(id: id, category: NotifCategory.reminders, title: 'x', body: 'x', at: at);
+        }
+      });
+      await standing(allDay);
+      expect(waterMinutes(), hasLength(40));
+      await startAt(morning, weeks: 4);
+      // 64 - (12 meds + 2 singletons + 40 water) - 5 held singletons = 5.
+      expect(held(), hasLength(5));
+      expect(waterMinutes(), hasLength(40));
+      expect(pending.length, lessThanOrEqualTo(64));
+    });
+
+    test('water yields to higher classes when the cap is tight', () async {
+      svc.debugPendingCap = 30;
+      cap = 30;
+      await withClock(Clock.fixed(morning), () async {
+        await svc.ensureTimezone();
+        final at = DateTime(2026, 10, 27, 20);
+        for (var i = 0; i < NotificationService.maxMedSlots; i++) {
+          await svc.scheduleOnce(id: NotificationService.idMedsBase + i, category: NotifCategory.reminders, title: 'm', body: 'm', at: at.add(Duration(minutes: i)));
+        }
+      });
+      await standing(allDay);
+      // 30 - 12 meds - 7 held singletons = 11 water slots.
+      expect(waterMinutes(), hasLength(11));
+      expect(pending.keys.where(NotificationService.isMedSlot), hasLength(12));
     });
   });
 }
