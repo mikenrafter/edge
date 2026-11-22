@@ -589,6 +589,68 @@ void main() {
       expect(pending.length, lessThanOrEqualTo(64));
     });
 
+    // why: review r2 F3. The standing pass runs BEFORE the experiment refresh,
+    // so on the second pass the experiment slots are still pending when water
+    // and the weekly recap arm. Water must not be armed into capacity those
+    // requests still hold: the fake keeps the soonest, so the recap (the
+    // latest instant) was the one dropped, and nothing retried it.
+    // # catches: counting pending experiment slots as free room when arming
+    //   water, so a higher class armed after water is evicted.
+    // The experiments sit in October, before the real clock the standing pass
+    // reads, so the fake evicts the later-timed requests exactly as iOS would
+    // for the recap's week-away instant.
+    test('experiments already pending give their slots back before water and '
+        'the weekly recap arm', () async {
+      svc.debugPendingCap = 20;
+      cap = 20;
+      // Nothing else pending: 20 - 7 higher singletons held = 13 experiments.
+      await startAt(morning, weeks: 4);
+      expect(held(), hasLength(13));
+      await armHigher();
+      expect(pending.length, 16);
+
+      const prefs = NotificationPrefs(
+        waterEnabled: true,
+        waterIntervalMin: 30,
+        quietEnabled: false,
+      );
+      await prefs.save();
+      await withClock(Clock.fixed(morning), () async {
+        await NotificationCenter.instance.scheduleStandingReminders(
+          prefs,
+          weeklyFinding: 'Resting heart rate drifted up this week.',
+          sleep: const ReminderSleepGate(),
+        );
+        await ExperimentReminders.refresh(prefs);
+      });
+
+      expect(pending, contains(NotificationService.idWeeklyRecap),
+          reason: 'the recap armed after water must not be the one evicted');
+      for (final id in [
+        NotificationService.idSnoozeBackstop,
+        NotificationService.idMorningBrief,
+        NotificationService.idEveningBrief,
+      ]) {
+        expect(pending, contains(id), reason: 'higher singleton $id displaced');
+      }
+      expect(waterMinutes(), hasLength(13));
+      expect(held(), isEmpty, reason: 'experiments yielded to the higher classes');
+      expect(pending.length, lessThanOrEqualTo(20));
+
+      // The reclaimed days leave no stale pending marker: with room again and
+      // the morning half gone, day 0 re-arms at the next allowed half hour,
+      // never recorded as delivered.
+      for (final id in [
+        for (final id in pending.keys)
+          if (NotificationService.isWaterSlot(id)) id,
+      ]) {
+        await svc.cancel(id);
+      }
+      await refresh(DateTime(2026, 10, 26, 9));
+      expect(held(), isNotEmpty);
+      expect(held().first, DateTime(2026, 10, 26, 9, 30));
+    });
+
     test('water yields to higher classes when the cap is tight', () async {
       svc.debugPendingCap = 20;
       cap = 20;
