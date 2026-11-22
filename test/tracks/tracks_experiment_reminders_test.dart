@@ -651,6 +651,24 @@ void main() {
       expect(held().first, DateTime(2026, 10, 26, 9, 30));
     });
 
+    // why: review r3 F3. The reclaim must budget the water the pass really
+    // arms (30 here, quiet 22:00-07:00), not the 40 ceiling, or a headless
+    // standing pass cancels experiment days that fit and nothing re-arms them.
+    // # catches: reclaiming for the water ceiling instead of the eligible slots.
+    test('a standing pass with spare room keeps the experiments that fit '
+        'beside the water it arms', () async {
+      svc.debugPendingCap = NotificationService.pendingCapIos;
+      cap = NotificationService.pendingCapIos;
+      await startAt(morning, weeks: 4);
+      expect(held(), hasLength(28));
+      await withClock(Clock.fixed(morning), () => standing(quietDay));
+      expect(waterMinutes(), hasLength(30));
+      // 64 - 7 higher singletons not pending - 30 water = 27.
+      expect(held(), hasLength(27),
+          reason: 'only the one day that no longer fits is given back');
+      expect(pending.length, lessThanOrEqualTo(64));
+    });
+
     test('water yields to higher classes when the cap is tight', () async {
       svc.debugPendingCap = 20;
       cap = 20;
