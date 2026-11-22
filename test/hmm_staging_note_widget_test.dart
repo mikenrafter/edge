@@ -189,4 +189,41 @@ void main() {
     expect(find.textContaining('Experimental sleep-stage'), findsNothing);
     expect(find.text(_allDefault), findsNothing);
   });
+
+  // The one HMM owner is the worker's (`staging_method: hmm`, fix round 1, F2).
+  testWidgets('a worker-HMM night says it is experimental', (t) async {
+    await _open(t, {'staging_method': 'hmm', 'staging_effective_method': 'hmm'});
+    expect(find.text(_claim), findsOneWidget);
+    expect(find.text(_generic), findsNothing);
+  });
+
+  for (final effective in ['cardio', 'vendor_staged']) {
+    testWidgets('a worker-HMM night that fell back whole ($effective) says '
+        'the default is shown', (t) async {
+      await _open(t, {
+        'staging_method': 'hmm',
+        'staging_effective_method': effective,
+        'staging_fallback': 'hmm_no_sleep',
+        'staging_fallback_sec': 14219,
+      });
+      expect(find.text(_claim), findsOneWidget);
+      expect(find.text(_generic), findsOneWidget);
+      expect(find.text(uncertain), findsNothing);
+    });
+  }
+
+  for (final effective in ['hmm_cardio', 'hmm_vendor_staged']) {
+    testWidgets('a worker-HMM night that fell back for some epochs '
+        '($effective) says so', (t) async {
+      await _open(t, {
+        'staging_method': 'hmm',
+        'staging_effective_method': effective,
+        'staging_fallback': 'hmm_epoch_unavailable',
+        'staging_fallback_sec': 600,
+      });
+      expect(find.text(_claim), findsOneWidget);
+      expect(find.text(someGeneric), findsOneWidget);
+      expect(find.text(uncertain), findsNothing);
+    });
+  }
 }
