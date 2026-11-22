@@ -4059,6 +4059,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   // even while the app is closed.
   int _lastStillnessScheduleMs = 0;
   DateTime? _stillnessDueAt;
+  @visibleForTesting Future<DateTime?> debugRescheduleStillnessNudge(int ms) async { await _rescheduleStillnessNudge(ms); return _stillnessDueAt; }
   Future<void> _rescheduleStillnessNudge(int nowMs) async {
     // Throttle: _ingestLiveMags can call this many times a second while the
     // user is actively moving — the 2h nudge window doesn't need OS-scheduler
