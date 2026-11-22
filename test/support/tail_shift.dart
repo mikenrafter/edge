@@ -9,10 +9,22 @@ import 'layout_shift/layout_shift.dart';
   required double tailTop,
   required String route,
 }) {
+  // A chart readout's text (`~text|chart-key-value:<label>|…`) sits in a keyed
+  // slot (`chart-key-value:<label>`) that IS under the prefix check below. Glyph
+  // widths follow the number, so the text may change width, but only inside its
+  // slot: same left, top and height, never wider than the slot, never gone.
+  const readoutText = '~text|chart-key-value:';
+  final readouts = {
+    for (final e in pending.elements)
+      if (e.id.startsWith(readoutText) &&
+          e.rect.top < tailTop &&
+          e.rect.top + e.rect.height <= tailTop + 1)
+        e.id: e,
+  };
   final protected = {
     for (final e in pending.elements)
       if (!e.id.startsWith('~pending|') &&
-          !e.id.startsWith('~text|chart-key-value:') &&
+          !e.id.startsWith(readoutText) &&
           e.id != 'sleep-unusual-pending' &&
           e.rect.top < tailTop &&
           e.rect.top + e.rect.height <= tailTop + 1)
@@ -50,6 +62,25 @@ import 'layout_shift/layout_shift.dart';
         lessThanOrEqualTo(1),
         reason: '$route ${e.id} height',
       );
+    }
+    for (final e in readouts.values) {
+      final current = now[e.id];
+      expect(current, isNotNull, reason: '$route lost readout text ${e.id}');
+      if (current == null) continue;
+      // `~text|<slot id>|<ancestor types>#<n>`
+      final slot = now[e.id.substring('~text|'.length, e.id.indexOf('|', '~text|'.length))];
+      final before = e.rect, after = current.rect;
+      expect((before.left - after.left).abs(), lessThanOrEqualTo(1),
+          reason: '$route ${e.id} left');
+      expect((before.top - after.top).abs(), lessThanOrEqualTo(1),
+          reason: '$route ${e.id} top');
+      expect((before.height - after.height).abs(), lessThanOrEqualTo(1),
+          reason: '$route ${e.id} height');
+      if (slot != null) {
+        expect(after.left + after.width,
+            lessThanOrEqualTo(slot.rect.left + slot.rect.width + 1),
+            reason: '$route ${e.id} outgrew its slot');
+      }
     }
   }
   Scenario subset(bool prefix) => Scenario(
