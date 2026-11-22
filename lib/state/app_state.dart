@@ -9037,9 +9037,9 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   Future<void> _toggleWorkoutFromGesture(StrapEvent _) async {
     try {
       if (activeWorkout != null) {
-        final wid = activeWorkout!.workoutId;
+        // stopWorkout already writes the finished session with the stop time;
+        // a second endWorkout would re-stamp end_ts to now, after the flush.
         await stopWorkout();
-        if (wid != null) try { await repo?.endWorkout(wid); } catch (_) {}
       } else {
         String? id;
         try { id = (await repo?.startWorkout('other'))?['workout_id'] as String?; } catch (_) {}

@@ -97,30 +97,30 @@ void main() {
   });
 
   test('with a repo: the repo is asked to start and its workout id is used; '
-      'the end is reported back to it after the local stop', () async {
+      'the end is the local stop alone, not a second endWorkout', () async {
     final repo = _Repo();
     final r = await rig(repo: repo);
     await tap(r, () => r.app.activeWorkout != null);
     expect(r.app.activeWorkout!.workoutId, 'srv-1');
     expect(repo.calls, ['start:other']);
     await tap(r, () => r.app.activeWorkout == null);
-    expect(repo.calls, ['start:other', 'end:srv-1']);
+    // A second endWorkout would re-stamp end_ts past the user's stop (#827).
+    expect(repo.calls, ['start:other']);
     expect((await sessionRow('srv-1'))!['status'], 'done');
   });
 
-  test('a repo that fails to start still starts the workout locally; one '
-      'that fails to end is swallowed', () async {
-    final repo = _Repo()
-      ..startThrows = StateError('no seam')
-      ..endThrows = StateError('no seam');
+  test('a repo that fails to start still starts the workout locally, and '
+      'the next tap still ends it', () async {
+    final repo = _Repo()..startThrows = StateError('no seam');
     final r = await rig(repo: repo);
     await tap(r, () => r.app.activeWorkout != null);
     final w = r.app.activeWorkout!;
     expect(w.workoutId, 'w${w.startTime.millisecondsSinceEpoch}');
     await tap(r, () => r.app.activeWorkout == null);
-    expect(repo.calls, ['start:other', 'end:${w.workoutId}']);
+    expect(repo.calls, ['start:other']);
+    expect((await sessionRow(w.workoutId!))!['status'], 'done');
     expect(r.app.gestureFailures.all, isEmpty,
-        reason: 'neither seam failure is a gesture failure');
+        reason: 'seam failure is not a gesture failure');
   });
 
   test('the toggle ends a workout started from the screen too, whatever its '
