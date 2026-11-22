@@ -38,6 +38,7 @@ import 'notification_prefs.dart';
 import 'notification_service.dart';
 import '../state/feature_flags.dart';
 import '../state/units_controller.dart' show UnitSystem, UnitsController;
+import '../tracks/experiment_reminders.dart' show ExperimentReminders;
 import 'tap_router.dart';
 
 class NotificationCenter {
@@ -651,11 +652,28 @@ class NotificationCenter {
     // instants below are wall-clock. A phone that flew somewhere would otherwise
     // keep arming Sunday 18:00 in the zone the app first launched in.
     await svc.ensureTimezone();
+    final pendingNow = await svc.pendingIds();
     final budget = waterBudget(
       cap: svc.pendingCap,
-      pending: await svc.pendingIds() ?? const <int>{},
+      pending: pendingNow ?? const <int>{},
       plannedMeds: meds.length,
     );
+    // Experiments sit below water in the priority order but are still pending
+    // here (their own pass runs after this one). Give back what the higher
+    // classes need BEFORE arming any of them, or the transport evicts the
+    // latest instant, often the weekly recap armed just below.
+    if (pendingNow != null) {
+      await ExperimentReminders.reclaim(
+        svc,
+        pendingNow,
+        keep: experimentRoom(
+          cap: svc.pendingCap,
+          pending: pendingNow,
+          plannedMeds: meds.length,
+          waterSlots: budget,
+        ),
+      );
+    }
     await _armWaterSlots(svc, water, prefs, gate, budget);
     if (wantWeekly && gate.reasonAt(prefs, svc.nextWeeklyInstant(recapWeekday, recapHour, recapMinute)) == null) await _armWeeklyLookback(svc, weeklyFinding);
     if (windDownMin != null && prefs.phoneDeliveryEnabled('windDown')) {
@@ -886,7 +904,24 @@ class NotificationCenter {
     required int cap,
     required Set<int> pending,
     required int plannedMeds,
-  }) {
+  }) => _roomAfterHigher(cap, pending, plannedMeds)
+      .clamp(0, NotificationService.maxWaterSlots);
+
+  /// Experiment slots that fit once the higher classes and [waterSlots] water
+  /// slots are armed. The pending experiments above this are reclaimed first.
+  @visibleForTesting
+  static int experimentRoom({
+    required int cap,
+    required Set<int> pending,
+    required int plannedMeds,
+    required int waterSlots,
+  }) => (_roomAfterHigher(cap, pending, plannedMeds) - waterSlots)
+      .clamp(0, NotificationService.maxExperimentSlots);
+
+  /// What the cap leaves after pending others, planned or pending medication
+  /// slots and the higher singletons not pending now. Water and experiments
+  /// are not counted: they are what is being budgeted.
+  static int _roomAfterHigher(int cap, Set<int> pending, int plannedMeds) {
     final others = pending
         .where((id) =>
             !NotificationService.isWaterSlot(id) &&
@@ -897,8 +932,7 @@ class NotificationCenter {
     final held = NotificationService.higherPrioritySingletons
         .where((id) => !pending.contains(id))
         .length;
-    final free = cap - others - (plannedMeds > pendingMeds ? plannedMeds : pendingMeds) - held;
-    return free.clamp(0, NotificationService.maxWaterSlots);
+    return cap - others - (plannedMeds > pendingMeds ? plannedMeds : pendingMeds) - held;
   }
 
   /// One upcoming wind-down slot, refreshed with sleep eligibility.

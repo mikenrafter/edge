@@ -204,6 +204,41 @@ class ExperimentReminders {
     }
   }
 
+  /// Cancels pending experiment slots beyond [keep], farthest dates first (the
+  /// same nearest-first rule as [_plan]), and clears the pending marker of each
+  /// reclaimed date so a later pass re-arms it instead of reading its passed
+  /// time as "delivered". A pending slot with no marker is cancelled first.
+  /// The caller holds the scheduling lock: this must not take it again.
+  static Future<void> reclaim(
+    NotificationService svc,
+    Set<int> pending, {
+    required int keep,
+  }) async {
+    final held = {
+      for (var i = 0; i < NotificationService.maxExperimentSlots; i++)
+        if (pending.contains(NotificationService.idExperimentBase + i))
+          NotificationService.idExperimentBase + i,
+    };
+    if (held.length <= keep) return;
+    final now = clock.now();
+    final byDate = <String, int>{};
+    for (var d = 0; d < horizonDays; d++) {
+      final date = dayLabelOf(DateTime(now.year, now.month, now.day + d));
+      final marker = await _read(date);
+      if (marker != null && marker.state == 'pending' && held.contains(marker.id)) {
+        byDate[date] = marker.id;
+      }
+    }
+    final nearest = (byDate.keys.toList()..sort()).take(keep).toList();
+    final kept = {for (final date in nearest) byDate[date]!};
+    for (final id in held) {
+      if (!kept.contains(id)) await svc.cancel(id);
+    }
+    for (final date in byDate.keys) {
+      if (!nearest.contains(date)) await _clear(date);
+    }
+  }
+
   /// Re-arms after a change the foreground pass has not seen: an experiment
   /// started or stopped, a track disabled, deleted or marked prescribed, a
   /// restore. Never throws.
