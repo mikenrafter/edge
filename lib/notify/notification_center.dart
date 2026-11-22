@@ -658,10 +658,11 @@ class NotificationCenter {
       pending: pendingNow ?? const <int>{},
       plannedMeds: meds.length,
     );
+    final waterAt = _eligibleWaterInstants(svc, water, prefs, gate);
     // Experiments sit below water in the priority order but are still pending
     // here (their own pass runs after this one). Give back what the higher
-    // classes need BEFORE arming any of them, or the transport evicts the
-    // latest instant, often the weekly recap armed just below.
+    // classes and the water actually armed below need BEFORE arming any of
+    // them, or the transport evicts the latest instant, often the weekly recap.
     if (pendingNow != null) {
       await ExperimentReminders.reclaim(
         svc,
@@ -670,11 +671,11 @@ class NotificationCenter {
           cap: svc.pendingCap,
           pending: pendingNow,
           plannedMeds: meds.length,
-          waterSlots: budget,
+          waterSlots: waterAt.length < budget ? waterAt.length : budget,
         ),
       );
     }
-    await _armWaterSlots(svc, water, prefs, gate, budget);
+    await _armWaterSlots(svc, waterAt, prefs, budget);
     if (wantWeekly && gate.reasonAt(prefs, svc.nextWeeklyInstant(recapWeekday, recapHour, recapMinute)) == null) await _armWeeklyLookback(svc, weeklyFinding);
     if (windDownMin != null && prefs.phoneDeliveryEnabled('windDown')) {
       await _armWindDown(svc, windDownMin, bedtimeMinOfDay!);
@@ -857,11 +858,24 @@ class NotificationCenter {
   ///
   /// Copy rule: this may nudge you to LOG a drink and nothing more. The app
   /// measures no hydration, scores none, and this text may never imply either.
-  Future<void> _armWaterSlots(
+  /// The next instant of each water slot outside the sleep gate, soonest
+  /// first: exactly what [_armWaterSlots] arms, up to its budget.
+  static List<DateTime> _eligibleWaterInstants(
     NotificationService svc,
     List<int> slots,
     NotificationPrefs prefs,
     ReminderSleepGate sleep,
+  ) => [
+        for (final minute in slots)
+          svc.nextDailyInstant(minute ~/ 60, minute % 60)
+      ]
+        ..sort((a, b) => a.compareTo(b))
+        ..removeWhere((at) => sleep.reasonAt(prefs, at) != null);
+
+  Future<void> _armWaterSlots(
+    NotificationService svc,
+    List<DateTime> upcoming,
+    NotificationPrefs prefs,
     int budget,
   ) async {
     UnitSystem system;
@@ -871,12 +885,8 @@ class NotificationCenter {
       system = UnitSystem.metric; // no preference store (a headless run)
     }
     final body = waterReminderBody(prefs, system: system);
-    final upcoming = [for (final minute in slots)
-      svc.nextDailyInstant(minute ~/ 60, minute % 60)]
-      ..sort((a, b) => a.compareTo(b));
     var i = 0;
     for (final at in upcoming) {
-      if (sleep.reasonAt(prefs, at) != null) continue;
       if (i >= budget) break;
       await svc.scheduleOnce(
         id: NotificationService.idWaterBase + i++,
