@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/data/auto_backup.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/sync/dev_log.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -319,6 +320,8 @@ void main() {
 
     tearDownAll(() async {
       await LocalDb.close();
+      // Restore tests trigger background import logging under tmp.
+      await DevLog.instance.flush();
       if (await tmp.exists()) await tmp.delete(recursive: true);
     });
 

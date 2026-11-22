@@ -11,6 +11,7 @@ import 'package:openstrap_edge/compute/derivation_engine.dart' show kAlgoVersion
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/series_codec.dart';
+import 'package:openstrap_edge/sync/dev_log.dart';
 
 const _day = '2026-05-20';
 
@@ -100,6 +101,8 @@ void main() {
     await databaseFactory.deleteDatabase(
       p.join(await databaseFactory.getDatabasesPath(), LocalDb.dbName),
     );
+    // Import logging writes in the background under tmp; drain before deleting.
+    await DevLog.instance.flush();
     if (await tmp.exists()) await tmp.delete(recursive: true);
   });
 
