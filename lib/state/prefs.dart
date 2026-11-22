@@ -33,7 +33,7 @@ class Prefs {
 
   /// Opt-in offline research staging. It never rewrites a frozen day by itself.
   static bool get experimentalSleepHmm =>
-      getBool(_experimentalSleepHmmKey, false);
+      Prefs.getBool(_experimentalSleepHmmKey, false);
   static void setExperimentalSleepHmm(bool on) =>
       setBool(_experimentalSleepHmmKey, on);
   static ana.StagingMethod get sleepStagingMethod => experimentalSleepHmm
