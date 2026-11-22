@@ -10,6 +10,7 @@ import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/data/backup_extras.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/sync/import_focus.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/prefs.dart';
@@ -65,7 +66,10 @@ void main() {
     env = await BackupEnv.create('bkx_hmm_choice_test.db');
     await Prefs.ensureLoaded();
   });
-  tearDown(WorkerInit.resetForTest);
+  tearDown(() {
+    WorkerInit.resetForTest();
+    ImportFocus.debugReset();
+  });
   tearDownAll(() async => env.dispose());
 
   Future<String> exportWithPrefs(Map<String, Object> prefs) async {
@@ -194,6 +198,9 @@ void main() {
       await DerivationEngine().runDays(const Profile(ageYears: 35), {_day}, force: true),
       1,
     );
+    // The real derivation above stands in for the queued post-import pass, so
+    // leave ImportFocus before reading through LocalRepositoryImpl.
+    ImportFocus.leave();
     final repo = LocalRepositoryImpl(getProfileMap: () => const {});
     final night = await repo.getDaySleepV2(_day);
     expect(night['staging_method'], 'hmm',

@@ -426,6 +426,16 @@ Future<({List<String> needs, List<String> unreadable})> _secretReentry(Database 
   return (needs: needs, unreadable: unreadable);
 }
 
+bool? _parseBoolPrefRow(Map<String, Object?> row) {
+  final key = '${row['key']}';
+  final value = '${row['value']}';
+  if (row['type'] != expectedPrefType(key) ||
+      (value != 'true' && value != 'false')) {
+    return null;
+  }
+  return value == 'true';
+}
+
 /// Restores prefs and files from the backup at [srcPath].
 ///
 /// Prefs: [freshInstall] writes every backed-up key; otherwise only keys this
@@ -445,22 +455,49 @@ Future<BackupExtrasResult> restoreBackupExtras(
       final sp = await SharedPreferences.getInstance();
       await sp.reload();
       final rows = await src.query(kBackupPrefsTable);
-      final hasHmmChoice = rows.any((r) => r['key'] == kSleepHmmStagesPref);
+      // Resolve the retired/canonical HMM pair BEFORE writing any pref so row
+      // order cannot matter and a non-fresh install checks its pre-existing
+      // choice once. Matches readSleepHmmChoice: a legacy opt-in from the same
+      // backup outranks sleep_hmm_stages=false; the legacy key is never written.
+      Map<String, Object?>? hmmUpstreamRow;
+      Map<String, Object?>? hmmLegacyRow;
       for (final r in rows) {
-        var key = '${r['key']}';
-        // The fork's older HMM key is retired: it restores into the one
-        // choice, and only when the backup does not carry that choice itself.
-        // The older key is never written.
-        if (key == kLegacySleepHmmPref) {
-          final value = '${r['value']}';
-          if (r['type'] != expectedPrefType(key) ||
-              (value != 'true' && value != 'false')) {
-            refused.add(key);
-            continue;
-          }
-          if (hasHmmChoice || value != 'true') continue;
-          key = kSleepHmmStagesPref;
+        final key = '${r['key']}';
+        if (key == kSleepHmmStagesPref) hmmUpstreamRow = r;
+        if (key == kLegacySleepHmmPref) hmmLegacyRow = r;
+      }
+      bool? resolvedHmm;
+      if (hmmUpstreamRow != null) {
+        final parsed = _parseBoolPrefRow(hmmUpstreamRow);
+        if (parsed == null) {
+          refused.add(kSleepHmmStagesPref);
+        } else {
+          resolvedHmm = parsed;
         }
+      }
+      if (hmmLegacyRow != null) {
+        final parsed = _parseBoolPrefRow(hmmLegacyRow);
+        if (parsed == null) {
+          refused.add(kLegacySleepHmmPref);
+        } else if (parsed) {
+          resolvedHmm = true;
+        }
+      }
+      if (resolvedHmm != null && prefsKeyBackedUp(kSleepHmmStagesPref)) {
+        if (!freshInstall && sp.containsKey(kSleepHmmStagesPref)) {
+          kept++;
+        } else {
+          if (!await _write(
+              sp, kSleepHmmStagesPref, 'bool', resolvedHmm ? 'true' : 'false')) {
+            throw StateError('Could not restore preference $kSleepHmmStagesPref');
+          }
+          restored++;
+          written.add(kSleepHmmStagesPref);
+        }
+      }
+      for (final r in rows) {
+        final key = '${r['key']}';
+        if (key == kSleepHmmStagesPref || key == kLegacySleepHmmPref) continue;
         if (!prefsKeyBackedUp(key)) continue;
         if (!freshInstall && sp.containsKey(key)) {
           kept++;
