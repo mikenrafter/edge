@@ -17,6 +17,14 @@ import 'package:openstrap_edge/compute/onehz_pipeline.dart'
     show stressScoreFromSi;
 import 'package:openstrap_edge/compute/stress_backfill.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/util/callable.dart';
+
+class _BeforeCommit implements Call1<String, Future<void>> {
+  _BeforeCommit(this._fn);
+  final Future<void> Function(String day) _fn;
+  @override
+  Future<void> call(String arg) => _fn(arg);
+}
 
 /// Seed a derived day the way the engine would have on the OLD (floor-20) scale.
 Future<void> seedStressDay(
@@ -182,5 +190,59 @@ void main() {
     expect((await backfillStressScale()).didWork, isFalse);
     // Forced, an already-rescaled store is a no-op.
     expect((await backfillStressScale(force: true)).didWork, isFalse);
+  });
+
+  test('a concurrent derive winning the bundle CAS keeps its new trend point '
+      'and does not mark the backfill done', () async {
+    await seedStressDay('2026-05-01', si: 12, score: 0, algoVersion: 120);
+    var raced = false;
+    debugStressBackfillBeforeCommit = _BeforeCommit((day) async {
+      if (raced) return;
+      raced = true;
+      // Concurrent derive replaces the row and publishes a fresh score.
+      await LocalDb.putDayResult(
+        dayId: day,
+        algoVersion: 120,
+        payloadJson: jsonEncode({
+          'date': day,
+          'scalars': {'rhr': 55, 'stress': 77.5},
+          'stress': {'value': 77.5, 'score': 77.5, 'si': 400, 'level': 'high'},
+        }),
+        windowJson: '{}',
+        finalized: true,
+        series: const {'stress': 77.5},
+        reason: DayResultWrite.userOverride,
+      );
+    });
+    addTearDown(() => debugStressBackfillBeforeCommit = null);
+
+    await backfillStressScale();
+
+    expect(await seriesValue('2026-05-01'), closeTo(77.5, 1e-9),
+        reason: 'stale rescale must not overwrite the newer derive trend point');
+    expect((await stored('2026-05-01', 120))['score'], 77.5);
+    expect(await LocalDb.computeFreshness(kStressRescaleKey), isNull,
+        reason: 'raced pass must not mark the backfill done');
+  });
+
+  test('a newer algo_version publishing while an older bundle rescales keeps '
+      'the newer trend point and does not mark the backfill done', () async {
+    await seedStressDay('2026-05-01', si: 12, score: 0, algoVersion: 120);
+    var raced = false;
+    debugStressBackfillBeforeCommit = _BeforeCommit((day) async {
+      if (raced) return;
+      raced = true;
+      // A newer version lands while v120 is being rescaled: v120's CAS can
+      // still succeed, but v121 now owns metric_series.
+      await seedStressDay(day, si: 400, score: 81.2, algoVersion: 121);
+    });
+    addTearDown(() => debugStressBackfillBeforeCommit = null);
+
+    await backfillStressScale();
+
+    expect(await seriesValue('2026-05-01'), closeTo(81.2, 1e-9),
+        reason: 'older bundle CAS must not clobber the newer version trend');
+    expect(await LocalDb.computeFreshness(kStressRescaleKey), isNull,
+        reason: 'raced pass must not mark the backfill done');
   });
 }

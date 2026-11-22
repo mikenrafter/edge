@@ -31,12 +31,20 @@
 import 'dart:convert';
 import 'dart:isolate';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../data/bundle_store.dart';
 import '../data/db.dart';
 import '../data/series_codec.dart';
+import '../util/callable.dart';
 import '../util/heavy.dart';
 import '../util/worker_init.dart';
 import 'onehz_pipeline.dart' show stressScoreFromSi;
+
+/// Test seam invoked after a day's worker rescale completes and before the DB
+/// commit, to simulate a concurrent derive publishing a newer stress score.
+@visibleForTesting
+Call1<String, Future<void>>? debugStressBackfillBeforeCommit;
 
 /// `compute_freshness` key marking the rescale as applied. Bumped with the algo
 /// version so a later recalibration is a new one-shot rather than a no-op.
@@ -172,6 +180,7 @@ Future<StressBackfillResult> backfillStressScale({bool force = false}) async {
       }
       final encoded = res.encodedPayload;
       if (encoded == null) continue; // already on the new scale
+      await debugStressBackfillBeforeCommit?.call(day);
       // Route through LocalDb's CAS write seam (P2.1): if a concurrent derive
       // replaced this row while the isolate ran, expectedPayloadJson mismatches
       // and the stale rewrite is safely dropped.
