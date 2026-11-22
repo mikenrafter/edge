@@ -5247,7 +5247,8 @@ class LocalDb {
     int algoVersion,
     String payloadJson, {
     required String expectedPayloadJson,
-  }) => _ldbRewriteDayPayload(dayId, algoVersion, payloadJson, expectedPayloadJson: expectedPayloadJson);
+    DatabaseExecutor? executor,
+  }) => _ldbRewriteDayPayload(dayId, algoVersion, payloadJson, expectedPayloadJson: expectedPayloadJson, executor: executor);
 
   static Future<Map<String, dynamic>?> dayResult(String dayId) async {
     return readerRun((db) async {

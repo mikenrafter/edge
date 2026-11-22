@@ -365,8 +365,8 @@ Future<void> _ldbPrivUpdateFreshnessJson(String key, Map<String, dynamic> Functi
     } catch (_) {}
   }
 
-Future<bool> _ldbRewriteDayPayload(String dayId, int algoVersion, String payloadJson, {required String expectedPayloadJson}) async {
-    final db = await LocalDb.instance;
+Future<bool> _ldbRewriteDayPayload(String dayId, int algoVersion, String payloadJson, {required String expectedPayloadJson, DatabaseExecutor? executor}) async {
+    final db = executor ?? await LocalDb.instance;
     final n = await db.update(
       'day_result',
       {'payload_json': payloadJson},

@@ -140,6 +140,7 @@ Future<StressBackfillResult> backfillStressScale({bool force = false}) async {
   var seriesDays = 0;
   var bundleDays = 0;
   var skipped = 0;
+  var anyRaced = false;
   final touchedDays = <String>{};
 
   for (final day in days) {
@@ -149,15 +150,25 @@ Future<StressBackfillResult> backfillStressScale({bool force = false}) async {
         whereArgs: [day],
         orderBy: 'algo_version DESC');
     // The build that last wrote this day's series, when stamped.
-    final stamp = ((await db.query('metric_series_version',
-                columns: ['algo_version'],
-                where: 'date = ?',
-                whereArgs: [day]))
-            .firstOrNull?['algo_version'] as num?)
-        ?.toInt();
+    final stampRow = (await db.query('metric_series_version',
+            columns: ['algo_version', 'source'],
+            where: 'date = ?',
+            whereArgs: [day]))
+        .firstOrNull;
+    final stamp = (stampRow?['algo_version'] as num?)?.toInt();
+    final maxObservedComplete = rows
+        .where((r) => (r['partial'] as num?)?.toInt() != 1)
+        .map((r) => (r['algo_version'] as num?)?.toInt())
+        .whereType<int>()
+        .fold<int?>(null, (a, b) => a == null || b > a ? b : a);
     double? seriesScore;
     var seriesPicked = false;
+    int? writerVer;
+    String? writerRaw;
+    var writerNeedsUpdate = false;
+    final updates = <({int ver, String raw, String encoded})>[];
     for (final row in rows) {
+      final ver = (row['algo_version'] as num).toInt();
       final raw = row['payload_json'];
       final res = raw is String
           ? await _rescaleOneStressRow(workerInputs, raw)
@@ -167,9 +178,14 @@ Future<StressBackfillResult> backfillStressScale({bool force = false}) async {
       // series). If that row has no usable score the trend stays as it is.
       if (!seriesPicked &&
           (row['partial'] as num?)?.toInt() != 1 &&
-          (stamp == null || (row['algo_version'] as num?)?.toInt() == stamp)) {
+          (stamp == null || ver == stamp)) {
         seriesPicked = true;
-        if (!res.imported) seriesScore = res.nextScore;
+        if (!res.imported && res.nextScore != null && raw is String) {
+          seriesScore = res.nextScore;
+          writerVer = ver;
+          writerRaw = raw;
+          writerNeedsUpdate = res.encodedPayload != null;
+        }
       }
       // No usable index, or another source's day: a rescaled day must not
       // become 0 (a score, not an absence), and an imported score is not
@@ -180,36 +196,78 @@ Future<StressBackfillResult> backfillStressScale({bool force = false}) async {
       }
       final encoded = res.encodedPayload;
       if (encoded == null) continue; // already on the new scale
-      await debugStressBackfillBeforeCommit?.call(day);
-      // Route through LocalDb's CAS write seam (P2.1): if a concurrent derive
-      // replaced this row while the isolate ran, expectedPayloadJson mismatches
-      // and the stale rewrite is safely dropped.
-      final wrote = await LocalDb.rewriteDayPayload(
-        day,
-        (row['algo_version'] as num).toInt(),
-        encoded,
-        expectedPayloadJson: raw as String,
-      );
-      if (wrote) {
-        bundleDays++;
-        touchedDays.add(day);
-      }
+      updates.add((ver: ver, raw: raw as String, encoded: encoded));
     }
-    if (seriesScore == null) continue;
-    // UPDATE only: never create a trend point the derive did not write, and
-    // leave a day whose series another source produced alone.
-    final n = await db.rawUpdate(
-      "UPDATE metric_series SET value = ? WHERE date = ? AND key = 'stress' "
-      'AND (value IS NULL OR value <> ?) AND NOT EXISTS (SELECT 1 FROM '
-      'metric_series_version v WHERE v.date = ? AND COALESCE(v.source, \'band\') '
-      "<> 'band')",
-      [seriesScore, day, seriesScore, day],
-    );
-    if (n > 0) seriesDays++;
+    if (updates.isEmpty && seriesScore == null) continue;
+    await debugStressBackfillBeforeCommit?.call(day);
+    // One transaction per day: re-verify the observed series writer and apply
+    // every bundle CAS + the trend point atomically through LocalDb's P2.1
+    // write seam. If a derive replaced a row or published a newer writer while
+    // the worker ran, the trend point stays untouched and this pass does not
+    // stamp done so the next pass revisits.
+    await db.transaction((txn) async {
+      final curStampRow = (await txn.query('metric_series_version',
+              columns: ['algo_version', 'source'],
+              where: 'date = ?',
+              whereArgs: [day]))
+          .firstOrNull;
+      final curStamp = (curStampRow?['algo_version'] as num?)?.toInt();
+      final curSource = (curStampRow?['source'] as String?) ?? 'band';
+      final curTopComplete = ((await txn.rawQuery(
+                  'SELECT MAX(algo_version) AS v FROM day_result '
+                  'WHERE day_id = ? AND COALESCE(partial, 0) != 1',
+                  [day]))
+              .firstOrNull?['v'] as num?)
+          ?.toInt();
+      var dayRaced = curStamp != stamp ||
+          (stamp == null && curTopComplete != maxObservedComplete);
+      var writerStillMatches = !dayRaced && curSource == 'band';
+      for (final u in updates) {
+        final wrote = await LocalDb.rewriteDayPayload(
+          day,
+          u.ver,
+          u.encoded,
+          expectedPayloadJson: u.raw,
+          executor: txn,
+        );
+        if (wrote) {
+          bundleDays++;
+          touchedDays.add(day);
+        } else {
+          dayRaced = true;
+          if (u.ver == writerVer) writerStillMatches = false;
+        }
+      }
+      if (writerStillMatches && writerVer != null && !writerNeedsUpdate) {
+        final check = await txn.query('day_result',
+            columns: ['algo_version'],
+            where: 'day_id = ? AND algo_version = ? AND payload_json = ?',
+            whereArgs: [day, writerVer, writerRaw],
+            limit: 1);
+        if (check.isEmpty) {
+          dayRaced = true;
+          writerStillMatches = false;
+        }
+      }
+      if (dayRaced) anyRaced = true;
+      if (seriesScore == null || !writerStillMatches) return;
+      // UPDATE only: never create a trend point the derive did not write, and
+      // leave a day whose series another source produced alone.
+      final n = await txn.rawUpdate(
+        "UPDATE metric_series SET value = ? WHERE date = ? AND key = 'stress' "
+        'AND (value IS NULL OR value <> ?) AND NOT EXISTS (SELECT 1 FROM '
+        'metric_series_version v WHERE v.date = ? AND COALESCE(v.source, \'band\') '
+        "<> 'band')",
+        [seriesScore, day, seriesScore, day],
+      );
+      if (n > 0) seriesDays++;
+    });
   }
 
   if (touchedDays.isNotEmpty) BundleStore.shared.invalidateDays(touchedDays);
-  await LocalDb.putComputeFreshness(kStressRescaleKey, '{"done":true}');
+  if (!anyRaced) {
+    await LocalDb.putComputeFreshness(kStressRescaleKey, '{"done":true}');
+  }
   return StressBackfillResult(
     seriesDays: seriesDays,
     bundleDays: bundleDays,
