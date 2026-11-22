@@ -76,6 +76,17 @@ void main() {
     expect(result.refusedPrefs, ['notif_fired:2026-09-21:low_read']);
   });
 
+  test('legacy compute.experimental_sleep_hmm stored as a string is refused',
+      () async {
+    final path = await exportRetyped({'compute.experimental_sleep_hmm': true},
+        {'compute.experimental_sleep_hmm': ('string', 'yes')});
+    await wipeAll();
+    final result = await LocalDb.importFromDbFile(path);
+    expect((await allPrefs()).containsKey('compute.experimental_sleep_hmm'),
+        isFalse);
+    expect(result.refusedPrefs, ['compute.experimental_sleep_hmm']);
+  });
+
   test('rows of the right type, and keys the app never reads, restore as-is',
       () async {
     await wipeAll();
