@@ -651,7 +651,12 @@ class NotificationCenter {
     // instants below are wall-clock. A phone that flew somewhere would otherwise
     // keep arming Sunday 18:00 in the zone the app first launched in.
     await svc.ensureTimezone();
-    await _armWaterSlots(svc, water, prefs, gate);
+    final budget = waterBudget(
+      cap: svc.pendingCap,
+      pending: await svc.pendingIds() ?? const <int>{},
+      plannedMeds: meds.length,
+    );
+    await _armWaterSlots(svc, water, prefs, gate, budget);
     if (wantWeekly && gate.reasonAt(prefs, svc.nextWeeklyInstant(recapWeekday, recapHour, recapMinute)) == null) await _armWeeklyLookback(svc, weeklyFinding);
     if (windDownMin != null && prefs.phoneDeliveryEnabled('windDown')) {
       await _armWindDown(svc, windDownMin, bedtimeMinOfDay!);
@@ -839,6 +844,7 @@ class NotificationCenter {
     List<int> slots,
     NotificationPrefs prefs,
     ReminderSleepGate sleep,
+    int budget,
   ) async {
     UnitSystem system;
     try {
@@ -853,7 +859,7 @@ class NotificationCenter {
     var i = 0;
     for (final at in upcoming) {
       if (sleep.reasonAt(prefs, at) != null) continue;
-      if (i >= NotificationService.maxWaterSlots) break;
+      if (i >= budget) break;
       await svc.scheduleOnce(
         id: NotificationService.idWaterBase + i++,
         category: NotifCategory.reminders,
@@ -863,6 +869,36 @@ class NotificationCenter {
         route: kRouteWater,
       );
     }
+  }
+
+  /// Water slots the shared pending budget allows, at most
+  /// [NotificationService.maxWaterSlots].
+  ///
+  /// PRIORITY (highest first): alarm > medication > wind-down / check-in >
+  /// water > experiment. Water gives way to every higher class: the slots of
+  /// pending others, the planned or pending medication slots, and the slots of
+  /// higher singletons that are not pending right now (they may arm later in
+  /// their own pass). Experiments are below water, so their slots do not count
+  /// here; they take what water leaves ([experimentBudget] reads the same OS
+  /// pending list). Android's cap is generous, so only the 40 bind there.
+  @visibleForTesting
+  static int waterBudget({
+    required int cap,
+    required Set<int> pending,
+    required int plannedMeds,
+  }) {
+    final others = pending
+        .where((id) =>
+            !NotificationService.isWaterSlot(id) &&
+            !NotificationService.isExperimentSlot(id) &&
+            !NotificationService.isMedSlot(id))
+        .length;
+    final pendingMeds = pending.where(NotificationService.isMedSlot).length;
+    final held = NotificationService.higherPrioritySingletons
+        .where((id) => !pending.contains(id))
+        .length;
+    final free = cap - others - (plannedMeds > pendingMeds ? plannedMeds : pendingMeds) - held;
+    return free.clamp(0, NotificationService.maxWaterSlots);
   }
 
   /// One upcoming wind-down slot, refreshed with sleep eligibility.

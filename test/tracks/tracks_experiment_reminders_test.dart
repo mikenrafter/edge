@@ -450,7 +450,7 @@ void main() {
       await svc.ensureTimezone();
       final at = DateTime(2026, 10, 27, 20);
       if (water) {
-        for (var i = 0; i < NotificationService.maxWaterSlots; i++) {
+        for (var i = 0; i < 24 /* a pinned water load: this group tests the experiment share */; i++) {
           await svc.scheduleOnce(id: NotificationService.idWaterBase + i, category: NotifCategory.reminders, title: 'w', body: 'w', at: at.add(Duration(minutes: i)));
         }
       }
@@ -500,7 +500,7 @@ void main() {
       // Water is switched on: the next pass gives slots back, farthest first.
       await withClock(Clock.fixed(morning), () async {
         await svc.ensureTimezone();
-        for (var i = 0; i < NotificationService.maxWaterSlots; i++) {
+        for (var i = 0; i < 24; i++) {
           await svc.scheduleOnce(id: NotificationService.idWaterBase + i, category: NotifCategory.reminders, title: 'w', body: 'w', at: DateTime(2026, 10, 27, 20));
         }
       });
@@ -562,43 +562,45 @@ void main() {
       expect(waterMinutes(), hasLength(40));
     });
 
-    test('with meds and singletons pending, water takes 40 and experiments '
+    // Higher singletons the standing pass leaves alone (it cancels only the
+    // recap, night check and what the user switched off).
+    Future<void> armHigher() => withClock(Clock.fixed(morning), () async {
+          await svc.ensureTimezone();
+          for (final id in [
+            NotificationService.idSnoozeBackstop,
+            NotificationService.idMorningBrief,
+            NotificationService.idEveningBrief,
+          ]) {
+            await svc.scheduleOnce(id: id, category: NotifCategory.reminders, title: 'h', body: 'h', at: DateTime(2026, 10, 27, 21));
+          }
+        });
+
+    test('with higher singletons pending, water takes 40 and experiments '
         'take what is left of the 64', () async {
       svc.debugPendingCap = NotificationService.pendingCapIos;
       cap = NotificationService.pendingCapIos;
-      await withClock(Clock.fixed(morning), () async {
-        await svc.ensureTimezone();
-        final at = DateTime(2026, 10, 27, 20);
-        for (var i = 0; i < NotificationService.maxMedSlots; i++) {
-          await svc.scheduleOnce(id: NotificationService.idMedsBase + i, category: NotifCategory.reminders, title: 'm', body: 'm', at: at.add(Duration(minutes: i)));
-        }
-        for (final id in [NotificationService.idWindDown, NotificationService.idCheckIn]) {
-          await svc.scheduleOnce(id: id, category: NotifCategory.reminders, title: 'x', body: 'x', at: at);
-        }
-      });
+      await armHigher();
       await standing(allDay);
       expect(waterMinutes(), hasLength(40));
       await startAt(morning, weeks: 4);
-      // 64 - (12 meds + 2 singletons + 40 water) - 5 held singletons = 5.
-      expect(held(), hasLength(5));
+      // 64 - (3 singletons + 40 water) - 4 higher singletons not pending = 17.
+      expect(held(), hasLength(17));
       expect(waterMinutes(), hasLength(40));
       expect(pending.length, lessThanOrEqualTo(64));
     });
 
     test('water yields to higher classes when the cap is tight', () async {
-      svc.debugPendingCap = 30;
-      cap = 30;
-      await withClock(Clock.fixed(morning), () async {
-        await svc.ensureTimezone();
-        final at = DateTime(2026, 10, 27, 20);
-        for (var i = 0; i < NotificationService.maxMedSlots; i++) {
-          await svc.scheduleOnce(id: NotificationService.idMedsBase + i, category: NotifCategory.reminders, title: 'm', body: 'm', at: at.add(Duration(minutes: i)));
-        }
-      });
+      svc.debugPendingCap = 20;
+      cap = 20;
+      await armHigher();
       await standing(allDay);
-      // 30 - 12 meds - 7 held singletons = 11 water slots.
-      expect(waterMinutes(), hasLength(11));
-      expect(pending.keys.where(NotificationService.isMedSlot), hasLength(12));
+      // 20 - 3 pending singletons - 4 held for the ones that may arm later = 13.
+      expect(waterMinutes(), hasLength(13));
+      expect(
+        pending.keys.where(NotificationService.higherPrioritySingletons.contains),
+        hasLength(3),
+        reason: 'no higher-priority reminder was displaced',
+      );
     });
   });
 }

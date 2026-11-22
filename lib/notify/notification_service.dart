@@ -180,11 +180,11 @@ class NotificationService {
   /// drawer or an app the OS killed meant nothing happened at all. Do not reuse
   /// these ids for anything else.
   static const int idWaterBase = 2100;
-  // Fork keeps 24 water slots so water (24) + meds (12) + experiment reminders
-  // (up to 28) + standing singletons fit within iOS's 64-pending-request cap.
-  // Upstream raised this to 40 (#835); see merge report under retained fork
-  // decisions.
-  static const int maxWaterSlots = 24;
+  // Up to 40 water slots (upstream #835), inside the shared pending budget:
+  // [NotificationCenter.waterBudget] gives water what the cap leaves after
+  // alarm, medication and the wind-down / check-in singletons, and experiments
+  // take what water leaves ([experimentBudget]).
+  static const int maxWaterSlots = 40;
 
   /// Reserved for a future server/push layer (unused — app is cloud-free).
   static const int kServerIdBase = 2000;
